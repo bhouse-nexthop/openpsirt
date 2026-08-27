@@ -44,3 +44,21 @@ func TestLoadReadsEnvironment(t *testing.T) {
 		t.Errorf("LogLevel = %v", c.LogLevel)
 	}
 }
+
+func TestAutoMigrateIsOnUnlessTurnedOff(t *testing.T) {
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !c.AutoMigrate {
+		t.Error("auto-migration should be on by default")
+	}
+	t.Setenv(envPrefix+"AUTO_MIGRATE", "false")
+	c, err = Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.AutoMigrate {
+		t.Error("auto-migration should be off when set to false")
+	}
+}

@@ -22,6 +22,15 @@ type Config struct {
 	LogFormat string
 	// ShutdownGrace is how long in-flight requests get to finish.
 	ShutdownGrace time.Duration
+	// DatabaseURL says which database to use and how to reach it.
+	DatabaseURL string
+	// AutoMigrate applies outstanding schema changes at startup.
+	//
+	// On by default: a self-hosted operator should not need a separate step,
+	// and deploying the binary is then the whole upgrade. Turning it off suits
+	// someone who would rather run migrations themselves, under different
+	// credentials, at a time they choose.
+	AutoMigrate bool
 }
 
 const envPrefix = "OPENPSIRT_"
@@ -32,6 +41,8 @@ func Load() (Config, error) {
 		Addr:          env("ADDR", ":8080"),
 		LogFormat:     env("LOG_FORMAT", "text"),
 		ShutdownGrace: 15 * time.Second,
+		DatabaseURL:   env("DATABASE_URL", ""),
+		AutoMigrate:   env("AUTO_MIGRATE", "true") != "false",
 	}
 
 	if err := c.LogLevel.UnmarshalText([]byte(env("LOG_LEVEL", "info"))); err != nil {

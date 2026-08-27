@@ -21,7 +21,11 @@ import (
 //
 // The description is returned so the OpenAPI document can be written out
 // without starting a server.
-func New(logger *slog.Logger) (http.Handler, huma.API) {
+// Ready reports whether the service can do its job. A nil Ready means the
+// readiness probe only reflects the process being up.
+type Ready func(context.Context) error
+
+func New(logger *slog.Logger, ready Ready) (http.Handler, huma.API) {
 	router := chi.NewMux()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Recoverer)
@@ -32,9 +36,22 @@ func New(logger *slog.Logger) (http.Handler, huma.API) {
 
 	// Liveness and readiness are deliberately outside the documented API and
 	// carry no authentication: a container probe cannot sign in, and these
-	// report nothing beyond whether the process is up.
+	// report nothing beyond whether the process can serve.
+	//
+	// Liveness answers as long as the process is running. Readiness also needs
+	// the database, because a process that cannot reach its database is up but
+	// useless, and sending it traffic helps nobody.
 	router.Get("/healthz", plainOK)
-	router.Get("/readyz", plainOK)
+	router.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if ready != nil {
+			if err := ready(r.Context()); err != nil {
+				logger.Warn("not ready", "error", err)
+				http.Error(w, "not ready\n", http.StatusServiceUnavailable)
+				return
+			}
+		}
+		plainOK(w, r)
+	})
 
 	cfg := huma.DefaultConfig("openpsirt", version.Get().Version)
 	cfg.Info.Description = "Track vulnerabilities in the products you ship."

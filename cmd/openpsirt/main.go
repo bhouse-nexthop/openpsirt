@@ -13,7 +13,9 @@ import (
 	"syscall"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/config"
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/httpapi"
+	"github.com/bhouse-nexthop/openpsirt/internal/schema"
 	"github.com/bhouse-nexthop/openpsirt/internal/version"
 )
 
@@ -44,11 +46,11 @@ func run(args []string, stdout, stderr *os.File) error {
 		return err
 	}
 	logger := newLogger(cfg, stderr)
-	handler, api := httpapi.New(logger)
 
 	// Generating the document from the running registrations is what keeps it
-	// from drifting away from the server.
+	// from drifting away from the server. It needs no database.
 	if *dumpSpec {
+		_, api := httpapi.New(logger, nil)
 		doc, err := api.OpenAPI().YAML()
 		if err != nil {
 			return fmt.Errorf("render OpenAPI document: %w", err)
@@ -57,7 +59,91 @@ func run(args []string, stdout, stderr *os.File) error {
 		return err
 	}
 
+	ctx := context.Background()
+	if fs.NArg() > 0 && fs.Arg(0) == "migrate" {
+		return runMigrate(ctx, cfg, logger, stdout, fs.Args()[1:])
+	}
+
+	db, err := openDatabase(ctx, cfg, logger)
+	if err != nil {
+		return err
+	}
+	defer closeQuietly(db, logger)
+
+	// Migrating before serving means a request never arrives against a schema
+	// the code does not expect.
+	if cfg.AutoMigrate {
+		if err := schema.Up(ctx, db, logger); err != nil {
+			return err
+		}
+	} else {
+		logger.Info("automatic migration is off; run \"openpsirt migrate up\" separately")
+	}
+
+	handler, _ := httpapi.New(logger, func(ctx context.Context) error {
+		return db.PingContext(ctx)
+	})
 	return serve(cfg, logger, handler)
+}
+
+// closeQuietly closes the database at shutdown. A failure here changes nothing
+// about the exit, but silence would hide a genuinely stuck connection.
+func closeQuietly(db *database.DB, logger *slog.Logger) {
+	if err := db.Close(); err != nil {
+		logger.Warn("closing the database", "error", err)
+	}
+}
+
+func openDatabase(ctx context.Context, cfg config.Config, logger *slog.Logger) (*database.DB, error) {
+	if cfg.DatabaseURL == "" {
+		return nil, fmt.Errorf("no database configured: set OPENPSIRT_DATABASE_URL")
+	}
+	target, err := database.ParseURL(cfg.DatabaseURL)
+	if err != nil {
+		return nil, err
+	}
+	db, err := database.Open(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+	logger.Info("database connected",
+		"engine", db.Server.Engine, "version", db.Server.Version, "url", target.Redacted)
+	if !db.Server.Engine.IsProduction() {
+		logger.Warn("this database is for development and testing only",
+			"engine", db.Server.Engine)
+	}
+	return db, nil
+}
+
+// runMigrate applies or rolls back schema changes on their own, so an operator
+// can run them under different credentials and at a time they choose.
+func runMigrate(ctx context.Context, cfg config.Config, logger *slog.Logger, stdout *os.File, args []string) error {
+	action := "up"
+	if len(args) > 0 {
+		action = args[0]
+	}
+
+	db, err := openDatabase(ctx, cfg, logger)
+	if err != nil {
+		return err
+	}
+	defer closeQuietly(db, logger)
+
+	switch action {
+	case "up":
+		return schema.Up(ctx, db, logger)
+	case "down":
+		return schema.Down(ctx, db, logger)
+	case "status":
+		v, err := schema.Version(ctx, db)
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(stdout, "%s %s, schema version %d\n",
+			db.Server.Engine, db.Server.Version, v)
+		return err
+	}
+	return fmt.Errorf("unknown migrate action %q: want up, down or status", action)
 }
 
 func newLogger(cfg config.Config, w *os.File) *slog.Logger {

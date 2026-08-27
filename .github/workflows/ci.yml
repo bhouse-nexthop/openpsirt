@@ -17,6 +17,44 @@ jobs:
   build-test:
     name: Build and test
     runs-on: ubuntu-latest
+
+    # All four supported engines run the same suite. SQLite alone would catch
+    # none of the portability traps the design is written around, so a green
+    # run here is the only thing that makes "runs on four engines" a fact.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: openpsirt
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: openpsirt
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -ptest --silent" --health-interval 5s
+          --health-timeout 5s --health-retries 20
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: test
+          MARIADB_DATABASE: openpsirt
+        ports: ["3307:3306"]
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+    env:
+      OPENPSIRT_TEST_POSTGRES_URL: postgres://postgres:test@127.0.0.1:5432/openpsirt?sslmode=disable
+      OPENPSIRT_TEST_MYSQL_URL: mysql://root:test@127.0.0.1:3306/openpsirt
+      OPENPSIRT_TEST_MARIADB_URL: mariadb://root:test@127.0.0.1:3307/openpsirt
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -26,6 +64,16 @@ jobs:
       - run: go build ./...
       - run: go vet ./...
       - run: go test -race -count=1 ./...
+      - name: Confirm every engine was actually exercised
+        # A skipped engine passes silently, which would make the matrix
+        # decorative. This fails if any engine did not run.
+        run: |
+          go test ./internal/schema/ -count=1 -v -run TestMigrationsApplyOnEveryEngine \
+            | tee /tmp/engines.txt
+          for engine in sqlite postgres mysql mariadb; do
+            grep -q "PASS: TestMigrationsApplyOnEveryEngine/$engine" /tmp/engines.txt \
+              || { echo "::error::$engine did not run"; exit 1; }
+          done
 
   lint:
     name: Static analysis

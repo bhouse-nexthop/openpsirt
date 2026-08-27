@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -11,7 +12,7 @@ import (
 
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
-	h, _ := New(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	h, _ := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	return h
 }
 
@@ -51,7 +52,7 @@ func TestOpenAPIDocumentDescribesTheRegisteredRoutes(t *testing.T) {
 	// This is the check that keeps the published specification honest: it is
 	// generated from the same registrations the server routes on, so a route
 	// that exists but is undocumented cannot happen.
-	_, api := New(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	_, api := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	doc := api.OpenAPI()
 	if doc.Paths["/v1/version"] == nil {
 		t.Fatal("/v1/version missing from the generated document")
@@ -75,3 +76,30 @@ func TestDocumentationIsNotServed(t *testing.T) {
 		t.Error("GET /docs served something; documentation should not be served")
 	}
 }
+
+func TestReadinessFailsWhenTheServiceCannotWork(t *testing.T) {
+	// A process that is up but cannot reach its database should not be sent
+	// traffic. Answering "ok" regardless would make the probe decorative.
+	h, _ := New(slog.New(slog.NewTextHandler(io.Discard, nil)),
+		func(context.Context) error { return errUnavailable })
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("GET /readyz = %d, want 503", rec.Code)
+	}
+
+	// Liveness is a different question: the process is running, so restarting
+	// it would not help.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET /healthz = %d, want 200 even when not ready", rec.Code)
+	}
+}
+
+var errUnavailable = errStub("database is unreachable")
+
+type errStub string
+
+func (e errStub) Error() string { return string(e) }
