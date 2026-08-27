@@ -20,6 +20,7 @@
   - [3.13 Database](#313-database-dat)
   - [3.14 CI gate](#314-ci-gate-cig)
   - [3.15 Interface](#315-interface-uix)
+  - [3.16 Application security](#316-application-security-sec)
 - [4. Still open](#4-still-open)
 - [5. What we ingest](#5-what-we-ingest)
 - [6. Constraints that shape the design](#6-constraints-that-shape-the-design)
@@ -408,7 +409,25 @@ inputs.
 | UIX-20 | **Recharts** for charts | Enough for the trend shapes in RPT-09 to RPT-12, and familiar nearby |
 
 
+### 3.16 Application security — `SEC`
+
+Cross-cutting rules that belong to no single area. Enumerated rather than left
+to "follow good practice", so a reviewer has something to check against.
+
+| # | Decision | Why |
+|---|---|---|
+| SEC-01 | **Values in SQL are always parameterized.** No string building, no formatting into a query, ever | The base case, and non-negotiable in a tool whose subject is vulnerabilities |
+| SEC-02 | **Identifiers never come from input.** Table names, column names and sort direction map through an allowlist; anything not on it is rejected, not passed through | The half that actually catches people. Placeholders bind values only — they cannot bind identifiers. A findings table with sortable columns takes a column name from a query parameter, and `ORDER BY` plus user input is the hole |
+| SEC-03 | **API keys and personal tokens are stored hashed, never in plaintext.** Shown once, at creation | ACC-10 to ACC-14 describe scoping and rotation in detail and never said this. A credential store readable by anyone who reads the database is not a credential store |
+| SEC-04 | **Everything from a scan file is untrusted output.** Component names, versions and descriptions are encoded on the way out; any markdown is sanitised | We render text a third party put in an SBOM into a staff browser. A component name is an injection vector, and the staff seeing it hold the most access |
+| SEC-05 | **Nothing from a scan file is used as a filesystem path** | A component name containing `../` reaching a file operation is how an ingest becomes an arbitrary write |
+| SEC-06 | **Ingest is bounded**: maximum file size, nesting depth, and component count, all configurable | A hostile or broken file must fail rather than exhaust memory. ING-06 sizes for the largest real input; this is about inputs that are not real |
+| SEC-07 | **Outbound fetches are restricted to their configured host, and never follow redirects into private address space** | We fetch ranking feeds, and Phase 2 pulls from third-party APIs at administrator-configured URLs. An administrator-supplied URL pointed at an internal address turns the application into a proxy for the network it sits in |
+| SEC-08 | **Secrets never reach logs.** Connection strings are redacted, credentials and tokens are never logged at any level | Already done for database URLs; recorded so it is a rule rather than a habit |
+| SEC-09 | The checklist in `AGENTS.md` is worked through on every review, not consulted when someone remembers | An enumerated list gets checked. "Follow good practice" gets cited |
+
 ---
+
 
 ## 4. Still open
 

@@ -68,6 +68,7 @@ unpick later.
 | **A finding is a component at a specific place.** Do not deduplicate up to the package. Grouping is presentation only | MDL-05, REL-02 |
 | **Identity is structural; expiry is version-based.** Never mix them — that is how an unrelated top-level bump invalidates a leaf decision | MDL-08 |
 | **The tests run on every supported engine.** SQLite-only tests catch none of the portability traps | DAT-12 |
+| **SQL values are parameterized and SQL identifiers come from an allowlist.** A placeholder cannot bind a column name, so a sort column from a query parameter is the real risk | SEC-01, SEC-02 |
 
 ## Source file size
 
@@ -112,6 +113,26 @@ Describe the behaviour, reason or limitation instead, and keep issue linkage in
 the tracker and the pull request.
 
 **Comment density matches the surrounding code.** Explain why, not what.
+
+## Security review checklist
+
+Worked through on every review. Each line says what to look for **in this
+codebase**, not in general — a checklist that restates the category is one that
+gets ticked without being read.
+
+| Category | Check |
+|---|---|
+| **Injection — SQL** | Every value parameterized. **Every identifier from an allowlist** — sort columns, filter fields and partition names cannot be bound by a placeholder, so a column name arriving from a query parameter is the live hole (SEC-01, SEC-02) |
+| **Injection — output** | Component names, versions and descriptions come from a third party's SBOM and get rendered to staff who hold the most access. Encoded on output; markdown sanitised (SEC-04) |
+| **Broken access control** | Enforced in the data layer with a subject, never per handler. Covers counts, aggregates, search and exports — not just row reads (ACC-04, ACC-07) |
+| **Cryptographic failures** | API keys and personal tokens hashed at rest, shown once (SEC-03). Session identifiers unguessable |
+| **Insecure design** | Does the change contradict a recorded decision? Cite the identifier if so |
+| **Security misconfiguration** | Container non-root with a read-only root filesystem. Trusted-header sign-in off by default and only from configured sources (ACC-19, ACC-20) |
+| **Vulnerable components** | `govulncheck` and dependency review gate. A new dependency needs a permissive licence (SCP-06) |
+| **Authentication failures** | No account created automatically on any path; unauthorized users get a generic message that does not say why (ACC-21) |
+| **Data integrity** | A scan file is hostile input. Bounded size, depth and component count; never used as a filesystem path (SEC-05, SEC-06) |
+| **Logging failures** | Secrets never logged. Triage actions land in the append-only history (SEC-08) |
+| **Request forgery** | Outbound fetches restricted to their configured host, no redirects into private address space (SEC-07) |
 
 ## Testing
 
