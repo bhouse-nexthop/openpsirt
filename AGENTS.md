@@ -69,22 +69,23 @@ unpick later.
 | **Identity is structural; expiry is version-based.** Never mix them — that is how an unrelated top-level bump invalidates a leaf decision | MDL-08 |
 | **The tests run on every supported engine.** SQLite-only tests catch none of the portability traps | DAT-12 |
 
-## File size
+## Source file size
 
-**Target about 1200 lines. Treat that as the point to split, not a hard limit.**
+**Target about 1200 lines per source file.** A point to split at, not a hard
+limit.
 
-A file past it is usually covering more than one thing, and the cost is not
-storage — it is that nobody reads to the end, changes get made in the wrong
-place, and review gets shallower the further down the diff goes.
+A file past it is usually doing more than one thing. The cost is not storage —
+it is that nobody reads to the end, changes get made in the wrong place, and
+review gets shallower the further down the diff it goes.
 
-| File | Split by |
-|---|---|
-| `DESIGN-*.md` | Topic. A design document covering two areas was always two documents |
-| Source | Responsibility, not line count. Splitting a coherent file to hit a number makes it worse |
-| `DECISIONS.md` | Area, into `DECISIONS-<area>.md`, keeping the identifier prefixes |
+Split by **responsibility, not by line count**. Cutting a coherent file in half
+to hit a number makes it worse, and a 1300-line file that genuinely does one
+thing is better left alone than split badly. Act on the trend rather than the
+threshold: splitting late is far more work than splitting early.
 
-Splitting late is far more work than splitting early, so act on the trend rather
-than the threshold.
+Documentation is not governed by this. A design document is as long as its
+subject, and splits when it covers two subjects rather than when it reaches a
+length.
 
 ## Decision identifiers
 
