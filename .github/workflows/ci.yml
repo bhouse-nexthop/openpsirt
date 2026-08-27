@@ -81,6 +81,22 @@ jobs:
       - name: Fail if the committed document is stale
         run: git diff --exit-code -- docs/reference/openapi.yaml
 
+  sbom:
+    name: Software bill of materials
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make sbom
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openpsirt-sbom
+          path: bin/openpsirt.cdx.json
+          if-no-files-found: error
+
   docs:
     name: Documentation builds
     runs-on: ubuntu-latest

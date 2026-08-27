@@ -82,6 +82,9 @@ inputs.
 | SCP-04 | Apache 2.0 | The patent grant is what vendor legal teams look for. Matches the surrounding SBOM tooling |
 | SCP-06 | **Shipped dependencies must be permissively licensed** — MIT, BSD, Apache 2.0. **MPL is acceptable**; its obligations attach to changes in its own files, which we would never make | Keeps the product freely usable by anyone who installs it. MPL matters practically: the only serious MySQL and MariaDB driver in Go is MPL-2.0, so excluding it would undo the four-engine decision |
 | SCP-07 | **Build tooling is unrestricted.** `golangci-lint` is GPL-3.0 and that is fine — running a tool over our code affects its licence no more than compiling with GCC does | Without this distinction the licence check in CI either fails on day one or acquires an exception nobody can explain later |
+| SCP-08 | **We publish a CycloneDX SBOM of ourselves**, generated at build time and attached to releases | A tool that consumes SBOMs and ships without one is hard to defend. CycloneDX because it is the format this project treats as authoritative on the way in (ING-01) |
+| SCP-09 | The SBOM is generated from the **built binary's module graph**, not from source | It describes what actually ships rather than what the repository happens to contain |
+| SCP-10 | Licence data in our own SBOM is **not** relied on for compliance | The generator does not populate it reliably. Licence compliance is gated separately and properly by the allowlist check (SCP-06) |
 | SCP-05 | One variant is the normal case, and the interface hides the dimension when there is only one | Multi-variant products are the interesting case, not the common one |
 
 ### 3.2 API and docs — `API`

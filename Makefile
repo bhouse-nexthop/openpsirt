@@ -15,11 +15,12 @@ LDFLAGS      := -s -w \
 GOLANGCI_VERSION  ?= v2.13.1
 GOVULNCHECK_VERSION ?= latest
 GOLICENSES_VERSION  ?= latest
+CDXGOMOD_VERSION    ?= latest
 
 # Permissive only, for anything that ships. Build tooling is unrestricted.
 ALLOWED_LICENCES := Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,MPL-2.0
 
-.PHONY: all build test vet lint fmt openapi run clean check tools govulncheck licences
+.PHONY: all build test vet lint fmt openapi run clean check tools govulncheck licences sbom
 
 all: check build
 
@@ -45,6 +46,14 @@ govulncheck:
 licences:
 	$(GO) run github.com/google/go-licenses@$(GOLICENSES_VERSION) check ./... \
 		--allowed_licenses=$(ALLOWED_LICENCES)
+
+# We ingest SBOMs, so we publish one for ourselves. CycloneDX because that is
+# the format this project treats as authoritative on the way in.
+sbom:
+	@mkdir -p bin
+	$(GO) run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@$(CDXGOMOD_VERSION) \
+		app -main cmd/openpsirt -json -packages -output bin/openpsirt.cdx.json .
+	@echo "wrote bin/openpsirt.cdx.json"
 
 # The document is generated from the running registrations, never hand-written.
 openapi:

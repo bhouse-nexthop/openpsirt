@@ -31,6 +31,7 @@ with the same command and the same pinned tool versions — CIG-06.
 | `make govulncheck` | Known vulnerabilities in dependencies |
 | `make licences` | Licences of shipped dependencies against the allowlist |
 | `make openapi` | Regenerates the API document from the code |
+| `make sbom` | Generates our own CycloneDX bill of materials |
 | `make check` | Everything above |
 
 ## Static analysis
@@ -69,6 +70,17 @@ endpoint cannot change without the document following.
 The application does not serve it (API-05). Documentation is published
 separately, which leaves the binary with no unauthenticated routes except the
 probes below.
+
+## Our own bill of materials
+
+We ingest SBOMs, so we publish one — CycloneDX, the format this project treats
+as authoritative on the way in. Generated from the built binary's module graph
+rather than from source, so it describes what ships (SCP-08, SCP-09).
+
+Licence fields are not populated reliably by the generator, and nothing depends
+on them: licence compliance is gated by the allowlist check instead (SCP-10).
+
+Once ingest exists, this file is the project's own first test fixture.
 
 ## Probes
 
