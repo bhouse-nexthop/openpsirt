@@ -83,6 +83,10 @@ The data model and everything that fills it.
 - Streaming parse, asynchronous queue, ordering, duplicate handling, atomicity
 - Current state and change events
 
+The finding model carries a kind from the start, even with only one kind in it.
+A second kind — static analysis, fuzzing — has no dependency path, and a schema
+that assumes one cannot take it later without a rewrite.
+
 **Proves it works:** a real full-size SBOM ingests within budget; re-ingesting
 identical content writes nothing; an older scan is rejected; **re-ingesting the
 same content with every producer identifier shuffled changes no stored
