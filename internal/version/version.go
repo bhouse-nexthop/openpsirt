@@ -22,3 +22,10 @@ type Info struct {
 func Get() Info {
 	return Info{Version: version, Commit: commit, Date: date, Go: runtime.Version()}
 }
+
+// deliberately broken: unchecked error and an unused result, to prove the gate
+// rejects what it is supposed to reject.
+func brokenOnPurpose() string {
+	var unusedVariable string
+	return unusedVariable
+}
