@@ -20,6 +20,18 @@ CDXGOMOD_VERSION    ?= latest
 # Permissive only, for anything that ships. Build tooling is unrestricted.
 ALLOWED_LICENCES := Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,MPL-2.0
 
+# Modules the classifier cannot read, whose licence has been checked by hand.
+# Each entry needs a reason. Lowering the confidence threshold instead would
+# silently accept every other unreadable licence too, which is the opposite of
+# what this check is for.
+#
+#   modernc.org/mathutil  BSD-3-Clause. Verified by reading LICENSE: three
+#                         clauses and the standard disclaimer. The classifier
+#                         fails on its wording, which says "neither the names
+#                         of the authors" where the canonical text says
+#                         "neither the name of the copyright holder".
+LICENCE_EXCEPTIONS := modernc.org/mathutil
+
 .PHONY: all build test vet lint fmt openapi run clean check tools govulncheck licences sbom
 
 all: check build
@@ -45,7 +57,8 @@ govulncheck:
 
 licences:
 	$(GO) run github.com/google/go-licenses@$(GOLICENSES_VERSION) check ./... \
-		--allowed_licenses=$(ALLOWED_LICENCES)
+		--allowed_licenses=$(ALLOWED_LICENCES) \
+		$(foreach m,$(LICENCE_EXCEPTIONS),--ignore=$(m))
 
 # We ingest SBOMs, so we publish one for ourselves. CycloneDX because that is
 # the format this project treats as authoritative on the way in.

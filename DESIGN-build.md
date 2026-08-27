@@ -58,6 +58,12 @@ BSD-3-Clause, ISC, MIT or MPL-2.0 — SCP-06. Checked two ways, because they cat
 different things: `make licences` walks what the module actually links, and
 dependency review inspects what a pull request adds.
 
+A short exception list covers modules whose licence the classifier cannot read.
+Each entry names the licence and why the tool fails on it, and the licence has
+been read by hand before being added. The alternative — lowering the classifier's
+confidence threshold — would accept every other unreadable licence silently,
+which is the opposite of what the check is for.
+
 Build tooling is exempt (SCP-07). The linter is GPL-licensed; running a tool
 over the code affects its licence no more than the compiler does.
 
