@@ -44,12 +44,13 @@ every change is checked automatically.
   secret scanning, licence check
 - The test harness and CI matrix skeleton, running even with almost no tests
 - Documentation building and publishing
+- Container image and Helm chart, both verified in CI
 
 **Proves it works:** a deliberately broken change is rejected by the gate; a
 trivial correct one goes green end to end; the binary builds, runs and reports
 its version; the documentation site publishes.
 
-**Produces:** `DESIGN-build.md`
+**Produces:** `DESIGN-build.md`, `DESIGN-packaging.md`
 
 Why first: everything after this is validated by this. Building it later means
 every earlier stage was checked by hand and has to be re-checked.

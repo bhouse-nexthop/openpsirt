@@ -1,0 +1,102 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/bhouse-nexthop/openpsirt
+  pullPolicy: IfNotPresent
+  # Defaults to the chart's appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+database:
+  # Where the database is and how to reach it. Supply exactly one of these.
+  #
+  #   url          set it here, and the chart creates a Secret holding it
+  #   existingSecret  name a Secret you manage yourself
+  #
+  # Putting a password in values.yaml means it ends up in your release history
+  # and probably in version control, so existingSecret is the better habit.
+  url: ""
+  existingSecret: ""
+  existingSecretKey: "database-url"
+
+# Schema changes are applied at startup by default, which makes an upgrade
+# just a deployment. Turn this off to run "openpsirt migrate up" yourself,
+# under different credentials, at a time you choose.
+autoMigrate: true
+
+log:
+  level: info
+  format: json
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: openpsirt.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+# Nothing here needs root, a writable filesystem, or any capability.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 100
+  runAsGroup: 101
+  fsGroup: 101
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+# Migrations run before the service starts answering. A schema change over a
+# large table can take a while, and a startup probe that gives up part way
+# through kills the pod and starts the migration again from the beginning.
+# failureThreshold x periodSeconds is how long a migration may take.
+startupProbe:
+  periodSeconds: 5
+  failureThreshold: 120
+
+livenessProbe:
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+readinessProbe:
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+extraEnv: []
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}

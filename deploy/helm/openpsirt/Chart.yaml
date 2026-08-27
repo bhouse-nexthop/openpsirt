@@ -1,0 +1,11 @@
+apiVersion: v2
+name: openpsirt
+description: Track vulnerabilities in the products you ship
+type: application
+# version is the chart's own version; appVersion is the application's.
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/bhouse-nexthop/openpsirt
+sources:
+  - https://github.com/bhouse-nexthop/openpsirt
+keywords: [security, psirt, sbom, vulnerability, cyclonedx]

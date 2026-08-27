@@ -1,0 +1,23 @@
+openpsirt {{ .Chart.AppVersion }} is installed as {{ include "openpsirt.fullname" . }}.
+
+Schema changes {{ if .Values.autoMigrate }}apply automatically at startup{{ else }}are NOT applied automatically — run "openpsirt migrate up" yourself{{ end }}.
+
+Check it is running:
+
+  kubectl --namespace {{ .Release.Namespace }} rollout status deploy/{{ include "openpsirt.fullname" . }}
+
+{{- if .Values.ingress.enabled }}
+
+Reachable at:
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+
+No ingress is configured. To look at it locally:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "openpsirt.fullname" . }} 8080:{{ .Values.service.port }}
+{{- end }}
+
+There is no user yet. Name a bootstrap administrator in your values before
+anyone can sign in.

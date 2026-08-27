@@ -145,6 +145,50 @@ jobs:
           path: bin/openpsirt.cdx.json
           if-no-files-found: error
 
+  image:
+    name: Container image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: openpsirt:ci
+          build-args: |
+            VERSION=ci
+            COMMIT=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: The image must run and report itself
+        run: docker run --rm openpsirt:ci -version
+      - name: The image must not run as root
+        # A container that needs no privileges should not have any, and this is
+        # the only place that is actually checked rather than asserted.
+        run: |
+          uid=$(docker run --rm --entrypoint id openpsirt:ci -u)
+          test "$uid" != "0" || { echo "::error::image runs as root"; exit 1; }
+          echo "runs as uid $uid"
+
+  chart:
+    name: Helm chart renders
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: helm lint deploy/helm/openpsirt --set database.url=postgres://u:p@h:5432/d
+      - name: It must render valid manifests
+        run: helm template t deploy/helm/openpsirt --set database.existingSecret=s --set ingress.enabled=true > /dev/null
+      - name: It must refuse to render without a database
+        # Rendering something unusable would be worse than failing here.
+        run: |
+          if helm template t deploy/helm/openpsirt >/dev/null 2>&1; then
+            echo "::error::chart rendered with no database configured"; exit 1
+          fi
+          echo "refused as intended"
+
   docs:
     name: Documentation builds
     runs-on: ubuntu-latest
