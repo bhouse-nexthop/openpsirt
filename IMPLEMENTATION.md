@@ -33,15 +33,34 @@ were *not* decided anywhere but had to be chosen while writing the code.
 
 ---
 
-## Stage 0 — Foundations
+## Stage 0 — Skeleton, and the pipeline that validates it
 
-Nothing product-specific. Get the shape right before there is anything to
-migrate.
+Nothing that does anything. The point is that from the next commit onward,
+every change is checked automatically.
 
-- Build, CI gate, dependency and licence checks
-- Configuration, logging, health endpoints, version reporting
-- Database layer across all four engines, migration runner, startup lock
-- Portability test harness and the CI matrix
+- Repository layout, Go module, a binary that builds, starts, serves a health
+  endpoint and reports its version
+- CI: build, test, static analysis gate, `govulncheck`, dependency review,
+  secret scanning, licence check
+- The test harness and CI matrix skeleton, running even with almost no tests
+- Documentation building and publishing
+
+**Proves it works:** a deliberately broken change is rejected by the gate; a
+trivial correct one goes green end to end; the binary builds, runs and reports
+its version; the documentation site publishes.
+
+**Produces:** `DESIGN-build.md`
+
+Why first: everything after this is validated by this. Building it later means
+every earlier stage was checked by hand and has to be re-checked.
+
+---
+
+## Stage 1 — Database foundations
+
+- The data-access layer across all four engines
+- Migration runner, startup lock, `migrate` subcommand
+- Portability test harness; the CI matrix filled in
 
 **Proves it works:** the suite passes on SQLite, MySQL, MariaDB and PostgreSQL;
 migrations run and roll back on each; the binary refuses to start against an
@@ -49,12 +68,12 @@ unsupported engine version.
 
 **Produces:** `DESIGN-database.md`
 
-Why first: the portability rule (DAT-02) and the partition-key constraint
+Why here: the portability rule (DAT-02) and the partition-key constraint
 (DAT-05) are both far cheaper to establish than to retrofit.
 
 ---
 
-## Stage 1 — Model and ingest
+## Stage 2 — Model and ingest
 
 The data model and everything that fills it.
 
@@ -73,7 +92,7 @@ identity** — the test that proves ING-05 and MDL-06.
 
 ---
 
-## Stage 2 — Access
+## Stage 3 — Access
 
 Before any interface, because retrofitting authorization is an audit of every
 query.
@@ -91,7 +110,7 @@ reads are checked.
 
 ---
 
-## Stage 3 — Triage
+## Stage 4 — Triage
 
 - Findings per place; the four outcomes; VEX justification vocabulary
 - Decisions keyed structurally, carried forward, expiring on version change
@@ -106,7 +125,7 @@ packaging revision; a bulk approval can be undone as a batch.
 
 ---
 
-## Stage 4 — Interface
+## Stage 5 — Interface
 
 - Findings list, dependency tree, finding detail, review queue, home
 - Generated API client; responsive layouts
@@ -119,7 +138,7 @@ phone.
 
 ---
 
-## Stage 5 — Remediation, reporting, notifications
+## Stage 6 — Remediation, reporting, notifications
 
 - Declared targets, computed resolution, reconciliation against scans
 - Reports: dismissals, coverage, metrics, release comparison
@@ -134,7 +153,7 @@ declared fix that did not land shows as a missed target.
 
 ---
 
-## Stage 6 — Shipped-release rescanning and lifecycle
+## Stage 7 — Shipped-release rescanning and lifecycle
 
 - Retain release SBOMs and their suppressions; scheduled rescanning
 - End-of-life dates and everything they switch off
@@ -146,7 +165,7 @@ that release, and raises an alert rather than sitting in a report.
 
 ---
 
-## Stage 7 — Private findings (product Phase 2)
+## Stage 8 — Private findings (product Phase 2)
 
 - Manual entry, visibility handling, disclosure dates and escalation
 - Advisory publication: CSAF, and GitHub Security Advisories where they apply
@@ -159,6 +178,6 @@ that release, and raises an alert rather than sitting in a report.
 
 | | |
 |---|---|
-| Component library | Decided against a real screen in Stage 4, not in the abstract |
-| Partition column and granularity | Needs the schema in front of us — settled during Stage 0 |
+| Component library | Decided against a real screen in the interface stage, not in the abstract |
+| Partition column and granularity | Needs the schema in front of us — settled during the database stage |
 | External tracker hand-off | Optional, and the seams are built rather than the integration |
