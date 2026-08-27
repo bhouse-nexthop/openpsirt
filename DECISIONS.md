@@ -111,6 +111,10 @@ inputs.
 | # | Decision | Why |
 |---|---|---|
 | ING-01 | CycloneDX 1.6 is the primary format. SPDX 2.3 accepted but lossy | Both reference producers emit CycloneDX. SPDX 2.x cannot carry vulnerabilities at all |
+| ING-24 | **SARIF is the default interchange for analyzer findings**, the way CycloneDX is for SBOMs — but not the only path | It is an open standard and clang, CodeQL and Semgrep emit it. Coverity and SonarCloud do not lead with it: both have their own formats and REST APIs. Betting the design on one format would exclude the two commercial tools most likely to be asked for |
+| ING-25 | **One adapter per source**, normalising into the internal model — the same seam as SBOM producers | Already the shape for scan files (ING-04). A SARIF adapter covers most tools; a Coverity or Sonar adapter talks to their API instead |
+| ING-26 | **Some analyzer sources are pulled, not pushed.** We hold credentials to them and poll | Structurally different from scan ingest, which is push with a scoped key. Opposite direction of trust — a stored credential for a third-party service rather than one they hold for us — plus scheduling and its own failure modes. Worth knowing before the ingest path is built around push alone |
+| ING-27 | **Identity for analyzer findings is computed by us**, not taken from the producer | SARIF has fingerprint fields and clang leaves them empty; assuming producers populate them would break on the first real tool. Confirms the split in MDL-14 — identity belongs to the kind |
 | ING-02 | We take the already-filtered scanner output. Issues the build suppressed are not received or re-decided | If a carried patch fixed it and the build says so, we don't refute it. No build-side change needed |
 | ING-03 | Ingest is asynchronous: accept, queue, parse, report status | A 46 MB file with 56,600 components cannot be parsed inside a request |
 | ING-04 | Ingest is generator-agnostic — an adapter per producer, one shared internal model, a test fixture per producer | Two producers today, a dozen expected |
