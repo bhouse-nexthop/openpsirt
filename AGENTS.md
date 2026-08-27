@@ -96,6 +96,10 @@ the tracker and the pull request.
 
 ## Commits and pull requests
 
+- **No `Co-Authored-By` trailers.** This project will use DCO, where the only
+  trailer that carries meaning is `Signed-off-by`. A co-author trailer asserts
+  authorship that nobody has signed for, and mixing the two makes the sign-off
+  chain ambiguous. Tools that add one by default must be told not to.
 - Explain **why** in the body. The diff already shows what.
 - Design document updates belong in the same commit as the behaviour they
   describe.

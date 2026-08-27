@@ -1,0 +1,37 @@
+# Rule selection and tool behaviour live here and nowhere else.
+#
+# The set below is tuned rather than enabled wholesale. Enabling every linter a
+# tool offers buries the findings worth acting on under style noise, and a noisy
+# gate is one someone turns off.
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+    - revive
+  settings:
+    errcheck:
+      # Close, Flush and Sync on cleanup paths are conventionally ignored, and
+      # flagging them hides the unchecked errors that do matter.
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (*os.File).Sync
+        - (*bufio.Writer).Flush
+    revive:
+      rules:
+        # Documentation rules, not defect rules.
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
