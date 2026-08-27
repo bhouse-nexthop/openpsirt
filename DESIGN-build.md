@@ -87,6 +87,18 @@ Built with mkdocs-material and published to GitHub Pages on every push to `main`
 are reading — API-11. Unreleased work publishes as `main`; a tagged release
 publishes under its version and moves the `latest` alias.
 
+## Repository settings the gate depends on
+
+Two checks rely on settings that live in the repository rather than in a
+workflow file, and both fail unhelpfully when the setting is off:
+
+| Setting | Needed by | Symptom when off |
+|---|---|---|
+| Dependency graph, via Dependabot alerts | Dependency review | "Dependency review is not supported on this repository" |
+| Pages, serving the `gh-pages` branch | Documentation publishing | The workflow succeeds and nothing is served |
+
+Secret scanning and push protection are on by default for public repositories.
+
 ## Branch protection
 
 Not enforced yet — CIG-08. The gate runs on every pull request but nothing
