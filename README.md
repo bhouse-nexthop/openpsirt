@@ -1,4 +1,7 @@
-# openpsirt
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/openpsirt-logo-dark.svg">
+  <img alt="OpenPSIRT" src="assets/openpsirt-logo.svg" width="380">
+</picture>
 
 Track vulnerabilities in the products you ship.
 
