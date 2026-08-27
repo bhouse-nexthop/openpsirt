@@ -1,0 +1,32 @@
+site_name: openpsirt
+site_description: Track vulnerabilities in the products you ship.
+repo_url: https://github.com/bhouse-nexthop/openpsirt
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  logo: assets/openpsirt-mark.svg
+  favicon: assets/openpsirt-mark.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: {icon: material/weather-night, name: Switch to dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: {icon: material/weather-sunny, name: Switch to light mode}
+  features:
+    - navigation.sections
+    - content.code.copy
+
+plugins:
+  - search
+  - swagger-ui-tag
+
+nav:
+  - Home: index.md
+  - API reference: reference/api.md
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc: {permalink: true}

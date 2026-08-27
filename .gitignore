@@ -16,3 +16,7 @@ dist/
 
 # Docs build
 /site/
+
+# Build output
+/bin/
+/site/
