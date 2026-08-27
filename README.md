@@ -28,10 +28,16 @@ track it through to a fix.
 - Discover what is in a product — the component list always comes from the build
 - Build or deploy fixes
 
-## Design
+## Documentation
 
-Every decision, with the reasoning, is in [DECISIONS.md](DECISIONS.md). It is
-organised by area and each entry says why, not only what.
+| | |
+|---|---|
+| [DECISIONS.md](DECISIONS.md) | Every decision, with reasoning, organised by area |
+| [IMPLEMENTATION.md](IMPLEMENTATION.md) | Build order. Temporary — deleted once the work lands |
+| [AGENTS.md](AGENTS.md) | Conventions for anyone, human or otherwise, working in this repository |
+
+`DESIGN-*.md` documents appear as each area is built, and describe how it
+actually works.
 
 ## Licence
 
