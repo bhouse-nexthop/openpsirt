@@ -69,6 +69,33 @@ unpick later.
 | **Identity is structural; expiry is version-based.** Never mix them — that is how an unrelated top-level bump invalidates a leaf decision | MDL-08 |
 | **The tests run on every supported engine.** SQLite-only tests catch none of the portability traps | DAT-12 |
 
+## File size
+
+**Target about 1200 lines. Treat that as the point to split, not a hard limit.**
+
+A file past it is usually covering more than one thing, and the cost is not
+storage — it is that nobody reads to the end, changes get made in the wrong
+place, and review gets shallower the further down the diff goes.
+
+| File | Split by |
+|---|---|
+| `DESIGN-*.md` | Topic. A design document covering two areas was always two documents |
+| Source | Responsibility, not line count. Splitting a coherent file to hit a number makes it worse |
+| `DECISIONS.md` | Area, into `DECISIONS-<area>.md`, keeping the identifier prefixes |
+
+Splitting late is far more work than splitting early, so act on the trend rather
+than the threshold.
+
+## Decision identifiers
+
+**Keep rows sorted by identifier within each table.** Adding a decision next to
+a related one is the natural instinct and it scrambles the order — which makes a
+reference document hard to scan and makes it look like entries are missing.
+Append, sort, and use a cross-reference to point at the related decision.
+
+Identifiers never change. Renumbering breaks every commit message and design
+document that cites one.
+
 ## Code conventions
 
 **No implementation-timeline language in code or comments.** Never write "for
