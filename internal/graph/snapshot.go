@@ -93,9 +93,22 @@ func (s *Store) Apply(ctx context.Context, targetID, scanID int64, snap Snapshot
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		components := NewComponents(tx)
 
-		all := append([]Described{snap.Root}, snap.Components...)
+		// The product itself is stored without the version that moves every
+		// build. Everything the document said about it — including every edge
+		// hanging off it — has to resolve to that one row, or the version
+		// arrives again through the edges and the churn it causes with it.
+		root := snap.Root.AsRoot()
+		described := snap.Root.Identity()
+		asStored := func(d Described) Described {
+			if d.Identity() == described {
+				return root
+			}
+			return d
+		}
+
+		all := append([]Described{root}, snap.Components...)
 		for _, dep := range snap.Dependencies {
-			all = append(all, dep.Parent, dep.Child)
+			all = append(all, asStored(dep.Parent), asStored(dep.Child))
 		}
 		ids, err := components.Intern(ctx, all)
 		if err != nil {
@@ -103,7 +116,7 @@ func (s *Store) Apply(ctx context.Context, targetID, scanID int64, snap Snapshot
 		}
 
 		wanted := map[int64]bool{} // component id -> is root
-		wanted[ids[snap.Root.Identity()]] = true
+		wanted[ids[root.Identity()]] = true
 		for _, d := range snap.Components {
 			id := ids[d.Identity()]
 			if _, already := wanted[id]; !already {
@@ -119,8 +132,8 @@ func (s *Store) Apply(ctx context.Context, targetID, scanID int64, snap Snapshot
 
 		wantedEdges := map[[2]int64]bool{}
 		for _, dep := range snap.Dependencies {
-			parent, okP := nodeIDs[ids[dep.Parent.Identity()]]
-			child, okC := nodeIDs[ids[dep.Child.Identity()]]
+			parent, okP := nodeIDs[ids[asStored(dep.Parent).Identity()]]
+			child, okC := nodeIDs[ids[asStored(dep.Child).Identity()]]
 			if !okP || !okC {
 				return fmt.Errorf("dependency names a component the snapshot does not list: %s -> %s",
 					dep.Parent.Name, dep.Child.Name)

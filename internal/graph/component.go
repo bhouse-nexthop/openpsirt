@@ -75,6 +75,20 @@ func (d Described) Identity() string {
 	return hex.EncodeToString(sum[:])
 }
 
+// AsRoot returns how the product itself is stored: its name, and nothing that
+// moves.
+//
+// The version is dropped deliberately. It changes on every build, and identity
+// is derived from what a component is — so keeping it would give the product a
+// new identity every night, close the node standing for it, and close and
+// reopen every edge hanging off it. A build in which nothing changed would
+// write thousands of rows, which is the one thing the interval shape exists to
+// prevent.
+//
+// Which build this was is not lost by dropping it. That is what the scan
+// record holds: when it was built, what it hashed to, and who sent it.
+func (d Described) AsRoot() Described { return Described{Name: d.Name} }
+
 // Valid reports whether a described component can be stored.
 //
 // A name is the whole requirement. A version is not: the format only requires

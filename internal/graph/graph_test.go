@@ -82,6 +82,19 @@ func at(name, version string) graph.Described {
 	}
 }
 
+// rebuilt is the product as the next night's build describes it. Its version
+// carries a build stamp, which is what a real producer emits and what makes
+// the unchanged-rebuild test worth anything.
+func rebuilt(snap graph.Snapshot, version string) graph.Snapshot {
+	snap.Root = at("sonic", version)
+	for i, dep := range snap.Dependencies {
+		if dep.Parent.Name == "sonic" {
+			snap.Dependencies[i].Parent = snap.Root
+		}
+	}
+	return snap
+}
+
 var (
 	root    = at("sonic", "2.4.0")
 	openssl = at("openssl", "3.0.11")
@@ -141,6 +154,27 @@ func TestFirstSnapshotIsStored(t *testing.T) {
 // row, not a re-stamped timestamp. Without it, storage grows with the calendar
 // rather than with change, and a product tracked for a year costs the same
 // whether or not anything happened to it.
+func TestARebuildThatOnlyMovedItsOwnVersionWritesNothing(t *testing.T) {
+	// The product's version changes on every build — a real one carries a
+	// build stamp — so if that reached identity, the node standing for the
+	// product would close and reopen nightly and take every edge hanging off
+	// it along. On a real image that is thousands of rows for a build in which
+	// nothing happened.
+	each(t, func(t *testing.T, f *fixture) {
+		if _, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), tree()); err != nil {
+			t.Fatal(err)
+		}
+		applied, err := f.store.Apply(t.Context(), f.targetID, f.scan(t),
+			rebuilt(tree(), "2.4.0-20260829.010101"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !applied.Unchanged() {
+			t.Errorf("a rebuild that changed only the product's own version wrote %+v", applied)
+		}
+	})
+}
+
 func TestAnUnchangedRebuildWritesNothing(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		if _, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), tree()); err != nil {

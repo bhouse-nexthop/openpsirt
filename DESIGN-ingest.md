@@ -100,9 +100,24 @@ and synthesising a parent reports a dependency nobody declared.
 ### The shipped version is often meaningless
 
 A locally-built package commonly carries a placeholder version, with the real
-identity in its pedigree — what it was forked from, and at what version. That
-is what a scanner matches issues against, and it is why pedigree is kept rather
-than flattened away.
+identity in its pedigree — what it was forked from, and at what version.
+
+**A scanner does not read that.** Measured rather than assumed: given a forked
+package carrying its ancestor in `pedigree.ancestors`, the reference scanner
+matched nothing; given the same package with no pedigree at all but with its
+distribution named in the package identifier, it matched forty-three advisories.
+What it matches on is the identifier and the distribution context, and it
+compares the version the package actually carries.
+
+Pedigree is kept for two other reasons, both of which stand. It explains a
+finding to whoever reads it — why a package at a version nobody recognizes is
+being reported against advisories for another. And expiry is keyed on the
+upstream version, because a fork's own revision moves for packaging reasons
+that have nothing to do with whether a vulnerability is still there.
+
+What this does mean is that a component arriving with no distribution context
+in its identifier is one nothing will match, and that is invisible rather than
+an error.
 
 ### Suppressions are applied here, not upstream of us
 
