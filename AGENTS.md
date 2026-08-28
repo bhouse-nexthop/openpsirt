@@ -98,6 +98,19 @@ Append, sort, and use a cross-reference to point at the related decision.
 Identifiers never change. Renumbering breaks every commit message and design
 document that cites one.
 
+## Nothing is compatible with anything yet
+
+Before the first release there is no schema compatibility and no API
+compatibility. A schema change **edits the migration that created the thing**
+rather than adding one beside it, and anybody holding a development database
+recreates it. The version in the API path is the shape it will have, not a
+promise anybody may hold us to.
+
+The migrations that exist are kept only because walking the chain up and down
+catches an ordering mistake between them. They collapse into one before release
+(DAT-29), which is recorded in `IMPLEMENTATION.md` so it happens rather than
+being remembered.
+
 ## Decisions carry the evidence that forced them
 
 **Where a decision was settled by a measurement, the measurement goes in the

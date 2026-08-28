@@ -207,6 +207,17 @@ going through the application.
 
 ---
 
+## Before the first release
+
+Work that has to happen once, at the end, and would be wrong to do earlier.
+
+- **Collapse the schema into a single initial migration** (DAT-29). Ten
+  migrations describe the order things were thought of rather than anything an
+  operator will run. They are kept until then because walking the chain is what
+  catches an ordering mistake between two of them.
+- **Start keeping schema and API compatibility** from that point (DAT-29,
+  API-20). Until then a schema change is an edit and a database is recreated.
+
 ## Not planned yet
 
 | | |

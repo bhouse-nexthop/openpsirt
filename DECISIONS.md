@@ -115,6 +115,7 @@ inputs.
 | API-17 | **The API returns markdown. To every consumer, as the default, and usually as the only representation needed** | Markdown is far easier for an integrating application to parse and lay out than HTML — a small specified grammar with mature libraries, against a surface an integrator would have to sanitize and reinterpret themselves. It is also readable as it stands, so it doubles as the plain-text form; stripping the syntax produces something worse than leaving it |
 | API-18 | **An HTML rendering is available on request, and is never the default** | Two consumers want it: our own web interface, and the HTML part of an email. Returning it as *the* rendered field would assume a browser in an API-first tool, which is the assumption this pair of decisions exists to remove |
 | API-19 | **Resolved references travel with the source** — what each mention, attachment reference and autolink resolved to | The half a client cannot do for itself, because it needs data and authorization checks it does not hold. With those in hand, a client rendering markdown for its own interface gets the same links ours does |
+| API-20 | **The version in the path is not a compatibility promise before the first release.** It is the shape the API will have, not a contract anybody may hold us to yet | The prefix costs nothing and adding it later is worse than having it, so it stays. What would be wrong is treating it as a commitment while the API is still being worked out — that means either a second version for changes nobody has depended on, or changes made timidly to avoid one. Neither is a real cost being avoided when there are no clients |
 
 ### 3.3 Ingest — `ING`
 
@@ -409,6 +410,7 @@ inputs.
 | DAT-26 | **`FOR UPDATE SKIP LOCKED` is a throughput measure** — it stops workers queueing behind one another on the same row | Without it every worker selects the same oldest job, one wins, and the rest did a round trip for nothing |
 | DAT-27 | **A job row holds a reference, never a payload** | The queue stays small however large the thing being worked on is, which matters when that thing is a scan file measured in tens of megabytes |
 | DAT-28 | **Work that exhausts its attempts is set aside with its last error, not deleted** | Deleting removes the evidence of why it failed, which is the only thing anyone will want when they come looking |
+| DAT-29 | **Nothing before the first release keeps schema compatibility. Migrations are edited in place, and the whole schema is collapsed into a single initial migration before that release** | What exists today is not a migration history, it is a record of the order things were thought of: a column added by one migration that the one before it could have declared, a table folded into another, a number changed. Nobody will ever run them in sequence, and anyone reading the schema wants one document rather than ten. They are kept for now only because walking the chain up and down is what catches an ordering mistake between them — which is how a migration that MariaDB refused to roll back was found. That value disappears along with the chain, which is the point |
 
 ### 3.14 CI gate — `CIG`
 
