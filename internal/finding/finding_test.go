@@ -603,3 +603,93 @@ func TestAClaimAttachedToItsComponentWinsOverOneThatNamedIt(t *testing.T) {
 		}
 	})
 }
+
+func TestAFindingThatMovesIsUpdated(t *testing.T) {
+	// Somebody waiting on a fix is waiting for exactly this. A finding opened
+	// when no fix existed would otherwise report that indefinitely, however
+	// many times it was re-scanned.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		noFix := finding.Reported{
+			Issue:     finding.Named{Identifier: "CVE-2026-1", Severity: "high"},
+			Component: libnl, FixState: finding.NoFix,
+		}
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t), []finding.Reported{noFix}); err != nil {
+			t.Fatal(err)
+		}
+		opened := f.open(t)
+		if len(opened) != 2 {
+			t.Fatalf("opened %d findings", len(opened))
+		}
+		was := opened[0].LastChangedAt
+
+		// The next run knows a fix exists.
+		fixed := noFix
+		fixed.FixState = finding.FixedUpstream
+		fixed.FixedIn = "3.9.0"
+		applied, err := f.store.Apply(t.Context(), f.target, f.run(t), []finding.Reported{fixed})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if applied.Updated != 2 {
+			t.Errorf("%d findings moved, want 2", applied.Updated)
+		}
+		if applied.Opened != 0 || applied.Closed != 0 {
+			t.Errorf("a fix appearing opened %d and closed %d findings", applied.Opened, applied.Closed)
+		}
+		if applied.Unchanged() {
+			t.Error("a fix appearing reported as no change at all")
+		}
+
+		for _, row := range f.open(t) {
+			if row.FixState != finding.FixedUpstream || row.FixedIn != "3.9.0" {
+				t.Errorf("still reports %q / %q", row.FixState, row.FixedIn)
+			}
+			if !row.LastChangedAt.After(was) {
+				t.Error("nothing recorded that it moved")
+			}
+		}
+
+		// And a run that finds the same thing again still writes nothing.
+		applied, err = f.store.Apply(t.Context(), f.target, f.run(t), []finding.Reported{fixed})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !applied.Unchanged() {
+			t.Errorf("an unchanged re-scan wrote %+v", applied)
+		}
+
+	})
+}
+
+func TestUpstreamDecliningToFixIsAMovement(t *testing.T) {
+	// The only thing that changes is the state — there is no version to point
+	// at either before or after. It is a permanent condition that changes the
+	// outcome somebody should reach, so it must not be the one kind of
+	// movement that slips past because nothing else moved with it.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		noFix := finding.Reported{
+			Issue:     finding.Named{Identifier: "CVE-2026-1", Severity: "high"},
+			Component: libnl, FixState: finding.NoFix,
+		}
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t), []finding.Reported{noFix}); err != nil {
+			t.Fatal(err)
+		}
+
+		declined := noFix
+		declined.FixState = finding.WontFix
+		applied, err := f.store.Apply(t.Context(), f.target, f.run(t), []finding.Reported{declined})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if applied.Updated != 2 {
+			t.Errorf("upstream declining to fix moved %d findings, want 2", applied.Updated)
+		}
+		for _, row := range f.open(t) {
+			if row.FixState != finding.WontFix {
+				t.Errorf("still reports %q", row.FixState)
+			}
+		}
+	})
+}

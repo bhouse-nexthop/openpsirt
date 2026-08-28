@@ -91,10 +91,14 @@ type Finding struct {
 	// one. A covered finding is kept and marked rather than dropped: a finding
 	// that simply stopped appearing is indistinguishable from a scanner fault,
 	// and that is the bucket nothing is allowed to explain away.
-	SuppressedBy  *int64  `bun:"suppressed_by"`
-	OpenedRunID   int64   `bun:"opened_run_id,notnull"`
-	ClosedRunID   *int64  `bun:"closed_run_id"`
-	ClosedBecause Closure `bun:"closed_because"`
+	SuppressedBy *int64 `bun:"suppressed_by"`
+	// LastChangedAt is when anything about this finding last moved — a fix
+	// appearing, or the build answering it. A finding open for years outlives
+	// any record of the change kept elsewhere, so it carries its own.
+	LastChangedAt time.Time `bun:"last_changed_at,notnull"`
+	OpenedRunID   int64     `bun:"opened_run_id,notnull"`
+	ClosedRunID   *int64    `bun:"closed_run_id"`
+	ClosedBecause Closure   `bun:"closed_because"`
 }
 
 // Reported is one issue a scanner reported against one component.
@@ -115,6 +119,10 @@ type Applied struct {
 	// Unexplained counts findings that closed with the component present and
 	// unchanged. Always reported, never suppressed.
 	Unexplained int
+	// Updated counts findings that were already open and whose details moved —
+	// a fix becoming available, or the build answering them. Somebody waiting
+	// for a fix is waiting for exactly this.
+	Updated int
 	// Suppressed counts findings the build has already argued about. They are
 	// open and visible; they are not work anybody has to do.
 	Suppressed int
@@ -125,7 +133,7 @@ type Applied struct {
 }
 
 // Unchanged reports whether the run changed nothing.
-func (a Applied) Unchanged() bool { return a.Opened == 0 && a.Closed == 0 }
+func (a Applied) Unchanged() bool { return a.Opened == 0 && a.Closed == 0 && a.Updated == 0 }
 
 // PlaceIdentity keys a component under the thing that pulled it in.
 //

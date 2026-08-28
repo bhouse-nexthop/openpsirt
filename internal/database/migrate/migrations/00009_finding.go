@@ -121,6 +121,10 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			-- dropped: one that simply stopped appearing is
 			-- indistinguishable from a scanner fault.
 			suppressed_by    ` + t.refNull + ` NULL REFERENCES suppression(id),
+			-- What is true of a finding now, alongside when it became true.
+			-- A finding open for years outlives whatever record of the change
+			-- was kept elsewhere, so it carries its own.
+			last_changed_at  ` + t.timestamp + ` NOT NULL,
 			opened_run_id    ` + t.ref + ` NOT NULL REFERENCES scan_run(id),
 			closed_run_id    ` + t.refNull + ` NULL REFERENCES scan_run(id),
 			closed_because   ` + t.kind + ` NULL

@@ -3,6 +3,7 @@ package finding
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/uptrace/bun"
 
@@ -106,15 +107,36 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 			held[key{f.VulnerabilityID, place{f.ComponentID, value(f.ConsumerID)}}] = f
 		}
 
+		now := s.now().UTC().Truncate(time.Microsecond)
+
 		var opening []Finding
 		for k, f := range wanted {
 			if f.SuppressedBy != nil {
 				applied.Suppressed++
 			}
-			if _, already := held[k]; already {
+			already, open := held[k]
+			if !open {
+				f.LastChangedAt = now
+				opening = append(opening, f)
 				continue
 			}
-			opening = append(opening, f)
+			// A finding that is already open still moves. A fix appears, or
+			// the build answers it — and somebody waiting for a fix is waiting
+			// for exactly that. Leaving the row as first written would report
+			// last month's answer indefinitely.
+			if same(already, f) {
+				continue
+			}
+			_, err := tx.NewUpdate().Model((*Finding)(nil)).
+				Set("fix_state = ?", f.FixState).
+				Set("fixed_in = ?", f.FixedIn).
+				Set("suppressed_by = ?", f.SuppressedBy).
+				Set("last_changed_at = ?", now).
+				Where("id = ?", already.ID).Exec(ctx)
+			if err != nil {
+				return fmt.Errorf("update a finding that moved: %w", err)
+			}
+			applied.Updated++
 		}
 		if len(opening) > 0 {
 			if _, err := tx.NewInsert().Model(&opening).Exec(ctx); err != nil {
@@ -158,6 +180,27 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 		return nil
 	})
 	return applied, err
+}
+
+// same reports whether what a scan found about a finding matches what is
+// already recorded. Only the parts that can move are compared: everything else
+// is what makes it that finding rather than another.
+func same(held, found Finding) bool {
+	return held.FixState == found.FixState &&
+		held.FixedIn == found.FixedIn &&
+		equalRef(held.SuppressedBy, found.SuppressedBy)
+}
+
+// equalRef compares two references that may be absent.
+func equalRef(a, b *int64) bool {
+	switch {
+	case a == nil && b == nil:
+		return true
+	case a == nil || b == nil:
+		return false
+	default:
+		return *a == *b
+	}
 }
 
 // coveringClaim finds the build's argument that covers a reported issue, if it

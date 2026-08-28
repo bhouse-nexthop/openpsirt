@@ -76,6 +76,20 @@ vulnerability database that has barely moved, so a run that found the same
 things writes nothing at all — the same property the graph has, for the same
 reason.
 
+### A finding that is already open still moves
+
+A fix appears. Upstream declines to fix it. The build answers it. None of those
+open or close anything, and somebody waiting on a fix is waiting for exactly
+the first — so a run compares what it found against what is recorded and
+updates the parts that can move, stamping when they moved.
+
+Only those parts are compared. Everything else is what makes it that finding
+rather than a different one, and a change there would be a different finding.
+
+A finding carries when it last moved rather than relying on a record kept
+elsewhere. One open for years outlives any log that gets purged, which is the
+whole reason current state holds its own summary.
+
 ### A closure records why
 
 | Reason | What it means |
@@ -134,6 +148,20 @@ component** wins over one that named something we had to match — the first
 knows exactly what it is about, while the second may name a whole source tree.
 Where neither is attached, the claims are read in a stable order so that which
 one is recorded does not change between runs.
+
+## The intervals are the change record
+
+Change over time is a primary query rather than an audit trail, and the graph
+and the findings answer it directly: every node, edge, finding and claim
+records the run that opened it and the run that closed it. Asking what changed
+between two points is a query over those, not a walk through a separate log.
+
+So there is no second table duplicating them. What a purgeable event log is
+for is the high-volume record that has no interval of its own — what people
+did, rather than what a scan found — and that belongs with triage rather than
+here. The rule it exists to protect still holds either way: current state is
+never purged, and it carries its own summary fields so that dropping anything
+older cannot silently break a finding that has been open for years.
 
 ## Scanning is separate work from reading
 
