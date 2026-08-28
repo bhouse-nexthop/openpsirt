@@ -140,6 +140,7 @@ in the output.
 - Findings list, dependency tree, finding detail, review queue, home
 - Generated API client; responsive layouts
 - Markdown editor: toolbar, Write and Preview, mention autocomplete
+- Client-side syntax highlighting, loaded only where a code block appears
 - Draft preservation across failure, session expiry and a closed tab
 
 **Proves it works:** the findings list stays usable against a full-size product;
