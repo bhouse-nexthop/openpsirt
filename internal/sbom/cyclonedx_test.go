@@ -99,6 +99,39 @@ func TestReadsAnAggregateImageDocument(t *testing.T) {
 	}
 }
 
+func TestTheOtherIdentifierSchemeIsKeptWithoutMovingIdentity(t *testing.T) {
+	// A package identifier is what identity is derived from. The platform
+	// enumeration is what the national vulnerability database keys on, and a
+	// scanner given one matches things a package identifier alone misses — so
+	// it is worth keeping, and a scan file is not kept to be re-read later.
+	//
+	// It must not reach identity. Deriving identity from both would move the
+	// identity of every component that carries the second one, which takes
+	// every triage decision attached to it along.
+	doc, err := sbom.Read(fixture(t, "image.cdx.json"), sbom.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, c := range doc.Components {
+		if c.Name != "libc6" {
+			continue
+		}
+		found = true
+		if c.CPE == "" {
+			t.Error("the platform enumeration was dropped")
+		}
+		without := c
+		without.CPE = ""
+		if c.Identity() != without.Identity() {
+			t.Error("the platform enumeration reached identity")
+		}
+	}
+	if !found {
+		t.Fatal("the component carrying one is missing")
+	}
+}
+
 func TestPedigreeSuppliesUpstreamIdentity(t *testing.T) {
 	doc, err := sbom.Read(fixture(t, "image.cdx.json"), sbom.Limits{})
 	if err != nil {

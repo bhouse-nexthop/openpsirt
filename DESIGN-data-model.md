@@ -109,6 +109,18 @@ Upstream name and version are carried alongside (MDL-04). A shipped fork often
 has a version string of its own while the vulnerability lives on the upstream
 one.
 
+The other identifier scheme in circulation — the platform enumeration the
+national vulnerability database keys on — is kept beside the package
+identifier and **excluded from identity**. A scanner given one matches things a
+package identifier alone misses: vendor firmware, operating systems, appliances,
+anything never published to a package ecosystem. Deriving identity from both
+would move the identity of every component carrying the second, which takes
+every decision attached to it along.
+
+It is captured at ingest rather than later because a scan file is not kept once
+it has been read. What is discarded there is not recoverable by re-reading, only
+by asking the producer to build again.
+
 ### The top level is marked
 
 The root — the product itself — is stored as a node like any other, flagged.

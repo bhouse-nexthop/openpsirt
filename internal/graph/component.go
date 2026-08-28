@@ -31,8 +31,14 @@ type Component struct {
 	// moves would reset every triage decision attached to it.
 	Identity string `bun:"identity,notnull"`
 	Purl     string `bun:"purl"`
-	Name     string `bun:"name,notnull"`
-	Version  string `bun:"version,notnull"`
+	// CPE is the other identifier scheme in circulation. It is not part of
+	// identity — that is derived from the package identifier where there is
+	// one, and a second basis would move the identity of everything carrying
+	// both — but it is what the national vulnerability database keys on, so a
+	// scanner given it matches things a package identifier alone misses.
+	CPE     string `bun:"cpe"`
+	Name    string `bun:"name,notnull"`
+	Version string `bun:"version,notnull"`
 	// UpstreamName and UpstreamVersion carry what a patched fork was forked
 	// from. A shipped build often carries a version string of its own, and the
 	// vulnerability identity lives on the upstream one — so dropping this
@@ -46,6 +52,7 @@ type Component struct {
 // to a row.
 type Described struct {
 	Purl            string
+	CPE             string
 	Name            string
 	Version         string
 	UpstreamName    string
@@ -132,7 +139,7 @@ func (c *Components) Intern(ctx context.Context, described []Described) (map[str
 			continue
 		}
 		missing = append(missing, Component{
-			Identity: identity, Purl: d.Purl, Name: d.Name, Version: d.Version,
+			Identity: identity, Purl: d.Purl, CPE: d.CPE, Name: d.Name, Version: d.Version,
 			UpstreamName: d.UpstreamName, UpstreamVersion: d.UpstreamVersion,
 			FirstSeenAt: now,
 		})

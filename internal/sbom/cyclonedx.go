@@ -272,6 +272,8 @@ func (c *reader) component() (graph.Described, string, []graph.Described, error)
 			return c.into(&described.Version)
 		case "purl":
 			return c.into(&described.Purl)
+		case "cpe":
+			return c.into(&described.CPE)
 		case "pedigree":
 			return c.pedigree(&described, &carried)
 		case "components":

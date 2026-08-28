@@ -21,7 +21,12 @@
       "name": "docker-fpm-frr",
       "version": "sha256:a1b2c3",
       "purl": "pkg:oci/docker-fpm-frr@sha256%3Aa1b2c3?arch=amd64",
-      "properties": [{"name": "sonic:scope", "value": "dockers/docker-fpm-frr"}]
+      "properties": [
+        {
+          "name": "sonic:scope",
+          "value": "dockers/docker-fpm-frr"
+        }
+      ]
     },
     {
       "bom-ref": "pkg:oci/docker-swss@sha256%3Ad4e5f6?arch=amd64",
@@ -29,7 +34,12 @@
       "name": "docker-swss",
       "version": "sha256:d4e5f6",
       "purl": "pkg:oci/docker-swss@sha256%3Ad4e5f6?arch=amd64",
-      "properties": [{"name": "sonic:scope", "value": "dockers/docker-swss"}]
+      "properties": [
+        {
+          "name": "sonic:scope",
+          "value": "dockers/docker-swss"
+        }
+      ]
     },
     {
       "bom-ref": "pkg:deb/sonic/frr@10.5.4-sonic-0?arch=amd64",
@@ -37,14 +47,21 @@
       "name": "frr",
       "version": "10.5.4-sonic-0",
       "purl": "pkg:deb/sonic/frr@10.5.4-sonic-0?arch=amd64",
-      "supplier": {"name": "SONiC build (forked upstream)"},
+      "supplier": {
+        "name": "SONiC build (forked upstream)"
+      },
       "pedigree": {
         "ancestors": [
           {
             "name": "frr",
             "version": "10.5.4",
             "purl": "pkg:github/FRRouting/frr@frr-10.5.4",
-            "externalReferences": [{"type": "vcs", "url": "https://github.com/FRRouting/frr"}]
+            "externalReferences": [
+              {
+                "type": "vcs",
+                "url": "https://github.com/FRRouting/frr"
+              }
+            ]
           }
         ],
         "patches": [
@@ -52,13 +69,20 @@
             "type": "unofficial",
             "diff": {
               "url": "file://src/sonic-frr/patch/0007-cve-2026-31951.patch",
-              "hashes": [{"alg": "SHA-256", "content": "9d1f0c2b8a7e6d5c4b3a29180706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4"}]
+              "hashes": [
+                {
+                  "alg": "SHA-256",
+                  "content": "9d1f0c2b8a7e6d5c4b3a29180706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4"
+                }
+              ]
             },
             "resolves": [
               {
                 "type": "security",
                 "id": "CVE-2026-31951",
-                "references": ["https://nvd.nist.gov/vuln/detail/CVE-2026-31951"]
+                "references": [
+                  "https://nvd.nist.gov/vuln/detail/CVE-2026-31951"
+                ]
               }
             ]
           }
@@ -73,8 +97,12 @@
       "version": "2.41-12",
       "purl": "pkg:deb/debian/libc6@2.41-12?arch=amd64",
       "properties": [
-        {"name": "sonic:scope", "value": "host-image dockers/docker-fpm-frr dockers/docker-swss"}
-      ]
+        {
+          "name": "sonic:scope",
+          "value": "host-image dockers/docker-fpm-frr dockers/docker-swss"
+        }
+      ],
+      "cpe": "cpe:2.3:a:gnu:glibc:2.41:*:*:*:*:*:*:*"
     },
     {
       "bom-ref": "pkg:cargo/tokio@1.47.1",
@@ -82,7 +110,12 @@
       "name": "tokio",
       "version": "1.47.1",
       "purl": "pkg:cargo/tokio@1.47.1",
-      "properties": [{"name": "sonic:source_deb", "value": "sonic-swss_1.0.0_amd64.deb"}]
+      "properties": [
+        {
+          "name": "sonic:source_deb",
+          "value": "sonic-swss_1.0.0_amd64.deb"
+        }
+      ]
     },
     {
       "bom-ref": "pkg:pypi/paramiko@3.5.1",
