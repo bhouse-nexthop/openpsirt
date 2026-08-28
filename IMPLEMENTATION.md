@@ -140,11 +140,14 @@ in the output.
 - Findings list, dependency tree, finding detail, review queue, home
 - Generated API client; responsive layouts
 - Markdown editor: toolbar, Write and Preview, mention autocomplete
+- Draft preservation across failure, session expiry and a closed tab
 
 **Proves it works:** the findings list stays usable against a full-size product;
 the tree opens lazily without attempting a full render; every screen works on a
 phone; **the preview matches what is published**, because it is the same
-renderer.
+renderer; **a submission refused by the server leaves the text untouched and
+says which line to fix**, and a session that expires mid-write does not lose
+what was written.
 
 **Produces:** `DESIGN-interface.md`
 
