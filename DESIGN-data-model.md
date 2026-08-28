@@ -79,8 +79,8 @@ something somewhere was wrong.
 Bounded and exact. No leading or trailing spaces, nothing empty, and a length
 that keeps a unique index inside every engine's key-length limit.
 
-Uniqueness is within the parent: a product name is unique globally, a stream
-name within its product, a variant name within its stream.
+Uniqueness is within the parent: a product name is unique globally, and a
+stream name and a variant name are each unique within their product.
 
 ## Engine differences
 

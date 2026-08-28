@@ -43,9 +43,11 @@ func upJob(ctx context.Context, tx *sql.Tx) error {
 			updated_at   ` + t.timestamp + ` NOT NULL
 		)` + t.suffix,
 
-		// Claiming asks for the oldest runnable job, which is the query on the
-		// path of every worker poll.
-		`CREATE INDEX job_runnable_idx ON job (state, run_after, id)`,
+		// Claiming asks for the oldest runnable job of one kind, which is the
+		// query on the path of every worker poll. Kind leads, because workers
+		// of different sorts share this table and a worker that scanned rows
+		// belonging to another would lock and skip them on every poll.
+		`CREATE INDEX job_runnable_idx ON job (kind, state, run_after, id)`,
 	}
 
 	for _, stmt := range statements {

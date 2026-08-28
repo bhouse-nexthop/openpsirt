@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -199,12 +200,27 @@ func serve(cfg config.Config, logger *slog.Logger, handler http.Handler, reader 
 
 	// Reading stops when the signal arrives, before the server drains, so a
 	// scan is not picked up during the seconds we are on our way out.
+	//
+	// Waited for, not merely signalled. A worker can be mid-query when the
+	// signal lands, and returning from here closes the database underneath it
+	// — which turns an orderly shutdown into a failed scan and a job that has
+	// to be retried for no reason.
+	var workers sync.WaitGroup
 	if reader != nil {
-		go reader.Run(ctx, readInterval)
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			reader.Run(ctx, readInterval)
+		}()
 	}
 	if runner != nil {
-		go runner.Run(ctx, readInterval)
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			runner.Run(ctx, readInterval)
+		}()
 	}
+	defer workers.Wait()
 
 	srv := &http.Server{
 		Addr:    cfg.Addr,

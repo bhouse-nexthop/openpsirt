@@ -34,6 +34,11 @@ func upScan(ctx context.Context, tx *sql.Tx) error {
 			id             ` + t.id + `,
 			target_id      ` + t.ref + ` NOT NULL,
 			content_hash   ` + t.hash + ` NOT NULL,
+			-- The identity the document carries for itself. It is what joins a
+			-- vulnerability report to the inventory it was produced from, once
+			-- both have been copied away from the build tree and their
+			-- filenames mean nothing.
+			serial         ` + t.free + ` NULL,
 			built_at       ` + t.timestamp + ` NOT NULL,
 			received_at    ` + t.timestamp + ` NOT NULL,
 			parser_version ` + t.name + ` NOT NULL,

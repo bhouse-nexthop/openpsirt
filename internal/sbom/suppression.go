@@ -132,7 +132,12 @@ func purlParts(purl string) (base, version string) {
 	if cut := strings.IndexAny(base, "?#"); cut >= 0 {
 		base = base[:cut]
 	}
-	if at := strings.LastIndex(base, "@"); at >= 0 {
+	// The version is what follows the last "@" — but only when there is
+	// something before it. A scoped name in some ecosystems begins with one
+	// ("pkg:npm/@babel/core"), and splitting there would leave a claim naming
+	// a package type and a version of "babel/core", matching nothing and
+	// saying nothing about why.
+	if at := strings.LastIndex(base, "@"); at > 0 && base[at-1] != '/' {
 		base, version = base[:at], base[at+1:]
 	}
 	return base, version

@@ -160,6 +160,7 @@ func upload(ctx context.Context, in Ingest, input *UploadInput) (*UploadOutput, 
 	arriving := ingest.Arriving{
 		TargetID:      target.ID,
 		ContentHash:   contentHash,
+		Serial:        header.Serial,
 		BuiltAt:       header.BuiltAt,
 		ParserVersion: version.Get().Version,
 	}

@@ -314,8 +314,11 @@ func (i inventory) why(gone graph.Component) Closure {
 			return Revised
 		}
 	}
+	// Something of that name is still here, unchanged in both the version that
+	// ships and the version vulnerabilities are matched against. Nothing about
+	// the component explains the finding going away, so it is not explained.
 	if len(i.byName[gone.Name]) > 0 {
-		return Revised
+		return Unexplained
 	}
 	return Removed
 }

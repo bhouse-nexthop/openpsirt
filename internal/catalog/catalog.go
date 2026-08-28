@@ -69,7 +69,7 @@ type Stream struct {
 // Variant is one of the ways a stream is built — a chip variant, an operating
 // system, an architecture.
 //
-// It belongs to the stream rather than the product, so one introduced in a
+// It belongs to the product rather than to any one release, so one introduced in a
 // later release does not appear to have existed in earlier ones.
 type Variant struct {
 	bun.BaseModel `bun:"table:variant,alias:v"`

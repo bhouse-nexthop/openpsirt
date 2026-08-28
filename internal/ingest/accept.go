@@ -91,6 +91,9 @@ type Arriving struct {
 	// not the time we happened to receive them: uploads retry, transfer slowly
 	// and queue, so arrival order says nothing about which is newer.
 	BuiltAt time.Time
+	// Serial is the identity the document carries for itself, which is what
+	// joins anything produced from it back to it.
+	Serial string
 	// ParserVersion is the version of the code that will read it.
 	ParserVersion string
 	// Credential identifies what sent it. Blank until sign-in exists.
@@ -104,6 +107,7 @@ type Scan struct {
 	ID            int64     `bun:"id,pk,autoincrement"`
 	TargetID      int64     `bun:"target_id,notnull"`
 	ContentHash   string    `bun:"content_hash,notnull"`
+	Serial        string    `bun:"serial"`
 	BuiltAt       time.Time `bun:"built_at,notnull"`
 	ReceivedAt    time.Time `bun:"received_at,notnull"`
 	ParserVersion string    `bun:"parser_version,notnull"`
@@ -196,6 +200,7 @@ func (s *Store) Record(ctx context.Context, a Arriving) (*Scan, Outcome, error) 
 	scan := &Scan{
 		TargetID:      a.TargetID,
 		ContentHash:   a.ContentHash,
+		Serial:        a.Serial,
 		BuiltAt:       asStored(a.BuiltAt),
 		ReceivedAt:    s.now().Truncate(time.Microsecond),
 		ParserVersion: a.ParserVersion,
@@ -203,6 +208,13 @@ func (s *Store) Record(ctx context.Context, a Arriving) (*Scan, Outcome, error) 
 		Status:        Accepted,
 	}
 	if _, err := s.db.NewInsert().Model(scan).Exec(ctx); err != nil {
+		// Two uploads of one file can both pass the check and race to write.
+		// The loser sees the unique constraint, which means the other landed
+		// — the same situation as sending it twice, and answered the same way
+		// rather than as a failure the producer would retry into a red build.
+		if existing, found := s.byContent(ctx, a.TargetID, a.ContentHash); found == nil && existing != nil {
+			return existing, AlreadyHave, nil
+		}
 		return nil, Accept, fmt.Errorf("record scan: %w", err)
 	}
 	return scan, Accept, nil
