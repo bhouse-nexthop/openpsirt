@@ -16,14 +16,25 @@ spec:
   template:
     metadata:
       labels: {{- include "openpsirt.selectorLabels" . | nindent 8 }}
-      {{- with .Values.podAnnotations }}
-      annotations: {{- toYaml . | nindent 8 }}
-      {{- end }}
+      annotations:
+        # Rolls the pods when the database credential changes. Without this a
+        # rotation updates the Secret, leaves the pod template byte-identical,
+        # and every running pod keeps using the old credential while the
+        # upgrade reports success.
+        {{- if not .Values.database.existingSecret }}
+        checksum/database-secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets: {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "openpsirt.serviceAccountName" . }}
+      # Set on the pod, not the service account, so it holds however the
+      # account was created. openpsirt never talks to the Kubernetes API.
+      automountServiceAccountToken: false
       securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: openpsirt
@@ -34,6 +45,12 @@ spec:
             - name: http
               containerPort: 8080
           env:
+            # Operator additions first: a later entry with the same name wins,
+            # so putting these last would let extraEnv silently override the
+            # database URL that comes from the Secret.
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             - name: OPENPSIRT_DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -45,9 +62,6 @@ spec:
               value: {{ .Values.log.level | quote }}
             - name: OPENPSIRT_LOG_FORMAT
               value: {{ .Values.log.format | quote }}
-            {{- with .Values.extraEnv }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
           # Migrations run before the service answers, so the startup probe has
           # to allow for one taking a long time. Giving up part way through
           # kills the pod and starts the migration over.

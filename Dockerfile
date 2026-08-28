@@ -37,16 +37,25 @@ RUN apk add --no-cache ca-certificates tzdata
 
 # Runs as a normal user. Nothing here needs root, and a container that does not
 # need it should not have it.
-RUN addgroup -S openpsirt && adduser -S -G openpsirt -H -s /sbin/nologin openpsirt
+# The identifiers are pinned. Letting adduser choose meant the chart's
+# runAsUser matched only by luck, and any future package that creates a system
+# user would shift it — after which the pod runs as a different user than the
+# chart declares, silently.
+RUN addgroup -g 65532 -S openpsirt \
+ && adduser -u 65532 -S -G openpsirt -H -s /sbin/nologin openpsirt
 
 COPY --from=build /out/openpsirt /usr/local/bin/openpsirt
 
 USER openpsirt
 EXPOSE 8080
 
-# Liveness only. Readiness depends on the database and belongs to the
-# orchestrator, which can act on it; a container healthcheck cannot.
+# Liveness. Readiness depends on the database and belongs to the orchestrator,
+# which can act on it.
+#
+# This asks the running server, not a new process. Running "openpsirt -version"
+# proved only that the binary was on disk and executable — a deadlocked or
+# non-listening server passed it forever.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD ["/usr/local/bin/openpsirt", "-version"]
+  CMD wget -q -O- http://127.0.0.1:8080/healthz || exit 1
 
 ENTRYPOINT ["/usr/local/bin/openpsirt"]

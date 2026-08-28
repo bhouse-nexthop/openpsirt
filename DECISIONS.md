@@ -369,6 +369,9 @@ inputs.
 | DAT-15 | **`goose`** for migrations | Embeds in the binary, covers all four engines, and supports Go-based migrations so the per-engine partitioning DDL branches cleanly rather than living in a directory per dialect |
 | DAT-16 | Drivers: **`pgx`** (PostgreSQL, MIT), **`go-sql-driver/mysql`** (MySQL and MariaDB, MPL), **`modernc.org/sqlite`** (pure Go, BSD) | The SQLite choice is deliberate: pure Go means no cgo, which keeps the single static binary |
 | DAT-17 | **The job queue is hand-rolled** — a table plus a bounded worker pool | River is PostgreSQL-only and Asynq needs Redis, so neither fits four engines. Around 200 lines we control, using row-skipping locks on the production engines and a simpler path on SQLite, which is development-only |
+| DAT-18 | **The migration lock is taken on a pinned connection, and the release result is checked** | These are session locks. Taken on the pool, the release can land on a different connection — and neither engine reports that as an error, so the lock leaks silently and every other instance blocks for the life of the process |
+| DAT-19 | **The wait for the lock is bounded on every engine** | An instance wedged mid-migration otherwise blocks every replacement indefinitely, with the startup probe killing each one in turn and no log line explaining why |
+| DAT-20 | **Reading the schema version performs no schema changes** | The library's version query creates its bookkeeping table when missing, which made the read-only inspection command need schema-change rights on a fresh database — against DAT-11, and precisely for the operator who separated credentials |
 
 ### 3.14 CI gate — `CIG`
 
@@ -424,7 +427,8 @@ to "follow good practice", so a reviewer has something to check against.
 | SEC-06 | **Ingest is bounded**: maximum file size, nesting depth, and component count, all configurable | A hostile or broken file must fail rather than exhaust memory. ING-06 sizes for the largest real input; this is about inputs that are not real |
 | SEC-07 | **Outbound fetches are restricted to their configured host, and never follow redirects into private address space** | We fetch ranking feeds, and Phase 2 pulls from third-party APIs at administrator-configured URLs. An administrator-supplied URL pointed at an internal address turns the application into a proxy for the network it sits in |
 | SEC-08 | **Secrets never reach logs.** Connection strings are redacted, credentials and tokens are never logged at any level | Already done for database URLs; recorded so it is a rule rather than a habit |
-| SEC-09 | The checklist in `AGENTS.md` is worked through on every review, not consulted when someone remembers | An enumerated list gets checked. "Follow good practice" gets cited |
+| SEC-09 | **The HTTP server sets read, write, header and idle timeouts** | Without them a client holds a connection, goroutine and file descriptor open indefinitely by sending headers slowly. Enough of them exhaust every replica while liveness keeps passing, because the process itself is fine |
+| SEC-10 | The checklist in `AGENTS.md` is worked through on every review, not consulted when someone remembers | An enumerated list gets checked. "Follow good practice" gets cited |
 
 ---
 

@@ -40,6 +40,17 @@ jobs:
         options: >-
           --health-cmd "mysqladmin ping -ptest --silent" --health-interval 5s
           --health-timeout 5s --health-retries 20
+      # Deliberately below the floor, so the refusal is exercised. Without it
+      # that test skips in every run, and the design claims it is proved.
+      postgres-old:
+        image: postgres:13-alpine
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: openpsirt
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
       mariadb:
         image: mariadb:11.4
         env:
@@ -54,6 +65,7 @@ jobs:
       OPENPSIRT_TEST_POSTGRES_URL: postgres://postgres:test@127.0.0.1:5432/openpsirt?sslmode=disable
       OPENPSIRT_TEST_MYSQL_URL: mysql://root:test@127.0.0.1:3306/openpsirt
       OPENPSIRT_TEST_MARIADB_URL: mariadb://root:test@127.0.0.1:3307/openpsirt
+      OPENPSIRT_TEST_TOO_OLD_URL: postgres://postgres:test@127.0.0.1:5433/openpsirt?sslmode=disable
 
     steps:
       - uses: actions/checkout@v4
@@ -73,6 +85,20 @@ jobs:
           for engine in sqlite postgres mysql mariadb; do
             grep -q "PASS: TestMigrationsApplyOnEveryEngine/$engine" /tmp/engines.txt \
               || { echo "::error::$engine did not run"; exit 1; }
+          done
+      - name: Confirm the version floor was exercised, not skipped
+        # A skipped test passes. This one guards the claim that an unsupported
+        # server is refused, so a silent skip would make the claim untrue.
+        run: |
+          go test ./internal/database/ -count=1 -v -run TestOpenRefuses | tee /tmp/floor.txt
+          grep -q "PASS: TestOpenRefusesAServerBelowTheFloor" /tmp/floor.txt \
+            || { echo "::error::the version floor test did not run"; exit 1; }
+      - name: Confirm the migration lock was exercised, not skipped
+        run: |
+          go test ./internal/database/migrate/ -count=1 -v -run TestLockExcludes | tee /tmp/lock.txt
+          for engine in postgres mysql mariadb; do
+            grep -q "PASS: TestLockExcludesAnotherConnection/$engine" /tmp/lock.txt \
+              || { echo "::error::the migration lock was not exercised on $engine"; exit 1; }
           done
 
   lint:
@@ -160,6 +186,7 @@ jobs:
           build-args: |
             VERSION=ci
             COMMIT=${{ github.sha }}
+            DATE=${{ github.event.repository.updated_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: The image must run and report itself

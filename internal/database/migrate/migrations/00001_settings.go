@@ -42,10 +42,14 @@ func upSettings(ctx context.Context, tx *sql.Tx) error {
 			updated_at DATETIME(6)  NOT NULL
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
 	case database.SQLite:
+		// DATETIME, not TEXT. The driver decides how to hand a value back from
+		// the *declared* column type: TEXT yields a string, which will not scan
+		// into a time.Time. The same portable Go that works on the three
+		// production engines would write successfully here and fail to read.
 		stmt = `CREATE TABLE application_setting (
-			name       TEXT NOT NULL PRIMARY KEY,
-			value      TEXT NOT NULL,
-			updated_at TEXT NOT NULL
+			name       TEXT     NOT NULL PRIMARY KEY,
+			value      TEXT     NOT NULL,
+			updated_at DATETIME NOT NULL
 		)`
 	default:
 		return fmt.Errorf("no schema for %s", e)

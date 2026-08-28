@@ -8,7 +8,6 @@ package dbtest
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -88,21 +87,4 @@ func Open(t *testing.T, url string) *database.DB {
 		}
 	})
 	return db
-}
-
-// Available reports which production engines the environment points at, for
-// tests that need to say what they did and did not cover.
-func Available() []string {
-	var found []string
-	for _, c := range candidates() {
-		if c.env != "" && os.Getenv(c.env) != "" {
-			found = append(found, c.name)
-		}
-	}
-	return found
-}
-
-// Summary describes what a portability run actually covered.
-func Summary() string {
-	return fmt.Sprintf("sqlite always; production engines available: %v", Available())
 }

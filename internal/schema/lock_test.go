@@ -9,10 +9,14 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/schema"
 )
 
-func TestConcurrentStartsDoNotCollide(t *testing.T) {
-	// Every instance migrates at startup, so a rolling deploy runs this
-	// several times at once. Without the lock they race on the same tables and
-	// one of them fails with a duplicate-object error.
+func TestConcurrentMigrationsInOneProcessDoNotCollide(t *testing.T) {
+	// This covers goroutines in a single process, and nothing more.
+	//
+	// It cannot test the advisory lock: every caller serialises on the
+	// in-process mutex before reaching it, so this passes with the entire
+	// advisory lock deleted — verified. The lock that excludes *other
+	// instances* is tested in internal/database/migrate, driving acquire
+	// directly from two pools.
 	dbtest.Each(t, func(t *testing.T, db *database.DB) {
 		const instances = 4
 

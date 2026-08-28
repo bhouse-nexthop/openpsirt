@@ -12,10 +12,13 @@ LDFLAGS      := -s -w \
 	-X '$(PKG).commit=$(COMMIT)' \
 	-X '$(PKG).date=$(DATE)'
 
-GOLANGCI_VERSION  ?= v2.13.1
-GOVULNCHECK_VERSION ?= latest
-GOLICENSES_VERSION  ?= latest
-CDXGOMOD_VERSION    ?= latest
+# Every tool is pinned. "latest" resolves at run time, so CI would not be
+# reproducible against last week's run and a compromised upstream release would
+# execute here on the day it shipped.
+GOLANGCI_VERSION    ?= v2.13.1
+GOVULNCHECK_VERSION ?= v1.7.0
+GOLICENSES_VERSION  ?= v1.6.0
+CDXGOMOD_VERSION    ?= v1.12.0
 
 # Permissive only, for anything that ships. Build tooling is unrestricted.
 ALLOWED_LICENCES := Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,MPL-2.0
@@ -32,7 +35,7 @@ ALLOWED_LICENCES := Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,MPL-2.0
 #                         "neither the name of the copyright holder".
 LICENCE_EXCEPTIONS := modernc.org/mathutil
 
-.PHONY: all build test vet lint fmt openapi run clean check tools govulncheck licences sbom
+.PHONY: all build test vet lint fmt openapi openapi-current run clean check check-packaging tools govulncheck licences sbom
 
 all: check build
 
@@ -74,7 +77,25 @@ openapi:
 	$(GO) run ./cmd/openpsirt -openapi > docs/reference/openapi.yaml
 	@echo "wrote docs/reference/openapi.yaml"
 
-check: vet lint test govulncheck licences
+# Everything CI runs, reachable from one command. Container and chart checks
+# are included because CI runs them; omitting them meant four of nine jobs
+# could not be reproduced locally.
+check: build vet lint test govulncheck licences openapi-current sbom
+
+# CI fails when the committed document has drifted, so check the same thing.
+openapi-current: openapi
+	@git diff --exit-code -- docs/reference/openapi.yaml \
+	  || { echo "docs/reference/openapi.yaml is stale: commit the regenerated file"; exit 1; }
+
+# Requires docker and helm. Skipped by "check" so that a machine without them
+# can still run everything else.
+check-packaging:
+	docker build -q -t openpsirt:check . >/dev/null
+	docker run --rm openpsirt:check -version
+	@test "$$(docker run --rm --entrypoint id openpsirt:check -u)" != "0" \
+	  || { echo "image runs as root"; exit 1; }
+	helm lint deploy/helm/openpsirt --set database.url=postgres://u:p@h:5432/d
+	helm template t deploy/helm/openpsirt --set database.existingSecret=s >/dev/null
 
 run:
 	$(GO) run ./cmd/openpsirt

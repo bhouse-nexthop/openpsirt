@@ -12,6 +12,11 @@ Satisfies CIG-01 to CIG-08, SCP-06, SCP-07, API-04, API-10, API-11.
 | `internal/version/` | What this build is. Values injected at link time |
 | `internal/config/` | Settings, read from the environment with working defaults |
 | `internal/httpapi/` | The HTTP surface and the operations the API document is generated from |
+| `internal/database/` | Opening, identifying and validating a database. See `DESIGN-database.md` |
+| `internal/database/migrate/` | The migration runner and the locks around it |
+| `internal/database/migrate/migrations/` | The migrations themselves |
+| `internal/schema/` | Applies this application's schema. Exists so that using the runner registers the migrations |
+| `internal/dbtest/` | Runs a test against every database available to it |
 | `docs/` | The published documentation site |
 | `assets/` | Logo files |
 
@@ -21,7 +26,7 @@ until we deliberately decide otherwise.
 ## One entry point
 
 Every check CI runs is a `make` target. A developer reproduces any CI failure
-with the same command and the same pinned tool versions — CIG-06.
+with the same command and the same pinned tool versions — CIG-05.
 
 | Target | Does |
 |---|---|
@@ -32,7 +37,9 @@ with the same command and the same pinned tool versions — CIG-06.
 | `make licences` | Licences of shipped dependencies against the allowlist |
 | `make openapi` | Regenerates the API document from the code |
 | `make sbom` | Generates our own CycloneDX bill of materials |
+| `make sbom` | Generates our own CycloneDX bill of materials |
 | `make check` | Everything above |
+| `make check-packaging` | The container image and the Helm chart. Needs docker and helm |
 
 ## Static analysis
 

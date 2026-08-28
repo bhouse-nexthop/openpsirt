@@ -19,5 +19,5 @@ No ingress is configured. To look at it locally:
   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "openpsirt.fullname" . }} 8080:{{ .Values.service.port }}
 {{- end }}
 
-There is no user yet. Name a bootstrap administrator in your values before
-anyone can sign in.
+There is no sign-in yet — this release has no authentication at all. Do not
+expose it to a network you do not control.

@@ -66,6 +66,17 @@ server configuration. Each engine gets the column it should have.
 | Migration mutex | Other goroutines in this process | An ordinary mutex |
 | Advisory lock | Other instances | `pg_advisory_lock`, `GET_LOCK`, or nothing on SQLite |
 
+**The advisory lock is taken on a pinned connection**, not on the pool. These
+are session locks: released from the pool, the release can land on a different
+connection, and neither engine reports that as an error — it simply fails to
+release, and the lock is then held for the life of the process. The release
+result is read rather than assumed, because both engines report "you did not
+hold this" as a value rather than an error.
+
+The wait is bounded on both engines. An unbounded wait means an instance wedged
+mid-migration blocks every replacement silently, and the startup probe kills
+each one in turn.
+
 Both are needed and neither substitutes for the other. The in-process mutex
 exists because the migration library keeps its dialect in package-level state,
 so two goroutines migrating at once race on it regardless of any database lock.
@@ -88,7 +99,7 @@ Two things had to be set explicitly, both found by testing rather than assumed:
 
 ## Testing
 
-`internal/dbtest` runs a test against every database available to it. SQLite
+The portability harness runs a test against every database available to it. SQLite
 always runs, so the suite is useful with nothing installed; the production
 engines run when the environment points at them and are **skipped loudly**
 otherwise.
@@ -103,4 +114,13 @@ What the suite pins:
 - A server below the floor is refused, proved against a real old server rather
   than against arithmetic
 - Migrations apply, are idempotent, and roll back on every engine
-- Several instances migrating at once all succeed
+- The advisory lock excludes a second connection while held, and admits it once
+  released — driven directly, from two pools
+
+Note what the concurrency test in the schema package does **not** cover. Every
+caller serialises on the in-process mutex before reaching the advisory lock, so
+a test driving goroutines through the normal path passes with the entire
+advisory lock deleted. It pins the mutex and nothing else, and says so.
+
+Reading the schema version performs no schema changes: the bookkeeping table is
+checked for before it is read, so the inspection command does not create it.

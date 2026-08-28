@@ -92,12 +92,20 @@ func Down(ctx context.Context, db *database.DB, logger *slog.Logger) error {
 }
 
 // Version reports the schema version currently applied.
+//
+// It performs no schema changes. Asking whether the bookkeeping table exists
+// before reading it keeps this from creating it — the library's version query
+// creates it when missing, which would make a read-only inspection command
+// need schema-change rights on a fresh database, against DAT-11.
 func Version(ctx context.Context, db *database.DB) (int64, error) {
 	running.Lock()
 	defer running.Unlock()
 
 	if err := prepare(db); err != nil {
 		return 0, err
+	}
+	if !versionTableExists(ctx, db) {
+		return 0, nil
 	}
 	return goose.GetDBVersionContext(ctx, db.DB.DB)
 }

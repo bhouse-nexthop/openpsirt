@@ -157,4 +157,19 @@ gets ticked without being read.
 
 ## Building
 
-No code yet. This section gets written with the first build.
+Everything CI runs is a `make` target, so a failure reproduces locally with the
+same command and the same pinned versions.
+
+| | |
+|---|---|
+| `make check` | Everything CI checks, except the container and chart |
+| `make check-packaging` | The container image and the Helm chart. Needs docker and helm |
+| `make build` | The binary, with version information injected |
+| `make openapi` | Regenerates the API document from the code |
+
+Tests run against SQLite alone by default. To exercise the production engines,
+point these at real servers — CI does, and a change that only ran on SQLite has
+tested none of the portability traps:
+
+    OPENPSIRT_TEST_POSTGRES_URL   OPENPSIRT_TEST_MYSQL_URL
+    OPENPSIRT_TEST_MARIADB_URL    OPENPSIRT_TEST_TOO_OLD_URL

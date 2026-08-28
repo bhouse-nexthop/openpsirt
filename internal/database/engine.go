@@ -82,6 +82,12 @@ func ParseURL(raw string) (Target, error) {
 	if !ok {
 		return Target{}, fmt.Errorf("unsupported database %q: want one of postgres, mysql, mariadb, sqlite", u.Scheme)
 	}
+	// Normalise the scheme into the URL the driver receives. Accepting
+	// "POSTGRES://" and passing it through unchanged had pgx reject it and
+	// silently fall back to environment defaults, producing an error that
+	// named the supplied URL while describing a connection somewhere else.
+	u.Scheme = strings.ToLower(u.Scheme)
+	raw = u.String()
 
 	dsn, err := driverDSN(engine, u, raw)
 	if err != nil {
@@ -136,6 +142,14 @@ func driverDSN(engine Engine, u *url.URL, raw string) (string, error) {
 			path = strings.TrimPrefix(u.Opaque, "//")
 		case u.Host == ":memory:":
 			path = ":memory:"
+		case u.Host != "":
+			// "sqlite://data/file.db" parses with "data" as the host, and
+			// silently dropping it wrote to the filesystem root instead. A
+			// relative path needs "sqlite:data/file.db"; an absolute one needs
+			// three slashes. Say so rather than writing somewhere unexpected.
+			return "", fmt.Errorf(
+				"ambiguous sqlite URL %q: use sqlite:%s%s for a relative path, or sqlite:///%s for an absolute one",
+				raw, u.Host, u.Path, strings.TrimPrefix(u.Path, "/"))
 		case u.Path != "":
 			path = u.Path
 		default:
@@ -149,13 +163,29 @@ func driverDSN(engine Engine, u *url.URL, raw string) (string, error) {
 	return "", fmt.Errorf("unsupported database %q", engine)
 }
 
+// secretParams are query parameters that carry a credential. Drivers accept
+// passwords this way as well as in the userinfo, and a redaction that only
+// handles userinfo puts the password in the first log line of every start.
+var secretParams = []string{"password", "sslpassword", "sslkey"}
+
 func redact(u *url.URL) string {
-	if u.User == nil {
-		return u.String()
-	}
 	clone := *u
-	if _, set := u.User.Password(); set {
-		clone.User = url.UserPassword(u.User.Username(), "xxxxx")
+	if u.User != nil {
+		if _, set := u.User.Password(); set {
+			clone.User = url.UserPassword(u.User.Username(), "xxxxx")
+		}
+	}
+	if q := clone.Query(); len(q) > 0 {
+		changed := false
+		for _, name := range secretParams {
+			if q.Has(name) {
+				q.Set(name, "xxxxx")
+				changed = true
+			}
+		}
+		if changed {
+			clone.RawQuery = q.Encode()
+		}
 	}
 	return clone.String()
 }

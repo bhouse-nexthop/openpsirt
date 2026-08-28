@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/config"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
@@ -32,6 +33,10 @@ func run(args []string, stdout, stderr *os.File) error {
 	showVersion := fs.Bool("version", false, "print the build and exit")
 	dumpSpec := fs.Bool("openapi", false, "write the OpenAPI document to stdout and exit")
 	if err := fs.Parse(args); err != nil {
+		// Asking for help is not a failure.
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
 		return err
 	}
 
@@ -158,7 +163,18 @@ func serve(cfg config.Config, logger *slog.Logger, handler http.Handler) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	srv := &http.Server{Addr: cfg.Addr, Handler: handler}
+	srv := &http.Server{
+		Addr:    cfg.Addr,
+		Handler: handler,
+		// Without these a client can hold a connection, a goroutine and a file
+		// descriptor open indefinitely by sending headers slowly. Enough such
+		// connections exhaust every replica while the liveness probe keeps
+		// passing, because the process itself is fine.
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       120 * time.Second,
+	}
 	errs := make(chan error, 1)
 
 	go func() {

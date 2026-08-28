@@ -9,8 +9,11 @@ openpsirt takes in SBOMs that already carry vulnerability data, works out what
 changed release to release, and gives people a place to triage what it finds and
 track it through to a fix.
 
-> **Status: design.** There is no code yet. This repository currently holds the
-> design record — see [DECISIONS.md](DECISIONS.md).
+> **Status: early development.** Not usable yet, and **there is no
+> authentication** — do not expose it to a network you do not control. What
+> exists so far is the build and validation pipeline and the database layer
+> across all four supported engines. The design record is in
+> [DECISIONS.md](DECISIONS.md).
 
 ## What it does
 
@@ -39,8 +42,14 @@ track it through to a fix.
 | [IMPLEMENTATION.md](IMPLEMENTATION.md) | Build order. Temporary — deleted once the work lands |
 | [AGENTS.md](AGENTS.md) | Conventions for anyone, human or otherwise, working in this repository |
 
-`DESIGN-*.md` documents appear as each area is built, and describe how it
-actually works.
+`DESIGN-*.md` documents describe how each area actually works, and appear as
+each is built:
+
+| | |
+|---|---|
+| [DESIGN-build.md](DESIGN-build.md) | Layout, the validation pipeline, how a change is checked |
+| [DESIGN-database.md](DESIGN-database.md) | Four engines, migrations, locking |
+| [DESIGN-packaging.md](DESIGN-packaging.md) | Container image and Helm chart |
 
 ## Licence
 

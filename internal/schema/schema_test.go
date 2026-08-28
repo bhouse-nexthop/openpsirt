@@ -1,9 +1,12 @@
 package schema_test
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/dbtest"
@@ -11,6 +14,20 @@ import (
 )
 
 func quiet() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+
+// probeCounter keeps rows unique between runs.
+var probeCounter atomic.Int64
+
+// uniqueName returns a row name no other run will collide with.
+//
+// Tests are run repeatedly against the same server — "go test -count=2", or a
+// developer with a local database — and a fixed name made the second run fail
+// on a duplicate key, with three engine failures unrelated to any change. CI
+// only survived it because its containers are fresh.
+func uniqueName(t *testing.T) string {
+	t.Helper()
+	return fmt.Sprintf("probe-%s-%d-%d", t.Name(), time.Now().UnixNano(), probeCounter.Add(1))
+}
 
 func TestMigrationsApplyOnEveryEngine(t *testing.T) {
 	dbtest.Each(t, func(t *testing.T, db *database.DB) {
@@ -25,20 +42,32 @@ func TestMigrationsApplyOnEveryEngine(t *testing.T) {
 		if version == 0 {
 			t.Fatal("nothing was applied; the migration set is empty")
 		}
-		// The table the migration creates must actually be usable, not merely
-		// recorded as created.
+		// The table must be usable with the same portable Go on every engine,
+		// which means writing and reading a real time.Time.
+		//
+		// An earlier version of this test inserted the timestamp as a string
+		// literal and read back only the value column — so the one column the
+		// migration branches per engine for was never read, and SQLite's
+		// column type was wrong for months of nobody noticing.
+		name := uniqueName(t)
+		want := time.Now().UTC().Truncate(time.Second)
 		if _, err := db.ExecContext(ctx,
 			"INSERT INTO application_setting (name, value, updated_at) VALUES (?, ?, ?)",
-			"probe", "value", "2026-01-01 00:00:00"); err != nil {
+			name, "value", want); err != nil {
 			t.Fatalf("insert into the migrated table: %v", err)
 		}
 		var value string
+		var updated time.Time
 		if err := db.QueryRowContext(ctx,
-			"SELECT value FROM application_setting WHERE name = ?", "probe").Scan(&value); err != nil {
+			"SELECT value, updated_at FROM application_setting WHERE name = ?", name).
+			Scan(&value, &updated); err != nil {
 			t.Fatalf("read back: %v", err)
 		}
 		if value != "value" {
-			t.Errorf("read back %q", value)
+			t.Errorf("value read back as %q", value)
+		}
+		if !updated.UTC().Equal(want) {
+			t.Errorf("timestamp read back as %v, wrote %v", updated.UTC(), want)
 		}
 		t.Logf("%s: schema version %d", db.Server.Engine, version)
 	})

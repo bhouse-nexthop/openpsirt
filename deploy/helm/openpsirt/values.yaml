@@ -56,9 +56,10 @@ resources:
 # Nothing here needs root, a writable filesystem, or any capability.
 podSecurityContext:
   runAsNonRoot: true
-  runAsUser: 100
-  runAsGroup: 101
-  fsGroup: 101
+  # Pinned in the image, not chosen by the package manager.
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
   seccompProfile:
     type: RuntimeDefault
 
