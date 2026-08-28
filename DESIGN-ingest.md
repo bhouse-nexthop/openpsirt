@@ -2,7 +2,8 @@
 
 What happens to a scan when it arrives.
 
-Satisfies ING-07, ING-11, ING-14 to ING-23, ING-28 to ING-35, ACC-12.
+Satisfies ING-01, ING-04, ING-05, ING-07, ING-11, ING-14 to ING-23, ING-28 to
+ING-35, ACC-12, SEC-05, SEC-06.
 
 ## Deciding before parsing
 
@@ -130,6 +131,104 @@ mind.
 A rating, not a vector, and often with the method given explicitly as
 unspecified. Numeric scores come from the feeds instead (ING-10, RNK-04) — there
 is nothing in the report to normalise.
+
+
+## Reading a document
+
+### The header is read separately from the contents
+
+Everything the arrival decision turns on — when the build says it was made,
+what the document is about, and the identity the document carries for itself —
+is answered by a pass that skips the contents entirely. Parsing a file we are
+about to refuse is work nobody asked for, and on the largest producer it is
+most of the cost of taking the file at all.
+
+Skipping is not free: key order is the producer's business, and the reference
+producer sorts its keys, which puts tens of thousands of components ahead of
+the metadata. Walking past a value is still far cheaper than building something
+out of it.
+
+### It is read as a stream, and it is bounded
+
+A scan file is somebody else's output arriving over a link we do not control.
+Three bounds apply, all settable per read: how large a document may be, how
+many components it may describe, and how deeply it may nest. A fourth bounds
+how many dependency edges it may declare — component count does not imply it,
+since a thousand components can declare a million edges between them.
+
+The depth bound is the reason the document is walked rather than decoded into a
+structure. Decoding is simpler and has no depth limit anyone can set, so a file
+nested far enough to exhaust the process is something we would discover by
+running out of memory rather than by refusing the file. Nesting is bounded
+everywhere, including inside the parts of a document nothing reads.
+
+An oversized document is refused **as** oversized. Truncating it and letting
+the reader fail reports a malformed file, which sends whoever sees the message
+looking at their build instead of at the limit that stopped it.
+
+### The file's own identifiers are used to join it to itself, and nowhere else
+
+A document names its components so its edges can refer to them. Those names are
+the producer's, and nothing guarantees they are stable between builds or
+consistent between producers — so they resolve edges while the file is being
+read and are then discarded. What is stored is derived from the component
+itself.
+
+This is what makes a producer renumbering its identifiers a change to nothing.
+The test that pins it replaces every identifier in a real document and asserts
+that the components, their identities and the graph between them are
+unchanged.
+
+Two components sharing one identifier are refused: every edge naming it would
+otherwise be a coin toss between them.
+
+### Nesting is structure the producer declared
+
+A component may contain components. That is the producer stating what is
+assembled from what, so it is kept as an edge — for some producers it is the
+only structure stated, and dropping it would leave everything under nothing.
+
+The edge is derived from the containment the file declares, never from an
+assumption about where something must belong. That distinction is the whole of
+`ING-31`: a component nothing leads to is ordinary and is left where it is.
+
+### Two names for one component
+
+Content-derived identity can discover that two of a document's own identifiers
+describe the same component. The producer could not have known — its
+identifiers differ — so an edge between them is not a producer error. It says
+nothing, so it is dropped and counted rather than stored as a component
+depending on itself.
+
+### Refusals
+
+Reading is all or nothing. A partial inventory is indistinguishable from a
+product that shrank, and acting on one closes findings that are still
+somebody's problem.
+
+| Refused | Because |
+|---|---|
+| Not the format we read, or a major version we have not been written against | A reader that guesses eventually guesses wrong on a file that looks close enough |
+| No component of its own | There is nothing for the document to be about. Build fragments — one artifact on its way into an inventory — look like documents and are refused here |
+| A component with no name or no version | It cannot be identified, so it cannot be tracked |
+| An edge naming something the document never describes | Inventing the missing component would report a dependency nobody declared |
+| Two components sharing one identifier | Every edge naming it is ambiguous |
+| A build time nothing can read | The build time is what orders scans against each other |
+| Past any of the four bounds | A broken or hostile file has to fail rather than exhaust the process |
+
+Everything a refusal quotes back came from the file, so what it quotes is
+bounded in length. An error is one of the few places a scan file's contents
+reach a person.
+
+### Choices the decisions did not cover
+
+| Choice | Why this way |
+|---|---|
+| Containment from nesting becomes an edge | Nesting is declared structure, not an inference. Some producers state nothing else |
+| An edge whose ends turn out to be one component is dropped, not refused | It is a consequence of our own identity rule, not a fault in the file |
+| A fourth bound, on declared edges | The three that were decided do not bound it, and it is not bounded by the others |
+| Only the first ancestor supplies upstream identity | It is what the component was forked from. Anything further back is history, and a scanner matches against the fork point |
+| Default bounds sit several times above the largest producer | Refusing a legitimate scan is its own failure. The ceiling only has to be low enough to protect the process |
 
 
 ## A note on column types

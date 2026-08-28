@@ -5,19 +5,23 @@
 
 Track vulnerabilities in the products you ship.
 
-openpsirt takes in SBOMs that already carry vulnerability data, works out what
-changed release to release, and gives people a place to triage what it finds and
-track it through to a fix.
+openpsirt takes in the inventory a build produced, scans it for known
+vulnerabilities, works out what changed release to release, and gives people a
+place to triage what it finds and track it through to a fix.
 
 > **Status: early development.** Not usable yet, and **there is no
 > authentication** — do not expose it to a network you do not control. What
-> exists so far is the build and validation pipeline and the database layer
-> across all four supported engines. The design record is in
-> [DECISIONS.md](DECISIONS.md).
+> exists so far is the build and validation pipeline, the database layer across
+> all four supported engines, the catalogue and dependency graph, and the
+> reader that turns a build's inventory into one. Nothing accepts an upload
+> yet. The design record is in [DECISIONS.md](DECISIONS.md).
 
 ## What it does
 
-- **Takes in scan results** pushed by build pipelines, in CycloneDX form
+- **Takes in inventories** pushed by build pipelines, in CycloneDX form, along
+  with the suppressions the build carries patches for
+- **Runs the scan here**, not in the build, so every product is measured
+  against the same scanner and the same vulnerability data
 - **Keeps the dependency graph**, so you can see *why* a vulnerable component is
   present and which part of the product pulled it in
 - **Tracks change over time** per release, and works out why a finding
@@ -49,6 +53,8 @@ each is built:
 |---|---|
 | [DESIGN-build.md](DESIGN-build.md) | Layout, the validation pipeline, how a change is checked |
 | [DESIGN-database.md](DESIGN-database.md) | Four engines, migrations, locking |
+| [DESIGN-data-model.md](DESIGN-data-model.md) | What a scan is filed against, and the dependency graph |
+| [DESIGN-ingest.md](DESIGN-ingest.md) | What happens to a scan when it arrives, and how one is read |
 | [DESIGN-packaging.md](DESIGN-packaging.md) | Container image and Helm chart |
 
 ## Licence

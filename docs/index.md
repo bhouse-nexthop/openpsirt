@@ -2,9 +2,9 @@
 
 Track vulnerabilities in the products you ship.
 
-openpsirt takes in SBOMs that already carry vulnerability data, works out what
-changed release to release, and gives people somewhere to triage what it finds
-and follow it through to a fix.
+openpsirt takes in the inventory a build produced, scans it for known
+vulnerabilities, works out what changed release to release, and gives people
+somewhere to triage what it finds and follow it through to a fix.
 
 !!! note "Early development"
     There is no release yet. What is here describes the system as it is being
@@ -12,7 +12,10 @@ and follow it through to a fix.
 
 ## What it does
 
-- **Takes in scan results** pushed by build pipelines
+- **Takes in inventories** pushed by build pipelines, along with the
+  suppressions the build carries patches for
+- **Runs the scan here**, not in the build, so every product is measured
+  against the same scanner and the same vulnerability data
 - **Keeps the dependency graph**, so you can see why a vulnerable component is
   present and which part of the product pulled it in
 - **Tracks change over time** per release, and works out why a finding
