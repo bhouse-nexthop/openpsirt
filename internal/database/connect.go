@@ -62,6 +62,16 @@ type DB struct {
 	Server Server
 }
 
+// OpenWithPool connects using specific pool settings.
+func OpenWithPool(ctx context.Context, target Target, pool Pool) (*DB, error) {
+	db, err := Open(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+	pool.apply(db)
+	return db, nil
+}
+
 // Open connects, identifies the server, and refuses anything too old.
 //
 // Refusing at startup is deliberate: the alternative is a confusing failure
@@ -92,17 +102,11 @@ func Open(ctx context.Context, target Target) (*DB, error) {
 			server.Engine, server.Version, floor)
 	}
 
-	if server.Engine == SQLite {
-		// SQLite has one writer. Letting the pool open more connections does
-		// not add concurrency, it adds contention: transactions from different
-		// connections collide instead of queueing. One connection makes them
-		// wait their turn, which is what we wanted from it anyway.
-		sqldb.SetMaxOpenConns(1)
-	}
-
 	// bun's dialect is chosen from the URL's scheme, which is right even when
 	// the server turns out to be MariaDB: the two share a dialect.
-	return &DB{DB: bun.NewDB(sqldb, dialect()), Server: server}, nil
+	db := &DB{DB: bun.NewDB(sqldb, dialect()), Server: server}
+	DefaultPool().apply(db)
+	return db, nil
 }
 
 func driverFor(e Engine) (driver string, dialect func() schema.Dialect, err error) {

@@ -85,9 +85,9 @@ func run(args []string, stdout, stderr *os.File) error {
 		logger.Info("automatic migration is off; run \"openpsirt migrate up\" separately")
 	}
 
-	handler, _ := httpapi.New(logger, func(ctx context.Context) error {
-		return db.PingContext(ctx)
-	})
+	// Readiness asks whether we can serve, which means the database answers
+	// and answers promptly — not merely that the process is up.
+	handler, _ := httpapi.New(logger, db.Validate)
 	return serve(cfg, logger, handler)
 }
 
@@ -107,7 +107,12 @@ func openDatabase(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	if err != nil {
 		return nil, err
 	}
-	db, err := database.Open(ctx, target)
+	db, err := database.OpenWithPool(ctx, target, database.Pool{
+		MaxOpen:     cfg.DBMaxOpen,
+		MaxIdle:     cfg.DBMaxIdle,
+		IdleTimeout: cfg.DBIdleTimeout,
+		Lifetime:    cfg.DBLifetime,
+	})
 	if err != nil {
 		return nil, err
 	}

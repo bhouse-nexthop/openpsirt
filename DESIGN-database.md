@@ -86,6 +86,48 @@ at once and they would otherwise migrate simultaneously.
 SQLite needs no advisory lock — it is only ever used by one process — but it did
 need the other two settings below.
 
+## Connections
+
+The failure worth designing against is not a connection that closes — it is one
+where **the far end goes without a FIN or an RST**. A firewall drops an idle
+flow, a load balancer times out, a database fails over. Our side still believes
+the socket is fine, so the pool hands it out, the query writes into nothing, and
+the read blocks until TCP retransmission gives up. That is roughly fifteen
+minutes on common defaults, with nothing logged and a goroutine simply stuck.
+
+Go's pool cannot detect this. It never validates a connection before handing it
+out, and the two driver hooks it does call before reuse only inspect local state
+in our drivers — neither performs a round trip, so neither notices a half-open
+socket.
+
+So the defence is to ensure a connection is never idle long enough to be killed
+behind our back.
+
+| Setting | Default | Why |
+|---|---|---|
+| Idle timeout | 1 minute | **The one that matters.** Must be shorter than the shortest idle timeout in the path — firewall, load balancer, or the server's own |
+| Lifetime | 30 minutes | Recycles regardless of use, so connections redistribute after a failover instead of holding on to a machine that is no longer primary |
+| Max open | 25 | Unbounded, a burst opens more than the server permits, and PostgreSQL is expensive per connection |
+| Max idle | 25 | Go's own default is 2, low enough that moderate load churns connections open and closed continuously |
+
+**Go's cleaner never runs more than once a second**, however short the idle
+timeout is set. A value below a second reaps no faster — a setting that looks
+aggressive and does nothing.
+
+### What is deliberately not done
+
+**Queries are not bounded.** No statement timeout, no blanket driver read
+timeout. Any such bound eventually kills legitimate slow work — a large report,
+an ingest transaction over tens of thousands of components — and the usual
+result is per-query exceptions until the bound means nothing. It would also cut
+off a migration part way through.
+
+**Connections are not validated on checkout**, because there is no hook for it.
+A validation helper exists with a short deadline, for callers that would
+otherwise block a long time on a dead connection. Readiness uses it. It is not
+a default: it costs a round trip per use, and it can only say a connection was
+alive a moment ago.
+
 ## SQLite is not simply "the easy one"
 
 Two things had to be set explicitly, both found by testing rather than assumed:

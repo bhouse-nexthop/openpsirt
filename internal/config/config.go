@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -31,6 +32,13 @@ type Config struct {
 	// is cut off mid-transfer.
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
+	// Database pool settings. The one that matters is IdleTimeout: a
+	// connection has to be closed by us before anything in the path closes it
+	// behind our back.
+	DBMaxOpen     int
+	DBMaxIdle     int
+	DBIdleTimeout time.Duration
+	DBLifetime    time.Duration
 	// AutoMigrate applies outstanding schema changes at startup.
 	//
 	// On by default: a self-hosted operator should not need a separate step,
@@ -52,6 +60,10 @@ func Load() (Config, error) {
 		AutoMigrate:   env("AUTO_MIGRATE", "true") != "false",
 		ReadTimeout:   5 * time.Minute,
 		WriteTimeout:  5 * time.Minute,
+		DBMaxOpen:     number("DB_MAX_OPEN", 25),
+		DBMaxIdle:     number("DB_MAX_IDLE", 25),
+		DBIdleTimeout: duration("DB_IDLE_TIMEOUT", time.Minute),
+		DBLifetime:    duration("DB_CONN_LIFETIME", 30*time.Minute),
 	}
 
 	if err := c.LogLevel.UnmarshalText([]byte(env("LOG_LEVEL", "info"))); err != nil {
@@ -79,6 +91,19 @@ func duration(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+// number reads a positive integer setting, falling back when unset or unusable.
+func number(key string, fallback int) int {
+	raw, ok := os.LookupEnv(envPrefix + key)
+	if !ok {
+		return fallback
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
 }
 
 func env(key, fallback string) string {
