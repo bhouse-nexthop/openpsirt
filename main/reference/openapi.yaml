@@ -300,7 +300,7 @@ components:
       type: object
 info:
   description: Track vulnerabilities in the products you ship.
-  title: openpsirt
+  title: OpenPSIRT
   version: dev
 openapi: 3.1.0
 paths:
