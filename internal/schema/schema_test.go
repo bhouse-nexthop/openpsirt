@@ -92,18 +92,43 @@ func TestMigrationsAreIdempotent(t *testing.T) {
 	})
 }
 
-func TestMigrationsRollBack(t *testing.T) {
+func TestEveryMigrationRollsBack(t *testing.T) {
+	// Rolling back one migration at a time to zero, rather than once. An
+	// earlier version rolled back once and asserted the first migration's
+	// table was gone, which quietly stopped testing anything the moment a
+	// second migration was added — it was then rolling back the second and
+	// asserting about the first.
 	dbtest.Each(t, func(t *testing.T, db *database.DB) {
 		ctx := t.Context()
 		if err := schema.Up(ctx, db, quiet()); err != nil {
 			t.Fatalf("up: %v", err)
 		}
-		if err := schema.Down(ctx, db, quiet()); err != nil {
-			t.Fatalf("down: %v", err)
+		applied, err := schema.Version(ctx, db)
+		if err != nil {
+			t.Fatalf("version: %v", err)
 		}
-		// The table must be gone, not merely unrecorded.
-		if _, err := db.ExecContext(ctx, "SELECT 1 FROM application_setting"); err == nil {
-			t.Error("the table survived a rollback")
+		if applied == 0 {
+			t.Fatal("nothing was applied, so nothing is being rolled back")
+		}
+
+		for step := applied; step > 0; step-- {
+			if err := schema.Down(ctx, db, quiet()); err != nil {
+				t.Fatalf("rolling back migration %d: %v", step, err)
+			}
+		}
+
+		if final, err := schema.Version(ctx, db); err != nil || final != 0 {
+			t.Fatalf("after rolling everything back: version %d, err %v", final, err)
+		}
+		// The tables must be gone, not merely unrecorded.
+		for _, table := range []string{"application_setting", "product", "stream", "variant"} {
+			if _, err := db.ExecContext(ctx, "SELECT 1 FROM "+table); err == nil {
+				t.Errorf("%s survived a full rollback", table)
+			}
+		}
+		// And it must all go back on again, or the rollback left wreckage.
+		if err := schema.Up(ctx, db, quiet()); err != nil {
+			t.Fatalf("re-applying after a full rollback: %v", err)
 		}
 	})
 }
