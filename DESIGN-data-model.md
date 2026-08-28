@@ -2,7 +2,7 @@
 
 What a scan is filed against, and why the shape is what it is.
 
-Satisfies MDL-01, MDL-02, MDL-03, MDL-04, MDL-11, MDL-17, ING-09, ING-11, STA-08.
+Satisfies MDL-01 to MDL-08, MDL-11, MDL-17, MDL-18, ING-09, ING-11, STA-08.
 
 ## The tracked unit
 
@@ -169,10 +169,52 @@ present and are still someone's problem.
 | An edge naming a component the snapshot does not list | Inventing the missing component would report a dependency nobody declared. This is the store's own guard: an edge that named something a *document* never described was already dropped and counted when the document was read, so one reaching here means the snapshot was built wrong rather than that a producer emitted something odd |
 
 
-## Not yet decided
+## A place is a component and what pulled it in
 
-Whether dependency paths are materialised. A path is the unit of triage and the
-graph is stored as nodes and edges, but enumerating every path through a
-dependency graph can produce far more rows than there are components, depending
-on how much sharing the graph has. That is a question a real SBOM answers, not
-one to guess at.
+The unit of triage is a component **at a place**, and a place is the pair: this
+component, under the thing that directly depends on it. Names only, no
+versions, hashed. Where the thing above is the root, the component's name
+stands alone — the root's name differs per variant, so including it would break
+cross-variant grouping.
+
+### Why the pair, and not the route
+
+The first form of this was the whole chain of names from the top down. Measured
+against a real switch image, that does not survive its own tail.
+
+| | Chain of names | Component and its consumer |
+|---|---:|---:|
+| Places in one image | 134,509 | 27,366 — which is the edge count |
+| Worst single component | 49,170 | 63 |
+
+The worst case is one shared library. Ten sub-packages are built from its
+source, each depending on the others, and one package depends on all ten — so
+every route arriving at that family multiplies through it, and the same fact is
+restated tens of thousands of times. A vulnerability there would have produced
+49,170 findings for one issue, none of which a person could act on.
+
+The same component has 48 direct consumers: the containers that ship it, its
+own siblings, and the six packages that actually call it. That list is what
+somebody triaging wants, and it is what the pair records.
+
+Nothing is lost that the graph cannot answer. Which container something runs in
+is one step further up, and the whole route is there to be walked.
+
+## Paths are walked, not stored
+
+Storing a row per route was left open until a real SBOM could be measured. It
+was, and there is nothing worth storing: under the definition above a place
+*is* an edge, and the questions asked of the graph are answered in milliseconds
+by walking it.
+
+| Question, asked of the worst component in a real image | PostgreSQL | MySQL |
+|---|---:|---:|
+| What directly pulled this in? (48 answers) | 3 ms | 11 ms |
+| Everything above it, up to the image (78 answers) | 8 ms | 18 ms |
+
+Precomputing to save that would cost writes on every scan and bound nothing:
+how many routes exist is a property of the producer's graph, and nothing stops
+the next one being worse than this.
+
+Recursive traversal is portable across all four engines, so this needs no
+engine-specific path.
