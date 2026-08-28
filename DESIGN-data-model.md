@@ -116,6 +116,11 @@ Its version changes on every build and its name differs per variant, so it is
 excluded from identity and from expiry (MDL-07). Marking it is what lets
 everything walking upwards stop there.
 
+A scan that names no root of its own is filed against the unit it was sent for
+— the product, stream and variant it arrived against. Standing in costs
+nothing, for the same reason the root is excluded from identity in the first
+place: what it says about itself was never load-bearing.
+
 ## History is intervals, not snapshots
 
 Every node and edge records the scan that opened it and, once gone, the scan
@@ -148,8 +153,8 @@ present and are still someone's problem.
 
 | | |
 |---|---|
-| A component with no name or no version | Cannot be identified, so cannot be tracked |
-| An edge naming a component the scan never described | The file is malformed. Inventing the missing component would report a dependency nobody declared |
+| A component with no name | Cannot be identified, so cannot be tracked. A component with no *version* is kept: the format does not require one, nothing can match a vulnerability against a version nobody stated, and it ships regardless |
+| An edge naming a component the snapshot does not list | Inventing the missing component would report a dependency nobody declared. This is the store's own guard: an edge that named something a *document* never described was already dropped and counted when the document was read, so one reaching here means the snapshot was built wrong rather than that a producer emitted something odd |
 
 
 ## Not yet decided

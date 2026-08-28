@@ -200,6 +200,28 @@ identifiers differ — so an edge between them is not a producer error. It says
 nothing, so it is dropped and counted rather than stored as a component
 depending on itself.
 
+### What is tolerated rather than refused
+
+The specification requires very little — a format and a version on the
+document, a type and a name on a component — and producers following it differ
+enormously in what they fill in. **A document that is valid and sparse is not a
+broken one**, and refusing it rejects a legitimate scan while telling a build
+engineer to fix something that is not wrong.
+
+| Tolerated | What happens |
+|---|---|
+| The document names no component of its own | What the scan was filed against stands in. Nothing is lost: the root is excluded from identity and from expiry anyway, precisely because what it says about itself changes every build |
+| A component states no version | Kept and counted. What it costs is matching — nothing can say whether a vulnerability applies to a version nobody stated — and it ships either way, so it is better visible than discarded along with the rest of the document |
+| An edge names something the document never describes | Dropped and counted. The missing component is still not invented; the edge simply goes nowhere. One unresolvable edge is not a reason to reject tens of thousands of good components |
+| Fields we do not read | Ignored. A producer carrying more than we read is the ordinary case |
+
+The counts matter as much as the tolerance. Each is a number that should be
+stable build to build, so a change in one says the producer changed — which is
+the thing that would otherwise be silent.
+
+All or nothing still holds, and it is about a *failed parse* rather than about
+producer variation: a document either lands whole or does not land.
+
 ### Refusals
 
 Reading is all or nothing. A partial inventory is indistinguishable from a
@@ -209,9 +231,7 @@ somebody's problem.
 | Refused | Because |
 |---|---|
 | Not the format we read, or a major version we have not been written against | A reader that guesses eventually guesses wrong on a file that looks close enough |
-| No component of its own | There is nothing for the document to be about. Build fragments — one artifact on its way into an inventory — look like documents and are refused here |
-| A component with no name or no version | It cannot be identified, so it cannot be tracked |
-| An edge naming something the document never describes | Inventing the missing component would report a dependency nobody declared |
+| A component with no name | It cannot be identified, so it cannot be tracked |
 | Two components sharing one identifier | Every edge naming it is ambiguous |
 | A build time nothing can read | The build time is what orders scans against each other |
 | Past any of the four bounds | A broken or hostile file has to fail rather than exhaust the process |
@@ -250,6 +270,7 @@ not have and a hand-written one does not think of.
 | Containment from nesting becomes an edge | Nesting is declared structure, not an inference. Some producers state nothing else |
 | An edge whose ends turn out to be one component is dropped, not refused | It is a consequence of our own identity rule, not a fault in the file |
 | A fourth bound, on declared edges | The three that were decided do not bound it, and it is not bounded by the others |
+| A tolerated case is counted rather than merely allowed | A number that changes says the producer changed. Allowing something silently is how that goes unnoticed |
 | Only the first ancestor supplies upstream identity | It is what the component was forked from. Anything further back is history, and a scanner matches against the fork point |
 | Default bounds sit several times above the largest producer | Refusing a legitimate scan is its own failure. The ceiling only has to be low enough to protect the process |
 

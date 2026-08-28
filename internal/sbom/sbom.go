@@ -92,8 +92,12 @@ type Header struct {
 	// BuiltAt is when the producer says the document was made. This is what
 	// orders scans against each other.
 	BuiltAt time.Time
-	// Root is the component the document is about — the product itself.
+	// Root is the component the document is about — the product itself. A
+	// document naming none is ordinary: the format does not require one, and
+	// what the scan was filed against says what it is about anyway.
 	Root graph.Described
+	// RootDeclared says whether the document named that component itself.
+	RootDeclared bool
 }
 
 // Document is one build's inventory.
@@ -115,6 +119,13 @@ type Document struct {
 	// themselves: a patch recording which vulnerability it fixes. They arrive
 	// attached to what they are about, so they need no matching.
 	Suppressions []Suppression
+	// Unversioned counts components that state no version. They ship and are
+	// tracked; nothing can match a vulnerability against a version nobody
+	// stated, which is what makes the count worth having.
+	Unversioned int
+	// DanglingEdges counts edges dropped for naming something the document
+	// never describes.
+	DanglingEdges int
 	// SelfReferences counts edges dropped for having the same component at
 	// both ends. Producers do not emit those deliberately; they appear when
 	// two of a document's own identifiers turn out to describe the same
@@ -123,10 +134,21 @@ type Document struct {
 	SelfReferences int
 }
 
-// Snapshot returns the graph the document describes.
-func (d *Document) Snapshot() graph.Snapshot {
+// Snapshot returns the graph the document describes, filing it against the
+// tracked unit it arrived for.
+//
+// That unit stands in as the root where the document named no component of its
+// own, which the format permits. Nothing is lost by standing in for it: the
+// root is excluded from identity and from expiry precisely because its version
+// changes on every build and its name differs per variant, so what it says
+// about itself was never load-bearing.
+func (d *Document) Snapshot(target graph.Described) graph.Snapshot {
+	root := d.Root
+	if !d.RootDeclared {
+		root = target
+	}
 	return graph.Snapshot{
-		Root:         d.Root,
+		Root:         root,
 		Components:   d.Components,
 		Dependencies: d.Dependencies,
 	}

@@ -259,12 +259,32 @@ func TestADependencyOnAnUnlistedComponentIsRefused(t *testing.T) {
 	})
 }
 
-func TestAComponentWithoutAVersionIsRefused(t *testing.T) {
+func TestAComponentWithoutAVersionIsStillTracked(t *testing.T) {
+	// The format requires a type and a name, nothing else, so a component with
+	// no version is ordinary output. Refusing it would discard every other
+	// component in the same document. Nothing can match a vulnerability
+	// against a version nobody stated, but it ships, and something that ships
+	// and cannot be checked is worth being able to see.
+	each(t, func(t *testing.T, f *fixture) {
+		snap := tree()
+		snap.Components = append(snap.Components, graph.Described{Name: "mystery"})
+		applied, err := f.store.Apply(t.Context(), f.variantID, f.scan(t), snap)
+		if err != nil {
+			t.Fatalf("a component with no version was refused: %v", err)
+		}
+		if applied.NodesOpened != 4 {
+			t.Errorf("opened %d nodes, want 4", applied.NodesOpened)
+		}
+	})
+}
+
+func TestAComponentWithoutANameIsRefused(t *testing.T) {
+	// Nothing can identify it, so nothing can track it.
 	each(t, func(t *testing.T, f *fixture) {
 		bad := tree()
-		bad.Components = append(bad.Components, graph.Described{Name: "mystery"})
+		bad.Components = append(bad.Components, graph.Described{Version: "1.0"})
 		if _, err := f.store.Apply(t.Context(), f.variantID, f.scan(t), bad); err == nil {
-			t.Fatal("a component with no version was accepted")
+			t.Fatal("a component with no name was accepted")
 		}
 	})
 }

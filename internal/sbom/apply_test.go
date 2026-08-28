@@ -48,6 +48,10 @@ func TestAProducerDocumentBecomesTheStoredGraph(t *testing.T) {
 			t.Fatalf("read: %v", err)
 		}
 
+		// What the scan was filed against, which stands in as the root for a
+		// document that names no component of its own.
+		target := graph.Described{Name: "sonic", Version: "master"}
+
 		scans := ingest.NewStore(db.DB)
 		store := graph.NewStore(db.DB)
 		built := time.Now().UTC().Add(-24 * time.Hour)
@@ -63,7 +67,7 @@ func TestAProducerDocumentBecomesTheStoredGraph(t *testing.T) {
 			return rec.ID
 		}
 
-		applied, err := store.Apply(ctx, variant.ID, record("first", built), doc.Snapshot())
+		applied, err := store.Apply(ctx, variant.ID, record("first", built), doc.Snapshot(target))
 		if err != nil {
 			t.Fatalf("apply: %v", err)
 		}
@@ -82,7 +86,7 @@ func TestAProducerDocumentBecomesTheStoredGraph(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		applied, err = store.Apply(ctx, variant.ID, record("second", built.Add(time.Hour)), again.Snapshot())
+		applied, err = store.Apply(ctx, variant.ID, record("second", built.Add(time.Hour)), again.Snapshot(target))
 		if err != nil {
 			t.Fatalf("re-apply: %v", err)
 		}

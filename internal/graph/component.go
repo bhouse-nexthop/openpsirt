@@ -69,12 +69,18 @@ func (d Described) Identity() string {
 }
 
 // Valid reports whether a described component can be stored.
+//
+// A name is the whole requirement. A version is not: the format only requires
+// a type and a name, so a component without one is ordinary output rather than
+// a broken file, and refusing it would throw away every other component in the
+// document alongside it.
+//
+// What a component with no version costs is matching — nothing can say whether
+// a vulnerability applies to a version nobody stated. It still ships, so it is
+// better held and visible than dropped.
 func (d Described) Valid() error {
 	if strings.TrimSpace(d.Name) == "" {
 		return fmt.Errorf("component has no name")
-	}
-	if strings.TrimSpace(d.Version) == "" {
-		return fmt.Errorf("component %q has no version", d.Name)
 	}
 	return nil
 }

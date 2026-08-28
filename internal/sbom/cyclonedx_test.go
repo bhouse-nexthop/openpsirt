@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
 )
 
@@ -147,16 +148,39 @@ func TestReadsAGoModuleDocument(t *testing.T) {
 	}
 }
 
-func TestABuildFragmentIsRefusedForNamingNoProduct(t *testing.T) {
-	// A fragment describes one artifact a build step produced, on its way to
-	// being merged into an inventory. It is real producer output and it is not
-	// an inventory: there is nothing for it to be about.
-	_, err := sbom.Read(fixture(t, "build-fragment.cdx.json"), sbom.Limits{})
-	if err == nil {
-		t.Fatal("a fragment was accepted as an inventory")
+func TestADocumentNamingNoComponentOfItsOwnIsFiledAgainstItsTarget(t *testing.T) {
+	// The format requires only a format and a version, so a document that
+	// names no component of its own is ordinary. It was filed against a
+	// declared product, stream and variant, and that is what it is about —
+	// standing in costs nothing, because what a root says about itself is
+	// excluded from identity and expiry either way.
+	doc, err := sbom.Read(fixture(t, "build-fragment.cdx.json"), sbom.Limits{})
+	if err != nil {
+		t.Fatalf("read: %v", err)
 	}
-	if !strings.Contains(err.Error(), "names no component of its own") {
-		t.Errorf("refusal does not say what is missing: %v", err)
+	if doc.RootDeclared {
+		t.Error("a document that named no component of its own says it did")
+	}
+	if len(doc.Components) != 1 {
+		t.Fatalf("read %d components, want 1", len(doc.Components))
+	}
+
+	target := graph.Described{Name: "sonic", Version: "master"}
+	snap := doc.Snapshot(target)
+	if snap.Root.Identity() != target.Identity() {
+		t.Error("the target did not stand in as the root")
+	}
+
+	// A document that does name one keeps it.
+	rooted, err := sbom.Read(fixture(t, "image.cdx.json"), sbom.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rooted.RootDeclared {
+		t.Fatal("a document that named a component of its own says it did not")
+	}
+	if rooted.Snapshot(target).Root.Name != "sonic-broadcom.bin" {
+		t.Error("the target displaced a root the document named")
 	}
 }
 
@@ -220,12 +244,17 @@ func TestTheFilesOwnIdentifiersNeverReachIdentity(t *testing.T) {
 	}
 }
 
-func TestAnEdgeNamingAnUndescribedComponentIsRefused(t *testing.T) {
+func TestAnEdgeNamingAnUndescribedComponentIsDroppedAndCounted(t *testing.T) {
 	// Inventing the missing component would report a dependency on something
-	// nobody declared.
-	why := refuses(t, strings.Replace(minimal, `"dependsOn": ["a"]`, `"dependsOn": ["a", "ghost"]`, 1))
-	if !strings.Contains(why, "ghost") || !strings.Contains(why, "never describes") {
-		t.Errorf("refusal does not name the missing component: %s", why)
+	// nobody declared. Refusing the document would throw away tens of
+	// thousands of good components over one edge, and producers differ in how
+	// completely they state a graph.
+	doc := read(t, strings.Replace(minimal, `"dependsOn": ["a"]`, `"dependsOn": ["a", "ghost"]`, 1))
+	if doc.DanglingEdges != 1 {
+		t.Errorf("%d edges went nowhere, want 1", doc.DanglingEdges)
+	}
+	if len(doc.Dependencies) != 1 {
+		t.Errorf("kept %d edges, want the one that resolved", len(doc.Dependencies))
 	}
 }
 
@@ -240,14 +269,22 @@ func TestTwoComponentsSharingAnIdentifierAreRefused(t *testing.T) {
 	}
 }
 
-func TestAComponentWithoutAVersionIsRefused(t *testing.T) {
-	why := refuses(t, strings.Replace(minimal, `"version": "2.41", `, "", 1))
-	if !strings.Contains(why, "cannot be tracked") {
-		t.Errorf("refusal does not say what it costs: %s", why)
+func TestAComponentWithoutAVersionIsKeptAndCounted(t *testing.T) {
+	// The format requires a type and a name and nothing else. What a component
+	// with no version costs is matching, not tracking — and it ships either
+	// way, so it is better visible than discarded along with the rest of the
+	// document.
+	doc := read(t, strings.Replace(minimal, `"version": "2.41", `, "", 1))
+	if len(doc.Components) != 1 || doc.Unversioned != 1 {
+		t.Errorf("read %d components, %d of them stating no version", len(doc.Components), doc.Unversioned)
 	}
-	why = refuses(t, strings.Replace(minimal, `"name": "libc", `, "", 1))
-	if !strings.Contains(why, "no name") {
-		t.Errorf("refusal does not name the fault: %s", why)
+}
+
+func TestAComponentWithoutANameIsRefused(t *testing.T) {
+	// Nothing can identify it, so nothing can track it.
+	why := refuses(t, strings.Replace(minimal, `"name": "libc", `, "", 1))
+	if !strings.Contains(why, "no name") || !strings.Contains(why, "cannot be tracked") {
+		t.Errorf("refusal does not name the fault or what it costs: %s", why)
 	}
 }
 
@@ -420,7 +457,7 @@ func TestTheSnapshotCarriesWhatTheGraphStores(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snap := doc.Snapshot()
+	snap := doc.Snapshot(graph.Described{Name: "stand-in"})
 	if snap.Root.Identity() != doc.Root.Identity() {
 		t.Error("the snapshot is about something else")
 	}

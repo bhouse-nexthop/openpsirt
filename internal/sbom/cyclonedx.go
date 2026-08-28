@@ -146,15 +146,16 @@ func (c *reader) checkFormatVersion() error {
 
 // checkFormat refuses anything this reader was not written against, including
 // a document that never said what it was.
+//
+// What it does not check is that the document named a component of its own.
+// The format does not require one, and the scan was filed against something
+// that says what it is about.
 func (c *reader) checkFormat() error {
 	if err := c.checkFormatName(); err != nil {
 		return err
 	}
 	if err := c.checkFormatVersion(); err != nil {
 		return err
-	}
-	if c.doc.Root.Name == "" {
-		return fmt.Errorf("scan file names no component of its own, so there is nothing for it to be about")
 	}
 	return nil
 }
@@ -196,6 +197,7 @@ func (c *reader) rootComponent() error {
 		return err
 	}
 	c.doc.Root = described
+	c.doc.RootDeclared = true
 	if c.headerOnly {
 		return nil
 	}
@@ -288,6 +290,9 @@ func (c *reader) component() (graph.Described, string, []graph.Described, error)
 	}
 	if err := described.Valid(); err != nil {
 		return graph.Described{}, "", nil, fmt.Errorf("%w, so it cannot be tracked", err)
+	}
+	if strings.TrimSpace(described.Version) == "" {
+		c.doc.Unversioned++
 	}
 	// A claim the pedigree carries is about the component it was read from,
 	// which is only fully known now: key order is the producer's business, so
@@ -505,13 +510,21 @@ func (c *reader) finish() (*Document, error) {
 
 	declared := make([]graph.Dependency, 0, len(c.edges)+len(c.contained))
 	for _, e := range c.edges {
+		// An edge naming something the document never describes is dropped
+		// rather than taken as a malformed file. Producers differ in how
+		// completely they state a graph, and one unresolvable edge is not a
+		// reason to reject every component in a document of tens of
+		// thousands. Inventing the missing component is still not done: the
+		// edge simply goes nowhere and is counted.
 		parent, ok := c.byRef[e.parent]
 		if !ok {
-			return nil, fmt.Errorf("a dependency names %q, which the scan file never describes", trim(e.parent))
+			c.doc.DanglingEdges++
+			continue
 		}
 		child, ok := c.byRef[e.child]
 		if !ok {
-			return nil, fmt.Errorf("a dependency names %q, which the scan file never describes", trim(e.child))
+			c.doc.DanglingEdges++
+			continue
 		}
 		declared = append(declared, graph.Dependency{Parent: parent, Child: child})
 	}
