@@ -87,12 +87,109 @@ components:
         - date
         - go
       type: object
+    UploadResult:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/UploadResult.json
+          format: uri
+          readOnly: true
+          type: string
+        built_at:
+          description: When the producer says the build was made
+          type: string
+        outcome:
+          description: Whether this upload was taken or matched one already held
+          enum:
+            - queued
+            - already_held
+          type: string
+        scan_id:
+          description: The scan this upload became, or the one it matched
+          format: int64
+          type: integer
+        serial:
+          description: The identity the inventory carries for itself
+          type: string
+      required:
+        - scan_id
+        - outcome
+      type: object
 info:
   description: Track vulnerabilities in the products you ship.
   title: openpsirt
   version: dev
 openapi: 3.1.0
 paths:
+  /v1/products/{product}/streams/{stream}/variants/{variant}/scans:
+    post:
+      description: Takes a build's inventory and the suppressions it carries, against a product, stream and variant that have already been declared. The documents are read after the response, so a successful reply means they were accepted rather than that they parsed.
+      operationId: upload-scan
+      parameters:
+        - description: The declared product this build is of
+          in: path
+          name: product
+          required: true
+          schema:
+            description: The declared product this build is of
+            type: string
+        - description: The declared branch or tag
+          in: path
+          name: stream
+          required: true
+          schema:
+            description: The declared branch or tag
+            type: string
+        - description: The declared way that stream is built
+          in: path
+          name: variant
+          required: true
+          schema:
+            description: The declared way that stream is built
+            type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            encoding:
+              inventory:
+                contentType: application/json,application/octet-stream
+              suppressions:
+                contentType: application/json,application/octet-stream
+            schema:
+              properties:
+                inventory:
+                  contentEncoding: binary
+                  contentMediaType: application/octet-stream
+                  format: binary
+                  type: string
+                suppressions:
+                  items:
+                    contentEncoding: binary
+                    contentMediaType: application/octet-stream
+                    format: binary
+                    type: string
+                  type: array
+              required:
+                - inventory
+              type: object
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadResult"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Send what a build shipped
+      tags:
+        - Ingest
   /v1/version:
     get:
       description: Identifies the build that is answering, so an operator can tell which version they are looking at.

@@ -16,6 +16,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/config"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/httpapi"
+	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 	"github.com/bhouse-nexthop/openpsirt/internal/schema"
 	"github.com/bhouse-nexthop/openpsirt/internal/version"
 )
@@ -55,7 +56,7 @@ func run(args []string, stdout, stderr *os.File) error {
 	// Generating the document from the running registrations is what keeps it
 	// from drifting away from the server. It needs no database.
 	if *dumpSpec {
-		_, api := httpapi.New(logger, nil)
+		_, api := httpapi.New(logger, nil, httpapi.Ingest{})
 		doc, err := api.OpenAPI().YAML()
 		if err != nil {
 			return fmt.Errorf("render OpenAPI document: %w", err)
@@ -87,7 +88,10 @@ func run(args []string, stdout, stderr *os.File) error {
 
 	// Readiness asks whether we can serve, which means the database answers
 	// and answers promptly — not merely that the process is up.
-	handler, _ := httpapi.New(logger, db.Validate)
+	handler, _ := httpapi.New(logger, db.Validate, httpapi.Ingest{
+		DB:    db,
+		Queue: queue.New(db, queue.DefaultOptions()),
+	})
 	return serve(cfg, logger, handler)
 }
 

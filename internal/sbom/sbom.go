@@ -55,9 +55,9 @@ func DefaultLimits() Limits {
 	}
 }
 
-// orDefault fills in anything left unset, so a caller that wants one bound
+// OrDefault fills in anything left unset, so a caller that wants one bound
 // changed does not have to restate the rest.
-func (l Limits) orDefault() Limits {
+func (l Limits) OrDefault() Limits {
 	d := DefaultLimits()
 	if l.MaxBytes <= 0 {
 		l.MaxBytes = d.MaxBytes

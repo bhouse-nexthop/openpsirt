@@ -12,7 +12,7 @@ import (
 
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
-	h, _ := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	h, _ := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, Ingest{})
 	return h
 }
 
@@ -52,7 +52,7 @@ func TestOpenAPIDocumentDescribesTheRegisteredRoutes(t *testing.T) {
 	// This is the check that keeps the published specification honest: it is
 	// generated from the same registrations the server routes on, so a route
 	// that exists but is undocumented cannot happen.
-	_, api := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	_, api := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, Ingest{})
 	doc := api.OpenAPI()
 	if doc.Paths["/v1/version"] == nil {
 		t.Fatal("/v1/version missing from the generated document")
@@ -81,7 +81,7 @@ func TestReadinessFailsWhenTheServiceCannotWork(t *testing.T) {
 	// A process that is up but cannot reach its database should not be sent
 	// traffic. Answering "ok" regardless would make the probe decorative.
 	h, _ := New(slog.New(slog.NewTextHandler(io.Discard, nil)),
-		func(context.Context) error { return errUnavailable })
+		func(context.Context) error { return errUnavailable }, Ingest{})
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))

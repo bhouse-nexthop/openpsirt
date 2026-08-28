@@ -133,6 +133,51 @@ unspecified. Numeric scores come from the feeds instead (ING-10, RNK-04) — the
 is nothing in the report to normalise.
 
 
+## What happens at the door
+
+A build sends everything in one request: the inventory, and however many
+suppression documents it has, as named parts. One request means one
+authorisation and one transaction — a build whose inventory landed and whose
+suppressions did not would have every carried patch reported as an outstanding
+vulnerability, which is worse than the upload having failed outright.
+
+The order of work is chosen so that nothing expensive happens before anything
+that might refuse it.
+
+| Order | Step | Why here |
+|---|---|---|
+| 1 | Is the backlog already too deep? | The cheapest refusal there is. Deciding afterwards means storing tens of megabytes and discarding them, on a deployment that is by definition already behind |
+| 2 | Is the target declared? | One query, and the answer names which of product, stream or variant is missing so whoever sees the failed upload knows what to declare |
+| 3 | What does the inventory say about itself, and what is its hash? | One pass over the file answers both. The hash is over the bytes that arrived, not a value the sender supplied |
+| 4 | The arrival decision | Future, already held, not newer — in that order, for the reasons above |
+| 5 | Store the documents and leave the work behind | One transaction. A scan row without documents is unreadable, documents without a job are work nobody picks up, and a job without either is a worker failing on something that was never there |
+
+The reply says what happened in a producer's terms: taken and queued, or
+matched against something already held. **Already held is a success**, because
+the ordinary case is a retry after a timeout that had in fact succeeded.
+
+| Refused with | When |
+|---|---|
+| Not found | The product, stream or variant has not been declared. The message names which |
+| Bad request | The build time is ahead of our clock — the producer's own clock is wrong, which is a fault in what was sent |
+| Conflict | Something newer, or something with the same build time, is already held |
+| Unprocessable | The inventory could not be read at all |
+| Service unavailable | Too much is already waiting to be read. The caller is told to come back |
+
+### The label on a part is not trusted
+
+What a part *is* gets decided by reading it. A build pushing a file with an
+ordinary command-line client labels it as opaque bytes, which is not wrong and
+is not worth refusing an otherwise good scan over.
+
+### A large part is not held in memory
+
+Parts above a few kilobytes are spilled to a temporary file on the receiving
+node for the length of the request, then read into the database from there. The
+deployment therefore needs a writable temporary path even though its root
+filesystem is read-only, which the packaging provides.
+
+
 ## Where a document lives between arriving and being read
 
 Reading is asynchronous, so a document has to be somewhere from the moment it

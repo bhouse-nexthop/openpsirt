@@ -25,7 +25,7 @@ import (
 // readiness probe only reflects the process being up.
 type Ready func(context.Context) error
 
-func New(logger *slog.Logger, ready Ready) (http.Handler, huma.API) {
+func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	router := chi.NewMux()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Recoverer)
@@ -60,6 +60,7 @@ func New(logger *slog.Logger, ready Ready) (http.Handler, huma.API) {
 
 	api := humachi.New(router, cfg)
 	registerVersion(api)
+	registerScans(api, in)
 
 	return router, api
 }

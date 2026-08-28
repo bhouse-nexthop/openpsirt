@@ -18,7 +18,7 @@ const suppressionNamespace = "openvex.dev/ns"
 // that can be seen and accounted for rather than one that simply never
 // appeared.
 func ReadSuppressions(r io.Reader, lim Limits) ([]Suppression, error) {
-	lim = lim.orDefault()
+	lim = lim.OrDefault()
 	v := &suppressions{b: newBounded(&capped{r: r, left: lim.MaxBytes}, lim.MaxDepth), lim: lim}
 	if err := v.read(); err != nil {
 		return nil, fmt.Errorf("reading suppressions: %w", err)

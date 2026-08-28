@@ -103,7 +103,17 @@ func New(db *database.DB, opts Options) *Queue {
 
 // Add puts work on the queue, refusing it when the backlog is already too deep.
 func (q *Queue) Add(ctx context.Context, kind, reference string) (*Job, error) {
-	depth, err := q.Depth(ctx)
+	return q.AddTx(ctx, q.db, kind, reference)
+}
+
+// AddTx is Add within a caller's transaction.
+//
+// Work that describes something else the same transaction wrote has to commit
+// with it. A job committed on its own can be claimed before the rows it refers
+// to exist; rows committed without their job are work nobody will ever pick
+// up, and neither failure announces itself.
+func (q *Queue) AddTx(ctx context.Context, db bun.IDB, kind, reference string) (*Job, error) {
+	depth, err := q.depthIn(ctx, db)
 	if err != nil {
 		return nil, err
 	}
@@ -117,20 +127,25 @@ func (q *Queue) Add(ctx context.Context, kind, reference string) (*Job, error) {
 		MaxAttempts: q.opts.MaxAttempts, RunAfter: now,
 		CreatedAt: now, UpdatedAt: now,
 	}
-	if _, err := q.db.NewInsert().Model(job).Exec(ctx); err != nil {
+	if _, err := db.NewInsert().Model(job).Exec(ctx); err != nil {
 		return nil, fmt.Errorf("add job: %w", err)
 	}
 	return job, nil
 }
 
 // Depth counts work waiting to be done.
-func (q *Queue) Depth(ctx context.Context) (int, error) {
-	n, err := q.db.NewSelect().Model((*Job)(nil)).Where("state = ?", Pending).Count(ctx)
+func (q *Queue) Depth(ctx context.Context) (int, error) { return q.depthIn(ctx, q.db) }
+
+func (q *Queue) depthIn(ctx context.Context, db bun.IDB) (int, error) {
+	n, err := db.NewSelect().Model((*Job)(nil)).Where("state = ?", Pending).Count(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("measure backlog: %w", err)
 	}
 	return n, nil
 }
+
+// MaxBacklog is how much work may be waiting before more is refused.
+func (q *Queue) MaxBacklog() int { return q.opts.MaxBacklog }
 
 // Claim takes the oldest runnable job for this worker, or returns nil when
 // there is nothing to do.
