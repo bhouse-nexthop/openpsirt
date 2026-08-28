@@ -290,6 +290,9 @@ components:
         customer_facing:
           description: Whether this reaches customers. Defaults to yes
           type: boolean
+        introduce:
+          description: Set when this variant is new to the product rather than one it already builds
+          type: boolean
         name:
           description: How scans name this build of the stream
           maxLength: 191
