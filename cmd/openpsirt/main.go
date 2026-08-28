@@ -45,7 +45,7 @@ func run(args []string, stdout, stderr *os.File) error {
 
 	if *showVersion {
 		v := version.Get()
-		_, err := fmt.Fprintf(stdout, "openpsirt %s (%s, built %s, %s)\n", v.Version, v.Commit, v.Date, v.Go)
+		_, err := fmt.Fprintf(stdout, "OpenPSIRT %s (%s, built %s, %s)\n", v.Version, v.Commit, v.Date, v.Go)
 		return err
 	}
 

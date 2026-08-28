@@ -5,7 +5,7 @@
 
 Track vulnerabilities in the products you ship.
 
-openpsirt takes in the inventory a build produced, scans it for known
+OpenPSIRT takes in the inventory a build produced, scans it for known
 vulnerabilities, works out what changed release to release, and gives people a
 place to triage what it finds and track it through to a fix.
 

@@ -1,6 +1,6 @@
 # Reporting a security issue
 
-openpsirt is in early development and has not been released. There is no
+OpenPSIRT is in early development and has not been released. There is no
 supported version yet, and no deployment we are aware of.
 
 To report a vulnerability, use **GitHub's private vulnerability reporting** on

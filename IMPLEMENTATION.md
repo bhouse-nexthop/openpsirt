@@ -1,6 +1,6 @@
 # Implementation plan
 
-High-level staging for building openpsirt. Detail lives in the design documents
+High-level staging for building OpenPSIRT. Detail lives in the design documents
 each stage produces, not here.
 
 > **This document is temporary and will be deleted.** Once the work has landed,

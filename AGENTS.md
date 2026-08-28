@@ -1,6 +1,6 @@
-# Agent instructions for openpsirt
+# Agent instructions for OpenPSIRT
 
-openpsirt ingests SBOMs that already carry vulnerability data, tracks what
+OpenPSIRT ingests SBOMs that already carry vulnerability data, tracks what
 changes release to release, and gives people somewhere to triage findings and
 follow them through to a fix.
 
@@ -113,6 +113,17 @@ Describe the behaviour, reason or limitation instead, and keep issue linkage in
 the tracker and the pull request.
 
 **Comment density matches the surrounding code.** Explain why, not what.
+
+**The name is written OpenPSIRT.** In prose and in anything a person reads —
+documentation, the API description, the version the binary prints, a chart
+description. It is a product name, and a product name that appears in three
+casings reads like three different things.
+
+Lower case is for what someone types or a machine matches: the command
+(`openpsirt migrate up`), the module path, the container image, the chart, the
+`OPENPSIRT_` environment prefix, and paths like `cmd/openpsirt/`. Those are
+identifiers rather than the name, and changing them would break what people
+already have.
 
 ## Security review checklist
 

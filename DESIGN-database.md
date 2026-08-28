@@ -1,6 +1,6 @@
 # Database
 
-How openpsirt talks to a database, and why the awkward parts are awkward.
+How OpenPSIRT talks to a database, and why the awkward parts are awkward.
 
 Satisfies DAT-01 to DAT-17, and the portability constraints in Section 6 of
 `DECISIONS.md`.

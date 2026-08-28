@@ -1,4 +1,4 @@
-# openpsirt — Decisions
+# OpenPSIRT — Decisions
 
 ## Contents
 

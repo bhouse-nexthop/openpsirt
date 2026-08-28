@@ -53,7 +53,7 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 		plainOK(w, r)
 	})
 
-	cfg := huma.DefaultConfig("openpsirt", version.Get().Version)
+	cfg := huma.DefaultConfig("OpenPSIRT", version.Get().Version)
 	cfg.Info.Description = "Track vulnerabilities in the products you ship."
 	// Documentation is published separately, so the server does not serve it.
 	cfg.DocsPath = ""

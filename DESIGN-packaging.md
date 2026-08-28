@@ -1,6 +1,6 @@
 # Packaging and deployment
 
-How openpsirt is delivered, and what a deployment looks like.
+How OpenPSIRT is delivered, and what a deployment looks like.
 
 Satisfies SCP-03, SCP-12 to SCP-14, and the probe behaviour DAT-10 requires.
 
@@ -57,7 +57,7 @@ Non-root, read-only root filesystem, every capability dropped, and the default
 seccomp profile. Nothing here needs any of them. `/tmp` is an `emptyDir`,
 because a read-only root still needs somewhere to put a scratch file.
 
-The service account has `automountServiceAccountToken: false` — openpsirt never
+The service account has `automountServiceAccountToken: false` — OpenPSIRT never
 talks to the Kubernetes API, so it has no use for a token that would otherwise
 sit in every pod.
 
