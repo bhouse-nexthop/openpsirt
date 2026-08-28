@@ -7,13 +7,15 @@ Satisfies MDL-01 to MDL-08, MDL-11, MDL-17, MDL-18, ING-09, ING-11, STA-08.
 ## The tracked unit
 
 A scan is filed against **(product, stream, variant)**. All three are declared
-before anything may target them.
+before anything may target them; the pair of the last two is recorded on first
+use rather than declared, since it names nothing new.
 
 | | |
 |---|---|
 | **Product** | A thing that ships |
 | **Stream** | A branch or a tag of that product |
-| **Variant** | One of the ways that stream is built |
+| **Variant** | One of the ways the product is built |
+| **Target** | One release built as one variant — the pair a scan is filed against |
 
 ### Branches and tags share a table
 
@@ -26,36 +28,37 @@ A tag records the branch it was cut from, where that is known. That parent is
 what lets a branch be compared against its last release, and what a new line
 seeds its decisions from.
 
-### A variant is the product's, and each release carries its own row
+### A variant is the product's; a target is a release built as one
 
 What a product is built as — a chip, an architecture, an operating system — is
-a property of the product. It does not stop being one because each release
-records which of them it was actually built as.
+a property of the product. It is declared once, named once, and it does not
+change because a new release came out.
 
-So the vocabulary belongs to the product and the rows belong to the releases.
-A release is **seeded** with the variants its product already builds, and a
-variant introduced later appears only from the release that introduced it
-onward. Seeding runs forward and never backward, which is what keeps a new chip
-from looking like something shipped years ago.
+**A target is one release built as one variant.** That pair is what a scan is
+filed against and what everything downstream points at, so a single identifier
+runs from a scan through its graph to a finding.
 
-**Nobody restates the list per release.** Somebody made to retype it will
+| | |
+|---|---|
+| **Variant** | Declared, once per product. Its name is unique within the product |
+| **Target** | Recorded on first use. Nothing new is named — the product, the release and the variant were all declared, so a scan saying this release was built as that variant reports a fact |
+
+Nobody restates the list per release. Somebody made to retype it will
 eventually retype it differently, and `win`, `windows` and `win32` across three
 releases are three variants as far as everything downstream is concerned —
 three sets of findings, three sets of decisions, three columns in every report
-— with nothing in the data saying they were meant to be one. It is the same
-slip that would invent a stream, except it recurs every release instead of
-once.
+— with nothing in the data saying they were meant to be one. Declaring the
+variant once makes that impossible rather than merely discouraged.
 
-A name the product has never used is therefore refused, and the refusal says
-what it does build. Something genuinely new is still declared, said
-deliberately rather than typed accidentally. The first release of a product can
-say anything: a vocabulary has to start somewhere.
+A variant introduced later still does not appear in earlier releases. Those
+releases have no target for it, because nothing was ever filed against them
+with that variant. The property survives; it is a consequence of what was
+scanned rather than of where the row lives.
 
 Each variant records whether it is customer-facing. It feeds ranking — a
 critical in a test-only artifact matters less than a medium in something a
 customer runs — and defaults to customer-facing, because an unclassified
-artifact should rank as though it ships. A seeded variant carries what the
-product already meant by that name.
+artifact should rank as though it ships.
 
 ## Declared before use
 

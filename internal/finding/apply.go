@@ -31,7 +31,7 @@ type key struct {
 // Re-running against a database that moved slightly must write only what
 // changed, for the same reason the graph does: a nightly re-scan that found
 // the same things should cost nothing.
-func (s *Store) Apply(ctx context.Context, variantID, runID int64, reported []Reported) (Applied, error) {
+func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Reported) (Applied, error) {
 	var applied Applied
 
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -44,11 +44,11 @@ func (s *Store) Apply(ctx context.Context, variantID, runID int64, reported []Re
 			return err
 		}
 
-		present, err := openComponents(ctx, tx, variantID)
+		present, err := openComponents(ctx, tx, targetID)
 		if err != nil {
 			return err
 		}
-		places, err := openPlaces(ctx, tx, variantID)
+		places, err := openPlaces(ctx, tx, targetID)
 		if err != nil {
 			return err
 		}
@@ -72,7 +72,7 @@ func (s *Store) Apply(ctx context.Context, variantID, runID int64, reported []Re
 			for _, consumerID := range places.of(component.ID) {
 				at := place{componentID: component.ID, consumerID: consumerID}
 				wanted[key{vulnerabilityID, at}] = Finding{
-					VariantID: variantID, Kind: Vulnerable,
+					TargetID: targetID, Kind: Vulnerable,
 					VulnerabilityID: vulnerabilityID,
 					ComponentID:     component.ID,
 					ConsumerID:      optional(consumerID),
@@ -85,7 +85,7 @@ func (s *Store) Apply(ctx context.Context, variantID, runID int64, reported []Re
 
 		var open []Finding
 		err = tx.NewSelect().Model(&open).
-			Where("variant_id = ?", variantID).Where("closed_run_id IS NULL").Scan(ctx)
+			Where("target_id = ?", targetID).Where("closed_run_id IS NULL").Scan(ctx)
 		if err != nil {
 			return fmt.Errorf("read what is already open: %w", err)
 		}
@@ -216,11 +216,11 @@ func componentsByID(ctx context.Context, db bun.IDB, findings []Finding) (map[in
 }
 
 // openComponents reads what a variant currently contains.
-func openComponents(ctx context.Context, db bun.IDB, variantID int64) (inventory, error) {
+func openComponents(ctx context.Context, db bun.IDB, targetID int64) (inventory, error) {
 	var rows []graph.Component
 	err := db.NewSelect().Model(&rows).
 		Join("JOIN graph_node AS n ON n.component_id = c.id").
-		Where("n.variant_id = ?", variantID).
+		Where("n.target_id = ?", targetID).
 		Where("n.closed_scan_id IS NULL").
 		Scan(ctx)
 	if err != nil {
@@ -258,7 +258,7 @@ func (c consumers) of(componentID int64) []int64 {
 // A component under the product itself is recorded as being under nothing: the
 // product's name differs per variant, so keying on it would stop the same
 // place being recognized across them.
-func openPlaces(ctx context.Context, db bun.IDB, variantID int64) (consumers, error) {
+func openPlaces(ctx context.Context, db bun.IDB, targetID int64) (consumers, error) {
 	var edges []struct {
 		ChildComponentID  int64 `bun:"child_component_id"`
 		ParentComponentID int64 `bun:"parent_component_id"`
@@ -271,7 +271,7 @@ func openPlaces(ctx context.Context, db bun.IDB, variantID int64) (consumers, er
 		ColumnExpr("child.component_id AS child_component_id").
 		ColumnExpr("parent.component_id AS parent_component_id").
 		ColumnExpr("parent.is_root AS parent_is_root").
-		Where("e.variant_id = ?", variantID).
+		Where("e.target_id = ?", targetID).
 		Where("e.closed_scan_id IS NULL").
 		Scan(ctx, &edges)
 	if err != nil {

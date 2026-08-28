@@ -147,7 +147,7 @@ func upload(ctx context.Context, in Ingest, input *UploadInput) (*UploadOutput, 
 	}
 
 	arriving := ingest.Arriving{
-		VariantID:     target.ID,
+		TargetID:      target.ID,
 		ContentHash:   contentHash,
 		BuiltAt:       header.BuiltAt,
 		ParserVersion: version.Get().Version,

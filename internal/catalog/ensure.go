@@ -68,13 +68,10 @@ func (s *Store) EnsureStream(ctx context.Context, productID int64, name string, 
 	return created, true, nil
 }
 
-// EnsureVariant declares a way a stream is built, or confirms one already
+// EnsureVariant declares a way a product is built, or confirms one already
 // declared.
-//
-// Introducing says the name is genuinely new to the product rather than a
-// misspelling of one it already uses.
-func (s *Store) EnsureVariant(ctx context.Context, streamID int64, name string, customerFacing, introducing bool) (*Variant, bool, error) {
-	existing, err := s.VariantByName(ctx, streamID, name)
+func (s *Store) EnsureVariant(ctx context.Context, productID int64, name string, customerFacing bool) (*Variant, bool, error) {
+	existing, err := s.VariantByName(ctx, productID, name)
 	switch {
 	case err == nil:
 		// Whether something reaches customers feeds how its findings rank, so
@@ -90,28 +87,11 @@ func (s *Store) EnsureVariant(ctx context.Context, streamID int64, name string, 
 		return nil, false, err
 	}
 
-	stream, err := s.streamByID(ctx, streamID)
-	if err != nil {
-		return nil, false, err
-	}
-	if err := s.checkKnown(ctx, stream.ProductID, name, introducing); err != nil {
-		return nil, false, err
-	}
-
-	created, err := s.DeclareVariant(ctx, streamID, name, customerFacing)
+	created, err := s.DeclareVariant(ctx, productID, name, customerFacing)
 	if err != nil {
 		return nil, false, err
 	}
 	return created, true, nil
-}
-
-// streamByID reads a stream by its identifier.
-func (s *Store) streamByID(ctx context.Context, streamID int64) (*Stream, error) {
-	var st Stream
-	if err := s.db.NewSelect().Model(&st).Where("id = ?", streamID).Scan(ctx); err != nil {
-		return nil, fmt.Errorf("look up stream %d: %w", streamID, err)
-	}
-	return &st, nil
 }
 
 // facing names the two states in the words somebody reading an error would.
@@ -142,13 +122,27 @@ func (s *Store) Streams(ctx context.Context, productID int64) ([]Stream, error) 
 	return rows, nil
 }
 
-// Variants lists the ways a stream is built.
-func (s *Store) Variants(ctx context.Context, streamID int64) ([]Variant, error) {
+// Variants lists the ways a product is built.
+func (s *Store) Variants(ctx context.Context, productID int64) ([]Variant, error) {
 	var rows []Variant
 	err := s.db.NewSelect().Model(&rows).
-		Where("stream_id = ?", streamID).Order("name").Scan(ctx)
+		Where("product_id = ?", productID).Order("name").Scan(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list variants: %w", err)
+	}
+	return rows, nil
+}
+
+// BuiltAs lists the variants a release has actually been built as, which is a
+// subset of what the product builds: a release predating a variant has no row
+// for it, and one that stopped being built as something keeps its history.
+func (s *Store) BuiltAs(ctx context.Context, streamID int64) ([]Variant, error) {
+	var rows []Variant
+	err := s.db.NewSelect().Model(&rows).
+		Join("JOIN target AS tg ON tg.variant_id = v.id").
+		Where("tg.stream_id = ?", streamID).Order("v.name").Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list what a release is built as: %w", err)
 	}
 	return rows, nil
 }

@@ -44,11 +44,11 @@ type readerFixture struct {
 
 // accept records a scan and stores what a build sent with it, the way an
 // upload does, and leaves the work behind.
-func (f *readerFixture) accept(t *testing.T, variantID int64, builtAt time.Time, inventory string, suppressions ...string) int64 {
+func (f *readerFixture) accept(t *testing.T, targetID int64, builtAt time.Time, inventory string, suppressions ...string) int64 {
 	t.Helper()
 	ctx := t.Context()
 	scan, outcome, err := ingest.NewStore(f.db.DB).Record(ctx, ingest.Arriving{
-		VariantID: variantID, ContentHash: inventory[:16] + builtAt.String(),
+		TargetID: targetID, ContentHash: inventory[:16] + builtAt.String(),
 		BuiltAt: builtAt, ParserVersion: "test",
 	})
 	if err != nil || outcome != ingest.Accept {
@@ -88,7 +88,14 @@ func eachReader(t *testing.T, fn func(t *testing.T, f *readerFixture)) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		branchVariant, _, err := cat.EnsureVariant(ctx, branch.ID, "broadcom", true, true)
+		// One variant, declared once for the product. Both releases are built
+		// as it, which is two targets over one variant — the shape that used
+		// to need the name typed twice.
+		variant, err := cat.DeclareVariant(ctx, product.ID, "broadcom", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		branchTarget, err := cat.TargetFor(ctx, branch.ID, variant.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -96,16 +103,14 @@ func eachReader(t *testing.T, fn func(t *testing.T, f *readerFixture)) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// The tag already carries the product's variants, so this resolves the
-		// seeded row rather than making a second one.
-		tagVariant, _, err := cat.EnsureVariant(ctx, tag.ID, "broadcom", true, false)
+		tagTarget, err := cat.TargetFor(ctx, tag.ID, variant.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		q := queue.New(db, queue.DefaultOptions())
 		fn(t, &readerFixture{
-			db: db, queue: q, branch: branchVariant.ID, tag: tagVariant.ID,
+			db: db, queue: q, branch: branchTarget.ID, tag: tagTarget.ID,
 			reader: ingest.NewReader(db, q, sbom.Limits{}, quiet, "test"),
 		})
 	})

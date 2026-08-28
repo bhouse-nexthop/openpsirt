@@ -58,12 +58,12 @@ func upGraph(ctx context.Context, tx *sql.Tx) error {
 		// means the node is present now.
 		`CREATE TABLE graph_node (
 			id             ` + t.id + `,
-			variant_id     ` + t.ref + ` NOT NULL,
+			target_id      ` + t.ref + ` NOT NULL,
 			component_id   ` + t.ref + ` NOT NULL,
 			is_root        ` + t.boolean + ` NOT NULL,
 			opened_scan_id ` + t.ref + ` NOT NULL,
 			closed_scan_id ` + t.refNull + ` NULL,
-			CONSTRAINT graph_node_variant_fk   FOREIGN KEY (variant_id)   REFERENCES variant (id),
+			CONSTRAINT graph_node_target_fk    FOREIGN KEY (target_id)    REFERENCES target (id),
 			CONSTRAINT graph_node_component_fk FOREIGN KEY (component_id) REFERENCES component (id),
 			CONSTRAINT graph_node_opened_fk    FOREIGN KEY (opened_scan_id) REFERENCES scan (id),
 			CONSTRAINT graph_node_closed_fk    FOREIGN KEY (closed_scan_id) REFERENCES scan (id)
@@ -71,12 +71,12 @@ func upGraph(ctx context.Context, tx *sql.Tx) error {
 
 		`CREATE TABLE graph_edge (
 			id             ` + t.id + `,
-			variant_id     ` + t.ref + ` NOT NULL,
+			target_id      ` + t.ref + ` NOT NULL,
 			parent_id      ` + t.ref + ` NOT NULL,
 			child_id       ` + t.ref + ` NOT NULL,
 			opened_scan_id ` + t.ref + ` NOT NULL,
 			closed_scan_id ` + t.refNull + ` NULL,
-			CONSTRAINT graph_edge_variant_fk FOREIGN KEY (variant_id) REFERENCES variant (id),
+			CONSTRAINT graph_edge_target_fk FOREIGN KEY (target_id) REFERENCES target (id),
 			CONSTRAINT graph_edge_parent_fk  FOREIGN KEY (parent_id)  REFERENCES graph_node (id),
 			CONSTRAINT graph_edge_child_fk   FOREIGN KEY (child_id)   REFERENCES graph_node (id),
 			CONSTRAINT graph_edge_opened_fk  FOREIGN KEY (opened_scan_id) REFERENCES scan (id),
@@ -85,8 +85,8 @@ func upGraph(ctx context.Context, tx *sql.Tx) error {
 
 		// "What is present now" is the question asked on every ingest and by
 		// every view, so it gets an index rather than a filter over history.
-		`CREATE INDEX graph_node_current_idx ON graph_node (variant_id, closed_scan_id, component_id)`,
-		`CREATE INDEX graph_edge_current_idx ON graph_edge (variant_id, closed_scan_id, parent_id, child_id)`,
+		`CREATE INDEX graph_node_current_idx ON graph_node (target_id, closed_scan_id, component_id)`,
+		`CREATE INDEX graph_edge_current_idx ON graph_edge (target_id, closed_scan_id, parent_id, child_id)`,
 		`CREATE INDEX graph_edge_child_idx ON graph_edge (child_id, closed_scan_id)`,
 	}
 

@@ -27,9 +27,9 @@ func TestADocumentComesBackExactlyAsItArrived(t *testing.T) {
 	// It is read back to be parsed and, for a tagged release, years later to
 	// be re-scanned. A document that does not survive the round trip is a
 	// release nobody can answer questions about.
-	each(t, func(t *testing.T, s *ingest.Store, variantID int64) {
+	each(t, func(t *testing.T, s *ingest.Store, targetID int64) {
 		ctx := t.Context()
-		rec, outcome, err := s.Record(ctx, arriving(variantID, "hash-1", time.Now().UTC().Add(-time.Hour)))
+		rec, outcome, err := s.Record(ctx, arriving(targetID, "hash-1", time.Now().UTC().Add(-time.Hour)))
 		if err != nil || outcome != ingest.Accept {
 			t.Fatalf("record: %v %v", outcome, err)
 		}
@@ -62,9 +62,9 @@ func TestADocumentComesBackExactlyAsItArrived(t *testing.T) {
 func TestAnEmptyDocumentIsStillADocument(t *testing.T) {
 	// A build sending an empty part is sending something we should refuse for
 	// a reason we can name, not something that reads back as content.
-	each(t, func(t *testing.T, s *ingest.Store, variantID int64) {
+	each(t, func(t *testing.T, s *ingest.Store, targetID int64) {
 		ctx := t.Context()
-		rec, _, err := s.Record(ctx, arriving(variantID, "hash-1", time.Now().UTC().Add(-time.Hour)))
+		rec, _, err := s.Record(ctx, arriving(targetID, "hash-1", time.Now().UTC().Add(-time.Hour)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -86,9 +86,9 @@ func TestAnEmptyDocumentIsStillADocument(t *testing.T) {
 func TestASuppressionSetIsSeveralDocuments(t *testing.T) {
 	// A build's suppressions are a directory rather than a file, so more than
 	// one document of the same kind belongs to one scan.
-	each(t, func(t *testing.T, s *ingest.Store, variantID int64) {
+	each(t, func(t *testing.T, s *ingest.Store, targetID int64) {
 		ctx := t.Context()
-		rec, _, err := s.Record(ctx, arriving(variantID, "hash-1", time.Now().UTC().Add(-time.Hour)))
+		rec, _, err := s.Record(ctx, arriving(targetID, "hash-1", time.Now().UTC().Add(-time.Hour)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -124,9 +124,9 @@ func TestDiscardingLeavesNothingBehind(t *testing.T) {
 	// A nightly scan is superseded the next night, so its documents go. Rows
 	// left behind would grow storage with the calendar rather than with what
 	// is being tracked.
-	each(t, func(t *testing.T, s *ingest.Store, variantID int64) {
+	each(t, func(t *testing.T, s *ingest.Store, targetID int64) {
 		ctx := t.Context()
-		rec, _, err := s.Record(ctx, arriving(variantID, "hash-1", time.Now().UTC().Add(-time.Hour)))
+		rec, _, err := s.Record(ctx, arriving(targetID, "hash-1", time.Now().UTC().Add(-time.Hour)))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -83,8 +83,8 @@ var ErrNoScan = errors.New("no such scan")
 
 // Arriving describes a scan someone is trying to send us.
 type Arriving struct {
-	// VariantID is the already-resolved target.
-	VariantID int64
+	// TargetID is the already-resolved target.
+	TargetID int64
 	// ContentHash is the hex digest of the file exactly as received.
 	ContentHash string
 	// BuiltAt is when the producer says the scan was made. This orders scans,
@@ -102,7 +102,7 @@ type Scan struct {
 	bun.BaseModel `bun:"table:scan,alias:sc"`
 
 	ID            int64     `bun:"id,pk,autoincrement"`
-	VariantID     int64     `bun:"variant_id,notnull"`
+	TargetID      int64     `bun:"target_id,notnull"`
 	ContentHash   string    `bun:"content_hash,notnull"`
 	BuiltAt       time.Time `bun:"built_at,notnull"`
 	ReceivedAt    time.Time `bun:"received_at,notnull"`
@@ -144,7 +144,7 @@ func (s *Store) Decide(ctx context.Context, a Arriving) (Outcome, error) {
 		return BuiltInFuture, nil
 	}
 
-	seen, err := s.byContent(ctx, a.VariantID, a.ContentHash)
+	seen, err := s.byContent(ctx, a.TargetID, a.ContentHash)
 	if err != nil {
 		return Accept, err
 	}
@@ -152,7 +152,7 @@ func (s *Store) Decide(ctx context.Context, a Arriving) (Outcome, error) {
 		return AlreadyHave, nil
 	}
 
-	newest, err := s.Newest(ctx, a.VariantID)
+	newest, err := s.Newest(ctx, a.TargetID)
 	if err != nil {
 		return Accept, err
 	}
@@ -174,11 +174,11 @@ func (s *Store) Record(ctx context.Context, a Arriving) (*Scan, Outcome, error) 
 
 	switch outcome {
 	case AlreadyHave:
-		existing, err := s.byContent(ctx, a.VariantID, a.ContentHash)
+		existing, err := s.byContent(ctx, a.TargetID, a.ContentHash)
 		return existing, AlreadyHave, err
 
 	case NotNewer:
-		newest, _ := s.Newest(ctx, a.VariantID)
+		newest, _ := s.Newest(ctx, a.TargetID)
 		held := "none"
 		if newest != nil {
 			held = newest.BuiltAt.Format(time.RFC3339Nano)
@@ -194,7 +194,7 @@ func (s *Store) Record(ctx context.Context, a Arriving) (*Scan, Outcome, error) 
 	}
 
 	scan := &Scan{
-		VariantID:     a.VariantID,
+		TargetID:      a.TargetID,
 		ContentHash:   a.ContentHash,
 		BuiltAt:       asStored(a.BuiltAt),
 		ReceivedAt:    s.now().Truncate(time.Microsecond),
@@ -209,10 +209,10 @@ func (s *Store) Record(ctx context.Context, a Arriving) (*Scan, Outcome, error) 
 }
 
 // Newest returns the most recently built accepted scan for a variant, or nil.
-func (s *Store) Newest(ctx context.Context, variantID int64) (*Scan, error) {
+func (s *Store) Newest(ctx context.Context, targetID int64) (*Scan, error) {
 	scan := new(Scan)
 	err := s.db.NewSelect().Model(scan).
-		Where("variant_id = ?", variantID).
+		Where("target_id = ?", targetID).
 		Where("status = ?", Accepted).
 		Order("built_at DESC").
 		Limit(1).
@@ -226,10 +226,10 @@ func (s *Store) Newest(ctx context.Context, variantID int64) (*Scan, error) {
 	return scan, nil
 }
 
-func (s *Store) byContent(ctx context.Context, variantID int64, hash string) (*Scan, error) {
+func (s *Store) byContent(ctx context.Context, targetID int64, hash string) (*Scan, error) {
 	scan := new(Scan)
 	err := s.db.NewSelect().Model(scan).
-		Where("variant_id = ?", variantID).
+		Where("target_id = ?", targetID).
 		Where("content_hash = ?", hash).
 		Scan(ctx)
 	if err != nil {

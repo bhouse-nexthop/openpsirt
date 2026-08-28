@@ -12,10 +12,10 @@ import (
 //
 // Nodes that are still present are left completely alone: not touched, not
 // re-stamped, not rewritten. That is what makes an unchanged rebuild free.
-func reconcileNodes(ctx context.Context, tx bun.Tx, variantID, scanID int64, wanted map[int64]bool) (map[int64]int64, int, int, error) {
+func reconcileNodes(ctx context.Context, tx bun.Tx, targetID, scanID int64, wanted map[int64]bool) (map[int64]int64, int, int, error) {
 	var open []Node
 	err := tx.NewSelect().Model(&open).
-		Where("variant_id = ?", variantID).
+		Where("target_id = ?", targetID).
 		Where("closed_scan_id IS NULL").
 		Scan(ctx)
 	if err != nil {
@@ -38,7 +38,7 @@ func reconcileNodes(ctx context.Context, tx bun.Tx, variantID, scanID int64, wan
 			continue
 		}
 		missing = append(missing, Node{
-			VariantID: variantID, ComponentID: componentID,
+			TargetID: targetID, ComponentID: componentID,
 			IsRoot: isRoot, OpenedScanID: scanID,
 		})
 	}
@@ -64,10 +64,10 @@ func reconcileNodes(ctx context.Context, tx bun.Tx, variantID, scanID int64, wan
 }
 
 // reconcileEdges does the same for dependencies.
-func reconcileEdges(ctx context.Context, tx bun.Tx, variantID, scanID int64, wanted map[[2]int64]bool) (int, int, error) {
+func reconcileEdges(ctx context.Context, tx bun.Tx, targetID, scanID int64, wanted map[[2]int64]bool) (int, int, error) {
 	var open []Edge
 	err := tx.NewSelect().Model(&open).
-		Where("variant_id = ?", variantID).
+		Where("target_id = ?", targetID).
 		Where("closed_scan_id IS NULL").
 		Scan(ctx)
 	if err != nil {
@@ -91,7 +91,7 @@ func reconcileEdges(ctx context.Context, tx bun.Tx, variantID, scanID int64, wan
 			continue
 		}
 		missing = append(missing, Edge{
-			VariantID: variantID, ParentID: key[0], ChildID: key[1], OpenedScanID: scanID,
+			TargetID: targetID, ParentID: key[0], ChildID: key[1], OpenedScanID: scanID,
 		})
 	}
 	if len(missing) > 0 {

@@ -39,11 +39,6 @@ type VariantBody struct {
 	// saying no. An unclassified artifact should rank as though it ships,
 	// which means the default is yes and silence must not read as a denial.
 	CustomerFacing *bool `json:"customer_facing,omitempty" doc:"Whether this reaches customers. Defaults to yes"`
-	// Introduce says this name is new to the product rather than a
-	// misspelling of one it already builds. A release is seeded with the
-	// variants the product already has, so declaring one is only needed when
-	// something genuinely new starts shipping.
-	Introduce bool `json:"introduce,omitempty" doc:"Set when this variant is new to the product rather than one it already builds"`
 }
 
 // declaredOutput reports what a declaration did.
@@ -128,31 +123,31 @@ func registerCatalog(api huma.API, d Declaring) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "declare-variant", Method: http.MethodPost,
-		Path:    "/v1/products/{product}/streams/{stream}/variants",
-		Summary: "Declare a way a stream is built",
-		Description: "Records one of the parallel builds of a stream — a chip variant, an " +
-			"architecture, a platform. A variant belongs to its stream, so one introduced in a " +
-			"later release does not appear to have existed in earlier ones.",
+		Path:    "/v1/products/{product}/variants",
+		Summary: "Declare a way the product is built",
+		Description: "Records one of the parallel builds of a product — a chip variant, an " +
+			"architecture, an operating system. Declared once for the product, not once per " +
+			"release: a release is filed against it the first time a scan arrives, so nobody " +
+			"restates the list and no release ends up with the name spelled differently.",
 		Tags: []string{"Catalog"}, DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, in *struct {
 		Product string `path:"product"`
-		Stream  string `path:"stream"`
 		Body    VariantBody
 	}) (*declaredOutput[VariantBody], error) {
 		store, err := storeFor(d)
 		if err != nil {
 			return nil, err
 		}
-		stream, err := findStream(ctx, store, in.Product, in.Stream)
+		product, err := store.ProductByName(ctx, in.Product)
 		if err != nil {
-			return nil, err
+			return nil, huma.Error404NotFound(err.Error())
 		}
 
 		facing := true
 		if in.Body.CustomerFacing != nil {
 			facing = *in.Body.CustomerFacing
 		}
-		variant, created, err := store.EnsureVariant(ctx, stream.ID, in.Body.Name, facing, in.Body.Introduce)
+		variant, created, err := store.EnsureVariant(ctx, product.ID, in.Body.Name, facing)
 		if err != nil {
 			return nil, declineDeclaration(err)
 		}
@@ -211,8 +206,34 @@ func registerCatalog(api huma.API, d Declaring) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "list-variants", Method: http.MethodGet,
+		Path:    "/v1/products/{product}/variants",
+		Summary: "List the ways a product is built", Tags: []string{"Catalog"},
+	}, func(ctx context.Context, in *struct {
+		Product string `path:"product"`
+	}) (*listOutput[VariantBody], error) {
+		store, err := storeFor(d)
+		if err != nil {
+			return nil, err
+		}
+		product, err := store.ProductByName(ctx, in.Product)
+		if err != nil {
+			return nil, huma.Error404NotFound(err.Error())
+		}
+		rows, err := store.Variants(ctx, product.ID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("cannot list variants", err)
+		}
+		return variantList(rows), nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "list-release-variants", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/streams/{stream}/variants",
-		Summary: "List the ways a stream is built", Tags: []string{"Catalog"},
+		Summary: "List what a release has been built as",
+		Description: "A subset of what the product builds. A release predating a variant has " +
+			"never been filed against it, which is what keeps something introduced later from " +
+			"appearing to have shipped years ago.",
+		Tags: []string{"Catalog"},
 	}, func(ctx context.Context, in *struct {
 		Product string `path:"product"`
 		Stream  string `path:"stream"`
@@ -225,18 +246,23 @@ func registerCatalog(api huma.API, d Declaring) {
 		if err != nil {
 			return nil, err
 		}
-		rows, err := store.Variants(ctx, stream.ID)
+		rows, err := store.BuiltAs(ctx, stream.ID)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("cannot list variants", err)
+			return nil, huma.Error500InternalServerError("cannot list what a release is built as", err)
 		}
-		out := &listOutput[VariantBody]{}
-		out.Body.Items = make([]VariantBody, 0, len(rows))
-		for _, row := range rows {
-			facing := row.CustomerFacing
-			out.Body.Items = append(out.Body.Items, VariantBody{Name: row.Name, CustomerFacing: &facing})
-		}
-		return out, nil
+		return variantList(rows), nil
 	})
+}
+
+// variantList renders variants for a response.
+func variantList(rows []catalog.Variant) *listOutput[VariantBody] {
+	out := &listOutput[VariantBody]{}
+	out.Body.Items = make([]VariantBody, 0, len(rows))
+	for _, row := range rows {
+		facing := row.CustomerFacing
+		out.Body.Items = append(out.Body.Items, VariantBody{Name: row.Name, CustomerFacing: &facing})
+	}
+	return out
 }
 
 // findStream resolves a product and stream, saying which of the two is missing.

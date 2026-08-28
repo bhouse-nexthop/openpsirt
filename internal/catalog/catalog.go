@@ -74,9 +74,9 @@ type Stream struct {
 type Variant struct {
 	bun.BaseModel `bun:"table:variant,alias:v"`
 
-	ID       int64  `bun:"id,pk,autoincrement"`
-	StreamID int64  `bun:"stream_id,notnull"`
-	Name     string `bun:"name,notnull"`
+	ID        int64  `bun:"id,pk,autoincrement"`
+	ProductID int64  `bun:"product_id,notnull"`
+	Name      string `bun:"name,notnull"`
 	// CustomerFacing says whether this ships to customers or exists only
 	// internally. It feeds ranking: a critical in a test-only artifact matters
 	// less than a medium in something a customer runs.
@@ -160,12 +160,6 @@ func (s *Store) DeclareStream(ctx context.Context, productID int64, name string,
 	if _, err := s.db.NewInsert().Model(st).Exec(ctx); err != nil {
 		return nil, fmt.Errorf("declare stream %q: %w", name, err)
 	}
-	// A new release is built as the same things the product is already built
-	// as. Making somebody restate that list is how one release ends up with a
-	// variant spelled differently from the last.
-	if err := s.seedVariants(ctx, productID, st.ID); err != nil {
-		return nil, err
-	}
 	return st, nil
 }
 
@@ -183,29 +177,36 @@ func (s *Store) StreamByName(ctx context.Context, productID int64, name string) 
 	return st, nil
 }
 
-// DeclareVariant records a way a stream is built.
-func (s *Store) DeclareVariant(ctx context.Context, streamID int64, name string, customerFacing bool) (*Variant, error) {
+// DeclareVariant records a way a product is built.
+//
+// Once per product, not once per release. A variant is a chip, an
+// architecture, an operating system — a property of the product that does not
+// change because a new release came out. Restating it per release is how one
+// release ends up with a name spelled differently from the last, and three
+// spellings are three sets of findings with nothing saying they belong
+// together.
+func (s *Store) DeclareVariant(ctx context.Context, productID int64, name string, customerFacing bool) (*Variant, error) {
 	if err := validName("variant", name); err != nil {
 		return nil, err
 	}
-	if _, err := s.VariantByName(ctx, streamID, name); err == nil {
+	if _, err := s.VariantByName(ctx, productID, name); err == nil {
 		return nil, fmt.Errorf("variant %q: %w", name, ErrExists)
 	} else if !errors.Is(err, ErrNotFound) {
 		return nil, err
 	}
 
-	v := &Variant{StreamID: streamID, Name: name, CustomerFacing: customerFacing, CreatedAt: now()}
+	v := &Variant{ProductID: productID, Name: name, CustomerFacing: customerFacing, CreatedAt: now()}
 	if _, err := s.db.NewInsert().Model(v).Exec(ctx); err != nil {
 		return nil, fmt.Errorf("declare variant %q: %w", name, err)
 	}
 	return v, nil
 }
 
-// VariantByName finds a variant within a stream.
-func (s *Store) VariantByName(ctx context.Context, streamID int64, name string) (*Variant, error) {
+// VariantByName finds one of a product's variants.
+func (s *Store) VariantByName(ctx context.Context, productID int64, name string) (*Variant, error) {
 	v := new(Variant)
 	err := s.db.NewSelect().Model(v).
-		Where("stream_id = ?", streamID).Where("name = ?", name).Scan(ctx)
+		Where("product_id = ?", productID).Where("name = ?", name).Scan(ctx)
 	if err != nil {
 		if isNoRows(err) {
 			return nil, fmt.Errorf("variant %q: %w", name, ErrNotFound)
@@ -215,12 +216,18 @@ func (s *Store) VariantByName(ctx context.Context, streamID int64, name string) 
 	return v, nil
 }
 
-// Resolve turns the names a scan supplies into the variant it targets.
+// Resolve turns the names a scan supplies into the target it is filed against.
 //
 // Every part must already be declared. The error names exactly which part is
 // missing, because whoever sees the failed upload needs to know what to add
 // rather than that something, somewhere, was wrong.
-func (s *Store) Resolve(ctx context.Context, product, stream, variant string) (*Variant, error) {
+//
+// The pair itself is not declared. Once the product, the release and the
+// variant all exist, a scan saying this release was built as that variant is
+// reporting a fact rather than naming something new, so the row is recorded on
+// first use. It is also why a variant introduced later stays out of earlier
+// releases: nothing ever filed a scan for it there.
+func (s *Store) Resolve(ctx context.Context, product, stream, variant string) (*Target, error) {
 	p, err := s.ProductByName(ctx, product)
 	if err != nil {
 		return nil, err
@@ -229,11 +236,31 @@ func (s *Store) Resolve(ctx context.Context, product, stream, variant string) (*
 	if err != nil {
 		return nil, fmt.Errorf("product %q: %w", product, err)
 	}
-	v, err := s.VariantByName(ctx, st.ID, variant)
+	v, err := s.VariantByName(ctx, p.ID, variant)
 	if err != nil {
-		return nil, fmt.Errorf("product %q stream %q: %w", product, stream, err)
+		return nil, fmt.Errorf("product %q: %w", product, err)
 	}
-	return v, nil
+	return s.TargetFor(ctx, st.ID, v.ID)
+}
+
+// TargetFor returns the row for a release built as a variant, recording it the
+// first time.
+func (s *Store) TargetFor(ctx context.Context, streamID, variantID int64) (*Target, error) {
+	target := new(Target)
+	err := s.db.NewSelect().Model(target).
+		Where("stream_id = ?", streamID).Where("variant_id = ?", variantID).Scan(ctx)
+	if err == nil {
+		return target, nil
+	}
+	if !isNoRows(err) {
+		return nil, fmt.Errorf("look up what a scan is filed against: %w", err)
+	}
+
+	target = &Target{StreamID: streamID, VariantID: variantID, CreatedAt: now()}
+	if _, err := s.db.NewInsert().Model(target).Exec(ctx); err != nil {
+		return nil, fmt.Errorf("record that this release is built as this variant: %w", err)
+	}
+	return target, nil
 }
 
 func now() time.Time { return time.Now().UTC().Truncate(time.Microsecond) }
@@ -242,10 +269,22 @@ func isNoRows(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "no rows")
 }
 
-// Target is a variant with everything above it, which is what filing a scan
-// needs: what it is of, whether that line moves, and what to call the thing
-// the scan is about when the scan does not name it.
+// Target is one release built as one variant. It is what a scan is filed
+// against, and what everything downstream points at, so a single identifier
+// runs from a scan through to a finding.
 type Target struct {
+	bun.BaseModel `bun:"table:target,alias:tg"`
+
+	ID        int64     `bun:"id,pk,autoincrement"`
+	StreamID  int64     `bun:"stream_id,notnull"`
+	VariantID int64     `bun:"variant_id,notnull"`
+	CreatedAt time.Time `bun:"created_at,notnull"`
+}
+
+// Placement is a target with everything above it named: what it is of, whether
+// that line moves, and what to call the thing a scan is about when the scan
+// does not name it.
+type Placement struct {
 	Product string
 	Stream  string
 	Kind    Kind
@@ -256,21 +295,25 @@ type Target struct {
 	Moves bool
 }
 
-// Describe reads back what a variant belongs to.
-func (s *Store) Describe(ctx context.Context, variantID int64) (*Target, error) {
+// Describe reads back what a target is.
+func (s *Store) Describe(ctx context.Context, targetID int64) (*Placement, error) {
+	var t Target
+	if err := s.db.NewSelect().Model(&t).Where("id = ?", targetID).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("look up target %d: %w", targetID, err)
+	}
 	var v Variant
-	if err := s.db.NewSelect().Model(&v).Where("id = ?", variantID).Scan(ctx); err != nil {
-		return nil, fmt.Errorf("look up variant %d: %w", variantID, err)
+	if err := s.db.NewSelect().Model(&v).Where("id = ?", t.VariantID).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("look up the variant target %d is built as: %w", targetID, err)
 	}
 	var st Stream
-	if err := s.db.NewSelect().Model(&st).Where("id = ?", v.StreamID).Scan(ctx); err != nil {
-		return nil, fmt.Errorf("look up the stream variant %d belongs to: %w", variantID, err)
+	if err := s.db.NewSelect().Model(&st).Where("id = ?", t.StreamID).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("look up the release target %d belongs to: %w", targetID, err)
 	}
 	var p Product
 	if err := s.db.NewSelect().Model(&p).Where("id = ?", st.ProductID).Scan(ctx); err != nil {
-		return nil, fmt.Errorf("look up the product stream %d belongs to: %w", st.ID, err)
+		return nil, fmt.Errorf("look up the product release %d belongs to: %w", st.ID, err)
 	}
-	return &Target{
+	return &Placement{
 		Product: p.Name, Stream: st.Name, Kind: st.Kind, Variant: v.Name,
 		Moves: st.Kind == Branch,
 	}, nil

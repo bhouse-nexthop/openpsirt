@@ -4,7 +4,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"strings"
 	"testing"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
@@ -48,16 +47,39 @@ func TestDeclareAndResolve(t *testing.T) {
 		if tag.ParentID == nil || *tag.ParentID != br.ID {
 			t.Errorf("tag lost its parent branch: %+v", tag.ParentID)
 		}
-		if _, err := s.DeclareVariant(ctx, br.ID, "broadcom", true); err != nil {
+		v, err := s.DeclareVariant(ctx, p.ID, "broadcom", true)
+		if err != nil {
 			t.Fatalf("declare variant: %v", err)
 		}
 
+		// Resolving records that this release is built as this variant. The
+		// pair is not declared: the product, the release and the variant all
+		// were, so a scan saying they go together reports a fact rather than
+		// naming something new.
 		got, err := s.Resolve(ctx, "sonic", "release-2.4", "broadcom")
 		if err != nil {
 			t.Fatalf("resolve: %v", err)
 		}
-		if got.StreamID != br.ID || !got.CustomerFacing {
+		if got.StreamID != br.ID || got.VariantID != v.ID {
 			t.Errorf("resolved to %+v", got)
+		}
+		// Resolving again is the same target, not a second one.
+		again, err := s.Resolve(ctx, "sonic", "release-2.4", "broadcom")
+		if err != nil || again.ID != got.ID {
+			t.Errorf("resolving twice gave %v and %v (%v)", got.ID, again.ID, err)
+		}
+
+		// The same variant in another release is a different target over the
+		// same variant, which is what stops the name being typed twice.
+		other, err := s.Resolve(ctx, "sonic", "v2.4.1", "broadcom")
+		if err != nil {
+			t.Fatalf("resolve the tag: %v", err)
+		}
+		if other.VariantID != v.ID {
+			t.Error("a release built as the same variant got a second variant")
+		}
+		if other.ID == got.ID {
+			t.Error("two releases share one target")
 		}
 	})
 }
@@ -68,8 +90,8 @@ func TestResolveNamesTheMissingPart(t *testing.T) {
 	each(t, func(t *testing.T, _ *database.DB, s *catalog.Store) {
 		ctx := t.Context()
 		p, _ := s.DeclareProduct(ctx, "sonic", "SONiC")
-		br, _ := s.DeclareStream(ctx, p.ID, "release-2.4", catalog.Branch, nil)
-		if _, err := s.DeclareVariant(ctx, br.ID, "broadcom", true); err != nil {
+		_, _ = s.DeclareStream(ctx, p.ID, "release-2.4", catalog.Branch, nil)
+		if _, err := s.DeclareVariant(ctx, p.ID, "broadcom", true); err != nil {
 			t.Fatal(err)
 		}
 
@@ -96,89 +118,61 @@ func TestResolveNamesTheMissingPart(t *testing.T) {
 func TestNamesAreUniqueWithinTheirParent(t *testing.T) {
 	each(t, func(t *testing.T, _ *database.DB, s *catalog.Store) {
 		ctx := t.Context()
-		p, _ := s.DeclareProduct(ctx, "sonic", "SONiC")
+		p, err := s.DeclareProduct(ctx, "sonic", "SONiC")
+		if err != nil {
+			t.Fatal(err)
+		}
 		if _, err := s.DeclareProduct(ctx, "sonic", "again"); !errors.Is(err, catalog.ErrExists) {
 			t.Errorf("duplicate product accepted: %v", err)
 		}
-		a, _ := s.DeclareStream(ctx, p.ID, "release-2.4", catalog.Branch, nil)
-		if _, err := s.DeclareStream(ctx, p.ID, "release-2.4", catalog.Tag, nil); !errors.Is(err, catalog.ErrExists) {
-			t.Errorf("duplicate stream accepted: %v", err)
-		}
-		if _, err := s.DeclareVariant(ctx, a.ID, "broadcom", true); err != nil {
+		a, err := s.DeclareStream(ctx, p.ID, "release-2.4", catalog.Branch, nil)
+		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.DeclareVariant(ctx, a.ID, "broadcom", false); !errors.Is(err, catalog.ErrExists) {
+		if _, err := s.DeclareStream(ctx, p.ID, "release-2.4", catalog.Branch, nil); !errors.Is(err, catalog.ErrExists) {
+			t.Errorf("duplicate stream accepted: %v", err)
+		}
+		if _, err := s.DeclareVariant(ctx, p.ID, "broadcom", true); err != nil {
+			t.Fatal(err)
+		}
+		// A variant is declared once for the product. Declaring it again is
+		// the same variant, not a second one — which is the whole point: a
+		// release cannot introduce a second spelling of something the product
+		// already builds.
+		if _, err := s.DeclareVariant(ctx, p.ID, "broadcom", false); !errors.Is(err, catalog.ErrExists) {
 			t.Errorf("duplicate variant accepted: %v", err)
 		}
 
-		// A new release is built as the same things the product already is,
-		// so it arrives already carrying them rather than needing them
-		// restated.
-		b, _ := s.DeclareStream(ctx, p.ID, "release-2.5", catalog.Branch, nil)
-		carried, err := s.Variants(ctx, b.ID)
+		// Every release is built as it without anyone restating the name.
+		b, err := s.DeclareStream(ctx, p.ID, "release-2.5", catalog.Branch, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(carried) != 1 || carried[0].Name != "broadcom" {
-			t.Errorf("a new release carried %+v, want the product's variants", carried)
-		}
-		// The row is its own, per release: the same name in two releases is
-		// two rows, which is what keeps a variant introduced later from
-		// appearing in earlier ones.
-		if carried[0].StreamID != b.ID {
-			t.Error("a carried variant belongs to the wrong release")
-		}
-	})
-}
-
-func TestAVariantNameTheProductDoesNotUseIsRefused(t *testing.T) {
-	// The typo that would invent a stream invents a variant once per release.
-	// "win", "windows" and "win32" across three releases are three sets of
-	// findings and three sets of decisions, and nothing in the data says they
-	// were meant to be one.
-	each(t, func(t *testing.T, _ *database.DB, s *catalog.Store) {
-		ctx := t.Context()
-		p, err := s.DeclareProduct(ctx, "windows-agent", "")
+		built, err := s.Variants(ctx, p.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		first, err := s.DeclareStream(ctx, p.ID, "2024", catalog.Branch, nil)
-		if err != nil {
+		if len(built) != 1 {
+			t.Errorf("the product builds %d variants, want 1", len(built))
+		}
+		// And a release only appears to be built as something once a scan has
+		// been filed for it, which is what keeps a variant introduced later
+		// out of earlier releases.
+		for _, stream := range []int64{a.ID, b.ID} {
+			was, err := s.BuiltAs(ctx, stream)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(was) != 0 {
+				t.Errorf("a release nothing was filed against reports %d variants", len(was))
+			}
+		}
+		if _, err := s.Resolve(ctx, "sonic", "release-2.5", "broadcom"); err != nil {
 			t.Fatal(err)
 		}
-		// A vocabulary has to start somewhere: the first release can say
-		// anything, because there is nothing to have misspelled.
-		if _, _, err := s.EnsureVariant(ctx, first.ID, "windows", true, false); err != nil {
-			t.Fatalf("the first variant of a product was refused: %v", err)
-		}
-
-		next, err := s.DeclareStream(ctx, p.ID, "2025", catalog.Branch, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, _, err = s.EnsureVariant(ctx, next.ID, "win32", true, false)
-		if !errors.Is(err, catalog.ErrUnknownVariant) {
-			t.Errorf("a variant the product does not build was accepted: %v", err)
-		}
-		if err != nil && !strings.Contains(err.Error(), "windows") {
-			t.Errorf("the refusal does not say what it does build: %v", err)
-		}
-
-		// Something genuinely new still gets in, said deliberately.
-		if _, _, err := s.EnsureVariant(ctx, next.ID, "linux", true, true); err != nil {
-			t.Errorf("a genuinely new variant was refused: %v", err)
-		}
-		// And from then on it is one of the product's own.
-		later, err := s.DeclareStream(ctx, p.ID, "2026", catalog.Branch, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		carried, err := s.Variants(ctx, later.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(carried) != 2 {
-			t.Errorf("the next release carried %d variants, want both", len(carried))
+		was, err := s.BuiltAs(ctx, b.ID)
+		if err != nil || len(was) != 1 {
+			t.Errorf("after a scan was filed the release reports %d variants (%v)", len(was), err)
 		}
 	})
 }

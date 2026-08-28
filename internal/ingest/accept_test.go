@@ -16,7 +16,7 @@ import (
 
 // each gives every engine a migrated database, an empty catalog, and one
 // declared variant to file scans against.
-func each(t *testing.T, fn func(t *testing.T, s *ingest.Store, variantID int64)) {
+func each(t *testing.T, fn func(t *testing.T, s *ingest.Store, targetID int64)) {
 	t.Helper()
 	dbtest.Each(t, func(t *testing.T, db *database.DB) {
 		ctx := t.Context()
@@ -35,17 +35,21 @@ func each(t *testing.T, fn func(t *testing.T, s *ingest.Store, variantID int64))
 		if err != nil {
 			t.Fatal(err)
 		}
-		v, err := cat.DeclareVariant(ctx, br.ID, "broadcom", true)
+		v, err := cat.DeclareVariant(ctx, p.ID, "broadcom", true)
 		if err != nil {
 			t.Fatal(err)
 		}
-		fn(t, ingest.NewStore(db.DB), v.ID)
+		target, err := cat.TargetFor(ctx, br.ID, v.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fn(t, ingest.NewStore(db.DB), target.ID)
 	})
 }
 
-func arriving(variantID int64, hash string, builtAt time.Time) ingest.Arriving {
+func arriving(targetID int64, hash string, builtAt time.Time) ingest.Arriving {
 	return ingest.Arriving{
-		VariantID: variantID, ContentHash: hash, BuiltAt: builtAt,
+		TargetID: targetID, ContentHash: hash, BuiltAt: builtAt,
 		ParserVersion: "test", Credential: "key-1",
 	}
 }

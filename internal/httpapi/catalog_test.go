@@ -107,14 +107,14 @@ func TestAVariantShipsUnlessItSaysOtherwise(t *testing.T) {
 		d.post(t, "/v1/products", `{"name": "sonic"}`)
 		d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
 
-		_, body := d.post(t, "/v1/products/sonic/streams/master/variants", `{"name": "broadcom"}`)
+		_, body := d.post(t, "/v1/products/sonic/variants", `{"name": "broadcom"}`)
 		item, _ := body["item"].(map[string]any)
 		if item["customer_facing"] != true {
 			t.Errorf("a variant declared without saying reported %v", item["customer_facing"])
 		}
 
-		_, body = d.post(t, "/v1/products/sonic/streams/master/variants",
-			`{"name": "test-only", "customer_facing": false, "introduce": true}`)
+		_, body = d.post(t, "/v1/products/sonic/variants",
+			`{"name": "test-only", "customer_facing": false}`)
 		item, _ = body["item"].(map[string]any)
 		if item["customer_facing"] != false {
 			t.Errorf("a variant declared as internal reported %v", item["customer_facing"])
@@ -160,7 +160,7 @@ func TestWhatHasBeenDeclaredCanBeListed(t *testing.T) {
 		d.post(t, "/v1/products", `{"name": "sonic"}`)
 		d.post(t, "/v1/products", `{"name": "onie"}`)
 		d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
-		d.post(t, "/v1/products/sonic/streams/master/variants", `{"name": "broadcom"}`)
+		d.post(t, "/v1/products/sonic/variants", `{"name": "broadcom"}`)
 
 		_, body := d.get(t, "/v1/products")
 		items, _ := body["items"].([]any)
@@ -172,7 +172,7 @@ func TestWhatHasBeenDeclaredCanBeListed(t *testing.T) {
 		if len(items) != 1 {
 			t.Errorf("listed %d streams, want 1", len(items))
 		}
-		_, body = d.get(t, "/v1/products/sonic/streams/master/variants")
+		_, body = d.get(t, "/v1/products/sonic/variants")
 		items, _ = body["items"].([]any)
 		if len(items) != 1 {
 			t.Errorf("listed %d variants, want 1", len(items))
@@ -186,7 +186,7 @@ func TestADeclaredTargetCanBeUploadedAgainst(t *testing.T) {
 	eachCatalog(t, func(t *testing.T, d *declaring) {
 		d.post(t, "/v1/products", `{"name": "sonic"}`)
 		d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
-		d.post(t, "/v1/products/sonic/streams/master/variants", `{"name": "broadcom"}`)
+		d.post(t, "/v1/products/sonic/variants", `{"name": "broadcom"}`)
 
 		rec := httptest.NewRecorder()
 		d.handler.ServeHTTP(rec, upload(t, "/v1/products/sonic/streams/master/variants/broadcom/scans",

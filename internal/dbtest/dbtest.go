@@ -108,6 +108,7 @@ var tables = []string{
 	"component",
 	"job",
 	"scan",
+	"target",
 	"variant",
 	"stream",
 	"product",

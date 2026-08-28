@@ -38,7 +38,11 @@ func TestAProducerDocumentBecomesTheStoredGraph(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		variant, err := cat.DeclareVariant(ctx, stream.ID, "broadcom", true)
+		variant, err := cat.DeclareVariant(ctx, product.ID, "broadcom", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		filedAgainst, err := cat.TargetFor(ctx, stream.ID, variant.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -59,7 +63,7 @@ func TestAProducerDocumentBecomesTheStoredGraph(t *testing.T) {
 		record := func(hash string, at time.Time) int64 {
 			t.Helper()
 			rec, outcome, err := scans.Record(ctx, ingest.Arriving{
-				VariantID: variant.ID, ContentHash: hash, BuiltAt: at, ParserVersion: "test",
+				TargetID: filedAgainst.ID, ContentHash: hash, BuiltAt: at, ParserVersion: "test",
 			})
 			if err != nil || outcome != ingest.Accept {
 				t.Fatalf("record: outcome %v, err %v", outcome, err)
@@ -67,7 +71,7 @@ func TestAProducerDocumentBecomesTheStoredGraph(t *testing.T) {
 			return rec.ID
 		}
 
-		applied, err := store.Apply(ctx, variant.ID, record("first", built), doc.Snapshot(target))
+		applied, err := store.Apply(ctx, filedAgainst.ID, record("first", built), doc.Snapshot(target))
 		if err != nil {
 			t.Fatalf("apply: %v", err)
 		}
@@ -86,7 +90,7 @@ func TestAProducerDocumentBecomesTheStoredGraph(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		applied, err = store.Apply(ctx, variant.ID, record("second", built.Add(time.Hour)), again.Snapshot(target))
+		applied, err = store.Apply(ctx, filedAgainst.ID, record("second", built.Add(time.Hour)), again.Snapshot(target))
 		if err != nil {
 			t.Fatalf("re-apply: %v", err)
 		}

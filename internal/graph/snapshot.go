@@ -17,7 +17,7 @@ type Node struct {
 	bun.BaseModel `bun:"table:graph_node,alias:n"`
 
 	ID           int64  `bun:"id,pk,autoincrement"`
-	VariantID    int64  `bun:"variant_id,notnull"`
+	TargetID     int64  `bun:"target_id,notnull"`
 	ComponentID  int64  `bun:"component_id,notnull"`
 	IsRoot       bool   `bun:"is_root,notnull"`
 	OpenedScanID int64  `bun:"opened_scan_id,notnull"`
@@ -29,7 +29,7 @@ type Edge struct {
 	bun.BaseModel `bun:"table:graph_edge,alias:e"`
 
 	ID           int64  `bun:"id,pk,autoincrement"`
-	VariantID    int64  `bun:"variant_id,notnull"`
+	TargetID     int64  `bun:"target_id,notnull"`
 	ParentID     int64  `bun:"parent_id,notnull"`
 	ChildID      int64  `bun:"child_id,notnull"`
 	OpenedScanID int64  `bun:"opened_scan_id,notnull"`
@@ -87,7 +87,7 @@ func NewStore(db *bun.DB) *Store {
 // Everything happens in one transaction: a half-applied graph is
 // indistinguishable from components having been removed, which would close
 // findings that are still present.
-func (s *Store) Apply(ctx context.Context, variantID, scanID int64, snap Snapshot) (Applied, error) {
+func (s *Store) Apply(ctx context.Context, targetID, scanID int64, snap Snapshot) (Applied, error) {
 	var applied Applied
 
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -111,7 +111,7 @@ func (s *Store) Apply(ctx context.Context, variantID, scanID int64, snap Snapsho
 			}
 		}
 
-		nodeIDs, opened, closed, err := reconcileNodes(ctx, tx, variantID, scanID, wanted)
+		nodeIDs, opened, closed, err := reconcileNodes(ctx, tx, targetID, scanID, wanted)
 		if err != nil {
 			return err
 		}
@@ -128,7 +128,7 @@ func (s *Store) Apply(ctx context.Context, variantID, scanID int64, snap Snapsho
 			wantedEdges[[2]int64{parent, child}] = true
 		}
 
-		applied.EdgesOpened, applied.EdgesClosed, err = reconcileEdges(ctx, tx, variantID, scanID, wantedEdges)
+		applied.EdgesOpened, applied.EdgesClosed, err = reconcileEdges(ctx, tx, targetID, scanID, wantedEdges)
 		return err
 	})
 	return applied, err
@@ -138,20 +138,20 @@ func (s *Store) Apply(ctx context.Context, variantID, scanID int64, snap Snapsho
 func (s *Store) DB() *bun.DB { return s.db }
 
 // CurrentNodes returns the components present in a variant now.
-func (s *Store) CurrentNodes(ctx context.Context, variantID int64) ([]Node, error) {
+func (s *Store) CurrentNodes(ctx context.Context, targetID int64) ([]Node, error) {
 	var nodes []Node
 	err := s.db.NewSelect().Model(&nodes).
-		Where("variant_id = ?", variantID).
+		Where("target_id = ?", targetID).
 		Where("closed_scan_id IS NULL").
 		Scan(ctx)
 	return nodes, err
 }
 
 // CurrentEdges returns the dependencies present in a variant now.
-func (s *Store) CurrentEdges(ctx context.Context, variantID int64) ([]Edge, error) {
+func (s *Store) CurrentEdges(ctx context.Context, targetID int64) ([]Edge, error) {
 	var edges []Edge
 	err := s.db.NewSelect().Model(&edges).
-		Where("variant_id = ?", variantID).
+		Where("target_id = ?", targetID).
 		Where("closed_scan_id IS NULL").
 		Scan(ctx)
 	return edges, err

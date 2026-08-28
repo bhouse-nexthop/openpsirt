@@ -64,7 +64,7 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 		// scanners without saying so is worse than no report.
 		`CREATE TABLE scan_run (
 			id               ` + t.id + `,
-			variant_id       ` + t.ref + ` NOT NULL REFERENCES variant(id),
+			target_id        ` + t.ref + ` NOT NULL REFERENCES target(id),
 			scanner          ` + t.name + ` NOT NULL,
 			scanner_version  ` + t.name + ` NULL,
 			database_version ` + t.name + ` NULL,
@@ -80,7 +80,7 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 		// graph of every variant it might apply to.
 		`CREATE TABLE finding (
 			id               ` + t.id + `,
-			variant_id       ` + t.ref + ` NOT NULL REFERENCES variant(id),
+			target_id        ` + t.ref + ` NOT NULL REFERENCES target(id),
 			kind             ` + t.kind + ` NOT NULL,
 			vulnerability_id ` + t.ref + ` NOT NULL REFERENCES vulnerability(id),
 			component_id     ` + t.ref + ` NOT NULL REFERENCES component(id),
@@ -94,7 +94,7 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 		)` + t.suffix,
 
 		// What is open now, per variant, is the query behind every screen.
-		`CREATE INDEX finding_open_idx ON finding (variant_id, closed_run_id)`,
+		`CREATE INDEX finding_open_idx ON finding (target_id, closed_run_id)`,
 		// Finding one issue everywhere it is present, which is what triaging
 		// one vulnerability across a portfolio asks for.
 		`CREATE INDEX finding_vulnerability_idx ON finding (vulnerability_id, closed_run_id)`,

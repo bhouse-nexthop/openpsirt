@@ -19,13 +19,13 @@ import (
 // fixture is one migrated database with a variant, a stored graph, and a way
 // to mint scan runs in order.
 type fixture struct {
-	db      *database.DB
-	store   *finding.Store
-	graph   *graph.Store
-	variant int64
-	scans   *ingest.Store
-	built   time.Time
-	seq     int
+	db     *database.DB
+	store  *finding.Store
+	graph  *graph.Store
+	target int64
+	scans  *ingest.Store
+	built  time.Time
+	seq    int
 }
 
 func at(name, version string) graph.Described {
@@ -49,13 +49,13 @@ func (f *fixture) shipped(t *testing.T, snap graph.Snapshot) {
 	f.seq++
 	f.built = f.built.Add(time.Hour)
 	scan, outcome, err := f.scans.Record(t.Context(), ingest.Arriving{
-		VariantID: f.variant, ContentHash: fmt.Sprintf("hash-%d", f.seq), BuiltAt: f.built,
+		TargetID: f.target, ContentHash: fmt.Sprintf("hash-%d", f.seq), BuiltAt: f.built,
 		ParserVersion: "test",
 	})
 	if err != nil || outcome != ingest.Accept {
 		t.Fatalf("record scan: %v %v", outcome, err)
 	}
-	if _, err := f.graph.Apply(t.Context(), f.variant, scan.ID, snap); err != nil {
+	if _, err := f.graph.Apply(t.Context(), f.target, scan.ID, snap); err != nil {
 		t.Fatalf("apply graph: %v", err)
 	}
 }
@@ -78,7 +78,7 @@ func twoConsumers() graph.Snapshot {
 func (f *fixture) run(t *testing.T) int64 {
 	t.Helper()
 	r, err := f.store.Begin(t.Context(), finding.Run{
-		VariantID: f.variant, Scanner: "grype", ScannerVersion: "0.100.0",
+		TargetID: f.target, Scanner: "grype", ScannerVersion: "0.100.0",
 		DatabaseVersion: "2026-08-28", RanHere: true,
 	})
 	if err != nil {
@@ -100,7 +100,7 @@ func (f *fixture) open(t *testing.T) []finding.Finding {
 	t.Helper()
 	var rows []finding.Finding
 	err := f.db.DB.NewSelect().Model(&rows).
-		Where("variant_id = ?", f.variant).Where("closed_run_id IS NULL").Scan(t.Context())
+		Where("target_id = ?", f.target).Where("closed_run_id IS NULL").Scan(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,14 +126,18 @@ func each(t *testing.T, fn func(t *testing.T, f *fixture)) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		variant, err := cat.DeclareVariant(ctx, stream.ID, "broadcom", true)
+		variant, err := cat.DeclareVariant(ctx, product.ID, "broadcom", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		target, err := cat.TargetFor(ctx, stream.ID, variant.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		fn(t, &fixture{
 			db: db, store: finding.NewStore(db.DB), graph: graph.NewStore(db.DB),
-			variant: variant.ID, scans: ingest.NewStore(db.DB),
+			target: target.ID, scans: ingest.NewStore(db.DB),
 			built: time.Now().UTC().Add(-72 * time.Hour),
 		})
 	})
@@ -145,7 +149,7 @@ func TestOneReportedIssueBecomesOneFindingPerConsumer(t *testing.T) {
 	// in, so there are two decisions to make about it.
 	each(t, func(t *testing.T, f *fixture) {
 		f.shipped(t, twoConsumers())
-		applied, err := f.store.Apply(t.Context(), f.variant, f.run(t),
+		applied, err := f.store.Apply(t.Context(), f.target, f.run(t),
 			[]finding.Reported{found("CVE-2026-1", libnl)})
 		if err != nil {
 			t.Fatal(err)
@@ -195,10 +199,10 @@ func TestRescanningWithNothingChangedWritesNothing(t *testing.T) {
 		f.shipped(t, twoConsumers())
 		reported := []finding.Reported{found("CVE-2026-1", libnl)}
 
-		if _, err := f.store.Apply(t.Context(), f.variant, f.run(t), reported); err != nil {
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t), reported); err != nil {
 			t.Fatal(err)
 		}
-		applied, err := f.store.Apply(t.Context(), f.variant, f.run(t), reported)
+		applied, err := f.store.Apply(t.Context(), f.target, f.run(t), reported)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -213,7 +217,7 @@ func TestAnUpgradeClosesWithTheReason(t *testing.T) {
 	// things to whoever reads the report later.
 	each(t, func(t *testing.T, f *fixture) {
 		f.shipped(t, twoConsumers())
-		if _, err := f.store.Apply(t.Context(), f.variant, f.run(t),
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
 			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
 			t.Fatal(err)
 		}
@@ -228,7 +232,7 @@ func TestAnUpgradeClosesWithTheReason(t *testing.T) {
 		}
 		f.shipped(t, upgraded)
 
-		applied, err := f.store.Apply(t.Context(), f.variant, f.run(t), nil)
+		applied, err := f.store.Apply(t.Context(), f.target, f.run(t), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -255,7 +259,7 @@ func TestAnUpgradeClosesWithTheReason(t *testing.T) {
 func TestAComponentGoneAltogetherClosesAsRemoved(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		f.shipped(t, twoConsumers())
-		if _, err := f.store.Apply(t.Context(), f.variant, f.run(t),
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
 			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
 			t.Fatal(err)
 		}
@@ -264,7 +268,7 @@ func TestAComponentGoneAltogetherClosesAsRemoved(t *testing.T) {
 			Root: root, Components: []graph.Described{swss, teamd},
 			Dependencies: []graph.Dependency{{Parent: root, Child: swss}, {Parent: root, Child: teamd}},
 		})
-		if _, err := f.store.Apply(t.Context(), f.variant, f.run(t), nil); err != nil {
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t), nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -290,12 +294,12 @@ func TestADisappearanceNothingExplainsIsFlagged(t *testing.T) {
 	// mattering, so it is never quietly folded into the others.
 	each(t, func(t *testing.T, f *fixture) {
 		f.shipped(t, twoConsumers())
-		if _, err := f.store.Apply(t.Context(), f.variant, f.run(t),
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
 			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
 			t.Fatal(err)
 		}
 
-		applied, err := f.store.Apply(t.Context(), f.variant, f.run(t), nil)
+		applied, err := f.store.Apply(t.Context(), f.target, f.run(t), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -314,7 +318,7 @@ func TestOneIssueUnderTwoNamesIsOneIssue(t *testing.T) {
 
 		// First run: reported under an advisory identifier that knows the
 		// national one as an alias.
-		if _, err := f.store.Apply(t.Context(), f.variant, f.run(t),
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
 			[]finding.Reported{found("GHSA-aaaa-bbbb-cccc", libnl, "CVE-2026-1")}); err != nil {
 			t.Fatal(err)
 		}
@@ -324,7 +328,7 @@ func TestOneIssueUnderTwoNamesIsOneIssue(t *testing.T) {
 		}
 
 		// Second run: the same issue, reported the other way round.
-		applied, err := f.store.Apply(t.Context(), f.variant, f.run(t),
+		applied, err := f.store.Apply(t.Context(), f.target, f.run(t),
 			[]finding.Reported{found("CVE-2026-1", libnl)})
 		if err != nil {
 			t.Fatal(err)
@@ -352,11 +356,11 @@ func TestAnAliasSuppliedLaterFindsTheIssueAlreadyHeld(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		f.shipped(t, twoConsumers())
 
-		if _, err := f.store.Apply(t.Context(), f.variant, f.run(t),
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
 			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
 			t.Fatal(err)
 		}
-		applied, err := f.store.Apply(t.Context(), f.variant, f.run(t),
+		applied, err := f.store.Apply(t.Context(), f.target, f.run(t),
 			[]finding.Reported{found("GHSA-aaaa-bbbb-cccc", libnl, "CVE-2026-1")})
 		if err != nil {
 			t.Fatalf("an issue reported under a second name: %v", err)
@@ -380,7 +384,7 @@ func TestAnIssueIsFiledUnderItsMostRecognisedName(t *testing.T) {
 	// not whichever database the scanner happened to consult first.
 	each(t, func(t *testing.T, f *fixture) {
 		f.shipped(t, twoConsumers())
-		if _, err := f.store.Apply(t.Context(), f.variant, f.run(t),
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
 			[]finding.Reported{found("GHSA-aaaa-bbbb-cccc", libnl, "CVE-2026-1")}); err != nil {
 			t.Fatal(err)
 		}
@@ -399,7 +403,7 @@ func TestAnIssueAgainstSomethingWeDoNotHaveIsReported(t *testing.T) {
 	// worth seeing, not quietly discarding.
 	each(t, func(t *testing.T, f *fixture) {
 		f.shipped(t, twoConsumers())
-		applied, err := f.store.Apply(t.Context(), f.variant, f.run(t),
+		applied, err := f.store.Apply(t.Context(), f.target, f.run(t),
 			[]finding.Reported{found("CVE-2026-9", at("openssl", "3.0.11"))})
 		if err != nil {
 			t.Fatal(err)
@@ -416,7 +420,7 @@ func TestAComponentUnderTheProductSitsUnderNothing(t *testing.T) {
 	// places and a decision would not carry.
 	each(t, func(t *testing.T, f *fixture) {
 		f.shipped(t, twoConsumers())
-		if _, err := f.store.Apply(t.Context(), f.variant, f.run(t),
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
 			[]finding.Reported{found("CVE-2026-2", swss)}); err != nil {
 			t.Fatal(err)
 		}

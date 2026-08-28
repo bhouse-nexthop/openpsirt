@@ -128,7 +128,7 @@ func (r *Reader) read(ctx context.Context, reference string) (*Result, error) {
 		return nil, err
 	}
 
-	target, err := catalog.NewStore(r.db.DB).Describe(ctx, scan.VariantID)
+	target, err := catalog.NewStore(r.db.DB).Describe(ctx, scan.TargetID)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +176,7 @@ func (r *Reader) read(ctx context.Context, reference string) (*Result, error) {
 	// version are excluded from identity and expiry anyway, so what matters is
 	// only that it is stable for this variant.
 	stand := graph.Described{Name: target.Product}
-	applied, err := graph.NewStore(r.db.DB).Apply(ctx, scan.VariantID, scanID, doc.Snapshot(stand))
+	applied, err := graph.NewStore(r.db.DB).Apply(ctx, scan.TargetID, scanID, doc.Snapshot(stand))
 	if err != nil {
 		return nil, fmt.Errorf("scan %d: %w", scanID, err)
 	}

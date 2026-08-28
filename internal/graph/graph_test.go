@@ -19,11 +19,11 @@ import (
 // fixture is one migrated database with a variant to file scans against, and a
 // way to mint scans in order.
 type fixture struct {
-	store     *graph.Store
-	scans     *ingest.Store
-	variantID int64
-	built     time.Time
-	seq       int
+	store    *graph.Store
+	scans    *ingest.Store
+	targetID int64
+	built    time.Time
+	seq      int
 }
 
 // scan records a new scan, each newer than the last, and returns its
@@ -33,7 +33,7 @@ func (f *fixture) scan(t *testing.T) int64 {
 	f.seq++
 	f.built = f.built.Add(time.Hour)
 	rec, outcome, err := f.scans.Record(t.Context(), ingest.Arriving{
-		VariantID: f.variantID, ContentHash: fmt.Sprintf("hash-%d", f.seq),
+		TargetID: f.targetID, ContentHash: fmt.Sprintf("hash-%d", f.seq),
 		BuiltAt: f.built, ParserVersion: "test",
 	})
 	if err != nil || outcome != ingest.Accept {
@@ -61,13 +61,17 @@ func each(t *testing.T, fn func(t *testing.T, f *fixture)) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		v, err := cat.DeclareVariant(ctx, br.ID, "broadcom", true)
+		v, err := cat.DeclareVariant(ctx, p.ID, "broadcom", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		target, err := cat.TargetFor(ctx, br.ID, v.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
 		fn(t, &fixture{
 			store: graph.NewStore(db.DB), scans: ingest.NewStore(db.DB),
-			variantID: v.ID, built: time.Now().UTC().Add(-48 * time.Hour),
+			targetID: target.ID, built: time.Now().UTC().Add(-48 * time.Hour),
 		})
 	})
 }
@@ -102,7 +106,7 @@ func tree() graph.Snapshot {
 
 func TestFirstSnapshotIsStored(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
-		applied, err := f.store.Apply(t.Context(), f.variantID, f.scan(t), tree())
+		applied, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), tree())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -113,7 +117,7 @@ func TestFirstSnapshotIsStored(t *testing.T) {
 			t.Errorf("closed something on a first snapshot: %+v", applied)
 		}
 
-		nodes, err := f.store.CurrentNodes(t.Context(), f.variantID)
+		nodes, err := f.store.CurrentNodes(t.Context(), f.targetID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -139,12 +143,12 @@ func TestFirstSnapshotIsStored(t *testing.T) {
 // whether or not anything happened to it.
 func TestAnUnchangedRebuildWritesNothing(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
-		if _, err := f.store.Apply(t.Context(), f.variantID, f.scan(t), tree()); err != nil {
+		if _, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), tree()); err != nil {
 			t.Fatal(err)
 		}
 		before := rowCounts(t, f)
 
-		applied, err := f.store.Apply(t.Context(), f.variantID, f.scan(t), tree())
+		applied, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), tree())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -159,7 +163,7 @@ func TestAnUnchangedRebuildWritesNothing(t *testing.T) {
 
 func TestOnlyTheChangeIsWritten(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
-		if _, err := f.store.Apply(t.Context(), f.variantID, f.scan(t), tree()); err != nil {
+		if _, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), tree()); err != nil {
 			t.Fatal(err)
 		}
 
@@ -168,7 +172,7 @@ func TestOnlyTheChangeIsWritten(t *testing.T) {
 		next.Components = append(next.Components, zlib)
 		next.Dependencies = append(next.Dependencies, graph.Dependency{Parent: curl, Child: zlib})
 
-		applied, err := f.store.Apply(t.Context(), f.variantID, f.scan(t), next)
+		applied, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), next)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -185,7 +189,7 @@ func TestOnlyTheChangeIsWritten(t *testing.T) {
 func TestAVersionBumpClosesTheOldComponent(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		first := f.scan(t)
-		if _, err := f.store.Apply(t.Context(), f.variantID, first, tree()); err != nil {
+		if _, err := f.store.Apply(t.Context(), f.targetID, first, tree()); err != nil {
 			t.Fatal(err)
 		}
 
@@ -200,7 +204,7 @@ func TestAVersionBumpClosesTheOldComponent(t *testing.T) {
 			},
 		}
 		second := f.scan(t)
-		applied, err := f.store.Apply(t.Context(), f.variantID, second, next)
+		applied, err := f.store.Apply(t.Context(), f.targetID, second, next)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -209,7 +213,7 @@ func TestAVersionBumpClosesTheOldComponent(t *testing.T) {
 			t.Errorf("applied %+v, want %+v", applied, want)
 		}
 
-		nodes, err := f.store.CurrentNodes(t.Context(), f.variantID)
+		nodes, err := f.store.CurrentNodes(t.Context(), f.targetID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -219,7 +223,7 @@ func TestAVersionBumpClosesTheOldComponent(t *testing.T) {
 		// The closed row is still there, stamped with the scan that ended it.
 		var closed []graph.Node
 		if err := f.store.DB().NewSelect().Model(&closed).
-			Where("variant_id = ?", f.variantID).
+			Where("target_id = ?", f.targetID).
 			Where("closed_scan_id IS NOT NULL").Scan(t.Context()); err != nil {
 			t.Fatal(err)
 		}
@@ -233,11 +237,11 @@ func TestAVersionBumpClosesTheOldComponent(t *testing.T) {
 // component table sized by the portfolio rather than by scans times variants.
 func TestAComponentIsSharedAcrossVariants(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
-		if _, err := f.store.Apply(t.Context(), f.variantID, f.scan(t), tree()); err != nil {
+		if _, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), tree()); err != nil {
 			t.Fatal(err)
 		}
 		before := rowCounts(t, f)["component"]
-		if _, err := f.store.Apply(t.Context(), f.variantID, f.scan(t), tree()); err != nil {
+		if _, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), tree()); err != nil {
 			t.Fatal(err)
 		}
 		if after := rowCounts(t, f)["component"]; after != before {
@@ -253,7 +257,7 @@ func TestADependencyOnAnUnlistedComponentIsRefused(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		bad := tree()
 		bad.Dependencies = append(bad.Dependencies, graph.Dependency{Parent: curl, Child: zlib})
-		if _, err := f.store.Apply(t.Context(), f.variantID, f.scan(t), bad); err == nil {
+		if _, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), bad); err == nil {
 			t.Fatal("an edge to an undescribed component was accepted")
 		}
 	})
@@ -268,7 +272,7 @@ func TestAComponentWithoutAVersionIsStillTracked(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		snap := tree()
 		snap.Components = append(snap.Components, graph.Described{Name: "mystery"})
-		applied, err := f.store.Apply(t.Context(), f.variantID, f.scan(t), snap)
+		applied, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), snap)
 		if err != nil {
 			t.Fatalf("a component with no version was refused: %v", err)
 		}
@@ -283,7 +287,7 @@ func TestAComponentWithoutANameIsRefused(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		bad := tree()
 		bad.Components = append(bad.Components, graph.Described{Version: "1.0"})
-		if _, err := f.store.Apply(t.Context(), f.variantID, f.scan(t), bad); err == nil {
+		if _, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), bad); err == nil {
 			t.Fatal("a component with no name was accepted")
 		}
 	})

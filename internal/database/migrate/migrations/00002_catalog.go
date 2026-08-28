@@ -17,7 +17,7 @@ func init() {
 }
 
 // What a scan can be filed against: a product, one of its streams, and a
-// variant of that stream. All three are declared before anything may target
+// variant it is built as. All three are declared before anything may target
 // them, so a mistyped name is rejected rather than quietly creating a stream
 // that looks real (ING-11).
 //
@@ -56,24 +56,48 @@ func upCatalog(ctx context.Context, tx *sql.Tx) error {
 			CONSTRAINT stream_parent_fk  FOREIGN KEY (parent_id)  REFERENCES stream (id)
 		)` + t.suffix,
 
-		// A variant belongs to a stream, not to the product: one added in a
-		// later release must not appear to have existed in earlier ones
-		// (MDL-01).
+		// A variant is a way the product is built — a chip, an architecture,
+		// an operating system. That is a property of the product, so it is
+		// declared once and named once (MDL-01). Spelling it per release is
+		// how one release ends up with a variant named differently from the
+		// last, and three spellings are three sets of findings that nothing
+		// says belong together.
 		//
 		// customer_facing feeds ranking, and defaults true because an
 		// unclassified artifact should rank as though it ships (ING-09).
 		`CREATE TABLE variant (
 			id              ` + t.id + `,
-			stream_id       ` + t.ref + ` NOT NULL,
+			product_id      ` + t.ref + ` NOT NULL,
 			name            ` + t.name + ` NOT NULL,
 			customer_facing ` + t.boolean + ` NOT NULL,
 			created_at      ` + t.timestamp + ` NOT NULL,
-			CONSTRAINT variant_name_unique UNIQUE (stream_id, name),
-			CONSTRAINT variant_stream_fk FOREIGN KEY (stream_id) REFERENCES stream (id)
+			CONSTRAINT variant_name_unique UNIQUE (product_id, name),
+			CONSTRAINT variant_product_fk FOREIGN KEY (product_id) REFERENCES product (id)
+		)` + t.suffix,
+
+		// Which of the product's variants a release was actually built as.
+		// This is what a scan is filed against and what everything downstream
+		// points at, so one identifier flows from a scan through to a finding.
+		//
+		// A release gains one when a scan first arrives for it. Nothing new is
+		// named at that point — the product, the release and the variant were
+		// all declared — so this records a fact the build reported rather than
+		// creating something a typo could invent. It is also what keeps a
+		// variant introduced later out of earlier releases: they simply have
+		// no row for it.
+		`CREATE TABLE target (
+			id         ` + t.id + `,
+			stream_id  ` + t.ref + ` NOT NULL,
+			variant_id ` + t.ref + ` NOT NULL,
+			created_at ` + t.timestamp + ` NOT NULL,
+			CONSTRAINT target_unique UNIQUE (stream_id, variant_id),
+			CONSTRAINT target_stream_fk  FOREIGN KEY (stream_id)  REFERENCES stream (id),
+			CONSTRAINT target_variant_fk FOREIGN KEY (variant_id) REFERENCES variant (id)
 		)` + t.suffix,
 
 		`CREATE INDEX stream_product_idx ON stream (product_id)`,
-		`CREATE INDEX variant_stream_idx ON variant (stream_id)`,
+		`CREATE INDEX variant_product_idx ON variant (product_id)`,
+		`CREATE INDEX target_variant_idx ON target (variant_id)`,
 	}
 
 	for _, stmt := range statements {
@@ -85,7 +109,7 @@ func upCatalog(ctx context.Context, tx *sql.Tx) error {
 }
 
 func downCatalog(ctx context.Context, tx *sql.Tx) error {
-	for _, table := range []string{"variant", "stream", "product"} {
+	for _, table := range []string{"target", "variant", "stream", "product"} {
 		if _, err := tx.ExecContext(ctx, `DROP TABLE `+table); err != nil {
 			return err
 		}

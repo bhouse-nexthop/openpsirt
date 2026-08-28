@@ -111,11 +111,10 @@ func eachIngest(t *testing.T, opts queue.Options, fn func(t *testing.T, f *inges
 		if err != nil {
 			t.Fatal(err)
 		}
-		stream, err := cat.DeclareStream(ctx, product.ID, "master", catalog.Branch, nil)
-		if err != nil {
+		if _, err := cat.DeclareStream(ctx, product.ID, "master", catalog.Branch, nil); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := cat.DeclareVariant(ctx, stream.ID, "broadcom", true); err != nil {
+		if _, err := cat.DeclareVariant(ctx, product.ID, "broadcom", true); err != nil {
 			t.Fatal(err)
 		}
 

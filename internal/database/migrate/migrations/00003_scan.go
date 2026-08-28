@@ -32,21 +32,21 @@ func upScan(ctx context.Context, tx *sql.Tx) error {
 	statements := []string{
 		`CREATE TABLE scan (
 			id             ` + t.id + `,
-			variant_id     ` + t.ref + ` NOT NULL,
+			target_id      ` + t.ref + ` NOT NULL,
 			content_hash   ` + t.hash + ` NOT NULL,
 			built_at       ` + t.timestamp + ` NOT NULL,
 			received_at    ` + t.timestamp + ` NOT NULL,
 			parser_version ` + t.name + ` NOT NULL,
 			credential     ` + t.name + ` NULL,
 			status         ` + t.kind + ` NOT NULL,
-			CONSTRAINT scan_variant_fk FOREIGN KEY (variant_id) REFERENCES variant (id),
-			CONSTRAINT scan_content_unique UNIQUE (variant_id, content_hash)
+			CONSTRAINT scan_target_fk FOREIGN KEY (target_id) REFERENCES target (id),
+			CONSTRAINT scan_content_unique UNIQUE (target_id, content_hash)
 		)` + t.suffix,
 
 		// Answering "what is the newest accepted scan for this variant" is on
 		// the path of every ingest, so it gets its own index rather than a
 		// scan of everything ever received.
-		`CREATE INDEX scan_newest_idx ON scan (variant_id, status, built_at)`,
+		`CREATE INDEX scan_newest_idx ON scan (target_id, status, built_at)`,
 	}
 
 	for _, stmt := range statements {

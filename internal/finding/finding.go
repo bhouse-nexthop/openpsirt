@@ -53,8 +53,8 @@ const (
 type Run struct {
 	bun.BaseModel `bun:"table:scan_run,alias:sr"`
 
-	ID        int64 `bun:"id,pk,autoincrement"`
-	VariantID int64 `bun:"variant_id,notnull"`
+	ID       int64 `bun:"id,pk,autoincrement"`
+	TargetID int64 `bun:"target_id,notnull"`
 	// Scanner, ScannerVersion and DatabaseVersion are what produced this, and
 	// RanHere says whether we ran it. Counts are only comparable between
 	// products measured the same way, so a report that mixed the two without
@@ -73,7 +73,7 @@ type Finding struct {
 	bun.BaseModel `bun:"table:finding,alias:f"`
 
 	ID              int64 `bun:"id,pk,autoincrement"`
-	VariantID       int64 `bun:"variant_id,notnull"`
+	TargetID        int64 `bun:"target_id,notnull"`
 	Kind            Kind  `bun:"kind,notnull"`
 	VulnerabilityID int64 `bun:"vulnerability_id,notnull"`
 	ComponentID     int64 `bun:"component_id,notnull"`
