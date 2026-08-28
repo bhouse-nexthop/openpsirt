@@ -121,10 +121,15 @@ reads are checked.
 - Decisions keyed structurally, carried forward, expiring on version change
 - Review queue, approval, separation of duties, bulk action, withdrawal
 - Duplicates across variants, branches and tags
+- Markdown text: justification revisions, comments, server-side rendering
 
 **Proves it works:** a decision survives a nightly re-ingest; lapses when the
 component or its consumer changes upstream version; does **not** lapse on a
-packaging revision; a bulk approval can be undone as a batch.
+packaging revision; a bulk approval can be undone as a batch; **editing an
+approved justification withdraws the approval and the approved revision is
+still readable**; a comment added after approval leaves it alone; a corpus of
+known cross-site-scripting payloads survives rendering with nothing executable
+in the output.
 
 **Produces:** `DESIGN-triage.md`
 
@@ -134,10 +139,12 @@ packaging revision; a bulk approval can be undone as a batch.
 
 - Findings list, dependency tree, finding detail, review queue, home
 - Generated API client; responsive layouts
+- Markdown editor: toolbar, Write and Preview, mention autocomplete
 
 **Proves it works:** the findings list stays usable against a full-size product;
 the tree opens lazily without attempting a full render; every screen works on a
-phone.
+phone; **the preview matches what is published**, because it is the same
+renderer.
 
 **Produces:** `DESIGN-interface.md`
 
@@ -170,12 +177,22 @@ that release, and raises an alert rather than sitting in a report.
 
 ---
 
-## Stage 8 — Private findings (product Phase 2)
+## Stage 8 — Private findings and attachments (product Phase 2)
 
 - Manual entry, visibility handling, disclosure dates and escalation
 - Advisory publication: CSAF, and GitHub Security Advisories where they apply
+- Attachments: object store, authorised fetch, redaction (`ATT`)
 
-**Produces:** `DESIGN-disclosure.md`
+Attachments land here rather than earlier because the access rule they need is
+the same one private findings need, and building it twice is how the second one
+ends up weaker. The reference format and the fetch path are settled in Stage 4
+so the text written before then does not need rewriting.
+
+**Proves it works:** a private finding's attachment cannot be fetched by
+someone who cannot see the finding, and the bucket is not readable without
+going through the application.
+
+**Produces:** `DESIGN-disclosure.md`, `DESIGN-attachments.md`
 
 ---
 
@@ -186,3 +203,4 @@ that release, and raises an alert rather than sitting in a report.
 | Component library | Decided against a real screen in the interface stage, not in the abstract |
 | Partition column and granularity | Needs the schema in front of us — settled during the database stage |
 | External tracker hand-off | Optional, and the seams are built rather than the integration |
+| Markdown renderer and sanitiser | The requirements are settled (`SEC-11` to `SEC-17`); the library pair is picked when the code is written |

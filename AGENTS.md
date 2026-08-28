@@ -123,14 +123,16 @@ gets ticked without being read.
 | Category | Check |
 |---|---|
 | **Injection — SQL** | Every value parameterized. **Every identifier from an allowlist** — sort columns, filter fields and partition names cannot be bound by a placeholder, so a column name arriving from a query parameter is the live hole (SEC-01, SEC-02) |
-| **Injection — output** | Component names, versions and descriptions come from a third party's SBOM and get rendered to staff who hold the most access. Encoded on output; markdown sanitised (SEC-04) |
-| **Broken access control** | Enforced in the data layer with a subject, never per handler. Covers counts, aggregates, search and exports — not just row reads (ACC-04, ACC-07) |
+| **Injection — output** | Component names, versions and descriptions come from a third party's SBOM and get rendered to staff who hold the most access. Encoded on output, and **never passed through the markdown renderer** — that is for text a person typed here (SEC-04, SEC-16) |
+| **Injection — markdown** | Source stored, never rendered HTML. Raw HTML off at the parser rather than stripped after. Link schemes limited to `http`, `https`, `mailto`. **Nothing remote is fetched by a rendered document, images included** (SEC-11 to SEC-15) |
+| **Broken access control** | Enforced in the data layer with a subject, never per handler. Covers counts, aggregates, search and exports — not just row reads (ACC-04, ACC-07). An attachment fetch is authorised against its finding's visibility before any signed URL is issued (ATT-06) |
 | **Cryptographic failures** | API keys and personal tokens hashed at rest, shown once (SEC-03). Session identifiers unguessable |
 | **Insecure design** | Does the change contradict a recorded decision? Cite the identifier if so |
 | **Security misconfiguration** | Container non-root with a read-only root filesystem. Trusted-header sign-in off by default and only from configured sources (ACC-19, ACC-20) |
 | **Vulnerable components** | `govulncheck` and dependency review gate. A new dependency needs a permissive licence (SCP-06) |
 | **Authentication failures** | No account created automatically on any path; unauthorized users get a generic message that does not say why (ACC-21) |
-| **Data integrity** | A scan file is hostile input. Bounded size, depth and component count; never used as a filesystem path (SEC-05, SEC-06) |
+| **Data integrity** | A scan file is hostile input. Bounded size, depth and component count; never used as a filesystem path (SEC-05, SEC-06). Markdown fields are length-bounded and rendering is time-bounded (SEC-17) |
+| **Separation of duties** | An approval points at one revision of a justification. Anything that lets approved text change without withdrawing the approval defeats TRI-07 silently (TRI-24, TRI-25) |
 | **Logging failures** | Secrets never logged. Triage actions land in the append-only history (SEC-08) |
 | **Request forgery** | Outbound fetches restricted to their configured host, no redirects into private address space (SEC-07) |
 

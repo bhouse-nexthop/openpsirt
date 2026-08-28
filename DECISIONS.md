@@ -21,6 +21,7 @@
   - [3.14 CI gate](#314-ci-gate-cig)
   - [3.15 Interface](#315-interface-uix)
   - [3.16 Application security](#316-application-security-sec)
+  - [3.17 Attachments](#317-attachments-att)
 - [4. Still open](#4-still-open)
 - [5. What we ingest](#5-what-we-ingest)
 - [6. Constraints that shape the design](#6-constraints-that-shape-the-design)
@@ -43,7 +44,8 @@ The running record of what is decided and what is not.
 | `SCP` scope and delivery | `API` API and docs | `ING` ingest | `MDL` what we track |
 | `STA` state and history | `TRI` triage and approval | `REL` carrying decisions between releases | `REM` remediation |
 | `RNK` ranking | `RPT` reporting | `ACC` access and permissions | `NTF` notifications |
-| `DAT` database | `CIG` CI gate | `REJ` rejected (Section 9) | |
+| `DAT` database | `CIG` CI gate | `UIX` interface | `SEC` application security |
+| `ATT` attachments | `REJ` rejected (Section 9) | | |
 
 Conventions:
 
@@ -147,8 +149,6 @@ inputs.
 | # | Decision | Why |
 |---|---|---|
 | MDL-01 | The tracked unit is (product, stream or tag, variant). Variants belong to a stream, not to the product | A variant added in a later release shouldn't retroactively exist in earlier ones. Releases and variants are **declared before use** (ING-11), not discovered from ingest — an earlier draft said the opposite and was corrected |
-| MDL-17 | **One table holds both branches and tags, distinguished by a kind and an optional parent.** Not separate tables | MDL-01 already treats them as one slot — "(product, stream or tag, variant)" — and they share almost everything: a product, variants, findings, an end-of-life date, declaration before use. What differs is that a branch moves and a tag never does. A parent reference records which branch a tag was cut from, which REL-08 needs to seed a new line and RPT-12 needs to compare a branch against its last release. **This was never recorded before and should have been — it sat in the open list and was dropped when that list was emptied** |
-| MDL-18 | **Whether paths are materialised is left until a real SBOM can be measured** | MDL-05 makes a path the unit of triage, and MDL-03 stores the graph as nodes and edges. Enumerating every path through a dependency graph can produce far more rows than there are components, depending on how much sharing the graph has. Storing the graph faithfully is settled; whether paths are precomputed or derived is a question real data answers, not a guess |
 | MDL-02 | A variant is any parallel build of the same source differing only in target — chip variant, **operating system**, CPU architecture, platform | Broader than the chip-variant example suggests |
 | MDL-03 | The dependency graph is stored as nodes and edges, never flattened | The same package appears at many versions and many places. A flat list can't answer "why is this here" |
 | MDL-04 | Upstream provenance is kept and shown | A shipped `frr_10.5.4-sonic-0` matches CVEs through its upstream identity. Drop it and findings become unexplainable |
@@ -164,6 +164,8 @@ inputs.
 | MDL-14 | **A finding has a kind.** The kind supplies identity and expiry; everything above that is shared | Vulnerabilities from SBOMs are not the only findings worth triaging — static analysis and fuzzing produce findings that need the same queue, the same outcomes and the same reporting, but have no dependency path at all. Recorded now because a schema that hard-codes SBOM-shaped identity into the finding cannot take a second kind without a rewrite. Same class of constraint as per-product roles and the visibility column |
 | MDL-15 | **Per kind:** how a finding is identified across runs, and what lapses a decision about it. **Shared across kinds:** product, release and variant scoping, the four outcomes, the review queue and approvals, assignment, remediation targets, computed resolution, visibility, reporting, notifications and roles | Names the seam. The shared half is most of the system, which is why one tool covering both is worth doing at all |
 | MDL-16 | Kinds without a dependency path do not get the tree views | The "why is this here" navigation answers a question that only exists for a component pulled in by something else |
+| MDL-17 | **One table holds both branches and tags, distinguished by a kind and an optional parent.** Not separate tables | MDL-01 already treats them as one slot — "(product, stream or tag, variant)" — and they share almost everything: a product, variants, findings, an end-of-life date, declaration before use. What differs is that a branch moves and a tag never does. A parent reference records which branch a tag was cut from, which REL-08 needs to seed a new line and RPT-12 needs to compare a branch against its last release. **This was never recorded before and should have been — it sat in the open list and was dropped when that list was emptied** |
+| MDL-18 | **Whether paths are materialised is left until a real SBOM can be measured** | MDL-05 makes a path the unit of triage, and MDL-03 stores the graph as nodes and edges. Enumerating every path through a dependency graph can produce far more rows than there are components, depending on how much sharing the graph has. Storing the graph faithfully is settled; whether paths are precomputed or derived is a question real data answers, not a guess |
 
 ### 3.5 State and history — `STA`
 
@@ -177,7 +179,7 @@ inputs.
 | STA-06 | Three classes of table: current state (never purged), triage history (never purged), change events (partitioned and purged) | A finding open for years lives in current state, so dropping old partitions can't remove it |
 | STA-07 | Current-state rows carry their own summary fields — first seen, opened at, last changed | Otherwise purging events silently breaks a finding that has been open for years |
 | STA-08 | The stored format is built so an unchanged build writes nothing | Normalize before comparing, use short numeric keys, write only on real change |
-| STA-09 | All triage history is append-only. Nothing is overwritten | Also serves as the audit record — one mechanism, not two |
+| STA-09 | All triage history is append-only. Nothing is overwritten. **One exception, TRI-27: a comment is editable by its author and keeps no revisions** | Also serves as the audit record — one mechanism, not two. The exception is named here so nobody has to discover it by reading the triage section |
 | STA-10 | Observed state (from scans) and remediation state (declared by people) are separate fields, never merged | Marking something fixed doesn't make it absent from the next scan, and vice versa |
 | STA-13 | Because the explanations above cover normal operation, the unexplained bucket should be **empty in a healthy system** | A component unchanged in every respect, with no patch claiming to resolve the issue, and its vulnerability simply gone — there is no innocent reading of that |
 | STA-14 | Several unexplained disappearances in one scan **additionally** raise a scan-level alert | A convenience, not a gate: the individual flags are already raised either way. It just says the likely fault is one broken scan rather than many independent anomalies, so nobody chases each one separately |
@@ -211,6 +213,11 @@ inputs.
 | TRI-21 | A **count** of re-affirmations does not trigger full approval | Considered and left out. It would fire on nothing having changed, which is inconsistent with every other expiry rule here — those all key on an actual change rather than on elapsed time or repetition |
 | TRI-22 | **A carried patch does not lapse a decision.** For a producer that changes code by patching rather than bumping versions, expiry is effectively inert and a decision stands until someone revisits it or the finding closes on its own | Accepted deliberately. A patch is our own change to our own build, and a reachability claim usually rests on structure a patch is unlikely to alter. Consequence recorded plainly: for SONiC — our largest producer — decisions made once may never be automatically re-examined however much the code moves |
 | TRI-23 | Decision age is shown wherever a decision appears, and old ones are surfaced in the dismissal reports | The compensating control for TRI-22, and it costs nothing. An eight-year-old judgement should look like one rather than reading the same as yesterday's |
+| TRI-24 | **The justification is revised, never overwritten. Every revision is kept and readable**, and an approval is granted against one specific revision rather than against the finding | TRI-07 says the proposer and the approver must differ. If the approved words can change afterwards, the second pair of eyes reviewed something that no longer exists and nothing on screen says so. Keeping the whole chain also answers the question that gets asked later — not just what was approved, but what the argument was before it changed |
+| TRI-25 | **Editing the justification withdraws the approval** and returns the item to the review queue. It is marked there as previously approved rather than reading as a fresh proposal | Consistent with TRI-16 — this re-exposes risk, so it needs no approval to do. The marking matters: an approver seeing it again should know they are looking at something that was already agreed and then changed, which is a different question from a first review |
+| TRI-26 | **A comment is not the justification.** Comments may be added at any point, including long after approval, and never disturb it | The two are different things and the obvious mistake is to treat all text on a finding as one. Annotating an approved decision months later — "re-checked, still true" — is ordinary and useful, and it must not throw the item back into a queue |
+| TRI-27 | **A comment may be edited by the person who wrote it, and is overwritten. No revision history is kept** — only a marker that it was edited. Nobody else may edit it | A deliberate exception to STA-09, recorded here so it is a decision rather than an oversight. Discussion is not the record a decision rests on; that weight sits entirely on the justification, which keeps everything (TRI-24). Storing revisions of every typo fix would bury the history that matters in history that does not. The marker costs one column and settles "I never wrote that" without keeping the text |
+| TRI-28 | Markdown is the format for every justification, explanation, deferral reason and comment | Triage arguments carry code, configuration, stack traces and links. Plain text makes those unreadable, and unreadable evidence is evidence nobody checks |
 
 ### 3.7 Carrying decisions between releases — `REL`
 
@@ -349,6 +356,8 @@ inputs.
 | NTF-09 | **Condition-based alerts clear themselves when the condition ends. Event-based ones are acknowledged** | An artifact that resumes being scanned should stop being an alert without anyone dismissing it. Otherwise the count fills with resolved problems and people stop reading it — which is the same failure the digest rules were written to avoid |
 | NTF-10 | **Everyone gets the notification area, not just admins** — a triager sees newly assigned work, a proposer sees a rejected dismissal, an approver sees items waiting on them. Content differs by role; the mechanism does not | New work arriving is the thing a triager most wants to notice, and it is the same feature. Also gives the rejected-dismissal notice (NTF-05) somewhere to live for anyone who does not read email |
 | NTF-11 | **A newly-critical vulnerability in a shipped release is an operational alert**, not a dashboard entry | The stated purpose: "this release has a critical, we need to cut a new one." Something a person is told, not something they find when they next go looking |
+| NTF-12 | **A mention notifies the person mentioned**, immediately | It is an explicit human action directed at one person, which is exactly NTF-02's category. Someone asked a question and is waiting on an answer |
+| NTF-13 | **An edit that withdraws an approval tells the people who granted it** | Otherwise an approval they gave quietly stops counting and the first they know is the item reappearing in a queue with no explanation. TRI-25 makes this transition possible, so it has to be visible |
 
 ### 3.13 Database — `DAT`
 
@@ -371,6 +380,9 @@ inputs.
 | DAT-15 | **`goose`** for migrations | Embeds in the binary, covers all four engines, and supports Go-based migrations so the per-engine partitioning DDL branches cleanly rather than living in a directory per dialect |
 | DAT-16 | Drivers: **`pgx`** (PostgreSQL, MIT), **`go-sql-driver/mysql`** (MySQL and MariaDB, MPL), **`modernc.org/sqlite`** (pure Go, BSD) | The SQLite choice is deliberate: pure Go means no cgo, which keeps the single static binary |
 | DAT-17 | **The job queue is hand-rolled** — a table plus a bounded worker pool | River is PostgreSQL-only and Asynq needs Redis, so neither fits four engines. Around 200 lines we control, using row-skipping locks on the production engines and a simpler path on SQLite, which is development-only |
+| DAT-18 | **The migration lock is taken on a pinned connection, and the release result is checked** | These are session locks. Taken on the pool, the release can land on a different connection — and neither engine reports that as an error, so the lock leaks silently and every other instance blocks for the life of the process |
+| DAT-19 | **The wait for the lock is bounded on every engine** | An instance wedged mid-migration otherwise blocks every replacement indefinitely, with the startup probe killing each one in turn and no log line explaining why |
+| DAT-20 | **Reading the schema version performs no schema changes** | The library's version query creates its bookkeeping table when missing, which made the read-only inspection command need schema-change rights on a fresh database — against DAT-11, and precisely for the operator who separated credentials |
 | DAT-21 | **Idle connections are reaped well before anything else can close them.** One minute by default, configurable | The failure this prevents: a firewall, load balancer or failover takes the far end away without a FIN or an RST, our side still believes the socket is fine, and the next query writes into nothing and blocks until TCP retransmission gives up — about fifteen minutes, with nothing logged. Closing a connection ourselves before it can go stale is the whole defence |
 | DAT-22 | **Queries are not bounded by a statement timeout or a blanket driver read timeout** | Any blanket bound eventually kills legitimate slow work — a large report, an ingest transaction over tens of thousands of components — and you end up adding per-query exceptions until the bound means nothing. It would also break migrations, which can legitimately run for minutes |
 | DAT-23 | **Connections are not validated as they leave the pool. A validation helper exists for callers that want it** | Go offers no hook for it: the two driver interfaces it calls before reuse only inspect local state in our drivers, so neither notices a half-open socket. Checking means an extra round trip on every use, which is right where a caller would otherwise block a long time and wrong as a default |
@@ -379,9 +391,6 @@ inputs.
 | DAT-26 | **`FOR UPDATE SKIP LOCKED` is a throughput measure** — it stops workers queueing behind one another on the same row | Without it every worker selects the same oldest job, one wins, and the rest did a round trip for nothing |
 | DAT-27 | **A job row holds a reference, never a payload** | The queue stays small however large the thing being worked on is, which matters when that thing is a scan file measured in tens of megabytes |
 | DAT-28 | **Work that exhausts its attempts is set aside with its last error, not deleted** | Deleting removes the evidence of why it failed, which is the only thing anyone will want when they come looking |
-| DAT-18 | **The migration lock is taken on a pinned connection, and the release result is checked** | These are session locks. Taken on the pool, the release can land on a different connection — and neither engine reports that as an error, so the lock leaks silently and every other instance blocks for the life of the process |
-| DAT-19 | **The wait for the lock is bounded on every engine** | An instance wedged mid-migration otherwise blocks every replacement indefinitely, with the startup probe killing each one in turn and no log line explaining why |
-| DAT-20 | **Reading the schema version performs no schema changes** | The library's version query creates its bookkeeping table when missing, which made the read-only inspection command need schema-change rights on a fresh database — against DAT-11, and precisely for the operator who separated credentials |
 
 ### 3.14 CI gate — `CIG`
 
@@ -420,6 +429,12 @@ inputs.
 | UIX-18 | **React, Vite, TypeScript, Tailwind, TanStack Query** | The findings table is the app, and TanStack Table with virtualisation handles tens of thousands of rows. Headless, so UIX-16's cards-on-mobile is possible at all — a packaged grid owning its own markup could not do it |
 | UIX-19 | The API client is **generated** from the OpenAPI document with `openapi-typescript` and `openapi-fetch` | Change a Go type, regenerate, and TypeScript fails at every call site. The whole point of API-04 |
 | UIX-20 | **Recharts** for charts | Enough for the trend shapes in RPT-09 to RPT-12, and familiar nearby |
+| UIX-21 | **A formatting toolbar over a plain markdown textarea, with Write and Preview tabs.** Not a rich-text editor | A rich-text editor keeps its own document model and turns markdown into an export format, which fights TRI-27 and SEC-11 — what the person typed stops being what is stored. The toolbar inserts markdown syntax; the textarea remains the thing being edited, so anyone who knows the syntax can ignore the buttons entirely |
+| UIX-22 | **Preview renders through the same path as publishing**, not a second implementation | A preview produced by different code eventually disagrees with the published result, and the disagreement is discovered by whoever trusted it. Costs a round trip per preview, which is nothing |
+| UIX-23 | The toolbar has to work on a phone | UIX-15 makes responsive a requirement, and UIX-17 shapes small screens around review and respond — which is mostly writing a reply |
+| UIX-24 | **Vulnerability identifiers and finding references autolink.** A `CVE-` identifier links out to the configured source, a finding reference links internally | People paste identifiers constantly in a tool whose whole subject is them. Cheap, and it removes a copy-paste from the most repeated action there is |
+| UIX-25 | **Mention autocomplete offers only pre-authorised users, and mentioning someone who cannot see the finding is refused while composing** | ACC-21 creates no account automatically, so there is nobody else to offer. The refusal has to happen at compose time and say so plainly — silently dropping it leaves the author believing help is coming, and delivering it would tell someone a private finding exists |
+| UIX-26 | **A justification shows its full revision history in the interface**, not only its current text. An edited comment shows only that it was edited | Follows TRI-24 and TRI-27, which keep everything for one and nothing for the other. Keeping the justification's history and then showing only the latest revision would mean the record exists but only someone with database access can read it |
 
 
 ### 3.16 Application security — `SEC`
@@ -439,6 +454,35 @@ to "follow good practice", so a reviewer has something to check against.
 | SEC-08 | **Secrets never reach logs.** Connection strings are redacted, credentials and tokens are never logged at any level | Already done for database URLs; recorded so it is a rule rather than a habit |
 | SEC-09 | **The HTTP server sets read, write, header and idle timeouts** | Without them a client holds a connection, goroutine and file descriptor open indefinitely by sending headers slowly. Enough of them exhaust every replica while liveness keeps passing, because the process itself is fine |
 | SEC-10 | The checklist in `AGENTS.md` is worked through on every review, not consulted when someone remembers | An enumerated list gets checked. "Follow good practice" gets cited |
+| SEC-11 | **The markdown source is stored. Rendered HTML never is** | Rendering happens on the way out, every time. A sanitiser bug fixed next year does nothing for HTML already sitting in the database, and the same text has to reach a browser, an email and an export — three renders, one source |
+| SEC-12 | **Raw HTML is disabled at the parser, not stripped afterwards** | An allowlist of permitted tags is a thing that can be wrong, and the interesting attacks are all in the gap between what it permits and what a browser does with it. Turning the feature off removes the category. Nothing people need for triage requires it |
+| SEC-13 | **Link schemes are restricted to `http`, `https` and `mailto`.** Everything else is dropped, autolinked text included | `javascript:` in a link is the oldest one there is, and `data:` URIs let a link become a page we appear to have served |
+| SEC-14 | **Rendered markdown fetches nothing from anywhere. No remote images, no remote anything** | An image URL in a comment fires from the browser of every person who reads it, from inside the network, telling whoever wrote it who is looking at which finding and when. On a private finding that is a disclosure channel. Attachments (ATT) become the only way an image gets into a comment |
+| SEC-15 | **One renderer, on the server, sanitising as the last step before the text leaves the process.** Clients never render markdown themselves — the API returns the source and the rendered HTML | Two renderers drift, and the one that drifts is the one nobody looks at. A fixture corpus of known payloads runs against the single implementation, which is only worth maintaining because there is one. The interface still injects HTML, so the content security policy is the second line rather than the first |
+| SEC-16 | **Markdown rendering applies only to text a person typed into this tool.** Anything a scan file supplied is displayed escaped and is never rendered, whatever it looks like | The rule SEC-04 implies and never said. Once a renderer exists, pointing it at a component description is the obvious next step and it hands an SBOM author a formatting language aimed at the browsers of the people with the most access |
+| SEC-17 | **Every markdown field is length-bounded** (64 KB), and rendering is bounded in time | Rendering is work someone else asks us to do, and it is stored forever under an append-only rule. A bound also means a pathological input fails one request rather than a replica |
+
+### 3.17 Attachments — `ATT`
+
+Phase 2. Recorded now because two pieces of it are cheap to design in and
+expensive to retrofit: how the markdown refers to a file, and who is allowed to
+fetch one.
+
+| # | Decision | Why |
+|---|---|---|
+| ATT-01 | **Attachments ship in Phase 2. The seam is built now** — reference by identifier, an authorised fetch path, and a storage interface | Retrofitting the access rule is the part that goes wrong. A file store added later almost always arrives as a bucket someone can read, and by then the references are already written |
+| ATT-02 | **Bytes live in an object store, reached through the S3-compatible API. Never in the database** | Blobs in the database inflate every backup and replica, and they sit across the partition and purge rules in STA-06 that were written for rows. The S3 API is what MinIO, Ceph and every cloud provider speak, so one implementation covers self-hosted and managed alike |
+| ATT-03 | **A local filesystem backend exists for development**, mirroring what SQLite does for the database | Nobody should need an object store running to work on the interface. Same shape as DAT — a development backend that is never a production option |
+| ATT-04 | **The object store is optional. With none configured, attachments are off and everything else works** | SCP-03 is self-hosting. Making an object store a hard dependency would put a bucket between a small installation and its first login, for a Phase 2 feature it may never use |
+| ATT-05 | **Markdown refers to an attachment by opaque identifier, never by URL** | The text is append-only and outlives every URL in it. A stored bucket address rots when storage moves, and a signed one expires within the hour — either way the record ends up full of links that resolve to nothing |
+| ATT-06 | **No bucket is ever public. Every fetch is authorised against the visibility of the finding it hangs off**, and only then redirected to a short-lived signed URL | The whole reason to settle this now. A private finding's attachment in a readable bucket is exactly the disclosure the public and private split exists to prevent, and it would not be visible anywhere in the application |
+| ATT-07 | **Served with `Content-Disposition: attachment` and a content type we chose, never the one that was uploaded** | An SVG is a script, and so is anything a browser is willing to guess is HTML. Serving an upload inline on our own origin is stored cross-site scripting with extra steps |
+| ATT-08 | **Inline display only for a small allowlist of raster image types.** Everything else downloads | Screenshots are what people actually attach, and they are the case worth supporting. The allowlist is what keeps ATT-07 from being argued with |
+| ATT-09 | **A maximum file size and a per-deployment quota, both configurable** | Same reasoning as SEC-06. Storage someone else fills on our behalf needs a ceiling |
+| ATT-10 | **An attachment is never deleted while anything references it. Removal is an explicit administrative redaction**, recorded, leaving the reference and a tombstone where the file was | History is append-only, so a file referenced by an old revision cannot simply vanish — the alternative is a record full of broken references nobody can explain. Redaction is a real requirement, though: someone will attach a credential |
+| ATT-11 | **Uploads that were never attached to anything saved are reaped** | Someone drags in a file and closes the tab. Without a sweep those accumulate as bytes nothing references and nobody knows to remove |
+| ATT-12 | **Uploads are not scanned for malware.** Stated, not solved | We would be relying on a scanner we do not run and cannot keep current. Better named as a limitation than implied by silence — an operator who needs it can put scanning in front of the bucket |
+
 
 ---
 
@@ -522,6 +566,7 @@ Engineering choices we'll make and record. Listed so nothing is invisible.
 |---|---|
 | Component library | shadcn/ui is the candidate — you own the source rather than tracking a dependency — but the tree and grid work may want more. Better decided against a real screen than in the abstract |
 | Partitioning detail | Which column, what granularity, and how to handle retiring a whole product — which partitioning by time does not solve |
+| Markdown renderer and sanitiser | A CommonMark parser with GitHub extensions, raw HTML off, plus the sanitiser that runs after it (SEC-11 to SEC-17). The requirements are settled; the pair is not. Both must be permissively licensed and maintained, since this is the one place third-party text meets a staff browser |
 
 ---
 
@@ -571,8 +616,9 @@ here exist to avoid repeating them.
 
 ## 11. How this document changed
 
-All entries 2026-08-27. Only the corrections and reversals are listed — the
-routine additions are visible in the decisions themselves.
+Entries are 2026-08-27 unless dated otherwise. Only the corrections and
+reversals are listed — the routine additions are visible in the decisions
+themselves.
 
 | What changed | Why it matters |
 |---|---|
@@ -593,6 +639,9 @@ routine additions are visible in the decisions themselves.
 | Renumbered to grouped prefixes | Was a flat `D1`–`D110` sequence in rough chronological order. Regrouped by area so the topic is visible in the ID. Remediation and reporting were split out of an overloaded triage section at the same time. Old `D` numbers are retired and do not map forward |
 | Same-origin UI serving restored | Recorded as a leaning in the long version and dropped when the document was condensed. Recovered as API-07, and it is load-bearing for how sign-in works |
 | Machine authentication restored | How CI authenticates was an open item in the long version and was dropped when the document was condensed. Recovered as ACC-10 to ACC-13 |
+| Untrusted text and markdown separated (2026-08-28) | SEC-04 said scan text is sanitised, which read as though it could be rendered safely. Once triage text became markdown the two needed splitting outright: human-authored text renders, scan-supplied text never does, whatever it looks like (SEC-16) |
+| Approval bound to a revision (2026-08-28) | Nothing stopped a proposer editing a justification after it was approved, which defeats TRI-07 silently. An approval now points at one revision, and editing withdraws it (TRI-24, TRI-25) |
+| Prefix table completed (2026-08-28) | `UIX` and `SEC` were in use as decision prefixes but missing from the table in Section 1 that lists them |
 | An early domain-model sketch dropped | Superseded once variants and the tracked unit were settled, and kept only as a placeholder. Removed in the renumbering rather than carried forward as a dead ID |
 
 **Recurring lesson:** every bug in the identity and expiry rules came from
