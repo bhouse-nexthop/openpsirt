@@ -35,6 +35,8 @@ type Limits struct {
 	// alone does not bound this — a document with a thousand components can
 	// declare a million edges between them.
 	MaxEdges int
+	// MaxStatements is how many claims a suppression document may make.
+	MaxStatements int
 	// MaxDepth is how deeply it may nest.
 	MaxDepth int
 }
@@ -48,6 +50,7 @@ func DefaultLimits() Limits {
 		MaxBytes:      256 << 20,
 		MaxComponents: 250_000,
 		MaxEdges:      2_000_000,
+		MaxStatements: 100_000,
 		MaxDepth:      64,
 	}
 }
@@ -64,6 +67,9 @@ func (l Limits) orDefault() Limits {
 	}
 	if l.MaxEdges <= 0 {
 		l.MaxEdges = d.MaxEdges
+	}
+	if l.MaxStatements <= 0 {
+		l.MaxStatements = d.MaxStatements
 	}
 	if l.MaxDepth <= 0 {
 		l.MaxDepth = d.MaxDepth
@@ -105,6 +111,10 @@ type Document struct {
 	// declared. The count is kept because a sudden change in it says the
 	// producer's derivation changed, which is worth seeing.
 	Unrooted int
+	// Suppressions are the claims the inventory carries on components
+	// themselves: a patch recording which vulnerability it fixes. They arrive
+	// attached to what they are about, so they need no matching.
+	Suppressions []Suppression
 	// SelfReferences counts edges dropped for having the same component at
 	// both ends. Producers do not emit those deliberately; they appear when
 	// two of a document's own identifiers turn out to describe the same

@@ -136,6 +136,49 @@ func (b *bounded) str() (string, error) {
 	}
 }
 
+// stringOrObject reads a field a format states either way, calling fn with
+// each key when it is an object and returning the text when it is not.
+//
+// A format that names a thing as a string in one version and as an object with
+// a name in the next is common enough that reading only one of the two would
+// refuse documents that are perfectly well formed.
+func (b *bounded) stringOrObject(fn func(key string) error) (string, error) {
+	tok, err := b.dec.Token()
+	if err != nil {
+		return "", err
+	}
+	switch v := tok.(type) {
+	case string:
+		return v, nil
+	case nil:
+		return "", nil
+	case json.Delim:
+		if v != '{' {
+			return "", fmt.Errorf("want a string or an object, got %v", v)
+		}
+	default:
+		return "", fmt.Errorf("want a string or an object, got %v", v)
+	}
+	if err := b.enter(); err != nil {
+		return "", err
+	}
+	defer b.leave()
+	for b.dec.More() {
+		key, err := b.dec.Token()
+		if err != nil {
+			return "", err
+		}
+		name, ok := key.(string)
+		if !ok {
+			return "", fmt.Errorf("object key is %v, not a string", key)
+		}
+		if err := fn(name); err != nil {
+			return "", err
+		}
+	}
+	return "", b.close()
+}
+
 // skip consumes one value of any shape, descending through it so that nesting
 // inside a part of the document we do not read is still bounded.
 func (b *bounded) skip() error {

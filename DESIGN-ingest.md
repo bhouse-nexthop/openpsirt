@@ -2,8 +2,8 @@
 
 What happens to a scan when it arrives.
 
-Satisfies ING-01, ING-04, ING-05, ING-07, ING-11, ING-14 to ING-23, ING-28 to
-ING-35, ACC-12, SEC-05, SEC-06.
+Satisfies ING-01, ING-02, ING-04, ING-05, ING-07, ING-11, ING-14 to ING-23,
+ING-28 to ING-35, MDL-19, ACC-12, SEC-05, SEC-06.
 
 ## Deciding before parsing
 
@@ -229,6 +229,67 @@ reach a person.
 | A fourth bound, on declared edges | The three that were decided do not bound it, and it is not bounded by the others |
 | Only the first ancestor supplies upstream identity | It is what the component was forked from. Anything further back is history, and a scanner matches against the fork point |
 | Default bounds sit several times above the largest producer | Refusing a legitimate scan is its own failure. The ceiling only has to be low enough to protect the process |
+
+
+## Reading what the build already answered
+
+A build's claims about vulnerabilities in what it ships arrive two ways, and
+they are not equally precise.
+
+| | |
+|---|---|
+| **On the component** | A patch in a component's pedigree recording which vulnerability it fixes. It arrives attached to the thing it is about, so nothing has to work out what it applies to |
+| **In a document of their own** | Statements naming what they apply to by package identifier — which may be one version, every version of a package, or a whole source tree |
+
+Both are read into one shape, with where each came from recorded, because the
+second can point at something we cannot resolve and the first cannot.
+
+### The vocabulary is kept rather than translated
+
+A build saying "we carry the fix" and one saying "the vulnerable code is never
+reached" are making different claims. Collapsing them into "suppressed" at the
+door would lose the distinction before anyone triaging saw it.
+
+Two of the four remove a finding from what somebody has to look at; the other
+two say the build looked, which is information rather than an answer. A claim
+whose status is not one we can read is refused rather than ignored — ignoring
+it lets a build's judgement go missing silently, which is the failure applying
+the claims here exists to remove.
+
+### A carried patch reports as fixed
+
+The vulnerable code was there and a patch resolved it. That is not the same
+statement as the vulnerability never having applied, and the difference matters
+to whoever reads it later.
+
+Only what a patch *claims* is read: a patch names a vulnerability in its own
+name or in a header saying what it fixes. A vulnerability mentioned in passing
+in a patch is not that patch claiming to fix it. The producer draws the same
+line, which is why the claim can be taken as read.
+
+### Matching a claim to a component
+
+| Rule | Why |
+|---|---|
+| Qualifiers and subpaths are discarded before comparing | A claim is written as the package and the version. The same package in an inventory carries the architecture it was built for, so comparing the two as written matches nothing |
+| A claim naming no version covers every version | The format says so, and it is how a build states something about whatever it happens to ship |
+| A claim against a source tree matches a component of that name, or a fork of one | The build knows which packages came out of a tree and we do not. Name equality is the most that can be said, and it is what the producer intends by writing one |
+| A claim is matched at every place its component sits | One claim, however many places — the fan-out is ours either way |
+
+**A claim that matched nothing is reported, not dropped.** A build's judgement
+that went nowhere means a finding it already answered comes back as noise, and
+nothing distinguishes that from a finding nobody has looked at yet. The
+producer's own automatically-extracted claims name source trees rather than
+packages, so this is the ordinary case rather than the exceptional one.
+
+### Choices the decisions did not cover
+
+| Choice | Why this way |
+|---|---|
+| A claim naming an unreadable status refuses the document | A claim we cannot act on is one the build believes it made. Failing loudly is better than a build's judgement silently going missing |
+| A claim with no justification is kept rather than refused | The format only requires one for a single status, and what to do about an unjustified claim is a triage question, not a reading one |
+| Both shapes read into one thing, with the origin recorded | They differ in precision rather than in meaning, and the difference is worth keeping without needing two of everything downstream |
+| Only a security claim is read from a patch | A patch resolves defects and improvements as readily as vulnerabilities |
 
 
 ## A note on column types

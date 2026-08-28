@@ -258,6 +258,7 @@ func (c *reader) component() (graph.Described, string, []graph.Described, error)
 		described graph.Described
 		ref       string
 		nested    []graph.Described
+		carried   []Suppression
 	)
 	err := c.b.object(func(key string) error {
 		switch key {
@@ -270,7 +271,7 @@ func (c *reader) component() (graph.Described, string, []graph.Described, error)
 		case "purl":
 			return c.into(&described.Purl)
 		case "pedigree":
-			return c.pedigree(&described)
+			return c.pedigree(&described, &carried)
 		case "components":
 			members, err := c.componentArray()
 			if err != nil {
@@ -288,38 +289,131 @@ func (c *reader) component() (graph.Described, string, []graph.Described, error)
 	if err := described.Valid(); err != nil {
 		return graph.Described{}, "", nil, fmt.Errorf("%w, so it cannot be tracked", err)
 	}
+	// A claim the pedigree carries is about the component it was read from,
+	// which is only fully known now: key order is the producer's business, so
+	// the patches may well have been read before the name they belong to.
+	for _, claim := range carried {
+		claim.Targets = []Target{{Purl: described.Purl, Name: described.Name}}
+		c.doc.Suppressions = append(c.doc.Suppressions, claim)
+	}
 	return described, ref, nested, nil
 }
 
-// pedigree reads where a component came from.
+// pedigree reads where a component came from, and what its patches say they
+// fix.
 //
 // A shipped fork carries a version string of its own while the vulnerability
-// lives on the version it was forked from, so dropping this makes findings
-// unexplainable. The first ancestor is the one the producer forked from;
-// anything further back is history rather than identity.
-func (c *reader) pedigree(described *graph.Described) error {
+// lives on the version it was forked from, so dropping the ancestor makes
+// findings unexplainable. The first ancestor is the one the producer forked
+// from; anything further back is history rather than identity.
+func (c *reader) pedigree(described *graph.Described, carried *[]Suppression) error {
 	return c.b.object(func(key string) error {
-		if key != "ancestors" {
+		switch key {
+		case "ancestors":
+			return c.ancestor(described)
+		case "patches":
+			return c.patches(carried)
+		default:
 			return c.b.skip()
 		}
-		first := true
-		return c.b.array(func() error {
-			if !first {
+	})
+}
+
+// ancestor reads what a component was forked from.
+func (c *reader) ancestor(described *graph.Described) error {
+	first := true
+	return c.b.array(func() error {
+		if !first {
+			return c.b.skip()
+		}
+		first = false
+		return c.b.object(func(field string) error {
+			switch field {
+			case "name":
+				return c.into(&described.UpstreamName)
+			case "version":
+				return c.into(&described.UpstreamVersion)
+			default:
 				return c.b.skip()
 			}
-			first = false
-			return c.b.object(func(field string) error {
-				switch field {
-				case "name":
-					return c.into(&described.UpstreamName)
-				case "version":
-					return c.into(&described.UpstreamVersion)
-				default:
-					return c.b.skip()
-				}
-			})
 		})
 	})
+}
+
+// patches reads what a component's carried patches say they resolve.
+//
+// This is the build's judgement about its own patches, arriving attached to
+// the component it is about rather than in a separate document that has to be
+// matched back to one. A patch only claims a vulnerability where it says so —
+// in its own name, or in a header declaring what it fixes — so what is read
+// here is a claim rather than a mention.
+func (c *reader) patches(carried *[]Suppression) error {
+	return c.b.array(func() error {
+		var (
+			diff    string
+			claimed []Suppression
+		)
+		err := c.b.object(func(key string) error {
+			switch key {
+			case "diff":
+				return c.b.object(func(field string) error {
+					if field != "url" {
+						return c.b.skip()
+					}
+					return c.into(&diff)
+				})
+			case "resolves":
+				return c.b.array(func() error {
+					claim, err := c.resolved()
+					if err != nil {
+						return err
+					}
+					if claim.Vulnerability != "" {
+						claimed = append(claimed, claim)
+					}
+					return nil
+				})
+			default:
+				return c.b.skip()
+			}
+		})
+		if err != nil {
+			return err
+		}
+		for _, claim := range claimed {
+			claim.Statement = "resolved by a patch the build carries: " + trim(diff)
+			*carried = append(*carried, claim)
+		}
+		return nil
+	})
+}
+
+// resolved reads one thing a patch says it fixes.
+//
+// A patch may resolve a defect or an improvement as readily as a
+// vulnerability, and only the last of those is a claim about security.
+func (c *reader) resolved() (Suppression, error) {
+	var (
+		kind  string
+		claim = Suppression{Status: AlreadyFixed, Origin: FromPedigree}
+	)
+	err := c.b.object(func(key string) error {
+		switch key {
+		case "type":
+			return c.into(&kind)
+		case "id":
+			return c.into(&claim.Vulnerability)
+		default:
+			return c.b.skip()
+		}
+	})
+	if err != nil {
+		return Suppression{}, err
+	}
+	if kind != "security" {
+		return Suppression{}, nil
+	}
+	return claim, nil
 }
 
 // dependencies reads the declared edges.
