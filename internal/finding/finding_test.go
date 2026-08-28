@@ -13,19 +13,21 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
+	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
 	"github.com/bhouse-nexthop/openpsirt/internal/schema"
 )
 
 // fixture is one migrated database with a variant, a stored graph, and a way
 // to mint scan runs in order.
 type fixture struct {
-	db     *database.DB
-	store  *finding.Store
-	graph  *graph.Store
-	target int64
-	scans  *ingest.Store
-	built  time.Time
-	seq    int
+	db       *database.DB
+	store    *finding.Store
+	graph    *graph.Store
+	target   int64
+	lastScan int64
+	scans    *ingest.Store
+	built    time.Time
+	seq      int
 }
 
 func at(name, version string) graph.Described {
@@ -58,6 +60,7 @@ func (f *fixture) shipped(t *testing.T, snap graph.Snapshot) {
 	if _, err := f.graph.Apply(t.Context(), f.target, scan.ID, snap); err != nil {
 		t.Fatalf("apply graph: %v", err)
 	}
+	f.lastScan = scan.ID
 }
 
 // twoConsumers is the graph most of these tests use.
@@ -433,6 +436,170 @@ func TestAComponentUnderTheProductSitsUnderNothing(t *testing.T) {
 		}
 		if rows[0].PlaceIdentity != finding.PlaceIdentity("libswsscommon", "") {
 			t.Error("a component under the product keyed on something else")
+		}
+	})
+}
+
+// aClaim is what a build argues about one of its components.
+func aClaim(vulnerability string, status sbom.Status, subject graph.Described, origin sbom.Origin) sbom.Suppression {
+	return sbom.Suppression{
+		Vulnerability: vulnerability, Status: status,
+		Justification: "vulnerable_code_not_in_execute_path",
+		Statement:     "resolved by a patch the build carries",
+		Targets:       []sbom.Target{{Purl: subject.Purl, Name: subject.Name}},
+		Origin:        origin,
+	}
+}
+
+func TestAFindingTheBuildHasAnsweredIsMarkedNotDropped(t *testing.T) {
+	// The whole reason the claims are applied here rather than upstream. A
+	// finding a build has argued about stays visible and says what was
+	// argued; one that simply never arrived is indistinguishable from a
+	// scanner that failed, and lands in the bucket nothing may explain away.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		scanID := f.lastScan
+		if _, err := f.store.RecordClaims(t.Context(), f.target, scanID,
+			[]sbom.Suppression{aClaim("CVE-2026-1", sbom.AlreadyFixed, libnl, sbom.FromPedigree)}); err != nil {
+			t.Fatal(err)
+		}
+
+		applied, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if applied.Opened != 2 {
+			t.Fatalf("opened %d findings, want one per consumer even though the build answered them", applied.Opened)
+		}
+		if applied.Suppressed != 2 {
+			t.Errorf("%d findings carry what the build argued, want 2", applied.Suppressed)
+		}
+		for _, row := range f.open(t) {
+			if row.SuppressedBy == nil {
+				t.Error("a finding the build answered does not say so")
+			}
+		}
+	})
+}
+
+func TestAClaimAboutSomethingElseLeavesAFindingAlone(t *testing.T) {
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.RecordClaims(t.Context(), f.target, f.lastScan,
+			[]sbom.Suppression{
+				// Right component, different issue.
+				aClaim("CVE-2026-9", sbom.NotAffected, libnl, sbom.FromStatement),
+				// Right issue, different component.
+				aClaim("CVE-2026-1", sbom.NotAffected, swss, sbom.FromStatement),
+			}); err != nil {
+			t.Fatal(err)
+		}
+		applied, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if applied.Suppressed != 0 {
+			t.Errorf("%d findings were marked by a claim about something else", applied.Suppressed)
+		}
+	})
+}
+
+func TestSayingItIsAffectedSuppressesNothing(t *testing.T) {
+	// A build saying it is affected, or that it has not decided, is telling us
+	// it looked. That is information, not an answer.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.RecordClaims(t.Context(), f.target, f.lastScan,
+			[]sbom.Suppression{aClaim("CVE-2026-1", sbom.Affected, libnl, sbom.FromStatement)}); err != nil {
+			t.Fatal(err)
+		}
+		applied, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if applied.Suppressed != 0 {
+			t.Errorf("a build saying it is affected suppressed %d findings", applied.Suppressed)
+		}
+	})
+}
+
+func TestArguingTheSameThingAgainWritesNothing(t *testing.T) {
+	// A build argues the same things night after night.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		claims := []sbom.Suppression{aClaim("CVE-2026-1", sbom.AlreadyFixed, libnl, sbom.FromPedigree)}
+
+		if _, err := f.store.RecordClaims(t.Context(), f.target, f.lastScan, claims); err != nil {
+			t.Fatal(err)
+		}
+		f.shipped(t, twoConsumers())
+		applied, err := f.store.RecordClaims(t.Context(), f.target, f.lastScan, claims)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !applied.Unchanged() {
+			t.Errorf("re-arguing the same claims wrote %+v", applied)
+		}
+
+		// Withdrawing one closes it rather than deleting it: what a release
+		// argued is a question asked years later.
+		applied, err = f.store.RecordClaims(t.Context(), f.target, f.lastScan, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if applied.Closed != 1 {
+			t.Errorf("withdrawing a claim closed %d", applied.Closed)
+		}
+		open, err := f.store.OpenClaims(t.Context(), f.target)
+		if err != nil || len(open) != 0 {
+			t.Errorf("%d claims still open (%v)", len(open), err)
+		}
+	})
+}
+
+func TestAClaimAttachedToItsComponentWinsOverOneThatNamedIt(t *testing.T) {
+	// A claim that arrived on the component knows exactly what it is about. A
+	// claim in a document may name a whole source tree and match by name, so
+	// where both cover a finding the precise one is the one recorded.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		// Recorded in two steps so the vaguer claim is the older one. If
+		// preferring the precise one were removed, the older would win, and a
+		// test that relied on insertion order within a single call would pass
+		// or fail depending on what a map felt like doing.
+		vague := aClaim("CVE-2026-1", sbom.NotAffected, libnl, sbom.FromStatement)
+		precise := aClaim("CVE-2026-1", sbom.AlreadyFixed, libnl, sbom.FromPedigree)
+		if _, err := f.store.RecordClaims(t.Context(), f.target, f.lastScan,
+			[]sbom.Suppression{vague}); err != nil {
+			t.Fatal(err)
+		}
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.RecordClaims(t.Context(), f.target, f.lastScan,
+			[]sbom.Suppression{vague, precise}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+
+		open, err := f.store.OpenClaims(t.Context(), f.target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		attached := map[int64]bool{}
+		for _, claim := range open {
+			if claim.Origin == string(sbom.FromPedigree) {
+				attached[claim.ID] = true
+			}
+		}
+		for _, row := range f.open(t) {
+			if row.SuppressedBy == nil || !attached[*row.SuppressedBy] {
+				t.Error("a finding recorded the vaguer of two claims that covered it")
+			}
 		}
 	})
 }

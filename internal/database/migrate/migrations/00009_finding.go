@@ -74,6 +74,35 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			failure          ` + t.text + ` NULL
 		)` + t.suffix,
 
+		// What a build has already argued does not apply to it.
+		//
+		// Stored as data rather than left in the document it arrived in. A
+		// nightly scan's documents are discarded once read, the vulnerability
+		// scan runs after that, and it runs again on a schedule — so a claim
+		// that lived only in the file would be gone by the time anything
+		// needed it, and every carried patch would come back as an
+		// outstanding vulnerability on the first re-scan.
+		//
+		// Held over intervals against scans, like the graph: a build argues
+		// the same things night after night, and re-sending them must write
+		// nothing.
+		`CREATE TABLE suppression (
+			id             ` + t.id + `,
+			target_id      ` + t.ref + ` NOT NULL REFERENCES target(id),
+			identity       ` + t.hash + ` NOT NULL,
+			vulnerability  ` + t.name + ` NOT NULL,
+			status         ` + t.kind + ` NOT NULL,
+			justification  ` + t.name + ` NULL,
+			statement      ` + t.text + ` NULL,
+			origin         ` + t.kind + ` NOT NULL,
+			subject_purl   ` + t.text + ` NULL,
+			subject_name   ` + t.name + ` NULL,
+			opened_scan_id ` + t.ref + ` NOT NULL REFERENCES scan(id),
+			closed_scan_id ` + t.refNull + ` NULL REFERENCES scan(id)
+		)` + t.suffix,
+
+		`CREATE INDEX suppression_open_idx ON suppression (target_id, closed_scan_id)`,
+
 		// place_identity is the hashed pair of names — the component and its
 		// consumer — which is what a triage decision is keyed on. It is stored
 		// rather than derived so a decision can be found without walking the
@@ -88,6 +117,10 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			place_identity   ` + t.hash + ` NOT NULL,
 			fix_state        ` + t.kind + ` NULL,
 			fixed_in         ` + t.name + ` NULL,
+			-- A finding the build has already argued about is marked, not
+			-- dropped: one that simply stopped appearing is
+			-- indistinguishable from a scanner fault.
+			suppressed_by    ` + t.refNull + ` NULL REFERENCES suppression(id),
 			opened_run_id    ` + t.ref + ` NOT NULL REFERENCES scan_run(id),
 			closed_run_id    ` + t.refNull + ` NULL REFERENCES scan_run(id),
 			closed_because   ` + t.kind + ` NULL
@@ -113,6 +146,7 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 func downFinding(ctx context.Context, tx *sql.Tx) error {
 	for _, stmt := range []string{
 		`DROP TABLE finding`,
+		`DROP TABLE suppression`,
 		`DROP TABLE scan_run`,
 		`DROP TABLE vulnerability_alias`,
 		`DROP TABLE vulnerability`,

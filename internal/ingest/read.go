@@ -9,6 +9,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
@@ -44,6 +45,11 @@ type Result struct {
 	Applied      graph.Applied
 	Components   int
 	Suppressions int
+	// ClaimsOpened and ClaimsClosed are what changed in the build's arguments
+	// since its last scan. A build argues the same things night after night,
+	// so both being zero is the ordinary case.
+	ClaimsOpened int
+	ClaimsClosed int
 	// Retained says whether the documents were kept. A tagged release keeps
 	// them so it can be re-scanned years later against data that did not
 	// exist when it was built.
@@ -109,7 +115,9 @@ func (r *Reader) Run(ctx context.Context, interval time.Duration) {
 				"scan", result.ScanID, "components", result.Components,
 				"nodes_opened", result.Applied.NodesOpened, "nodes_closed", result.Applied.NodesClosed,
 				"edges_opened", result.Applied.EdgesOpened, "edges_closed", result.Applied.EdgesClosed,
-				"suppressions", result.Suppressions, "documents_retained", result.Retained)
+				"suppressions", result.Suppressions,
+				"claims_opened", result.ClaimsOpened, "claims_closed", result.ClaimsClosed,
+				"documents_retained", result.Retained)
 		}
 		timer.Reset(interval)
 	}
@@ -155,10 +163,14 @@ func (r *Reader) read(ctx context.Context, reference string) (*Result, error) {
 		return nil, fmt.Errorf("scan %d: %w", scanID, err)
 	}
 
-	// The suppression documents are read here even though applying them waits
-	// on the scan itself. A document that cannot be read is a fault in what
-	// the build sent, and finding that out now — while the producer still has
-	// the build in front of them — is worth more than finding out later.
+	// The suppression documents are read and kept here. Applying them waits on
+	// the scan, which runs later and again on a schedule — so a claim left in
+	// the document it arrived in would be gone by the time anything needed it,
+	// because a nightly scan's documents are discarded once read.
+	//
+	// Reading them now also means a document that cannot be read is a fault in
+	// what the build sent, found while the producer still has the build in
+	// front of them.
 	claims := doc.Suppressions
 	for _, held := range held {
 		if held.Kind != SuppressionsKind {
@@ -181,9 +193,17 @@ func (r *Reader) read(ctx context.Context, reference string) (*Result, error) {
 		return nil, fmt.Errorf("scan %d: %w", scanID, err)
 	}
 
+	// What the build argued is stored against the target, not against the
+	// scan, because it is what the next scan run has to apply.
+	claimed, err := finding.NewStore(r.db.DB).RecordClaims(ctx, scan.TargetID, scanID, claims)
+	if err != nil {
+		return nil, fmt.Errorf("scan %d: %w", scanID, err)
+	}
+
 	result := &Result{
 		ScanID: scanID, Applied: applied,
 		Components: len(doc.Components), Suppressions: len(claims),
+		ClaimsOpened: claimed.Opened, ClaimsClosed: claimed.Closed,
 		Retained: !target.Moves,
 	}
 

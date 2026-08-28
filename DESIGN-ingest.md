@@ -190,6 +190,10 @@ scan itself. A document that cannot be read is a fault in what the build sent,
 and finding that out while the producer still has the build in front of them is
 worth more than finding out later.
 
+What the build argued is stored as data at this point, against the target
+rather than against the scan, because it is what the next vulnerability scan
+has to apply — and by then the documents may be gone.
+
 **A failure is recorded against the scan, not only against the job.** A
 producer sending files nothing can read has to be visible as exactly that. A
 job that keeps retrying is visible only to whoever operates this deployment,

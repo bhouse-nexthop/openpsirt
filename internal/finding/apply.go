@@ -7,6 +7,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
+	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
 )
 
 // place is one finding's position: the component, and what pulled it in.
@@ -52,6 +53,14 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 		if err != nil {
 			return err
 		}
+		// What the build has already argued about what it ships. Applied here
+		// rather than upstream of us, so a suppressed finding is something
+		// that can be seen and accounted for instead of one that never
+		// arrived.
+		claims, err := openClaims(ctx, tx, targetID)
+		if err != nil {
+			return err
+		}
 
 		wanted := map[key]Finding{}
 		for _, r := range reported {
@@ -69,6 +78,7 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 				return fmt.Errorf("issue %q was not recorded", r.Issue.Identifier)
 			}
 
+			covering := coveringClaim(claims, r.Issue, component)
 			for _, consumerID := range places.of(component.ID) {
 				at := place{componentID: component.ID, consumerID: consumerID}
 				wanted[key{vulnerabilityID, at}] = Finding{
@@ -78,7 +88,8 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 					ConsumerID:      optional(consumerID),
 					PlaceIdentity:   PlaceIdentity(component.Name, present.nameOf(consumerID)),
 					FixState:        r.FixState, FixedIn: r.FixedIn,
-					OpenedRunID: runID,
+					SuppressedBy: covering,
+					OpenedRunID:  runID,
 				}
 			}
 		}
@@ -97,6 +108,9 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 
 		var opening []Finding
 		for k, f := range wanted {
+			if f.SuppressedBy != nil {
+				applied.Suppressed++
+			}
 			if _, already := held[k]; already {
 				continue
 			}
@@ -146,7 +160,42 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 	return applied, err
 }
 
-// inventory is what a variant currently contains, as far as findings care.
+// coveringClaim finds the build's argument that covers a reported issue, if it
+// made one.
+//
+// A claim that arrived attached to the component is preferred over one that
+// named something we had to match: the first knows exactly what it is about,
+// while the second may name a whole source tree.
+func coveringClaim(claims []Claim, issue Named, component graph.Component) *int64 {
+	names := map[string]bool{normalize(issue.Identifier): true}
+	for _, alias := range issue.Aliases {
+		names[normalize(alias)] = true
+	}
+
+	described := graph.Described{
+		Purl: component.Purl, Name: component.Name, Version: component.Version,
+		UpstreamName: component.UpstreamName, UpstreamVersion: component.UpstreamVersion,
+	}
+
+	var found *int64
+	for _, claim := range claims {
+		if !names[normalize(claim.Vulnerability)] || !claim.suppresses() || !claim.covers(described) {
+			continue
+		}
+		id := claim.ID
+		if claim.Origin == string(sbom.FromPedigree) {
+			return &id
+		}
+		if found == nil {
+			// The first in a stable order, so the answer does not move
+			// between runs.
+			found = &id
+		}
+	}
+	return found
+}
+
+// inventory is what a target currently contains, as far as findings care.
 type inventory struct {
 	byID       map[int64]graph.Component
 	byIdentity map[string]graph.Component

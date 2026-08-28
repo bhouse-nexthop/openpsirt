@@ -2,8 +2,8 @@
 
 What a scan run found, and where.
 
-Satisfies MDL-05, MDL-06, MDL-14, MDL-19, MDL-20, ING-29, ING-30, STA-03,
-STA-04, STA-05, STA-08, RNK-04.
+Satisfies MDL-05, MDL-06, MDL-14, MDL-19, MDL-20, ING-02, ING-21, ING-29,
+ING-30, STA-03, STA-04, STA-05, STA-08, STA-17, RNK-04.
 
 ## A scanner reports a package; we work out the places
 
@@ -93,6 +93,47 @@ The reason is worked out from what the build now contains, compared against
 what the finding was about. That comparison reads the departed component from
 the component catalog rather than from the current build — the reason it is
 closing is usually that it is no longer there to read.
+
+## What the build already argued
+
+A build sends what it has already decided does not apply to it — usually
+because it carries a patch. Those claims are **kept as data when the scan is
+read**, not left in the document they arrived in.
+
+They have to be. A nightly scan's documents are discarded once read, the
+vulnerability scan runs after that, and it runs again on a schedule against
+data that keeps moving. A claim that lived only in the file would be gone by
+the time anything needed it, and every carried patch would come back as an
+outstanding vulnerability on the first re-scan — which is exactly what applying
+the claims here was meant to prevent.
+
+A statement naming several packages becomes several claims, one per subject.
+Each is about one thing, because that is what gets matched against a component,
+and because a claim that reached one package and not another is worth being
+able to see.
+
+Claims are held over intervals, like everything else a build describes. A build
+argues the same things night after night, so re-sending them writes nothing.
+Withdrawing one closes it rather than deleting it: what a release argued is a
+question asked years later.
+
+### A covered finding is marked, not dropped
+
+**The finding is created and stays visible**, carrying the claim that answers
+it. This is the whole reason the claims are applied here rather than upstream:
+a finding that simply never arrived is indistinguishable from a scanner fault,
+and that is the bucket nothing is allowed to explain away.
+
+| The build says | What happens |
+|---|---|
+| It carries a fix, or the vulnerability does not apply | The finding is marked with the claim and is not work anybody has to do |
+| It is affected, or it has not decided | Nothing is marked. The build is telling us it looked, which is information rather than an answer |
+
+Where two claims cover one finding, the one that arrived **attached to the
+component** wins over one that named something we had to match — the first
+knows exactly what it is about, while the second may name a whole source tree.
+Where neither is attached, the claims are read in a stable order so that which
+one is recorded does not change between runs.
 
 ## A run is recorded whether or not it found anything
 

@@ -87,9 +87,14 @@ type Finding struct {
 	PlaceIdentity string   `bun:"place_identity,notnull"`
 	FixState      FixState `bun:"fix_state"`
 	FixedIn       string   `bun:"fixed_in"`
-	OpenedRunID   int64    `bun:"opened_run_id,notnull"`
-	ClosedRunID   *int64   `bun:"closed_run_id"`
-	ClosedBecause Closure  `bun:"closed_because"`
+	// SuppressedBy is the claim the build made that covers this, where it made
+	// one. A covered finding is kept and marked rather than dropped: a finding
+	// that simply stopped appearing is indistinguishable from a scanner fault,
+	// and that is the bucket nothing is allowed to explain away.
+	SuppressedBy  *int64  `bun:"suppressed_by"`
+	OpenedRunID   int64   `bun:"opened_run_id,notnull"`
+	ClosedRunID   *int64  `bun:"closed_run_id"`
+	ClosedBecause Closure `bun:"closed_because"`
 }
 
 // Reported is one issue a scanner reported against one component.
@@ -110,7 +115,10 @@ type Applied struct {
 	// Unexplained counts findings that closed with the component present and
 	// unchanged. Always reported, never suppressed.
 	Unexplained int
-	// Unplaced counts issues reported against something the variant does not
+	// Suppressed counts findings the build has already argued about. They are
+	// open and visible; they are not work anybody has to do.
+	Suppressed int
+	// Unplaced counts issues reported against something the target does not
 	// contain. A report that does not match the inventory it was produced from
 	// is worth seeing rather than quietly discarding.
 	Unplaced int
