@@ -171,3 +171,27 @@ advisory lock deleted. It pins the mutex and nothing else, and says so.
 
 Reading the schema version performs no schema changes: the bookkeeping table is
 checked for before it is read, so the inspection command does not create it.
+
+## Collation is pinned, not inherited
+
+Two of the four engines compare text case-insensitively by default; the other
+two do not. Left alone, declaring `Widget` and then filing a scan against
+`widget` resolves on one pair and creates a second product on the other — so
+the declaration rule that exists to catch a typo would itself behave
+differently depending on which database an operator runs.
+
+The tables that need it are created with binary comparison, which is what the
+other two already do.
+
+## Text a producer supplies is not given a width
+
+A component's name, its version, what it was forked from, an issue's
+identifier, a fix's version list: all of it arrives in somebody else's file,
+and nothing in any format bounds it. A column with a width turns a merely
+unusual value into a failure of the whole scan that carried it — and a scan
+that failed is indistinguishable from a product that stopped having problems.
+
+The exception is text carrying a unique index, which needs a width. There the
+value is truncated on the way in rather than refused, because two identifiers
+agreeing for a hundred and ninety-one characters are the same identifier by any
+reading.

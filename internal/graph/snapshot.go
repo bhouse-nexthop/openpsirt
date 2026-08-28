@@ -91,6 +91,19 @@ func (s *Store) Apply(ctx context.Context, targetID, scanID int64, snap Snapshot
 	var applied Applied
 
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// Taken first, before anything is read. Two scans of one target can be
+		// in flight at once — the queue hands different jobs to different
+		// workers by design — and without this both would read the same open
+		// rows, both compute the same difference, and both write it, leaving
+		// two open rows where everything downstream assumes one. This is an
+		// ordinary row update, so every engine takes the lock and the second
+		// worker waits rather than racing.
+		if _, err := tx.NewUpdate().Table("target").
+			Set("last_scan_id = ?", scanID).
+			Where("id = ?", targetID).Exec(ctx); err != nil {
+			return fmt.Errorf("take the target: %w", err)
+		}
+
 		components := NewComponents(tx)
 
 		// The product itself is stored without the version that moves every

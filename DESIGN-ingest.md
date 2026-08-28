@@ -217,6 +217,24 @@ which is the wrong person to be the only one who knows.
 Once a scan has been read, what it sent is either discarded or kept, according
 to whether the line it was filed against moves.
 
+### Two scans of one target are kept apart
+
+Uploads are accepted in the order they arrive and read in whatever order
+workers pick them up — the queue hands different jobs to different workers by
+design. Two consequences follow, and both are guarded.
+
+A scan can reach the reader after a newer one has already been applied.
+Applying it then would replace today's picture with yesterday's and reopen
+everything the newer one closed, which is the harm the arrival check prevents
+at the door, arriving from behind. So a scan that has been overtaken is not
+applied, and that is recorded rather than treated as a failure.
+
+And two applies for one target must not interleave. Both would read the same
+open rows, both compute the same difference, and both write it, leaving two
+open rows where everything downstream assumes one. Applying takes the target
+row first — an ordinary update, so every engine takes the lock and the second
+worker waits.
+
 ### Waiting rather than being told
 
 The queue is polled. A notification mechanism exists on one of the four

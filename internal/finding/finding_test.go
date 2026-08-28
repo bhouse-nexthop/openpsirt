@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -744,6 +745,41 @@ func TestAClaimThatReachedNothingIsCounted(t *testing.T) {
 		}
 		if applied.ClaimsReachingNothing != 1 {
 			t.Errorf("%d claims reached nothing, want 1", applied.ClaimsReachingNothing)
+		}
+	})
+}
+
+func TestAnAbsurdlyLongValueDoesNotFailTheScanThatCarriedIt(t *testing.T) {
+	// Everything here comes from somebody else's output. A value longer than a
+	// column would fail the whole run, and a run that failed is
+	// indistinguishable from a product that stopped having problems.
+	each(t, func(t *testing.T, f *fixture) {
+		long := strings.Repeat("x", 5000)
+		f.shipped(t, graph.Snapshot{
+			Root: root,
+			Components: []graph.Described{{
+				Purl: "pkg:deb/debian/sprawling@1.0", Name: "sprawling", Version: long,
+				UpstreamName: long, UpstreamVersion: long,
+			}},
+			Dependencies: []graph.Dependency{{Parent: root, Child: graph.Described{
+				Purl: "pkg:deb/debian/sprawling@1.0", Name: "sprawling", Version: long,
+				UpstreamName: long, UpstreamVersion: long,
+			}}},
+		})
+
+		applied, err := f.store.Apply(t.Context(), f.target, f.run(t), []finding.Reported{{
+			Issue: finding.Named{Identifier: "CVE-2026-1" + long, Severity: "high"},
+			Component: graph.Described{
+				Purl: "pkg:deb/debian/sprawling@1.0", Name: "sprawling", Version: long,
+				UpstreamName: long, UpstreamVersion: long,
+			},
+			FixState: finding.FixedUpstream, FixedIn: long,
+		}})
+		if err != nil {
+			t.Fatalf("a long value failed the scan carrying it: %v", err)
+		}
+		if applied.Opened != 1 {
+			t.Errorf("opened %d findings", applied.Opened)
 		}
 	})
 }

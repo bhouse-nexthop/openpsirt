@@ -44,7 +44,7 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 		`CREATE TABLE vulnerability (
 			id            ` + t.id + `,
 			identity      ` + t.hash + ` NOT NULL,
-			identifier    ` + t.name + ` NOT NULL,
+			identifier    ` + t.free + ` NOT NULL,
 			severity      ` + t.kind + ` NULL,
 			first_seen_at ` + t.timestamp + ` NOT NULL,
 			CONSTRAINT vulnerability_identity_unique UNIQUE (identity)
@@ -90,16 +90,16 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			id             ` + t.id + `,
 			target_id      ` + t.ref + ` NOT NULL REFERENCES target(id),
 			identity       ` + t.hash + ` NOT NULL,
-			vulnerability  ` + t.name + ` NOT NULL,
+			vulnerability  ` + t.free + ` NOT NULL,
 			-- The status vocabulary is the exchange format's, not ours, and
 			-- its longest word today is longer than a short identifier
 			-- column allows. Whatever it adds next is not ours to bound.
 			status         ` + t.name + ` NOT NULL,
-			justification  ` + t.name + ` NULL,
+			justification  ` + t.free + ` NULL,
 			statement      ` + t.text + ` NULL,
 			origin         ` + t.kind + ` NOT NULL,
 			subject_purl   ` + t.text + ` NULL,
-			subject_name   ` + t.name + ` NULL,
+			subject_name   ` + t.free + ` NULL,
 			opened_scan_id ` + t.ref + ` NOT NULL REFERENCES scan(id),
 			closed_scan_id ` + t.refNull + ` NULL REFERENCES scan(id)
 		)` + t.suffix,
@@ -119,7 +119,9 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			consumer_id      ` + t.refNull + ` NULL REFERENCES component(id),
 			place_identity   ` + t.hash + ` NOT NULL,
 			fix_state        ` + t.kind + ` NULL,
-			fixed_in         ` + t.name + ` NULL,
+			-- A scanner reports every version that fixes an issue, and for a
+			-- kernel that is a long list.
+			fixed_in         ` + t.free + ` NULL,
 			-- A finding the build has already argued about is marked, not
 			-- dropped: one that simply stopped appearing is
 			-- indistinguishable from a scanner fault.

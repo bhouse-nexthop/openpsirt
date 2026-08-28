@@ -70,6 +70,25 @@ func (f *readerFixture) accept(t *testing.T, targetID int64, builtAt time.Time, 
 	return scan.ID
 }
 
+// store records a scan and what came with it, leaving the caller to decide
+// when — and in what order — it gets read.
+func (f *readerFixture) store(t *testing.T, targetID int64, builtAt time.Time, inventory string) int64 {
+	t.Helper()
+	ctx := t.Context()
+	scan, outcome, err := ingest.NewStore(f.db.DB).Record(ctx, ingest.Arriving{
+		TargetID: targetID, ContentHash: inventory[:16] + builtAt.String(),
+		BuiltAt: builtAt, ParserVersion: "test",
+	})
+	if err != nil || outcome != ingest.Accept {
+		t.Fatalf("record: %v %v", outcome, err)
+	}
+	if _, err := ingest.NewDocuments(f.db.DB).Write(ctx, scan.ID, ingest.InventoryKind, 0,
+		strings.NewReader(inventory)); err != nil {
+		t.Fatal(err)
+	}
+	return scan.ID
+}
+
 func eachReader(t *testing.T, fn func(t *testing.T, f *readerFixture)) {
 	t.Helper()
 	dbtest.Each(t, func(t *testing.T, db *database.DB) {
@@ -271,6 +290,58 @@ func TestWhatWasToleratedIsReported(t *testing.T) {
 		// The orphan and the unversioned one both sit under nothing.
 		if result.Unrooted != 2 {
 			t.Errorf("%d components sit under nothing, want 2", result.Unrooted)
+		}
+	})
+}
+
+func TestAScanOvertakenByANewerOneIsNotApplied(t *testing.T) {
+	// Uploads are accepted in arrival order and read in whatever order workers
+	// pick them up, so an older scan can reach the reader after a newer one
+	// has already been applied. Applying it then replaces today's picture with
+	// yesterday's and reopens everything the newer one closed — the harm the
+	// arrival check prevents at the door, arriving from behind.
+	eachReader(t, func(t *testing.T, f *readerFixture) {
+		now := time.Now().UTC()
+		older := f.store(t, f.branch, now.Add(-2*time.Hour), anInventory)
+		newer := f.store(t, f.branch, now.Add(-time.Hour), anInventory)
+
+		// The newer one is read first, which is what a queue handing two jobs
+		// to two workers can produce.
+		for _, id := range []int64{newer, older} {
+			if _, err := f.queue.Add(t.Context(), ingest.JobKind, strconv.FormatInt(id, 10)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var applied, skipped int
+		for range 4 {
+			result, err := f.reader.Once(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result == nil {
+				break
+			}
+			switch {
+			case result.Superseded:
+				skipped++
+				if result.ScanID != older {
+					t.Errorf("skipped scan %d, expected the older one", result.ScanID)
+				}
+			default:
+				applied++
+			}
+		}
+		if skipped != 1 {
+			t.Errorf("%d scans were skipped as overtaken, want 1", skipped)
+		}
+
+		// And what is present is the newer picture, not the older one.
+		nodes, err := graph.NewStore(f.db.DB).CurrentNodes(t.Context(), f.branch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(nodes) != 3 {
+			t.Errorf("%d nodes present, want the graph the newer scan described", len(nodes))
 		}
 	})
 }

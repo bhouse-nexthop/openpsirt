@@ -40,10 +40,13 @@ func upGraph(ctx context.Context, tx *sql.Tx) error {
 			id               ` + t.id + `,
 			identity         ` + t.hash + ` NOT NULL,
 			purl             ` + t.text + ` NULL,
-			name             ` + t.name + ` NOT NULL,
-			version          ` + t.name + ` NOT NULL,
-			upstream_name    ` + t.name + ` NULL,
-			upstream_version ` + t.name + ` NULL,
+			-- Everything below comes from a scan file, and nothing bounds
+			-- what a producer puts in it. A bounded column here means a
+			-- legitimate but long value fails the whole scan that carried it.
+			name             ` + t.free + ` NOT NULL,
+			version          ` + t.free + ` NOT NULL,
+			upstream_name    ` + t.free + ` NULL,
+			upstream_version ` + t.free + ` NULL,
 			first_seen_at    ` + t.timestamp + ` NOT NULL,
 			CONSTRAINT component_identity_unique UNIQUE (identity)
 		)` + t.suffix,

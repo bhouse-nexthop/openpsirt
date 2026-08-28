@@ -59,6 +59,11 @@ type Result struct {
 	// so both being zero is the ordinary case.
 	ClaimsOpened int
 	ClaimsClosed int
+	// Superseded says a newer scan for this target was applied first, so this
+	// one was read no further. It is not a failure: the newer picture is the
+	// current one, and applying an older one over it would reopen everything
+	// the newer one closed.
+	Superseded bool
 	// Retained says whether the documents were kept. A tagged release keeps
 	// them so it can be re-scanned years later against data that did not
 	// exist when it was built.
@@ -120,6 +125,10 @@ func (r *Reader) Run(ctx context.Context, interval time.Duration) {
 			if result == nil {
 				break
 			}
+			if result.Superseded {
+				r.logger.Info("skipped a scan a newer one had already replaced", "scan", result.ScanID)
+				continue
+			}
 			r.logger.Info("read a scan",
 				"scan", result.ScanID, "components", result.Components,
 				"nodes_opened", result.Applied.NodesOpened, "nodes_closed", result.Applied.NodesClosed,
@@ -169,6 +178,19 @@ func (r *Reader) read(ctx context.Context, reference string) (*Result, error) {
 	}
 	if inventory == nil {
 		return nil, fmt.Errorf("scan %d has no inventory to read", scanID)
+	}
+
+	// Uploads are accepted in the order they arrive and read in whatever order
+	// workers pick them up, so a scan can reach here after a newer one has
+	// already been applied. Applying it then would replace today's picture
+	// with yesterday's and reopen everything the newer one closed — the same
+	// harm the arrival check prevents at the door, arriving from behind.
+	newest, err := scans.Newest(ctx, scan.TargetID)
+	if err != nil {
+		return nil, err
+	}
+	if newest != nil && newest.ID != scanID && !scan.BuiltAt.After(newest.BuiltAt) {
+		return &Result{ScanID: scanID, Superseded: true}, nil
 	}
 
 	doc, err := sbom.Read(documents.Open(ctx, inventory.ID), r.limits)

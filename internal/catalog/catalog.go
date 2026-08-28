@@ -279,6 +279,9 @@ type Target struct {
 	StreamID  int64     `bun:"stream_id,notnull"`
 	VariantID int64     `bun:"variant_id,notnull"`
 	CreatedAt time.Time `bun:"created_at,notnull"`
+	// LastScanID is which scan last wrote here, and taking it is how two
+	// workers applying two scans of one target are kept apart.
+	LastScanID *int64 `bun:"last_scan_id"`
 }
 
 // Placement is a target with everything above it named: what it is of, whether
