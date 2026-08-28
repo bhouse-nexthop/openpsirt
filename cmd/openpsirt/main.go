@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/config"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/httpapi"
@@ -92,8 +93,22 @@ func run(args []string, stdout, stderr *os.File) error {
 
 	// Readiness asks whether we can serve, which means the database answers
 	// and answers promptly — not merely that the process is up.
+	// Named administrators are granted at every start, which is what makes
+	// this the way back in rather than a one-time setup step.
+	if err := access.Bootstrap(ctx, access.NewStore(db.DB), cfg.BootstrapAdmins); err != nil {
+		return err
+	}
+	if len(cfg.BootstrapAdmins) > 0 {
+		logger.Info("administrators granted from configuration", "count", len(cfg.BootstrapAdmins))
+	}
+
 	work := queue.New(db, queue.DefaultOptions())
-	handler, _ := httpapi.New(logger, db.Validate, httpapi.Ingest{DB: db, Queue: work})
+	handler, _ := httpapi.New(logger, db.Validate, httpapi.Ingest{
+		DB: db, Queue: work,
+		Access: access.NewResolver(access.NewStore(db.DB), access.Trust{
+			Header: cfg.TrustedHeader, From: cfg.TrustedSources,
+		}),
+	})
 
 	// Every replica serves, reads and scans. Separate worker deployments would
 	// be more things to run and more things to get wrong for an installation

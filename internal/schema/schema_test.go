@@ -111,9 +111,20 @@ func TestEveryMigrationRollsBack(t *testing.T) {
 			t.Fatal("nothing was applied, so nothing is being rolled back")
 		}
 
-		for step := applied; step > 0; step-- {
+		// Driven by what is still applied rather than by counting down from the
+		// version number. Those are the same only while no migration has ever
+		// been renumbered or removed, and a test that assumes it fails
+		// confusingly the first time one is.
+		for {
+			at, err := schema.Version(ctx, db)
+			if err != nil {
+				t.Fatalf("version: %v", err)
+			}
+			if at == 0 {
+				break
+			}
 			if err := schema.Down(ctx, db, quiet()); err != nil {
-				t.Fatalf("rolling back migration %d: %v", step, err)
+				t.Fatalf("rolling back from version %d: %v", at, err)
 			}
 		}
 

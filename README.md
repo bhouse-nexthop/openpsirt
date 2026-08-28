@@ -51,6 +51,7 @@ each is built:
 
 | | |
 |---|---|
+| [DESIGN-access.md](DESIGN-access.md) | Who is asking, and what they may reach |
 | [DESIGN-build.md](DESIGN-build.md) | Layout, the validation pipeline, how a change is checked |
 | [DESIGN-database.md](DESIGN-database.md) | Four engines, migrations, locking |
 | [DESIGN-data-model.md](DESIGN-data-model.md) | What a scan is filed against, and the dependency graph |

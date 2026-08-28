@@ -7,10 +7,13 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 )
 
 // Config is everything the process needs to start.
@@ -46,6 +49,19 @@ type Config struct {
 	// without it there is nothing to triage, because the vulnerability data is
 	// produced here rather than sent to us.
 	ScannerPath string
+	// BootstrapAdmins are granted administrator at every startup, not only the
+	// first. Applying it every time makes it the way back in for an operator
+	// who has locked themselves out: add yourself, restart. For software
+	// somebody else runs, a way back in matters more than a tidy one-shot.
+	//
+	// It is a pre-authorization and not a bypass: being named grants the role,
+	// it does not admit anybody who has not authenticated.
+	BootstrapAdmins []string
+	// TrustedHeader is the header a reverse proxy sets to say who somebody is,
+	// and TrustedSources are the addresses it is honored from. Both are needed
+	// for either to do anything.
+	TrustedHeader  string
+	TrustedSources []net.IPNet
 	// AutoMigrate applies outstanding schema changes at startup.
 	//
 	// On by default: a self-hosted operator should not need a separate step,
@@ -65,6 +81,7 @@ func Load() (Config, error) {
 		ShutdownGrace: duration("SHUTDOWN_GRACE", 15*time.Second),
 		DatabaseURL:   env("DATABASE_URL", ""),
 		ScannerPath:   env("SCANNER_PATH", ""),
+		TrustedHeader: env("TRUSTED_HEADER", ""),
 		AutoMigrate:   env("AUTO_MIGRATE", "true") != "false",
 		ReadTimeout:   5 * time.Minute,
 		WriteTimeout:  5 * time.Minute,
@@ -72,6 +89,20 @@ func Load() (Config, error) {
 		DBMaxIdle:     number("DB_MAX_IDLE", 25),
 		DBIdleTimeout: duration("DB_IDLE_TIMEOUT", time.Minute),
 		DBLifetime:    duration("DB_CONN_LIFETIME", 30*time.Minute),
+	}
+
+	c.BootstrapAdmins = access.Identities(env("BOOTSTRAP_ADMINS", ""))
+
+	sources, err := access.ParseSources(env("TRUSTED_SOURCES", ""))
+	if err != nil {
+		return Config{}, fmt.Errorf("%sTRUSTED_SOURCES: %w", envPrefix, err)
+	}
+	c.TrustedSources = sources
+	// A half-configuration is the dangerous state, so it stops the process
+	// rather than being quietly ignored: a header named with nothing to trust
+	// it from is either a mistake or the first half of one.
+	if err := (access.Trust{Header: c.TrustedHeader, From: c.TrustedSources}).Configured(); err != nil {
+		return Config{}, fmt.Errorf("%sTRUSTED_HEADER: %w", envPrefix, err)
 	}
 
 	if err := c.LogLevel.UnmarshalText([]byte(env("LOG_LEVEL", "info"))); err != nil {

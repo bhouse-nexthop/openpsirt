@@ -1,0 +1,160 @@
+package access
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"net/http"
+	"strings"
+)
+
+// Trust says how a person's identity may reach us.
+//
+// A reverse proxy authenticates and passes the username on in a header. That
+// lets a deployment run with no provider at all, and supports operators who
+// already authenticate at their ingress.
+//
+// Both guardrails are deliberate acts. Trusting the header unconditionally
+// would let anybody able to reach the application directly become anybody at
+// all, administrator included — reaching the container bypasses the proxy
+// entirely. And it is never a fallback for unconfigured sign-in, because that
+// is how it ends up live by accident.
+type Trust struct {
+	// Header is the name the proxy sets. Empty means header sign-in is off.
+	Header string
+	// From are the addresses the header is honored from. Header sign-in
+	// without one of these is refused rather than trusted.
+	From []net.IPNet
+}
+
+// Enabled reports whether header sign-in is on.
+func (t Trust) Enabled() bool { return t.Header != "" && len(t.From) > 0 }
+
+// Configured reports a half-configuration, which is the dangerous state: a
+// header named with nothing to trust it from is either a mistake or the first
+// half of one.
+func (t Trust) Configured() error {
+	switch {
+	case t.Header == "" && len(t.From) == 0:
+		return nil
+	case t.Header == "":
+		return fmt.Errorf("trusted sources are configured but no header is named, so nothing would be read from them")
+	case len(t.From) == 0:
+		return fmt.Errorf("a trusted header is named but no source is trusted, and honoring it from anywhere would let anyone reaching this process be anyone")
+	}
+	return nil
+}
+
+// trusts reports whether a request came from somewhere the header is honored.
+func (t Trust) trusts(remote string) bool {
+	host, _, err := net.SplitHostPort(remote)
+	if err != nil {
+		host = remote
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, allowed := range t.From {
+		if allowed.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// Resolver turns a request into the subject making it.
+type Resolver struct {
+	store *Store
+	trust Trust
+}
+
+// NewResolver returns a resolver over a store.
+func NewResolver(store *Store, trust Trust) *Resolver {
+	return &Resolver{store: store, trust: trust}
+}
+
+// keyHeader is how a pipeline presents its credential.
+const keyHeader = "Authorization"
+
+// Resolve works out who is asking.
+//
+// One step for every sort of credential, so that what a request is allowed to
+// do is decided in one place rather than in each handler that remembers to
+// ask.
+func (r *Resolver) Resolve(ctx context.Context, req *http.Request) (Subject, error) {
+	if secret, ok := bearer(req.Header.Get(keyHeader)); ok {
+		return r.store.ResolveKey(ctx, secret)
+	}
+
+	if r.trust.Enabled() {
+		identity := strings.TrimSpace(req.Header.Get(r.trust.Header))
+		if identity == "" {
+			return Subject{}, ErrDenied
+		}
+		if !r.trust.trusts(req.RemoteAddr) {
+			// The header is present and this is not somewhere it is honored
+			// from, which is either a misconfiguration or somebody reaching
+			// past the proxy. Both are refusals.
+			return Subject{}, ErrDenied
+		}
+		return r.store.Resolve(ctx, identity)
+	}
+
+	return Subject{}, ErrDenied
+}
+
+// bearer reads a presented credential.
+func bearer(header string) (string, bool) {
+	const prefix = "Bearer "
+	if len(header) > len(prefix) && strings.EqualFold(header[:len(prefix)], prefix) {
+		return strings.TrimSpace(header[len(prefix):]), true
+	}
+	return "", false
+}
+
+// ParseSources reads the addresses a header is honored from.
+//
+// A bare address is taken as itself, so an operator naming one proxy does not
+// have to write a mask to say so.
+func ParseSources(raw string) ([]net.IPNet, error) {
+	var out []net.IPNet
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if _, network, err := net.ParseCIDR(entry); err == nil {
+			out = append(out, *network)
+			continue
+		}
+		ip := net.ParseIP(entry)
+		if ip == nil {
+			return nil, fmt.Errorf("%q is neither an address nor a range", entry)
+		}
+		bits := 32
+		if ip.To4() == nil {
+			bits = 128
+		}
+		out = append(out, net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+	}
+	return out, nil
+}
+
+// Bootstrap grants administrator to the identities configuration names.
+//
+// Applied at every start rather than only the first, which makes it the
+// documented way back in: an operator who has locked themselves out adds
+// themselves and restarts. For software somebody else runs, a way back in
+// matters more than a tidy one-shot bootstrap.
+//
+// It is a pre-authorization rather than a bypass. Being named grants the role;
+// it does not admit anybody who has not authenticated.
+func Bootstrap(ctx context.Context, store *Store, identities []string) error {
+	for _, identity := range identities {
+		if _, err := store.Ensure(ctx, identity, "", true); err != nil {
+			return fmt.Errorf("grant administrator to %q: %w", identity, err)
+		}
+	}
+	return nil
+}

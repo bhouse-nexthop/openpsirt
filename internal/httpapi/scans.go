@@ -13,6 +13,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/uptrace/bun"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
@@ -26,6 +27,10 @@ type Ingest struct {
 	DB     *database.DB
 	Queue  *queue.Queue
 	Limits sbom.Limits
+	// Access resolves who is asking. A nil resolver means nothing is
+	// authorized, which is what a process that cannot tell who is asking
+	// should answer.
+	Access *access.Resolver
 }
 
 // catalog returns a store over this deployment's database, or nothing when
