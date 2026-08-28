@@ -290,9 +290,6 @@ components:
         customer_facing:
           description: Whether this reaches customers. Defaults to yes
           type: boolean
-        introduce:
-          description: Set when this variant is new to the product rather than one it already builds
-          type: boolean
         name:
           description: How scans name this build of the stream
           maxLength: 191
@@ -410,7 +407,8 @@ paths:
         - Catalog
   /v1/products/{product}/streams/{stream}/variants:
     get:
-      operationId: list-variants
+      description: A subset of what the product builds. A release predating a variant has never been filed against it, which is what keeps something introduced later from appearing to have shipped years ago.
+      operationId: list-release-variants
       parameters:
         - in: path
           name: product
@@ -435,43 +433,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: List the ways a stream is built
-      tags:
-        - Catalog
-    post:
-      description: Records one of the parallel builds of a stream — a chip variant, an architecture, a platform. A variant belongs to its stream, so one introduced in a later release does not appear to have existed in earlier ones.
-      operationId: declare-variant
-      parameters:
-        - in: path
-          name: product
-          required: true
-          schema:
-            type: string
-        - in: path
-          name: stream
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/VariantBody"
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeclaredVariantBody"
-          description: Created
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Declare a way a stream is built
+      summary: List what a release has been built as
       tags:
         - Catalog
   /v1/products/{product}/streams/{stream}/variants/{variant}/scans:
@@ -541,6 +503,62 @@ paths:
       summary: Send what a build shipped
       tags:
         - Ingest
+  /v1/products/{product}/variants:
+    get:
+      operationId: list-variants
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyVariantBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the ways a product is built
+      tags:
+        - Catalog
+    post:
+      description: "Records one of the parallel builds of a product — a chip variant, an architecture, an operating system. Declared once for the product, not once per release: a release is filed against it the first time a scan arrives, so nobody restates the list and no release ends up with the name spelled differently."
+      operationId: declare-variant
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariantBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeclaredVariantBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Declare a way the product is built
+      tags:
+        - Catalog
   /v1/version:
     get:
       description: Identifies the build that is answering, so an operator can tell which version they are looking at.
