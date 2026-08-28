@@ -104,6 +104,11 @@ always runs, so the suite is useful with nothing installed; the production
 engines run when the environment points at them and are **skipped loudly**
 otherwise.
 
+Test packages run **one at a time**. They share the database servers, and the
+rollback test drops every table — in parallel, that makes unrelated packages
+fail depending on timing. Giving each package its own database would also work;
+serialising is one flag and the suite runs in seconds.
+
 CI provides all four, and then checks that all four actually ran. A skipped
 engine passes silently, which would make the matrix decorative.
 

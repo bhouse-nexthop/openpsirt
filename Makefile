@@ -43,8 +43,12 @@ build:
 	@mkdir -p bin
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/openpsirt
 
+# One package at a time. Packages otherwise run in parallel against the same
+# database server, and the rollback test drops every table while another
+# package is using them. Isolating each package into its own database would
+# also work; serialising is one flag, and the suite is seconds long.
 test:
-	$(GO) test -race -count=1 ./...
+	$(GO) test -race -count=1 -p 1 ./...
 
 vet:
 	$(GO) vet ./...
