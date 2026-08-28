@@ -237,6 +237,17 @@ An object store is optional by decision — everything except attachments works
 without one — so ingest cannot be the thing that makes it mandatory. The
 database is the one place every deployment already has.
 
+### Writes are split the same way reads are
+
+The ceiling that splits a document across rows applies to every statement, not
+just to the one carrying a document. One real image opens tens of thousands of
+graph rows in a run and produces over three hundred thousand findings; sent as
+one statement each, those are tens of megabytes of SQL, which two of the four
+engines refuse outright and all four hold in memory.
+
+Closing is the same shape: naming what a scan no longer contains lists as many
+identifiers as opening wrote rows. Both directions are bounded.
+
 **Content is split across rows.** A single value of tens of megabytes runs into
 a maximum packet size on two of the four engines, and that limit is server
 configuration rather than anything a client can discover. Bounded rows stay

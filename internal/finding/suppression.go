@@ -9,6 +9,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
 )
@@ -118,7 +119,7 @@ func (s *Store) RecordClaims(ctx context.Context, targetID, scanID int64, claims
 			}
 		}
 		if len(opening) > 0 {
-			if _, err := tx.NewInsert().Model(&opening).Exec(ctx); err != nil {
+			if err := database.InBatches(ctx, tx, opening); err != nil {
 				return fmt.Errorf("record %d claims: %w", len(opening), err)
 			}
 			applied.Opened = len(opening)
@@ -131,9 +132,12 @@ func (s *Store) RecordClaims(ctx context.Context, targetID, scanID int64, claims
 			}
 		}
 		if len(closing) > 0 {
-			_, err := tx.NewUpdate().Model((*Claim)(nil)).
-				Set("closed_scan_id = ?", scanID).
-				Where("id IN (?)", bun.List(closing)).Exec(ctx)
+			err := database.IDsInBatches(ctx, closing, func(ctx context.Context, batch []int64) error {
+				_, err := tx.NewUpdate().Model((*Claim)(nil)).
+					Set("closed_scan_id = ?", scanID).
+					Where("id IN (?)", bun.List(batch)).Exec(ctx)
+				return err
+			})
 			if err != nil {
 				return fmt.Errorf("close %d claims: %w", len(closing), err)
 			}

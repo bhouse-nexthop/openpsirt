@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/uptrace/bun"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
 )
 
 // reconcileNodes brings the open nodes for a variant in line with what a scan
@@ -43,7 +45,7 @@ func reconcileNodes(ctx context.Context, tx bun.Tx, targetID, scanID int64, want
 		})
 	}
 	if len(missing) > 0 {
-		if _, err := tx.NewInsert().Model(&missing).Exec(ctx); err != nil {
+		if err := database.InBatches(ctx, tx, missing); err != nil {
 			return nil, 0, 0, fmt.Errorf("open %d nodes: %w", len(missing), err)
 		}
 		for _, node := range missing {
@@ -54,9 +56,13 @@ func reconcileNodes(ctx context.Context, tx bun.Tx, targetID, scanID int64, want
 	if len(gone) > 0 {
 		// Closed, never deleted. What a release contained is a question asked
 		// years later, and a deleted row cannot answer it.
-		if _, err := tx.NewUpdate().Model((*Node)(nil)).
-			Set("closed_scan_id = ?", scanID).
-			Where("id IN (?)", bun.List(gone)).Exec(ctx); err != nil {
+		err := database.IDsInBatches(ctx, gone, func(ctx context.Context, batch []int64) error {
+			_, err := tx.NewUpdate().Model((*Node)(nil)).
+				Set("closed_scan_id = ?", scanID).
+				Where("id IN (?)", bun.List(batch)).Exec(ctx)
+			return err
+		})
+		if err != nil {
 			return nil, 0, 0, fmt.Errorf("close %d nodes: %w", len(gone), err)
 		}
 	}
@@ -95,14 +101,18 @@ func reconcileEdges(ctx context.Context, tx bun.Tx, targetID, scanID int64, want
 		})
 	}
 	if len(missing) > 0 {
-		if _, err := tx.NewInsert().Model(&missing).Exec(ctx); err != nil {
+		if err := database.InBatches(ctx, tx, missing); err != nil {
 			return 0, 0, fmt.Errorf("open %d edges: %w", len(missing), err)
 		}
 	}
 	if len(gone) > 0 {
-		if _, err := tx.NewUpdate().Model((*Edge)(nil)).
-			Set("closed_scan_id = ?", scanID).
-			Where("id IN (?)", bun.List(gone)).Exec(ctx); err != nil {
+		err := database.IDsInBatches(ctx, gone, func(ctx context.Context, batch []int64) error {
+			_, err := tx.NewUpdate().Model((*Edge)(nil)).
+				Set("closed_scan_id = ?", scanID).
+				Where("id IN (?)", bun.List(batch)).Exec(ctx)
+			return err
+		})
+		if err != nil {
 			return 0, 0, fmt.Errorf("close %d edges: %w", len(gone), err)
 		}
 	}

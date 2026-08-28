@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/uptrace/bun"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
 )
 
 // Kind says what a document a build sent is.
@@ -158,8 +160,12 @@ func (d *Documents) Discard(ctx context.Context, scanID int64) error {
 	for _, doc := range docs {
 		ids = append(ids, doc.ID)
 	}
-	if _, err := d.db.NewDelete().Model((*chunk)(nil)).
-		Where("document_id IN (?)", bun.List(ids)).Exec(ctx); err != nil {
+	err = database.IDsInBatches(ctx, ids, func(ctx context.Context, batch []int64) error {
+		_, err := d.db.NewDelete().Model((*chunk)(nil)).
+			Where("document_id IN (?)", bun.List(batch)).Exec(ctx)
+		return err
+	})
+	if err != nil {
 		return fmt.Errorf("discard document content: %w", err)
 	}
 	if _, err := d.db.NewDelete().Model((*Document)(nil)).

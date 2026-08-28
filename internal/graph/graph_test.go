@@ -339,3 +339,37 @@ func rowCounts(t *testing.T, f *fixture) map[string]int {
 	}
 	return counts
 }
+
+func TestAGraphLargerThanOneStatementApplies(t *testing.T) {
+	// Two of the four engines cap how large a single statement may be, and the
+	// cap is server configuration rather than anything a client can discover.
+	// A real image opens tens of thousands of nodes and edges in one run; sent
+	// as one statement that is tens of megabytes of SQL.
+	each(t, func(t *testing.T, f *fixture) {
+		const many = 1200 // comfortably over the batch size
+		snap := graph.Snapshot{Root: root}
+		for i := range many {
+			c := at(fmt.Sprintf("pkg-%04d", i), "1.0")
+			snap.Components = append(snap.Components, c)
+			snap.Dependencies = append(snap.Dependencies, graph.Dependency{Parent: root, Child: c})
+		}
+
+		applied, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), snap)
+		if err != nil {
+			t.Fatalf("applying a graph larger than one statement: %v", err)
+		}
+		if applied.NodesOpened != many+1 || applied.EdgesOpened != many {
+			t.Fatalf("opened %+v", applied)
+		}
+
+		// And closing them again, which names as many identifiers as opening
+		// wrote rows.
+		applied, err = f.store.Apply(t.Context(), f.targetID, f.scan(t), graph.Snapshot{Root: root})
+		if err != nil {
+			t.Fatalf("closing a graph larger than one statement: %v", err)
+		}
+		if applied.NodesClosed != many || applied.EdgesClosed != many {
+			t.Errorf("closed %+v", applied)
+		}
+	})
+}

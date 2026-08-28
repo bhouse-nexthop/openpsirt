@@ -7,6 +7,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
 )
@@ -139,7 +140,7 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 			applied.Updated++
 		}
 		if len(opening) > 0 {
-			if _, err := tx.NewInsert().Model(&opening).Exec(ctx); err != nil {
+			if err := database.InBatches(ctx, tx, opening); err != nil {
 				return fmt.Errorf("open %d findings: %w", len(opening), err)
 			}
 			applied.Opened = len(opening)
@@ -169,10 +170,13 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 			applied.Closed++
 		}
 		for reason, ids := range byReason {
-			_, err := tx.NewUpdate().Model((*Finding)(nil)).
-				Set("closed_run_id = ?", runID).
-				Set("closed_because = ?", reason).
-				Where("id IN (?)", bun.List(ids)).Exec(ctx)
+			err := database.IDsInBatches(ctx, ids, func(ctx context.Context, batch []int64) error {
+				_, err := tx.NewUpdate().Model((*Finding)(nil)).
+					Set("closed_run_id = ?", runID).
+					Set("closed_because = ?", reason).
+					Where("id IN (?)", bun.List(batch)).Exec(ctx)
+				return err
+			})
 			if err != nil {
 				return fmt.Errorf("close %d findings: %w", len(ids), err)
 			}
@@ -296,13 +300,19 @@ func componentsByID(ctx context.Context, db bun.IDB, findings []Finding) (map[in
 	for _, f := range findings {
 		ids = append(ids, f.ComponentID)
 	}
-	var rows []graph.Component
-	if err := db.NewSelect().Model(&rows).Where("id IN (?)", bun.List(ids)).Scan(ctx); err != nil {
+	byID := map[int64]graph.Component{}
+	err := database.IDsInBatches(ctx, ids, func(ctx context.Context, batch []int64) error {
+		var rows []graph.Component
+		if err := db.NewSelect().Model(&rows).Where("id IN (?)", bun.List(batch)).Scan(ctx); err != nil {
+			return err
+		}
+		for _, row := range rows {
+			byID[row.ID] = row
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, fmt.Errorf("read what closing findings were about: %w", err)
-	}
-	byID := make(map[int64]graph.Component, len(rows))
-	for _, row := range rows {
-		byID[row.ID] = row
 	}
 	return byID, nil
 }

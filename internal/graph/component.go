@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/uptrace/bun"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
 )
 
 // Component is a package at a version, shared across every product that ships
@@ -159,7 +161,7 @@ func (c *Components) Intern(ctx context.Context, described []Described) (map[str
 		})
 	}
 	if len(missing) > 0 {
-		if _, err := c.db.NewInsert().Model(&missing).Exec(ctx); err != nil {
+		if err := database.InBatches(ctx, c.db, missing); err != nil {
 			return nil, fmt.Errorf("record %d new components: %w", len(missing), err)
 		}
 		for _, added := range missing {

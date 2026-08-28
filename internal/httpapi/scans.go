@@ -146,6 +146,17 @@ func upload(ctx context.Context, in Ingest, input *UploadInput) (*UploadOutput, 
 		return nil, huma.Error422UnprocessableEntity("the inventory could not be read", err)
 	}
 
+	// A document that does not say when it was built cannot be ordered against
+	// anything, and taking it is worse than refusing it: the zero time is
+	// older than every real one, so the first such upload is accepted and
+	// every later scan for that target is refused as not newer. The target
+	// takes no further scans at all, which is the same wedge the future-clock
+	// check exists to prevent, arriving through a door nobody guarded.
+	if header.BuiltAt.IsZero() {
+		return nil, huma.Error400BadRequest(
+			"the inventory does not say when it was built, and that is what orders scans against each other")
+	}
+
 	arriving := ingest.Arriving{
 		TargetID:      target.ID,
 		ContentHash:   contentHash,
