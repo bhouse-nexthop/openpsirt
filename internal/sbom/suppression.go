@@ -121,32 +121,6 @@ func (s Suppression) Covers(d graph.Described) bool {
 	return false
 }
 
-// Match pairs claims with the components they name.
-//
-// The claims that named nothing are returned rather than dropped. A build's
-// judgement that went nowhere is the failure this whole arrangement exists to
-// make visible: a finding it already answered comes back as noise, and nobody
-// can tell that from a finding nobody has looked at.
-func Match(components []graph.Described, claims []Suppression) (map[string][]Suppression, []Suppression) {
-	matched := map[string][]Suppression{}
-	var unmatched []Suppression
-	for _, claim := range claims {
-		hit := false
-		for _, component := range components {
-			if !claim.Covers(component) {
-				continue
-			}
-			identity := component.Identity()
-			matched[identity] = append(matched[identity], claim)
-			hit = true
-		}
-		if !hit {
-			unmatched = append(unmatched, claim)
-		}
-	}
-	return matched, unmatched
-}
-
 // purlParts splits a package identifier into what it names and the version it
 // names, discarding the qualifiers and the subpath.
 //

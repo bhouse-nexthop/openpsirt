@@ -126,6 +126,12 @@ type Applied struct {
 	// Suppressed counts findings the build has already argued about. They are
 	// open and visible; they are not work anybody has to do.
 	Suppressed int
+	// ClaimsReaching and ClaimsReachingNothing say how many of the build's
+	// arguments landed on something it ships. One that reached nothing means a
+	// finding the build believes it answered comes back as noise, and nothing
+	// distinguishes that from a finding nobody has looked at.
+	ClaimsReaching        int
+	ClaimsReachingNothing int
 	// Unplaced counts issues reported against something the target does not
 	// contain. A report that does not match the inventory it was produced from
 	// is worth seeing rather than quietly discarding.

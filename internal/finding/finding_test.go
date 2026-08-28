@@ -717,3 +717,33 @@ func TestEveryStatusTheFormatDefinesCanBeStored(t *testing.T) {
 		}
 	})
 }
+
+func TestAClaimThatReachedNothingIsCounted(t *testing.T) {
+	// The ordinary case, not the exceptional one: a producer's
+	// automatically-extracted claims name source trees rather than packages,
+	// so they land on nothing. A finding the build believes it answered then
+	// comes back as noise, and nothing distinguishes that from a finding
+	// nobody has looked at.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		reaches := aClaim("CVE-2026-1", sbom.AlreadyFixed, libnl, sbom.FromPedigree)
+		misses := aClaim("CVE-2026-2", sbom.NotAffected,
+			graph.Described{Purl: "pkg:generic/libnl3", Name: "libnl3"}, sbom.FromStatement)
+
+		if _, err := f.store.RecordClaims(t.Context(), f.target, f.lastScan,
+			[]sbom.Suppression{reaches, misses}); err != nil {
+			t.Fatal(err)
+		}
+		applied, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if applied.ClaimsReaching != 1 {
+			t.Errorf("%d claims reached something, want 1", applied.ClaimsReaching)
+		}
+		if applied.ClaimsReachingNothing != 1 {
+			t.Errorf("%d claims reached nothing, want 1", applied.ClaimsReachingNothing)
+		}
+	})
+}

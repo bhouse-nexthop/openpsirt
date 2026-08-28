@@ -46,6 +46,14 @@ type Result struct {
 	Applied      graph.Applied
 	Components   int
 	Suppressions int
+	// What the document stated that we tolerated rather than refused. Each is
+	// a number that should be stable build to build, so a change in one says
+	// the producer changed — which is the thing that would otherwise be
+	// silent.
+	Unrooted       int
+	Unversioned    int
+	DanglingEdges  int
+	SelfReferences int
 	// ClaimsOpened and ClaimsClosed are what changed in the build's arguments
 	// since its last scan. A build argues the same things night after night,
 	// so both being zero is the ordinary case.
@@ -118,6 +126,10 @@ func (r *Reader) Run(ctx context.Context, interval time.Duration) {
 				"edges_opened", result.Applied.EdgesOpened, "edges_closed", result.Applied.EdgesClosed,
 				"suppressions", result.Suppressions,
 				"claims_opened", result.ClaimsOpened, "claims_closed", result.ClaimsClosed,
+				// Tolerated rather than refused. A change in any of these says
+				// the producer changed.
+				"unrooted", result.Unrooted, "unversioned", result.Unversioned,
+				"dangling_edges", result.DanglingEdges, "self_references", result.SelfReferences,
 				"documents_retained", result.Retained)
 		}
 		timer.Reset(interval)
@@ -204,7 +216,11 @@ func (r *Reader) read(ctx context.Context, reference string) (*Result, error) {
 	result := &Result{
 		ScanID: scanID, Applied: applied,
 		Components: len(doc.Components), Suppressions: len(claims),
-		ClaimsOpened: claimed.Opened, ClaimsClosed: claimed.Closed,
+		Unrooted:       doc.Unrooted,
+		Unversioned:    doc.Unversioned,
+		DanglingEdges:  doc.DanglingEdges,
+		SelfReferences: doc.SelfReferences,
+		ClaimsOpened:   claimed.Opened, ClaimsClosed: claimed.Closed,
 		Retained: !target.Moves,
 	}
 

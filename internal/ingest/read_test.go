@@ -239,3 +239,38 @@ func TestThereIsNothingToDoWhenNothingIsWaiting(t *testing.T) {
 		}
 	})
 }
+
+func TestWhatWasToleratedIsReported(t *testing.T) {
+	// Each of these is a number that should be stable build to build, so a
+	// change in one says the producer changed. Computing them and then
+	// discarding them is how that goes unnoticed.
+	eachReader(t, func(t *testing.T, f *readerFixture) {
+		// One component under nothing, one with no version, one edge naming
+		// something the document never describes.
+		f.accept(t, f.branch, time.Now().UTC().Add(-time.Hour), `{
+		  "bomFormat": "CycloneDX", "specVersion": "1.6",
+		  "metadata": {"timestamp": "2026-08-01T00:00:00Z",
+		    "component": {"bom-ref": "root", "name": "sonic", "version": "1.0"}},
+		  "components": [
+		    {"bom-ref": "a", "name": "libc6", "version": "2.41", "purl": "pkg:deb/debian/libc6@2.41"},
+		    {"bom-ref": "b", "name": "orphan", "version": "1.0", "purl": "pkg:deb/debian/orphan@1.0"},
+		    {"bom-ref": "c", "name": "unversioned", "purl": "pkg:deb/debian/unversioned"}],
+		  "dependencies": [{"ref": "root", "dependsOn": ["a", "ghost"]}]
+		}`)
+
+		result, err := f.reader.Once(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Unversioned != 1 {
+			t.Errorf("%d components stated no version, want 1", result.Unversioned)
+		}
+		if result.DanglingEdges != 1 {
+			t.Errorf("%d edges went nowhere, want 1", result.DanglingEdges)
+		}
+		// The orphan and the unversioned one both sit under nothing.
+		if result.Unrooted != 2 {
+			t.Errorf("%d components sit under nothing, want 2", result.Unrooted)
+		}
+	})
+}

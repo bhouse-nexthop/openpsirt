@@ -63,6 +63,11 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 		if err != nil {
 			return err
 		}
+		// Which of them reached anything is worked out against what the target
+		// contains, not against what was reported: a claim covering a
+		// component nothing was found in has still done its job, while one
+		// covering nothing the build ships has not.
+		applied.ClaimsReaching, applied.ClaimsReachingNothing = claimsReaching(claims, present)
 
 		wanted := map[key]Finding{}
 		for _, r := range reported {
@@ -207,6 +212,42 @@ func equalRef(a, b *int64) bool {
 	}
 }
 
+// claimsReaching counts how many of a build's arguments land on something it
+// actually ships.
+//
+// A claim that reached nothing is the ordinary case rather than the
+// exceptional one — a producer's automatically-extracted claims name source
+// trees rather than packages — and it means a finding the build believes it
+// has answered will come back as noise. Nothing distinguishes that from a
+// finding nobody has looked at, so the count is reported rather than left to
+// be inferred.
+func claimsReaching(claims []Claim, present inventory) (reaching, reachingNothing int) {
+	for _, claim := range claims {
+		found := false
+		for _, component := range present.byID {
+			if claim.covers(describedOf(component)) {
+				found = true
+				break
+			}
+		}
+		if found {
+			reaching++
+		} else {
+			reachingNothing++
+		}
+	}
+	return reaching, reachingNothing
+}
+
+// describedOf reads a stored component back into the shape a claim matches
+// against.
+func describedOf(c graph.Component) graph.Described {
+	return graph.Described{
+		Purl: c.Purl, CPE: c.CPE, Name: c.Name, Version: c.Version,
+		UpstreamName: c.UpstreamName, UpstreamVersion: c.UpstreamVersion,
+	}
+}
+
 // coveringClaim finds the build's argument that covers a reported issue, if it
 // made one.
 //
@@ -219,10 +260,7 @@ func coveringClaim(claims []Claim, issue Named, component graph.Component) *int6
 		names[normalize(alias)] = true
 	}
 
-	described := graph.Described{
-		Purl: component.Purl, Name: component.Name, Version: component.Version,
-		UpstreamName: component.UpstreamName, UpstreamVersion: component.UpstreamVersion,
-	}
+	described := describedOf(component)
 
 	var found *int64
 	for _, claim := range claims {

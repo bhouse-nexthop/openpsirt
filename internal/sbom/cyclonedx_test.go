@@ -509,3 +509,55 @@ func TestTheSnapshotCarriesWhatTheGraphStores(t *testing.T) {
 		}
 	}
 }
+
+func TestRepeatingOneComponentDoesNotEvadeTheLimit(t *testing.T) {
+	// The bound has to count what the document states, not what survives
+	// deduplication. Counting survivors means a file of one component repeated
+	// is unbounded: every copy is read and held, and the count that was
+	// supposed to stop it never moves.
+	var b strings.Builder
+	b.WriteString(`{"bomFormat": "CycloneDX", "specVersion": "1.6",
+	 "metadata": {"component": {"name": "p", "version": "1"}}, "components": [`)
+	for i := range 200 {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		b.WriteString(`{"name": "same", "version": "1", "purl": "pkg:deb/debian/same@1"}`)
+	}
+	b.WriteString("]}")
+
+	_, err := sbom.Read(strings.NewReader(b.String()), sbom.Limits{MaxComponents: 20})
+	if err == nil {
+		t.Fatal("a document repeating one component past the limit was accepted")
+	}
+	if !strings.Contains(err.Error(), "component limit") {
+		t.Errorf("refusal does not name the limit: %v", err)
+	}
+}
+
+func TestOneHugeDependencyListIsRefusedWhileItIsRead(t *testing.T) {
+	// Collecting the whole list and checking afterwards means the memory is
+	// already spent by the time the bound is consulted, which is the thing the
+	// bound exists to prevent. A single component can name as many
+	// dependencies as it likes.
+	var b strings.Builder
+	b.WriteString(`{"bomFormat": "CycloneDX", "specVersion": "1.6",
+	 "metadata": {"component": {"bom-ref": "root", "name": "p", "version": "1"}},
+	 "components": [{"bom-ref": "a", "name": "a", "version": "1"}],
+	 "dependencies": [{"ref": "root", "dependsOn": [`)
+	for i := range 500 {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		b.WriteString(`"a"`)
+	}
+	b.WriteString(`]}]}`)
+
+	_, err := sbom.Read(strings.NewReader(b.String()), sbom.Limits{MaxEdges: 50})
+	if err == nil {
+		t.Fatal("a single dependency list past the limit was accepted")
+	}
+	if !strings.Contains(err.Error(), "dependency limit") {
+		t.Errorf("refusal does not name the limit: %v", err)
+	}
+}

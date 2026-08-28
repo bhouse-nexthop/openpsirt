@@ -67,8 +67,13 @@ type reader struct {
 	byRef map[string]graph.Described
 	// described is every component in document order, one entry per identity.
 	described []graph.Described
-	seen      map[string]bool
-	edges     []refEdge
+	// stated counts what the document says, deduplicated or not, and charged
+	// counts every edge however it was stated. Both are the bounds; the slices
+	// above are only what survived.
+	stated  int
+	charged int
+	seen    map[string]bool
+	edges   []refEdge
 	// contained is the structure a producer declared by nesting one component
 	// inside another. It resolves without the document's identifiers, since a
 	// nested component often carries none.
@@ -440,6 +445,13 @@ func (c *reader) dependencies() error {
 					if err != nil {
 						return err
 					}
+					// Charged against the limit as it is read. Collecting the
+					// whole list first and checking afterwards means the
+					// memory is already spent by the time the bound is
+					// consulted, which is what the bound exists to prevent.
+					if err := c.charge(); err != nil {
+						return err
+					}
 					children = append(children, child)
 					return nil
 				})
@@ -451,50 +463,51 @@ func (c *reader) dependencies() error {
 			return err
 		}
 		for _, child := range children {
-			if err := c.edge(ref, child); err != nil {
-				return err
-			}
+			c.edges = append(c.edges, refEdge{parent: ref, child: child})
 		}
 		return nil
 	})
 }
 
 // add records a component, once per identity.
+//
+// The limit counts what the document states rather than what survives
+// deduplication. Counting the survivors would mean a file of one component
+// repeated is unbounded — every copy is read, held and discarded, and the
+// count that was supposed to stop it never moves.
 func (c *reader) add(described graph.Described) error {
 	if c.headerOnly {
 		return nil
 	}
+	c.stated++
+	if c.stated > c.lim.MaxComponents {
+		return fmt.Errorf("scan file describes more than the %d component limit", c.lim.MaxComponents)
+	}
 	identity := described.Identity()
 	if c.seen[identity] {
 		return nil
-	}
-	if len(c.described) >= c.lim.MaxComponents {
-		return fmt.Errorf("scan file describes more than the %d component limit", c.lim.MaxComponents)
 	}
 	c.seen[identity] = true
 	c.described = append(c.described, described)
 	return nil
 }
 
-// declared counts the edges read so far, however they were stated.
-func (c *reader) declared() int { return len(c.edges) + len(c.contained) }
+// charge counts one more edge against the limit.
+func (c *reader) charge() error {
+	c.charged++
+	if c.charged > c.lim.MaxEdges {
+		return fmt.Errorf("scan file declares more than the %d dependency limit", c.lim.MaxEdges)
+	}
+	return nil
+}
 
 // contain records one component holding another, which a producer declares by
 // nesting rather than by naming an edge.
 func (c *reader) contain(parent, child graph.Described) error {
-	if c.declared() >= c.lim.MaxEdges {
-		return fmt.Errorf("scan file declares more than the %d dependency limit", c.lim.MaxEdges)
+	if err := c.charge(); err != nil {
+		return err
 	}
 	c.contained = append(c.contained, graph.Dependency{Parent: parent, Child: child})
-	return nil
-}
-
-// edge records a declared dependency.
-func (c *reader) edge(parent, child string) error {
-	if c.declared() >= c.lim.MaxEdges {
-		return fmt.Errorf("scan file declares more than the %d dependency limit", c.lim.MaxEdges)
-	}
-	c.edges = append(c.edges, refEdge{parent: parent, child: child})
 	return nil
 }
 

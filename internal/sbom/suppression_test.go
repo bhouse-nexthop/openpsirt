@@ -153,37 +153,16 @@ func TestAClaimAgainstASourceTreeIsAsGoodAsItsName(t *testing.T) {
 	}
 }
 
-func TestAClaimThatNamesNothingIsReportedRatherThanDropped(t *testing.T) {
-	// This is the whole reason the claims are applied here. A build's
-	// judgement that went nowhere means a finding it already answered comes
-	// back as noise, and nothing distinguishes that from a finding nobody has
-	// looked at yet.
-	got := claims(t, statement(`{"vulnerability": {"name": "CVE-2017-1000487"}, "status": "not_affected",
-	 "products": [{"@id": "pkg:generic/thrift_0_14_1"}]},
-	 {"vulnerability": {"name": "CVE-2026-1"}, "status": "not_affected",
-	 "products": [{"@id": "pkg:deb/debian/libc6"}]}`))
-
-	shipped := []graph.Described{{Purl: "pkg:deb/debian/libc6@2.41", Name: "libc6", Version: "2.41"}}
-	matched, unmatched := sbom.Match(shipped, got)
-
-	if len(matched) != 1 || len(matched[shipped[0].Identity()]) != 1 {
-		t.Errorf("matched %+v", matched)
-	}
-	if len(unmatched) != 1 || unmatched[0].Vulnerability != "CVE-2017-1000487" {
-		t.Errorf("unmatched is %+v", unmatched)
-	}
-}
-
-func TestAClaimIsMatchedAtEveryPlaceItsComponentSits(t *testing.T) {
+func TestAClaimReachesEveryVersionOfWhatItNames(t *testing.T) {
+	// One claim, however many places its component sits — the fan-out is done
+	// where findings are, not here.
 	got := claims(t, statement(`{"vulnerability": {"name": "CVE-2026-1"}, "status": "fixed",
 	 "products": [{"@id": "pkg:deb/debian/libc6"}]}`))
-	shipped := []graph.Described{
-		{Purl: "pkg:deb/debian/libc6@2.41", Name: "libc6", Version: "2.41"},
-		{Purl: "pkg:deb/debian/libc6@2.36", Name: "libc6", Version: "2.36"},
-	}
-	matched, unmatched := sbom.Match(shipped, got)
-	if len(matched) != 2 || len(unmatched) != 0 {
-		t.Errorf("matched %d components, %d claims went nowhere", len(matched), len(unmatched))
+	for _, version := range []string{"2.41", "2.36"} {
+		shipped := graph.Described{Purl: "pkg:deb/debian/libc6@" + version, Name: "libc6", Version: version}
+		if !got[0].Covers(shipped) {
+			t.Errorf("a claim naming no version missed %s", version)
+		}
 	}
 }
 
