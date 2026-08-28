@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -31,6 +32,9 @@ type Ingest struct {
 	// authorized, which is what a process that cannot tell who is asking
 	// should answer.
 	Access *access.Resolver
+	// Logger records a fault where an operator can read it, rather than
+	// describing it to whoever asked.
+	Logger *slog.Logger
 }
 
 // catalog returns a store over this deployment's database, or nothing when
@@ -125,18 +129,6 @@ func upload(ctx context.Context, in Ingest, input *UploadInput) (*UploadOutput, 
 	}
 	parts := input.RawBody.Data()
 
-	// Refusing before reading. Deciding first costs a query; deciding after
-	// costs however long it takes to store tens of megabytes we then throw
-	// away, on a deployment already behind on its work.
-	depth, err := in.Queue.Depth(ctx)
-	if err != nil {
-		return nil, huma.Error500InternalServerError("cannot tell how much work is waiting", err)
-	}
-	if depth >= in.Queue.MaxBacklog() {
-		return nil, huma.NewError(http.StatusServiceUnavailable,
-			fmt.Sprintf("%d scans are already waiting to be read; try again shortly", depth))
-	}
-
 	// Who is sending, before anything is read or written.
 	subject, err := requester(ctx)
 	if err != nil {
@@ -147,10 +139,13 @@ func upload(ctx context.Context, in Ingest, input *UploadInput) (*UploadOutput, 
 	// whether this sender may file against them is decided first. Recording
 	// and then refusing would leave a row created by a request that failed.
 	catalogue := catalog.NewStore(in.DB.DB)
-	named, err := catalogue.Locate(ctx, input.Product, input.Stream, input.Variant)
+	named, err := catalogue.LocateVisible(ctx, subject, input.Product, input.Stream, input.Variant)
 	if err != nil {
 		// The message names which part is missing, which is what whoever sees
-		// the failed upload needs in order to declare it.
+		// the failed upload needs in order to declare it — and a target this
+		// sender may not file against is reported as not declared, so that a
+		// stolen key cannot be used to read the shipping catalog one guess at
+		// a time.
 		return nil, huma.Error404NotFound(err.Error())
 	}
 
@@ -171,9 +166,23 @@ func upload(ctx context.Context, in Ingest, input *UploadInput) (*UploadOutput, 
 		return nil, huma.Error403Forbidden("not authorized")
 	}
 
+	// Refusing before storing. Deciding costs a query; deciding afterwards
+	// costs however long it takes to store tens of megabytes we then throw
+	// away, on a deployment already behind on its work. It happens after
+	// authorization so that how far behind we are is not something an
+	// unauthorized sender can measure.
+	depth, err := in.Queue.Depth(ctx)
+	if err != nil {
+		return nil, wentWrong(in.Logger, "cannot tell how much work is waiting", err)
+	}
+	if depth >= in.Queue.MaxBacklog() {
+		return nil, huma.NewError(http.StatusServiceUnavailable,
+			fmt.Sprintf("%d scans are already waiting to be read; try again shortly", depth))
+	}
+
 	target, err := catalogue.TargetFor(ctx, named.StreamID, named.VariantID)
 	if err != nil {
-		return nil, huma.Error500InternalServerError("the target could not be recorded", err)
+		return nil, wentWrong(in.Logger, "the target could not be recorded", err)
 	}
 
 	// One pass over the inventory answers both questions asked of an arriving
@@ -252,7 +261,7 @@ func upload(ctx context.Context, in Ingest, input *UploadInput) (*UploadOutput, 
 	case errors.Is(err, ingest.ErrRejected):
 		return nil, rejection(outcome, err)
 	case err != nil:
-		return nil, huma.Error500InternalServerError("the upload could not be recorded", err)
+		return nil, wentWrong(in.Logger, "the upload could not be recorded", err)
 	}
 
 	out := &UploadOutput{Status: http.StatusAccepted, Body: result}

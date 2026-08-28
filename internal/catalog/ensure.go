@@ -164,8 +164,17 @@ func (s *Store) Variants(ctx context.Context, subject access.Subject, productID 
 // BuiltAs lists the variants a release has actually been built as, which is a
 // subset of what the product builds: a release predating a variant has no row
 // for it, and one that stopped being built as something keeps its history.
-func (s *Store) BuiltAs(ctx context.Context, subject access.Subject, productID, streamID int64) ([]Variant, error) {
-	if !subject.Sees(productID) {
+// Which product the release belongs to is read here rather than accepted, for
+// the reason its counterpart over findings gives: a caller that can name the
+// product can name a different one, and then the check is answering a question
+// nobody asked. It is correct at every call site today, which is exactly the
+// kind of correctness that stops being true when somebody adds another.
+func (s *Store) BuiltAs(ctx context.Context, subject access.Subject, streamID int64) ([]Variant, error) {
+	var stream Stream
+	if err := s.db.NewSelect().Model(&stream).Where("id = ?", streamID).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("look up the release %d: %w", streamID, err)
+	}
+	if !subject.Sees(stream.ProductID) {
 		return nil, access.Denied("list what a release is built as")
 	}
 	var rows []Variant
@@ -176,4 +185,42 @@ func (s *Store) BuiltAs(ctx context.Context, subject access.Subject, productID, 
 		return nil, fmt.Errorf("list what a release is built as: %w", err)
 	}
 	return rows, nil
+}
+
+// VisibleProduct finds a product this subject may know about.
+//
+// Something they hold nothing on is reported as not declared — the same answer
+// as a name that was never declared at all. That is what invisible means:
+// telling the two apart lets somebody holding one product guess at the names
+// of every other, one request at a time, and get a different answer when they
+// are right.
+//
+// So the lookup and the check happen together. Resolving the name first and
+// authorizing afterwards is how the difference gets out, however carefully the
+// second half is written.
+func (s *Store) VisibleProduct(ctx context.Context, subject access.Subject, name string) (*Product, error) {
+	product, err := s.ProductByName(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if !subject.Sees(product.ID) {
+		return nil, fmt.Errorf("product %q: %w", name, ErrNotFound)
+	}
+	return product, nil
+}
+
+// VisibleStream finds a release of a product this subject may know about.
+//
+// A release inside a product they cannot see does not exist as far as they are
+// concerned, and neither does one that was never declared.
+func (s *Store) VisibleStream(ctx context.Context, subject access.Subject, product, stream string) (*Product, *Stream, error) {
+	p, err := s.VisibleProduct(ctx, subject, product)
+	if err != nil {
+		return nil, nil, err
+	}
+	st, err := s.StreamByName(ctx, p.ID, stream)
+	if err != nil {
+		return nil, nil, fmt.Errorf("product %q: %w", product, err)
+	}
+	return p, st, nil
 }

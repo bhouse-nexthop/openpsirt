@@ -1,6 +1,7 @@
 package finding_test
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/dbtest"
@@ -21,14 +23,15 @@ import (
 // fixture is one migrated database with a variant, a stored graph, and a way
 // to mint scan runs in order.
 type fixture struct {
-	db       *database.DB
-	store    *finding.Store
-	graph    *graph.Store
-	target   int64
-	lastScan int64
-	scans    *ingest.Store
-	built    time.Time
-	seq      int
+	db        *database.DB
+	store     *finding.Store
+	graph     *graph.Store
+	target    int64
+	productID int64
+	lastScan  int64
+	scans     *ingest.Store
+	built     time.Time
+	seq       int
 }
 
 func at(name, version string) graph.Described {
@@ -141,7 +144,7 @@ func each(t *testing.T, fn func(t *testing.T, f *fixture)) {
 
 		fn(t, &fixture{
 			db: db, store: finding.NewStore(db.DB), graph: graph.NewStore(db.DB),
-			target: target.ID, scans: ingest.NewStore(db.DB),
+			target: target.ID, productID: product.ID, scans: ingest.NewStore(db.DB),
 			built: time.Now().UTC().Add(-72 * time.Hour),
 		})
 	})
@@ -780,6 +783,98 @@ func TestAnAbsurdlyLongValueDoesNotFailTheScanThatCarriedIt(t *testing.T) {
 		}
 		if applied.Opened != 1 {
 			t.Errorf("opened %d findings", applied.Opened)
+		}
+	})
+}
+
+// holding returns a subject holding one role on the product this fixture's
+// target belongs to.
+func (f *fixture) holding(t *testing.T, roles ...access.Role) access.Subject {
+	t.Helper()
+	grants := map[int64][]access.Role{f.productID: roles}
+	return access.NewPerson(1, "someone", false, grants)
+}
+
+func TestOnlyWhatSomebodyMayReadIsRead(t *testing.T) {
+	// What ACC-04 is actually about. The enforcement is on the query, so this
+	// tests the query rather than a handler that remembered to ask.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+		// One of the two is not disclosed. Read first and then updated,
+		// because one engine refuses to name the table being updated inside a
+		// subquery of its own statement.
+		var hidden int64
+		if err := f.db.DB.NewSelect().Model((*finding.Finding)(nil)).
+			ColumnExpr("MIN(id)").Scan(t.Context(), &hidden); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.db.DB.NewUpdate().Model((*finding.Finding)(nil)).
+			Set("visibility = ?", access.Private).
+			Where("id = ?", hidden).Exec(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+
+		for _, c := range []struct {
+			what   string
+			who    access.Subject
+			want   int
+			denied bool
+		}{
+			{"public reader", f.holding(t, access.PublicRead), 1, false},
+			{"public triager", f.holding(t, access.PublicTriage), 1, false},
+			{"private reader", f.holding(t, access.PrivateRead), 2, false},
+			{"private triager", f.holding(t, access.PrivateTriage), 2, false},
+			{"an approver alone", f.holding(t), 0, true},
+			{"an administrator", access.NewPerson(1, "admin", true, nil), 2, false},
+			{"a pipeline", access.NewPipeline(1, "nightly", access.Scope{ProductID: f.productID}), 0, true},
+		} {
+			rows, err := f.store.Open(t.Context(), c.who, f.target)
+			switch {
+			case c.denied && !errors.Is(err, access.ErrDenied):
+				t.Errorf("%s was not refused: %d rows, %v", c.what, len(rows), err)
+			case c.denied:
+				continue
+			case err != nil:
+				t.Errorf("%s: %v", c.what, err)
+			case len(rows) != c.want:
+				t.Errorf("%s read %d findings, want %d", c.what, len(rows), c.want)
+			}
+
+			// Counting is reading. A count of rows somebody may not see is
+			// the same disclosure as the rows, compressed — and it is the
+			// path that leaks when only row reads are guarded.
+			n, err := f.store.CountOpen(t.Context(), c.who, f.target)
+			if err != nil {
+				t.Errorf("%s counting: %v", c.what, err)
+				continue
+			}
+			if n != c.want {
+				t.Errorf("%s counted %d findings, want %d", c.what, n, c.want)
+			}
+		}
+	})
+}
+
+func TestFindingsInAProductSomebodyHoldsNothingOnAreRefused(t *testing.T) {
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+		// Holding everything, but on a different product.
+		elsewhere := access.NewPerson(1, "elsewhere", false,
+			map[int64][]access.Role{f.productID + 999: {access.PrivateRead}})
+
+		if _, err := f.store.Open(t.Context(), elsewhere, f.target); !errors.Is(err, access.ErrDenied) {
+			t.Errorf("reading another product's findings: %v", err)
+		}
+		if _, err := f.store.CountOpen(t.Context(), elsewhere, f.target); !errors.Is(err, access.ErrDenied) {
+			t.Errorf("counting another product's findings: %v", err)
 		}
 	})
 }

@@ -207,11 +207,26 @@ func TestAKeyMaySendAndNothingElse(t *testing.T) {
 		if !subject.MaySend(f.products["sonic"], f.streams["sonic"], f.variants["sonic"]) {
 			t.Error("a key cannot send against the product it is scoped to")
 		}
-		if subject.Reads(access.Public, f.products["sonic"]) || subject.Sees(f.products["sonic"]) {
+		if subject.Reads(access.Public, f.products["sonic"]) ||
+			subject.Reads(access.Private, f.products["sonic"]) {
 			t.Error("a pipeline can read")
 		}
 		if subject.Holds(access.PublicRead, f.products["sonic"]) {
 			t.Error("a pipeline holds a role")
+		}
+		// It does know the product it may send to exists, because it may send
+		// there. Pretending otherwise would mean an upload to its own product
+		// could not be told apart from one to a product that is not there,
+		// and the sender needs that difference to fix a misconfigured
+		// pipeline.
+		if !subject.Sees(f.products["sonic"]) {
+			t.Error("a pipeline cannot see the product it sends to")
+		}
+		if subject.Sees(f.products["onie"]) {
+			t.Error("a pipeline can see a product it holds nothing for")
+		}
+		if ids, all := subject.Products(); all || len(ids) != 0 {
+			t.Error("a pipeline appears in the list of what somebody may reach")
 		}
 	})
 }
@@ -362,4 +377,27 @@ func TestAKeyIsAcceptedWhereverItComesFrom(t *testing.T) {
 			t.Errorf("resolved to %q", subject.Kind)
 		}
 	})
+}
+
+func TestTrustingEveryAddressIsRefused(t *testing.T) {
+	// The guard that halts on a header with no sources would be decorative if
+	// the setting meant to satisfy it could name every address instead.
+	for _, sources := range []string{"0.0.0.0/0", "::/0", "10.0.0.0/8, 0.0.0.0/0"} {
+		parsed, err := access.ParseSources(sources)
+		if err != nil {
+			t.Fatalf("%q: %v", sources, err)
+		}
+		trust := access.Trust{Header: "X-User", From: parsed}
+		if err := trust.Configured(); err == nil {
+			t.Errorf("%q was accepted as a set of trusted sources", sources)
+		}
+	}
+	// A real range still works.
+	parsed, err := access.ParseSources("10.0.0.0/8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := (access.Trust{Header: "X-User", From: parsed}).Configured(); err != nil {
+		t.Errorf("an ordinary range was refused: %v", err)
+	}
 }

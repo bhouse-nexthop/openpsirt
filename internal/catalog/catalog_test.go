@@ -163,7 +163,7 @@ func TestNamesAreUniqueWithinTheirParent(t *testing.T) {
 		// been filed for it, which is what keeps a variant introduced later
 		// out of earlier releases.
 		for _, stream := range []int64{a.ID, b.ID} {
-			was, err := s.BuiltAs(ctx, admin, p.ID, stream)
+			was, err := s.BuiltAs(ctx, admin, stream)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -174,7 +174,7 @@ func TestNamesAreUniqueWithinTheirParent(t *testing.T) {
 		if _, err := s.Resolve(ctx, "sonic", "release-2.5", "broadcom"); err != nil {
 			t.Fatal(err)
 		}
-		was, err := s.BuiltAs(ctx, admin, p.ID, b.ID)
+		was, err := s.BuiltAs(ctx, admin, b.ID)
 		if err != nil || len(was) != 1 {
 			t.Errorf("after a scan was filed the release reports %d variants (%v)", len(was), err)
 		}

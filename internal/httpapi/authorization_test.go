@@ -17,23 +17,63 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/schema"
 )
 
+// declaredBody builds a body the endpoint would accept, so that what a test
+// measures is the decision about the asker rather than a complaint about the
+// request. A refusal that arrives because the body was wrong proves nothing
+// about who may do what.
+func declaredBody(method, path, name string) io.Reader {
+	if method != http.MethodPost {
+		return nil
+	}
+	if strings.HasSuffix(path, "/streams") {
+		return strings.NewReader(`{"name": "` + name + `", "kind": "branch"}`)
+	}
+	return strings.NewReader(`{"name": "` + name + `"}`)
+}
+
 // reach is a server with two products and people holding various things, so
 // that every combination of who-asks and what-they-ask-for can be checked
 // rather than a representative few.
 type reach struct {
 	handler http.Handler
 	key     string
+	revoked string
+}
+
+// response is what came back, for the tests that compare answers rather than
+// just status codes.
+type response struct {
+	code int
+	text string
+}
+
+// body makes a request as somebody and keeps what came back.
+func (r *reach) body(t *testing.T, who, method, path string) response {
+	t.Helper()
+	req := httptest.NewRequest(method, path, nil)
+	if who != "" {
+		req.Header.Set(testHeader, who)
+	}
+	rec := httptest.NewRecorder()
+	r.handler.ServeHTTP(rec, req)
+	return response{code: rec.Code, text: rec.Body.String()}
+}
+
+// withKey makes a request presenting a credential.
+func (r *reach) withKey(t *testing.T, secret, method, path string) response {
+	t.Helper()
+	req := httptest.NewRequest(method, path, nil)
+	req.Header.Set("Authorization", "Bearer "+secret)
+	rec := httptest.NewRecorder()
+	r.handler.ServeHTTP(rec, req)
+	return response{code: rec.Code, text: rec.Body.String()}
 }
 
 func (r *reach) as(t *testing.T, who, method, path string) int {
 	t.Helper()
 	// A well-formed body, so that what is being measured is the decision about
 	// the asker rather than a complaint about the request.
-	var body io.Reader
-	if method == http.MethodPost {
-		body = strings.NewReader(`{"name": "declared-by-the-test"}`)
-	}
-	req := httptest.NewRequest(method, path, body)
+	req := httptest.NewRequest(method, path, declaredBody(method, path, "declared-by-the-test"))
 	if method == http.MethodPost {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -47,11 +87,7 @@ func (r *reach) as(t *testing.T, who, method, path string) int {
 
 func (r *reach) asKey(t *testing.T, method, path string) int {
 	t.Helper()
-	var body io.Reader
-	if method == http.MethodPost {
-		body = strings.NewReader(`{"name": "declared-by-a-pipeline"}`)
-	}
-	req := httptest.NewRequest(method, path, body)
+	req := httptest.NewRequest(method, path, declaredBody(method, path, "declared-by-a-pipeline"))
 	if method == http.MethodPost {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -95,10 +131,12 @@ func eachReach(t *testing.T, fn func(t *testing.T, r *reach)) {
 			t.Fatal(err)
 		}
 		for who, role := range map[string]access.Role{
-			"reader":   access.PublicRead,
-			"private":  access.PrivateRead,
-			"triager":  access.PublicTriage,
-			"approver": access.Approver,
+			"reader":         access.PublicRead,
+			"private":        access.PrivateRead,
+			"triager":        access.PublicTriage,
+			"private-triage": access.PrivateTriage,
+			"approver":       access.Approver,
+			"reporter":       access.Reporting,
 		} {
 			person, err := rights.Ensure(ctx, who, "", false)
 			if err != nil {
@@ -116,6 +154,13 @@ func eachReach(t *testing.T, fn func(t *testing.T, r *reach)) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		withdrawn, revokedSecret, err := rights.NewKey(ctx, "retired", access.Scope{ProductID: mine.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := rights.Revoke(ctx, withdrawn.ID); err != nil {
+			t.Fatal(err)
+		}
 
 		sources, err := access.ParseSources("192.0.2.1")
 		if err != nil {
@@ -125,51 +170,93 @@ func eachReach(t *testing.T, fn func(t *testing.T, r *reach)) {
 			DB: db, Queue: queue.New(db, queue.DefaultOptions()),
 			Access: access.NewResolver(rights, access.Trust{Header: testHeader, From: sources}),
 		})
-		fn(t, &reach{handler: handler, key: secret})
+		fn(t, &reach{handler: handler, key: secret, revoked: revokedSecret})
 	})
 }
 
 func TestWhoMayReachWhat(t *testing.T) {
 	// The matrix rather than a few representative cases. What leaks is never
 	// the endpoint somebody thought about.
+	//
+	// A product somebody cannot see answers as not declared, which is the same
+	// answer a name nobody ever declared gets. That is what invisible means,
+	// and it is why so many rows below expect 404 where 403 would look more
+	// natural.
 	eachReach(t, func(t *testing.T, r *reach) {
+		const (
+			products   = "/v1/products"
+			mine       = "/v1/products/mine/streams"
+			mineVars   = "/v1/products/mine/variants"
+			mineBuilt  = "/v1/products/mine/streams/master/variants"
+			theirs     = "/v1/products/theirs/streams"
+			theirsVars = "/v1/products/theirs/variants"
+			absent     = "/v1/products/nosuch/streams"
+			version    = "/v1/version"
+		)
+
 		for _, c := range []struct {
 			who    string
 			method string
 			path   string
 			want   int
 		}{
-			// Nobody at all.
-			{"", http.MethodGet, "/v1/products", http.StatusUnauthorized},
-			{"", http.MethodPost, "/v1/products", http.StatusUnauthorized},
-			{"", http.MethodGet, "/v1/products/mine/streams", http.StatusUnauthorized},
+			// Nobody at all. Refused before anything about the request is
+			// examined.
+			{"", http.MethodGet, products, http.StatusUnauthorized},
+			{"", http.MethodPost, products, http.StatusUnauthorized},
+			{"", http.MethodGet, mine, http.StatusUnauthorized},
+			{"", http.MethodGet, version, http.StatusUnauthorized},
 
-			// Somebody real who was granted nothing. Refused, and refused the
-			// same way as somebody who does not exist.
-			{"nothing", http.MethodGet, "/v1/products", http.StatusUnauthorized},
-			{"ghost", http.MethodGet, "/v1/products", http.StatusUnauthorized},
+			// Real but granted nothing, and not real at all. Same answer.
+			{"nothing", http.MethodGet, products, http.StatusUnauthorized},
+			{"ghost", http.MethodGet, products, http.StatusUnauthorized},
 
-			// Reading what you hold a role on, and not what you do not.
-			{"reader", http.MethodGet, "/v1/products", http.StatusOK},
-			{"reader", http.MethodGet, "/v1/products/mine/streams", http.StatusOK},
-			{"reader", http.MethodGet, "/v1/products/theirs/streams", http.StatusForbidden},
-			{"reader", http.MethodGet, "/v1/products/mine/variants", http.StatusOK},
-			{"reader", http.MethodGet, "/v1/products/theirs/variants", http.StatusForbidden},
-			{"reader", http.MethodGet, "/v1/products/mine/streams/master/variants", http.StatusOK},
-			{"reader", http.MethodGet, "/v1/products/theirs/streams/master/variants", http.StatusForbidden},
+			// Reading what you hold, and not what you do not — where "not"
+			// is indistinguishable from "does not exist".
+			{"reader", http.MethodGet, products, http.StatusOK},
+			{"reader", http.MethodGet, mine, http.StatusOK},
+			{"reader", http.MethodGet, mineVars, http.StatusOK},
+			{"reader", http.MethodGet, mineBuilt, http.StatusOK},
+			{"reader", http.MethodGet, theirs, http.StatusNotFound},
+			{"reader", http.MethodGet, theirsVars, http.StatusNotFound},
+			{"reader", http.MethodGet, absent, http.StatusNotFound},
+			{"reader", http.MethodGet, version, http.StatusOK},
 
-			// A capability is not a way in.
-			{"approver", http.MethodGet, "/v1/products/mine/streams", http.StatusOK},
+			// Every read role reaches the catalog of what it holds.
+			{"private", http.MethodGet, mine, http.StatusOK},
+			{"private", http.MethodGet, mineVars, http.StatusOK},
+			{"private", http.MethodGet, theirs, http.StatusNotFound},
+			{"triager", http.MethodGet, mine, http.StatusOK},
+			{"triager", http.MethodGet, mineBuilt, http.StatusOK},
+			{"private-triage", http.MethodGet, mine, http.StatusOK},
+
+			// A capability is not a way in. Holding one and nothing else
+			// leaves the product invisible, exactly as if it had never been
+			// declared.
+			{"approver", http.MethodGet, products, http.StatusOK},
+			{"approver", http.MethodGet, mine, http.StatusNotFound},
+			{"approver", http.MethodGet, mineVars, http.StatusNotFound},
+			{"approver", http.MethodGet, mineBuilt, http.StatusNotFound},
+			{"reporter", http.MethodGet, mine, http.StatusNotFound},
+			{"reporter", http.MethodGet, mineVars, http.StatusNotFound},
 
 			// Declaring is administration, whoever else you are.
-			{"reader", http.MethodPost, "/v1/products", http.StatusForbidden},
-			{"triager", http.MethodPost, "/v1/products", http.StatusForbidden},
-			{"private", http.MethodPost, "/v1/products", http.StatusForbidden},
-			{"approver", http.MethodPost, "/v1/products", http.StatusForbidden},
+			{"reader", http.MethodPost, products, http.StatusForbidden},
+			{"private", http.MethodPost, products, http.StatusForbidden},
+			{"triager", http.MethodPost, products, http.StatusForbidden},
+			{"private-triage", http.MethodPost, products, http.StatusForbidden},
+			{"approver", http.MethodPost, products, http.StatusForbidden},
+			{"reporter", http.MethodPost, products, http.StatusForbidden},
+			{"reader", http.MethodPost, mine, http.StatusForbidden},
+			{"reader", http.MethodPost, mineVars, http.StatusForbidden},
 
-			// An administrator reaches everything.
-			{"admin", http.MethodGet, "/v1/products", http.StatusOK},
-			{"admin", http.MethodGet, "/v1/products/theirs/streams", http.StatusOK},
+			// An administrator reaches everything, including what nobody
+			// else can see.
+			{"admin", http.MethodGet, products, http.StatusOK},
+			{"admin", http.MethodGet, theirs, http.StatusOK},
+			{"admin", http.MethodGet, mineVars, http.StatusOK},
+			{"admin", http.MethodGet, version, http.StatusOK},
+			{"admin", http.MethodPost, products, http.StatusCreated},
 		} {
 			if got := r.as(t, c.who, c.method, c.path); got != c.want {
 				who := c.who
@@ -177,6 +264,51 @@ func TestWhoMayReachWhat(t *testing.T) {
 					who = "nobody"
 				}
 				t.Errorf("%s %s as %s = %d, want %d", c.method, c.path, who, got, c.want)
+			}
+		}
+	})
+}
+
+func TestWhatSomebodyCannotSeeLooksExactlyLikeWhatIsNotThere(t *testing.T) {
+	// The whole of ACC-08 in one property. If these two answers differ in any
+	// way — the code, the body, a header — then somebody holding one product
+	// can enumerate every other by guessing names and watching which guesses
+	// answer differently.
+	eachReach(t, func(t *testing.T, r *reach) {
+		for _, pair := range [][2]string{
+			{"/v1/products/theirs/streams", "/v1/products/nosuch/streams"},
+			{"/v1/products/theirs/variants", "/v1/products/nosuch/variants"},
+			{"/v1/products/theirs/streams/master/variants", "/v1/products/nosuch/streams/master/variants"},
+		} {
+			hidden := r.body(t, "reader", http.MethodGet, pair[0])
+			missing := r.body(t, "reader", http.MethodGet, pair[1])
+			if hidden.code != missing.code {
+				t.Errorf("%s answered %d and %s answered %d", pair[0], hidden.code, pair[1], missing.code)
+			}
+			if hidden.text == missing.text {
+				continue
+			}
+			// The bodies name the thing asked for, which is what the asker
+			// already typed. What must not differ is anything else.
+			if strings.ReplaceAll(hidden.text, "theirs", "X") != strings.ReplaceAll(missing.text, "nosuch", "X") {
+				t.Errorf("bodies differ beyond the name asked for:\n  hidden:  %s\n  missing: %s", hidden.text, missing.text)
+			}
+		}
+	})
+}
+
+func TestEveryRefusalOfAStrangerReadsTheSame(t *testing.T) {
+	// Unknown, known but granted nothing, and holding a revoked credential.
+	// Telling them apart says whether a name or a key is real.
+	eachReach(t, func(t *testing.T, r *reach) {
+		unknown := r.body(t, "ghost", http.MethodGet, "/v1/products")
+		ungranted := r.body(t, "nothing", http.MethodGet, "/v1/products")
+		revoked := r.withKey(t, r.revoked, http.MethodGet, "/v1/products")
+
+		for _, got := range []response{ungranted, revoked} {
+			if got.code != unknown.code || got.text != unknown.text {
+				t.Errorf("a refusal differs: %d %q against %d %q",
+					got.code, got.text, unknown.code, unknown.text)
 			}
 		}
 	})
@@ -193,9 +325,12 @@ func TestAPipelineCanReachNothingButSending(t *testing.T) {
 			"/v1/products/mine/variants",
 			"/v1/products/mine/streams/master/variants",
 		} {
-			if got := r.asKey(t, http.MethodGet, path); got == http.StatusOK {
-				t.Errorf("a pipeline read %s", path)
+			if got := r.asKey(t, http.MethodGet, path); got != http.StatusForbidden {
+				t.Errorf("a pipeline reading %s answered %d, want 403", path, got)
 			}
+		}
+		if got := r.asKey(t, http.MethodGet, "/v1/version"); got != http.StatusForbidden {
+			t.Errorf("a pipeline read the running version: %d", got)
 		}
 		if got := r.asKey(t, http.MethodPost, "/v1/products"); got == http.StatusCreated {
 			t.Error("a pipeline declared a product")
@@ -232,4 +367,115 @@ func contains(haystack, needle string) bool {
 		}
 		return false
 	})()
+}
+
+func TestNothingButTheProbesAnswersWithoutACredential(t *testing.T) {
+	// Guarding one prefix leaves everything outside it open by default, and
+	// the framework registers routes of its own: the API document and the
+	// schemas it references were served to anybody who asked, including the
+	// running version that the endpoint reporting it is authenticated to
+	// withhold.
+	eachReach(t, func(t *testing.T, r *reach) {
+		for _, path := range []string{
+			"/openapi.json", "/openapi.yaml", "/openapi-3.0.json", "/openapi-3.0.yaml",
+			"/schemas/VariantBody.json", "/docs",
+			"/v1/version", "/v1/products",
+		} {
+			got := r.body(t, "", http.MethodGet, path)
+			if got.code == http.StatusOK {
+				t.Errorf("%s answered %d without a credential (%d bytes)", path, got.code, len(got.text))
+			}
+		}
+
+		// And the probes still answer, because a container cannot sign in.
+		for _, path := range []string{"/healthz", "/readyz"} {
+			if got := r.body(t, "", http.MethodGet, path); got.code != http.StatusOK {
+				t.Errorf("%s answered %d", path, got.code)
+			}
+		}
+	})
+}
+
+func TestTheApiDocumentIsServedToSomebodyRecognized(t *testing.T) {
+	// Closing it to strangers must not close it to the client that is
+	// generated from it.
+	eachReach(t, func(t *testing.T, r *reach) {
+		if got := r.body(t, "reader", http.MethodGet, "/openapi.json"); got.code != http.StatusOK {
+			t.Errorf("a recognized caller reading the API document got %d", got.code)
+		}
+	})
+}
+
+func TestAKeyReachesOnlyTheTargetItIsScopedTo(t *testing.T) {
+	// The scope is checked at the endpoint, not only in the model. A key
+	// covering one product must be refused another, and refused in a way that
+	// does not say whether that other product exists.
+	eachReach(t, func(t *testing.T, r *reach) {
+		// A real document, because the body is validated before the handler
+		// runs: a request with nothing in it is refused for being empty and
+		// never reaches the question being asked here.
+		sent := func(path string) response {
+			req := upload(t, path, inventory(nowish(), "libc6"))
+			req.Header.Set("Authorization", "Bearer "+r.key)
+			rec := httptest.NewRecorder()
+			r.handler.ServeHTTP(rec, req)
+			return response{code: rec.Code, text: rec.Body.String()}
+		}
+
+		mine := sent("/v1/products/mine/streams/master/variants/broadcom/scans")
+		if mine.code != http.StatusAccepted {
+			t.Errorf("a key sending to its own product answered %d: %s", mine.code, mine.text)
+		}
+
+		elsewhere := sent("/v1/products/theirs/streams/master/variants/broadcom/scans")
+		absent := sent("/v1/products/nosuch/streams/master/variants/broadcom/scans")
+		if elsewhere.code != http.StatusNotFound {
+			t.Errorf("a key reaching another product answered %d, want 404", elsewhere.code)
+		}
+		if elsewhere.code != absent.code {
+			t.Errorf("another product answered %d and an absent one %d", elsewhere.code, absent.code)
+		}
+
+		req := upload(t, "/v1/products/mine/streams/master/variants/broadcom/scans",
+			inventory(nowish(), "libc6"))
+		req.Header.Set("Authorization", "Bearer "+r.revoked)
+		rec := httptest.NewRecorder()
+		r.handler.ServeHTTP(rec, req)
+		revoked := response{code: rec.Code}
+		if revoked.code != http.StatusUnauthorized {
+			t.Errorf("a revoked key answered %d, want 401", revoked.code)
+		}
+	})
+}
+
+func TestACredentialWinsOverAHeader(t *testing.T) {
+	// A request carrying both is a build server's credential arriving through
+	// something that also sets a header. The credential is what it holds; the
+	// header is what somebody in front of it claimed.
+	eachReach(t, func(t *testing.T, r *reach) {
+		req := httptest.NewRequest(http.MethodGet, "/v1/products", nil)
+		req.Header.Set("Authorization", "Bearer "+r.key)
+		req.Header.Set(testHeader, "admin")
+		rec := httptest.NewRecorder()
+		r.handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("a request holding both answered %d; the key should decide and a key may not read", rec.Code)
+		}
+	})
+}
+
+func TestAMalformedCredentialIsRefused(t *testing.T) {
+	eachReach(t, func(t *testing.T, r *reach) {
+		for _, header := range []string{"", "Bearer", "Bearer ", "Basic " + r.key, r.key, "Bearer " + r.key + "x"} {
+			req := httptest.NewRequest(http.MethodGet, "/v1/products", nil)
+			if header != "" {
+				req.Header.Set("Authorization", header)
+			}
+			rec := httptest.NewRecorder()
+			r.handler.ServeHTTP(rec, req)
+			if rec.Code != http.StatusUnauthorized {
+				t.Errorf("Authorization %q answered %d, want 401", header, rec.Code)
+			}
+		}
+	})
 }

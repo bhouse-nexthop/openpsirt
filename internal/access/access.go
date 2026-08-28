@@ -177,13 +177,22 @@ func (s Subject) Reads(visibility Visibility, productID int64) bool {
 // unreadable — not listed and not counted — because the list of products is
 // itself a statement about what an organization ships.
 func (s Subject) Sees(productID int64) bool {
+	if s.Kind == Pipeline && s.scope != nil {
+		// A pipeline knows the product it may send to exists, because it may
+		// send to it. It knows nothing about any other.
+		return s.scope.ProductID == productID
+	}
 	if s.Kind != Person {
 		return false
 	}
 	if s.Admin {
 		return true
 	}
-	return len(s.grants[productID]) > 0
+	// A role that grants reading, not merely any role. A capability is
+	// bounded by what its holder may read, so holding one alone is not a way
+	// in — otherwise granting somebody the ability to approve would show them
+	// every release and variant there is to approve.
+	return s.Reads(Public, productID) || s.Reads(Private, productID)
 }
 
 // Products returns the products this subject may know about. An admin sees
@@ -195,8 +204,8 @@ func (s Subject) Products() (ids []int64, all bool) {
 	if s.Admin {
 		return nil, true
 	}
-	for id, roles := range s.grants {
-		if len(roles) > 0 {
+	for id := range s.grants {
+		if s.Sees(id) {
 			ids = append(ids, id)
 		}
 	}

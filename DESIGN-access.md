@@ -45,8 +45,19 @@ is bounded by what they may read — otherwise handing somebody the ability to
 approve would quietly hand them everything there is to approve.
 
 **A product somebody holds nothing on is invisible**, not merely unreadable.
-Not listed and not counted. The list of products is itself a statement about
-what an organization ships.
+Not listed, not counted, and — this is the part that is easy to get wrong —
+**reported as not declared**, which is the same answer a name nobody ever
+declared gets.
+
+Anything else is an oracle. If "you may not see that" and "that does not exist"
+answer differently, somebody holding one product can learn the name of every
+other by guessing and watching which guess answers differently. So the lookup
+and the check happen together: resolving a name first and authorizing
+afterwards leaks the difference however carefully the second half is written.
+
+The same applies to a pipeline. A stolen build credential must not become a
+reader of the shipping catalog, so a key sees the one product it may send to
+and everything else reads as not declared.
 
 Admin is a property of the person rather than a grant against a product,
 because it is the one role that is global. Modelling it as a grant would mean a
@@ -111,8 +122,14 @@ was not configured.
 nothing" and "you cannot ask" are different statements, and the first invites a
 caller to believe the list is empty.
 
-**Every documented route is authenticated, including the one that reports the
-running version.** Which build is here is small reconnaissance, but it is
+**Everything except the probes is authenticated**, named as a list rather than
+guarded by a path prefix. A prefix leaves everything outside it open by
+default, and the framework registers routes of its own — the API document and
+the schemas it references were served to anybody who asked, including the
+running version that the endpoint reporting it is authenticated to withhold. A
+list means adding a route never quietly adds an exception.
+
+**Including the one that reports the running version.** Which build is here is small reconnaissance, but it is
 reconnaissance: it says which published issues might apply. The probes stay
 open, because a container probe cannot sign in and they report nothing beyond
 whether this process can serve.
@@ -148,4 +165,8 @@ does not admit anybody who has not authenticated.
 | Triage implies reading at the same visibility | Nobody decides about what they cannot see, and requiring both grants means one eventually gets forgotten |
 | A key is honored from anywhere | It holds a credential rather than being vouched for by position. Where it connects from says nothing about whether it is genuine |
 | The stored key digest is compared again in constant time | Finding a row by digest is not by itself a statement that two secrets match |
+| A person holding triage may send a scan | Somebody re-uploading a build by hand is doing triage work. It is not administration, and it is not something a reader should be able to do |
+| A pipeline sees the product it may send to | It may send there, so knowing it exists is already implied. Pretending otherwise would make an upload to its own product indistinguishable from one to a product that is not there, which is the difference somebody fixing a misconfigured pipeline needs |
+| A fault is logged rather than described | The framework serializes an error passed alongside the message, so handing it one hands the caller the query text and, for a connection failure, the address and user it tried |
+| Naming every address as a trusted source is refused | It reaches the same place as naming none, through the setting that is supposed to be the guard |
 | Granting a role somebody already holds succeeds | An administrator scripting grants should not have to check first, and the outcome is what they asked for either way |

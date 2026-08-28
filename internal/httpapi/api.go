@@ -8,7 +8,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -28,6 +27,7 @@ import (
 type Ready func(context.Context) error
 
 func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
+	in.Logger = logger
 	router := chi.NewMux()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Recoverer)
@@ -41,9 +41,17 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	// added later cannot be less careful than the one beside it.
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !strings.HasPrefix(r.URL.Path, "/v1/") {
-				// The probes. A container probe cannot sign in, and they
-				// report nothing beyond whether this process can serve.
+			// Named exceptions rather than a guarded prefix. Guarding one
+			// prefix leaves everything else open by default, and the
+			// framework registers routes of its own: the API document and
+			// the schemas it references were served to anybody who asked,
+			// including the running version that the endpoint reporting it
+			// is authenticated to withhold.
+			//
+			// The probes are the exception, because a container probe cannot
+			// sign in and they report nothing beyond whether this process can
+			// serve.
+			if open[r.URL.Path] {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -100,9 +108,30 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	api := humachi.New(router, cfg)
 	registerVersion(api)
 	registerScans(api, in)
-	registerCatalog(api, Declaring{Store: in.catalog})
+	registerCatalog(api, Declaring{Store: in.catalog, Logger: logger})
 
 	return router, api
+}
+
+// wentWrong reports a fault to the caller without describing it to them.
+//
+// The framework serializes an error passed alongside the message, so handing
+// it one hands the caller the query text and whatever the driver put in its
+// message — which for a connection failure is the address and the user it
+// tried. Whoever operates this deployment needs that; whoever is asking does
+// not.
+func wentWrong(logger *slog.Logger, what string, err error) error {
+	if logger != nil {
+		logger.Error(what, "error", err)
+	}
+	return huma.Error500InternalServerError(what)
+}
+
+// open is every path served without a credential. It is a list rather than a
+// rule so that adding a route never quietly adds an exception.
+var open = map[string]bool{
+	"/healthz": true,
+	"/readyz":  true,
 }
 
 // refuse answers somebody unrecognized.
@@ -135,7 +164,13 @@ func registerVersion(api huma.API) {
 		Summary:     "Report the running build",
 		Description: "Identifies the build that is answering, so an operator can tell which version they are looking at.",
 		Tags:        []string{"Meta"},
-	}, func(_ context.Context, _ *struct{}) (*VersionOutput, error) {
+	}, func(ctx context.Context, _ *struct{}) (*VersionOutput, error) {
+		// A person, not a pipeline. A build server has no business asking
+		// what is deployed, and "nothing else" has to mean this too or it
+		// means whatever each new endpoint remembers.
+		if _, err := reading(ctx); err != nil {
+			return nil, err
+		}
 		return &VersionOutput{Body: version.Get()}, nil
 	})
 }

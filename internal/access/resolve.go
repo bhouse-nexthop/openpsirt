@@ -42,6 +42,15 @@ func (t Trust) Configured() error {
 	case len(t.From) == 0:
 		return fmt.Errorf("a trusted header is named but no source is trusted, and honoring it from anywhere would let anyone reaching this process be anyone")
 	}
+	// Naming every address reaches the same place as naming none, by the one
+	// setting that is supposed to be the guard. Halting on the empty case and
+	// accepting this one would be a guard that only catches the honest
+	// mistake.
+	for _, network := range t.From {
+		if ones, _ := network.Mask.Size(); ones == 0 {
+			return fmt.Errorf("a trusted header is honored from every address, which is the same as trusting it from anywhere")
+		}
+	}
 	return nil
 }
 

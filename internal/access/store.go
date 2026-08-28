@@ -122,6 +122,12 @@ func (s *Store) Resolve(ctx context.Context, identity string) (Subject, error) {
 	}
 	grants := map[int64][]Role{}
 	for _, grant := range held {
+		// A row naming something that is not a role grants nothing. It can
+		// only get there by hand or by a downgrade, and reading it as "some
+		// role" would make it a grant of whatever the reader assumes.
+		if !grant.Role.Valid() {
+			continue
+		}
 		grants[grant.ProductID] = append(grants[grant.ProductID], grant.Role)
 	}
 	if !person.IsAdmin && len(grants) == 0 {

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 
+	"log/slog"
+
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
@@ -16,7 +18,10 @@ import (
 // Everything a scan is filed against is declared before it can be targeted, so
 // this has to be reachable from whatever cuts a branch — a step that can only
 // be done by hand is the step every pipeline works around.
-type Declaring struct{ Store func() *catalog.Store }
+type Declaring struct {
+	Store  func() *catalog.Store
+	Logger *slog.Logger
+}
 
 // reading is who a handler is answering, where the answer is something to
 // read.
@@ -213,7 +218,7 @@ func registerCatalog(api huma.API, d Declaring) {
 		}
 		rows, err := store.Products(ctx, subject)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("cannot list products", err)
+			return nil, wentWrong(d.Logger, "cannot list products", err)
 		}
 		out := &listOutput[ProductBody]{}
 		out.Body.Items = make([]ProductBody, 0, len(rows))
@@ -238,13 +243,13 @@ func registerCatalog(api huma.API, d Declaring) {
 		if err != nil {
 			return nil, err
 		}
-		product, err := store.ProductByName(ctx, in.Product)
+		product, err := store.VisibleProduct(ctx, subject, in.Product)
 		if err != nil {
 			return nil, huma.Error404NotFound(err.Error())
 		}
 		rows, err := store.Streams(ctx, subject, product.ID)
 		if err != nil {
-			return nil, refused(err, "cannot list streams")
+			return nil, refused(d.Logger, err, "cannot list streams")
 		}
 		out := &listOutput[StreamBody]{}
 		out.Body.Items = make([]StreamBody, 0, len(rows))
@@ -270,13 +275,13 @@ func registerCatalog(api huma.API, d Declaring) {
 		if err != nil {
 			return nil, err
 		}
-		product, err := store.ProductByName(ctx, in.Product)
+		product, err := store.VisibleProduct(ctx, subject, in.Product)
 		if err != nil {
 			return nil, huma.Error404NotFound(err.Error())
 		}
 		rows, err := store.Variants(ctx, subject, product.ID)
 		if err != nil {
-			return nil, refused(err, "cannot list variants")
+			return nil, refused(d.Logger, err, "cannot list variants")
 		}
 		return variantList(rows), nil
 	})
@@ -301,13 +306,13 @@ func registerCatalog(api huma.API, d Declaring) {
 		if err != nil {
 			return nil, err
 		}
-		stream, err := findStream(ctx, store, in.Product, in.Stream)
+		_, stream, err := store.VisibleStream(ctx, subject, in.Product, in.Stream)
 		if err != nil {
-			return nil, err
+			return nil, huma.Error404NotFound(err.Error())
 		}
-		rows, err := store.BuiltAs(ctx, subject, stream.ProductID, stream.ID)
+		rows, err := store.BuiltAs(ctx, subject, stream.ID)
 		if err != nil {
-			return nil, refused(err, "cannot list what a release is built as")
+			return nil, refused(d.Logger, err, "cannot list what a release is built as")
 		}
 		return variantList(rows), nil
 	})
@@ -324,50 +329,13 @@ func variantList(rows []catalog.Variant) *listOutput[VariantBody] {
 	return out
 }
 
-// findStream resolves a product and stream, saying which of the two is missing.
-func findStream(ctx context.Context, store *catalog.Store, product, stream string) (*catalog.Stream, error) {
-	p, err := store.ProductByName(ctx, product)
-	if err != nil {
-		return nil, huma.Error404NotFound(err.Error())
-	}
-	st, err := store.StreamByName(ctx, p.ID, stream)
-	if err != nil {
-		return nil, huma.Error404NotFound(err.Error())
-	}
-	return st, nil
-}
-
-// answer reports a declaration, distinguishing one that made something from
-// one that found it already there.
-func answer[T any](created bool, item T) *declaredOutput[T] {
-	status := http.StatusOK
-	if created {
-		status = http.StatusCreated
-	}
-	return &declaredOutput[T]{Status: status, Body: declared[T]{Created: created, Item: item}}
-}
-
-// declineDeclaration turns a refusal into the answer that describes it.
-func declineDeclaration(err error) error {
-	switch {
-	case errors.Is(err, catalog.ErrDiffers):
-		// Declared before, meaning something else. Answering with success
-		// would let a pipeline quietly redefine what a name refers to.
-		return huma.NewError(http.StatusConflict, err.Error())
-	case errors.Is(err, catalog.ErrNotFound):
-		return huma.Error404NotFound(err.Error())
-	default:
-		return huma.Error400BadRequest(err.Error())
-	}
-}
-
 // refused turns a refusal from the data layer into one the caller sees as a
 // refusal. Anything else is a fault here rather than a decision about them.
-func refused(err error, what string) error {
+func refused(logger *slog.Logger, err error, what string) error {
 	if errors.Is(err, access.ErrDenied) {
 		return huma.Error403Forbidden("not authorized")
 	}
-	return huma.Error500InternalServerError(what, err)
+	return wentWrong(logger, what, err)
 }
 
 // administrating refuses anybody who is not an administrator.
@@ -398,4 +366,28 @@ func storeFor(d Declaring) (*catalog.Store, error) {
 		return nil, huma.Error500InternalServerError("this process cannot declare anything")
 	}
 	return store, nil
+}
+
+// answer reports a declaration, distinguishing one that made something from
+// one that found it already there.
+func answer[T any](created bool, item T) *declaredOutput[T] {
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	return &declaredOutput[T]{Status: status, Body: declared[T]{Created: created, Item: item}}
+}
+
+// declineDeclaration turns a refusal into the answer that describes it.
+func declineDeclaration(err error) error {
+	switch {
+	case errors.Is(err, catalog.ErrDiffers):
+		// Declared before, meaning something else. Answering with success
+		// would let a pipeline quietly redefine what a name refers to.
+		return huma.NewError(http.StatusConflict, err.Error())
+	case errors.Is(err, catalog.ErrNotFound):
+		return huma.Error404NotFound(err.Error())
+	default:
+		return huma.Error400BadRequest(err.Error())
+	}
 }

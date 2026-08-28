@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/uptrace/bun"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 )
 
 // Kind distinguishes a moving line of development from a frozen point.
@@ -241,6 +243,24 @@ type Named struct {
 	ProductID int64
 	StreamID  int64
 	VariantID int64
+}
+
+// LocateVisible is Locate for one sender, reporting anything they may not file
+// against as not declared.
+//
+// The same answer as a name nobody ever declared, deliberately. A key holds one
+// product; without this, presenting it and guessing at names elsewhere would
+// return a different error for a name that exists — which turns a stolen build
+// credential into a reader of the whole shipping catalog.
+func (s *Store) LocateVisible(ctx context.Context, subject access.Subject, product, stream, variant string) (*Named, error) {
+	p, err := s.ProductByName(ctx, product)
+	if err != nil {
+		return nil, err
+	}
+	if !subject.Sees(p.ID) {
+		return nil, fmt.Errorf("product %q: %w", product, ErrNotFound)
+	}
+	return s.Locate(ctx, product, stream, variant)
 }
 
 // Locate turns the names an upload states into the things they refer to,
