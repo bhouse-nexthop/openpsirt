@@ -28,6 +28,16 @@ type Ingest struct {
 	Limits sbom.Limits
 }
 
+// catalogue returns a store over this deployment's database, or nothing when
+// there is no database — which is the process that only renders the API
+// document.
+func (in Ingest) catalogue() *catalogue.Store {
+	if in.DB == nil {
+		return nil
+	}
+	return catalogue.NewStore(in.DB.DB)
+}
+
 // uploadParts are the documents a build sends.
 //
 // One request carries the whole picture. A build whose inventory landed and
@@ -105,7 +115,7 @@ func maxUpload(limits sbom.Limits) int64 {
 }
 
 func upload(ctx context.Context, in Ingest, input *UploadInput) (*UploadOutput, error) {
-	if in.DB == nil {
+	if in.DB == nil || in.Queue == nil {
 		return nil, huma.Error500InternalServerError("this process cannot take uploads")
 	}
 	parts := input.RawBody.Data()

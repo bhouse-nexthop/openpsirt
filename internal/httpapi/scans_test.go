@@ -40,6 +40,9 @@ const suppression = `{"@context": "https://openvex.dev/ns/v0.2.0", "@id": "urn:x
  "statements": [{"vulnerability": {"name": "CVE-2026-1"}, "status": "not_affected",
  "products": [{"@id": "pkg:deb/debian/libc6"}]}]}`
 
+// nowish is a build time a moment ago, which every arrival check accepts.
+func nowish() time.Time { return time.Now().UTC().Add(-time.Hour) }
+
 // upload builds the multipart request a build sends.
 func upload(t *testing.T, path, inventory string, suppressions ...string) *http.Request {
 	t.Helper()

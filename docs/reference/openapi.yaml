@@ -1,5 +1,59 @@
 components:
   schemas:
+    DeclaredProductBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DeclaredProductBody.json
+          format: uri
+          readOnly: true
+          type: string
+        created:
+          type: boolean
+        item:
+          $ref: "#/components/schemas/ProductBody"
+      required:
+        - created
+        - item
+      type: object
+    DeclaredStreamBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DeclaredStreamBody.json
+          format: uri
+          readOnly: true
+          type: string
+        created:
+          type: boolean
+        item:
+          $ref: "#/components/schemas/StreamBody"
+      required:
+        - created
+        - item
+      type: object
+    DeclaredVariantBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DeclaredVariantBody.json
+          format: uri
+          readOnly: true
+          type: string
+        created:
+          type: boolean
+        item:
+          $ref: "#/components/schemas/VariantBody"
+      required:
+        - created
+        - item
+      type: object
     ErrorDetail:
       additionalProperties: false
       properties:
@@ -87,6 +141,112 @@ components:
         - date
         - go
       type: object
+    ListBodyProductBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyProductBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/ProductBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyStreamBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyStreamBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/StreamBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyVariantBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyVariantBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/VariantBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ProductBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ProductBody.json
+          format: uri
+          readOnly: true
+          type: string
+        display_name:
+          description: What people see. Defaults to the name
+          type: string
+        name:
+          description: How scans name this product
+          maxLength: 191
+          minLength: 1
+          type: string
+      required:
+        - name
+      type: object
+    StreamBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/StreamBody.json
+          format: uri
+          readOnly: true
+          type: string
+        kind:
+          description: Whether this line moves. A branch is rebuilt; a tag never changes
+          enum:
+            - branch
+            - tag
+          type: string
+        name:
+          description: How scans name this branch or tag
+          maxLength: 191
+          minLength: 1
+          type: string
+        parent:
+          description: For a tag, the branch it was cut from
+          type: string
+      required:
+        - name
+        - kind
+      type: object
     UploadResult:
       additionalProperties: false
       properties:
@@ -117,12 +277,200 @@ components:
         - scan_id
         - outcome
       type: object
+    VariantBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/VariantBody.json
+          format: uri
+          readOnly: true
+          type: string
+        customer_facing:
+          description: Whether this reaches customers. Defaults to yes
+          type: boolean
+        name:
+          description: How scans name this build of the stream
+          maxLength: 191
+          minLength: 1
+          type: string
+      required:
+        - name
+      type: object
 info:
   description: Track vulnerabilities in the products you ship.
   title: openpsirt
   version: dev
 openapi: 3.1.0
 paths:
+  /v1/products:
+    get:
+      description: What a scan may be filed against. The first question after an upload is refused.
+      operationId: list-products
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyProductBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List declared products
+      tags:
+        - Catalogue
+    post:
+      description: Records a product so scans may be filed against it. Declaring one that already exists succeeds without changing anything, so this can run on every build.
+      operationId: declare-product
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeclaredProductBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Declare a product
+      tags:
+        - Catalogue
+  /v1/products/{product}/streams:
+    get:
+      operationId: list-streams
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyStreamBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List a product's branches and tags
+      tags:
+        - Catalogue
+    post:
+      description: Records a line of a product. A branch moves and is rebuilt; a tag never changes and is what somebody received.
+      operationId: declare-stream
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeclaredStreamBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Declare a branch or a tag
+      tags:
+        - Catalogue
+  /v1/products/{product}/streams/{stream}/variants:
+    get:
+      operationId: list-variants
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyVariantBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the ways a stream is built
+      tags:
+        - Catalogue
+    post:
+      description: Records one of the parallel builds of a stream — a chip variant, an architecture, a platform. A variant belongs to its stream, so one introduced in a later release does not appear to have existed in earlier ones.
+      operationId: declare-variant
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariantBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeclaredVariantBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Declare a way a stream is built
+      tags:
+        - Catalogue
   /v1/products/{product}/streams/{stream}/variants/{variant}/scans:
     post:
       description: Takes a build's inventory and the suppressions it carries, against a product, stream and variant that have already been declared. The documents are read after the response, so a successful reply means they were accepted rather than that they parsed.

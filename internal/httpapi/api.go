@@ -61,6 +61,7 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	api := humachi.New(router, cfg)
 	registerVersion(api)
 	registerScans(api, in)
+	registerCatalogue(api, Declaring{Store: in.catalogue})
 
 	return router, api
 }
