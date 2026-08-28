@@ -51,11 +51,15 @@ func (g Grype) Scan(ctx context.Context, inventory io.Reader) (Result, error) {
 	// Reading the inventory from standard input rather than from a file: a
 	// component name is somebody else's text, and nothing from a scan file is
 	// ever used as a path.
+	// The inventory goes to the program's input rather than being named as a
+	// path. That is deliberate — nothing from a scan file is ever used as a
+	// path, so a component called something hostile stays data — and it is
+	// also what the scanner actually accepts: asking it to read a file called
+	// "-" makes it look for one.
+	//
 	// The executable is an operator's configuration and the arguments are
-	// fixed. Nothing here comes from a scan file — the inventory is written to
-	// the program's input, never named as a path, so a component called
-	// something hostile stays data.
-	cmd := exec.CommandContext(ctx, g.executable(), "sbom:-", "--output", "json") // #nosec G204
+	// fixed.
+	cmd := exec.CommandContext(ctx, g.executable(), "--output", "json") // #nosec G204
 	cmd.Stdin = inventory
 	cmd.Stdout = &out
 	cmd.Stderr = &errs
@@ -90,9 +94,17 @@ type grypeDocument struct {
 	Descriptor struct {
 		Name    string `json:"name"`
 		Version string `json:"version"`
-		DB      struct {
-			Built         string `json:"built"`
-			SchemaVersion any    `json:"schemaVersion"`
+		// Where the database describes itself moved between versions of the
+		// scanner: it used to sit directly under db and now sits under a
+		// status within it. Both are read, because an operator running an
+		// older build should not silently lose the record of what their
+		// findings were matched against.
+		DB struct {
+			Built  string `json:"built"`
+			Status struct {
+				Built         string `json:"built"`
+				SchemaVersion string `json:"schemaVersion"`
+			} `json:"status"`
 		} `json:"db"`
 	} `json:"descriptor"`
 }
@@ -110,7 +122,7 @@ func ParseGrype(r io.Reader) (Result, error) {
 
 	result := Result{
 		Version:         doc.Descriptor.Version,
-		DatabaseVersion: doc.Descriptor.DB.Built,
+		DatabaseVersion: databaseVersion(doc),
 	}
 	for _, match := range doc.Matches {
 		if match.Artifact.Name == "" {
@@ -139,6 +151,22 @@ func ParseGrype(r io.Reader) (Result, error) {
 		})
 	}
 	return result, nil
+}
+
+// databaseVersion says which vulnerability data a run matched against.
+//
+// When it was built identifies the data; the schema version only identifies
+// its shape, so it stands in only when there is nothing better. Without either,
+// a finding that appeared or vanished because the data moved is unexplainable.
+func databaseVersion(doc grypeDocument) string {
+	switch {
+	case doc.Descriptor.DB.Status.Built != "":
+		return doc.Descriptor.DB.Status.Built
+	case doc.Descriptor.DB.Built != "":
+		return doc.Descriptor.DB.Built
+	default:
+		return doc.Descriptor.DB.Status.SchemaVersion
+	}
 }
 
 // fixState reads what upstream has done about an issue.

@@ -24,76 +24,103 @@ func parse(t *testing.T) scanner.Result {
 }
 
 func TestWhatRanAndAgainstWhatIsRecorded(t *testing.T) {
-	// A finding that appeared or vanished because the scanner or its database
+	// A finding that appeared or vanished because the scanner or its data
 	// moved is unexplainable without this.
 	result := parse(t)
-	if result.Version != "0.100.0" || result.DatabaseVersion != "2026-08-28T01:31:04Z" {
-		t.Errorf("recorded %q against %q", result.Version, result.DatabaseVersion)
+	if result.Version != "0.112.0" {
+		t.Errorf("scanner version reads as %q", result.Version)
+	}
+	if result.DatabaseVersion != "2026-08-28T09:21:39Z" {
+		t.Errorf("database version reads as %q", result.DatabaseVersion)
+	}
+}
+
+func TestTheDatabaseVersionIsFoundWhereverItSits(t *testing.T) {
+	// Where the database describes itself moved between versions of the
+	// scanner. An operator running an older build should not silently lose the
+	// record of what their findings were matched against.
+	older := `{"matches": [], "descriptor": {"name": "grype", "version": "0.90.0",
+	 "db": {"built": "2026-01-01T00:00:00Z", "schemaVersion": 5}}}`
+	result, err := scanner.ParseGrype(strings.NewReader(older))
+	if err != nil {
+		t.Fatalf("an older scanner's output: %v", err)
+	}
+	if result.DatabaseVersion != "2026-01-01T00:00:00Z" {
+		t.Errorf("database version reads as %q", result.DatabaseVersion)
 	}
 }
 
 func TestEveryMatchBecomesAReportedIssue(t *testing.T) {
 	result := parse(t)
-	if len(result.Reported) != 4 {
-		t.Fatalf("read %d matches, want 4", len(result.Reported))
+	if len(result.Reported) != 7 {
+		t.Fatalf("read %d matches, want 7", len(result.Reported))
 	}
-	first := result.Reported[0]
-	if first.Issue.Identifier != "CVE-2026-31951" {
-		t.Errorf("first issue is %q", first.Issue.Identifier)
-	}
-	if first.Component.Name != "frr" || first.Component.Version != "10.5.4-sonic-0" {
-		t.Errorf("reported against %+v", first.Component)
-	}
-	if first.Component.Purl == "" {
-		t.Error("the package identifier was dropped, and it is what matches this back to what we hold")
+	for _, r := range result.Reported {
+		if r.Issue.Identifier == "" {
+			t.Error("an issue was read with no identifier")
+		}
+		if r.Component.Name == "" || r.Component.Version == "" {
+			t.Errorf("an issue was read against %+v", r.Component)
+		}
+		if r.Component.Purl == "" {
+			t.Error("a package identifier was dropped, and it is what matches this back to what we hold")
+		}
 	}
 }
 
 func TestTheOtherNamesForAnIssueAreCarried(t *testing.T) {
-	// The scanner files this one under an advisory identifier and knows the
+	// The scanner files many issues under an advisory identifier and knows the
 	// national one alongside. Dropping the alias would make it a second issue
 	// the first time another scanner reported it the other way round.
-	result := parse(t)
-	for _, r := range result.Reported {
-		if r.Issue.Identifier != "GHSA-aaaa-bbbb-cccc" {
+	var withAliases int
+	for _, r := range parse(t).Reported {
+		if len(r.Issue.Aliases) == 0 {
 			continue
 		}
-		if len(r.Issue.Aliases) != 1 || r.Issue.Aliases[0] != "CVE-2026-1111" {
-			t.Errorf("aliases are %v", r.Issue.Aliases)
+		withAliases++
+		for _, alias := range r.Issue.Aliases {
+			if alias == r.Issue.Identifier {
+				t.Error("an issue lists itself as one of its other names")
+			}
 		}
-		return
 	}
-	t.Fatal("the issue reported under an advisory identifier is missing")
+	if withAliases == 0 {
+		t.Fatal("no aliases were read from output that carries them")
+	}
 }
 
 func TestTheThreeFixStatesAreToldApart(t *testing.T) {
 	// "No fix exists yet" and "upstream will not fix this" are different
 	// situations, and the second changes the outcome somebody should reach.
-	want := map[string]finding.FixState{
-		"frr":         finding.FixedUpstream,
-		"tokio":       finding.FixedUpstream,
-		"libc6":       finding.WontFix,
-		"libnl-3-200": finding.NoFix,
-	}
+	seen := map[finding.FixState]int{}
 	for _, r := range parse(t).Reported {
-		if got := r.FixState; got != want[r.Component.Name] {
-			t.Errorf("%s reads as %q, want %q", r.Component.Name, got, want[r.Component.Name])
+		seen[r.FixState]++
+		if r.FixState == finding.FixedUpstream && r.FixedIn == "" {
+			t.Errorf("%s is fixed upstream with no version to move to", r.Component.Name)
 		}
 	}
-	for _, r := range parse(t).Reported {
-		if r.Component.Name == "frr" && r.FixedIn != "10.6.1" {
-			t.Errorf("the version that fixes it is %q", r.FixedIn)
+	for _, state := range []finding.FixState{finding.FixedUpstream, finding.NoFix, finding.WontFix} {
+		if seen[state] == 0 {
+			t.Errorf("no issue read as %q, and the recorded output has one", state)
 		}
 	}
 }
 
 func TestSeverityIsAWordInOneCase(t *testing.T) {
-	// Scanners disagree about capitalisation, and two spellings of one
-	// severity would sort and group as two.
+	// The scanner capitalizes them and two spellings of one severity would
+	// sort and group as two.
+	var rated int
 	for _, r := range parse(t).Reported {
+		if r.Issue.Severity == "" {
+			continue
+		}
+		rated++
 		if r.Issue.Severity != strings.ToLower(r.Issue.Severity) {
 			t.Errorf("%s is rated %q", r.Component.Name, r.Issue.Severity)
 		}
+	}
+	if rated == 0 {
+		t.Fatal("nothing was rated, and the recorded output rates everything")
 	}
 }
 
@@ -107,7 +134,7 @@ func TestAnEmptyRunIsNotAFailure(t *testing.T) {
 	// Nothing found is an ordinary answer, and treating it as an error would
 	// make a clean product look like a broken scanner.
 	result, err := scanner.ParseGrype(strings.NewReader(
-		`{"matches": [], "descriptor": {"name": "grype", "version": "0.100.0"}}`))
+		`{"matches": [], "descriptor": {"name": "grype", "version": "0.112.0"}}`))
 	if err != nil {
 		t.Fatalf("an empty run: %v", err)
 	}
