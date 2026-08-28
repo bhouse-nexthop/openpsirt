@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/dbtest"
@@ -148,7 +149,10 @@ func TestNamesAreUniqueWithinTheirParent(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		built, err := s.Variants(ctx, p.ID)
+		// An administrator, because what this test is about is the catalog
+		// rather than who may read it.
+		admin := access.NewPerson(1, "admin", true, nil)
+		built, err := s.Variants(ctx, admin, p.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -159,7 +163,7 @@ func TestNamesAreUniqueWithinTheirParent(t *testing.T) {
 		// been filed for it, which is what keeps a variant introduced later
 		// out of earlier releases.
 		for _, stream := range []int64{a.ID, b.ID} {
-			was, err := s.BuiltAs(ctx, stream)
+			was, err := s.BuiltAs(ctx, admin, p.ID, stream)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -170,7 +174,7 @@ func TestNamesAreUniqueWithinTheirParent(t *testing.T) {
 		if _, err := s.Resolve(ctx, "sonic", "release-2.5", "broadcom"); err != nil {
 			t.Fatal(err)
 		}
-		was, err := s.BuiltAs(ctx, b.ID)
+		was, err := s.BuiltAs(ctx, admin, p.ID, b.ID)
 		if err != nil || len(was) != 1 {
 			t.Errorf("after a scan was filed the release reports %d variants (%v)", len(was), err)
 		}

@@ -98,6 +98,29 @@ process**, because a header named with nothing to trust it from is either a
 mistake or the first half of one, and it is never a fallback for sign-in that
 was not configured.
 
+## Where each thing is decided
+
+| Decided | Where | Why there |
+|---|---|---|
+| Who is asking | One middleware, before any route | A handler that forgets to ask is a handler answering for everybody, and the forgetting is invisible until somebody reads the one that did |
+| Whether they are anybody at all | The same middleware | Refusing before the request is examined means an unrecognized caller does not learn whether their body was well-formed |
+| Whether they may reach this product | The data layer, on the query | A check beside the query cannot be skipped by adding another endpoint |
+| Whether they may do this at all | The handler | Declaring a product is administration whatever the query looks like |
+
+**A pipeline is refused a read rather than shown an empty one.** "Here is
+nothing" and "you cannot ask" are different statements, and the first invites a
+caller to believe the list is empty.
+
+**Every documented route is authenticated, including the one that reports the
+running version.** Which build is here is small reconnaissance, but it is
+reconnaissance: it says which published issues might apply. The probes stay
+open, because a container probe cannot sign in and they report nothing beyond
+whether this process can serve.
+
+A deployment that cannot tell who is asking serves nobody. Failing closed means
+an unconfigured deployment is a service that is up and refusing, which is
+visible, rather than one that is up and answering everybody, which is not.
+
 ## A query without a subject is a fault, not a denial
 
 Reading who is asking from a request's context **fails** when nobody is

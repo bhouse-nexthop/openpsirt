@@ -228,6 +228,28 @@ func (s *Store) VariantByName(ctx context.Context, productID int64, name string)
 // first use. It is also why a variant introduced later stays out of earlier
 // releases: nothing ever filed a scan for it there.
 func (s *Store) Resolve(ctx context.Context, product, stream, variant string) (*Target, error) {
+	named, err := s.Locate(ctx, product, stream, variant)
+	if err != nil {
+		return nil, err
+	}
+	return s.TargetFor(ctx, named.StreamID, named.VariantID)
+}
+
+// Named is what an upload said it was for, resolved to rows but not yet
+// recorded as a target.
+type Named struct {
+	ProductID int64
+	StreamID  int64
+	VariantID int64
+}
+
+// Locate turns the names an upload states into the things they refer to,
+// without recording anything.
+//
+// Separate from Resolve so that whether the sender is allowed to file against
+// this can be decided before the pair is written down. Recording first and
+// checking afterwards leaves a row created by a request that was refused.
+func (s *Store) Locate(ctx context.Context, product, stream, variant string) (*Named, error) {
 	p, err := s.ProductByName(ctx, product)
 	if err != nil {
 		return nil, err
@@ -240,7 +262,7 @@ func (s *Store) Resolve(ctx context.Context, product, stream, variant string) (*
 	if err != nil {
 		return nil, fmt.Errorf("product %q: %w", product, err)
 	}
-	return s.TargetFor(ctx, st.ID, v.ID)
+	return &Named{ProductID: p.ID, StreamID: st.ID, VariantID: v.ID}, nil
 }
 
 // TargetFor returns the row for a release built as a variant, recording it the

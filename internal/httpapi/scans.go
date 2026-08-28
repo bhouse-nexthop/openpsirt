@@ -137,11 +137,43 @@ func upload(ctx context.Context, in Ingest, input *UploadInput) (*UploadOutput, 
 			fmt.Sprintf("%d scans are already waiting to be read; try again shortly", depth))
 	}
 
-	target, err := catalog.NewStore(in.DB.DB).Resolve(ctx, input.Product, input.Stream, input.Variant)
+	// Who is sending, before anything is read or written.
+	subject, err := requester(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// The names are resolved to things before the pair is recorded, so that
+	// whether this sender may file against them is decided first. Recording
+	// and then refusing would leave a row created by a request that failed.
+	catalogue := catalog.NewStore(in.DB.DB)
+	named, err := catalogue.Locate(ctx, input.Product, input.Stream, input.Variant)
 	if err != nil {
 		// The message names which part is missing, which is what whoever sees
 		// the failed upload needs in order to declare it.
 		return nil, huma.Error404NotFound(err.Error())
+	}
+
+	// A key authorizes an upload; it does not describe one. Every constraint
+	// it carries must match what this upload says it is for, and a mismatch is
+	// refused rather than redirected — a key covering one release must never
+	// quietly accept a scan of another.
+	//
+	// A person may send too, where they hold triage on the product: somebody
+	// re-uploading a build by hand is doing triage work, not administration.
+	switch {
+	case subject.Kind == access.Pipeline:
+		if !subject.MaySend(named.ProductID, named.StreamID, named.VariantID) {
+			return nil, huma.Error403Forbidden("not authorized")
+		}
+	case !subject.Holds(access.PublicTriage, named.ProductID) &&
+		!subject.Holds(access.PrivateTriage, named.ProductID):
+		return nil, huma.Error403Forbidden("not authorized")
+	}
+
+	target, err := catalogue.TargetFor(ctx, named.StreamID, named.VariantID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("the target could not be recorded", err)
 	}
 
 	// One pass over the inventory answers both questions asked of an arriving
@@ -168,6 +200,9 @@ func upload(ctx context.Context, in Ingest, input *UploadInput) (*UploadOutput, 
 		Serial:        header.Serial,
 		BuiltAt:       header.BuiltAt,
 		ParserVersion: version.Get().Version,
+		// Which credential sent this. Recorded alongside the parser version so
+		// that "where did this data come from" has an answer.
+		Credential: subject.Identity,
 	}
 
 	var (

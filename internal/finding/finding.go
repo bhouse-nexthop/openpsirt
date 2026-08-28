@@ -10,6 +10,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 )
 
@@ -76,7 +77,11 @@ type Finding struct {
 	TargetID        int64 `bun:"target_id,notnull"`
 	Kind            Kind  `bun:"kind,notnull"`
 	VulnerabilityID int64 `bun:"vulnerability_id,notnull"`
-	ComponentID     int64 `bun:"component_id,notnull"`
+	// Visibility says whether this has been disclosed. A vulnerability a
+	// scanner found in a shipped component is public knowledge by the time we
+	// hear about it; what is not is a finding somebody entered here.
+	Visibility  access.Visibility `bun:"visibility,notnull"`
+	ComponentID int64             `bun:"component_id,notnull"`
 	// ConsumerID is what pulled the component in. Empty where that is the
 	// product itself: the root's name differs per variant, so keying on it
 	// would break grouping the same finding across variants.

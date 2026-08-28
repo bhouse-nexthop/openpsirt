@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/uptrace/bun"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 )
 
 // ErrDiffers is returned when something has been declared before, with
@@ -102,17 +106,38 @@ func facing(customerFacing bool) string {
 	return "internal"
 }
 
-// Products lists what has been declared.
-func (s *Store) Products(ctx context.Context) ([]Product, error) {
+// Products lists what this subject may know about.
+//
+// A product somebody holds nothing on is not listed and not counted. The list
+// itself is a statement about what an organization ships, so filtering it is
+// not a nicety — an unfiltered list tells somebody the names of things they
+// were never granted.
+func (s *Store) Products(ctx context.Context, subject access.Subject) ([]Product, error) {
+	visible, all := subject.Products()
+	if !all && len(visible) == 0 {
+		return nil, nil
+	}
+
 	var rows []Product
-	if err := s.db.NewSelect().Model(&rows).Order("name").Scan(ctx); err != nil {
+	query := s.db.NewSelect().Model(&rows).Order("name")
+	if !all {
+		query = query.Where("id IN (?)", bun.List(visible))
+	}
+	if err := query.Scan(ctx); err != nil {
 		return nil, fmt.Errorf("list products: %w", err)
 	}
 	return rows, nil
 }
 
 // Streams lists the branches and tags of a product.
-func (s *Store) Streams(ctx context.Context, productID int64) ([]Stream, error) {
+//
+// Guarded here rather than by whoever asked. Somebody who cannot see a product
+// cannot see what releases it has either, and finding that out endpoint by
+// endpoint is how the second one gets forgotten.
+func (s *Store) Streams(ctx context.Context, subject access.Subject, productID int64) ([]Stream, error) {
+	if !subject.Sees(productID) {
+		return nil, access.Denied("list the releases of a product")
+	}
 	var rows []Stream
 	err := s.db.NewSelect().Model(&rows).
 		Where("product_id = ?", productID).Order("kind", "name").Scan(ctx)
@@ -123,7 +148,10 @@ func (s *Store) Streams(ctx context.Context, productID int64) ([]Stream, error) 
 }
 
 // Variants lists the ways a product is built.
-func (s *Store) Variants(ctx context.Context, productID int64) ([]Variant, error) {
+func (s *Store) Variants(ctx context.Context, subject access.Subject, productID int64) ([]Variant, error) {
+	if !subject.Sees(productID) {
+		return nil, access.Denied("list the variants of a product")
+	}
 	var rows []Variant
 	err := s.db.NewSelect().Model(&rows).
 		Where("product_id = ?", productID).Order("name").Scan(ctx)
@@ -136,7 +164,10 @@ func (s *Store) Variants(ctx context.Context, productID int64) ([]Variant, error
 // BuiltAs lists the variants a release has actually been built as, which is a
 // subset of what the product builds: a release predating a variant has no row
 // for it, and one that stopped being built as something keeps its history.
-func (s *Store) BuiltAs(ctx context.Context, streamID int64) ([]Variant, error) {
+func (s *Store) BuiltAs(ctx context.Context, subject access.Subject, productID, streamID int64) ([]Variant, error) {
+	if !subject.Sees(productID) {
+		return nil, access.Denied("list what a release is built as")
+	}
 	var rows []Variant
 	err := s.db.NewSelect().Model(&rows).
 		Join("JOIN target AS tg ON tg.variant_id = v.id").

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/dbtest"
 	"github.com/bhouse-nexthop/openpsirt/internal/httpapi"
@@ -16,19 +17,41 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/schema"
 )
 
-// declaring is a server over an empty catalog.
-type declaring struct{ handler http.Handler }
+// testHeader is what the fixture's proxy would set. Requests from the test
+// client arrive from the address httptest uses, which the fixture trusts.
+const testHeader = "X-Test-User"
+
+// declaring is a server over an empty catalog, with an administrator to speak
+// as and a way to speak as anybody else.
+type declaring struct {
+	handler http.Handler
+	access  *access.Store
+	admin   string
+}
 
 func (d *declaring) post(t *testing.T, path, body string) (int, map[string]any) {
 	t.Helper()
+	return d.postAs(t, d.admin, path, body)
+}
+
+func (d *declaring) postAs(t *testing.T, who, path, body string) (int, map[string]any) {
+	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(testHeader, who)
 	return d.do(t, req)
 }
 
 func (d *declaring) get(t *testing.T, path string) (int, map[string]any) {
 	t.Helper()
-	return d.do(t, httptest.NewRequest(http.MethodGet, path, nil))
+	return d.getAs(t, d.admin, path)
+}
+
+func (d *declaring) getAs(t *testing.T, who, path string) (int, map[string]any) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.Header.Set(testHeader, who)
+	return d.do(t, req)
 }
 
 func (d *declaring) do(t *testing.T, req *http.Request) (int, map[string]any) {
@@ -52,10 +75,22 @@ func eachCatalog(t *testing.T, fn func(t *testing.T, d *declaring)) {
 			t.Fatalf("migrate: %v", err)
 		}
 		dbtest.Reset(t, db)
+
+		rights := access.NewStore(db.DB)
+		if _, err := rights.Ensure(t.Context(), "admin", "Administrator", true); err != nil {
+			t.Fatal(err)
+		}
+		// httptest sends from a documentation address; the fixture's proxy is
+		// taken to sit there.
+		sources, err := access.ParseSources("192.0.2.1")
+		if err != nil {
+			t.Fatal(err)
+		}
 		handler, _ := httpapi.New(quiet, nil, httpapi.Ingest{
 			DB: db, Queue: queue.New(db, queue.DefaultOptions()),
+			Access: access.NewResolver(rights, access.Trust{Header: testHeader, From: sources}),
 		})
-		fn(t, &declaring{handler: handler})
+		fn(t, &declaring{handler: handler, access: rights, admin: "admin"})
 	})
 }
 
@@ -188,9 +223,13 @@ func TestADeclaredTargetCanBeUploadedAgainst(t *testing.T) {
 		d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
 		d.post(t, "/v1/products/sonic/variants", `{"name": "broadcom"}`)
 
+		// The administrator sends it by hand, which is triage work rather than
+		// a pipeline's job — and an administrator holds every role there is.
+		req := upload(t, "/v1/products/sonic/streams/master/variants/broadcom/scans",
+			inventory(nowish(), "libc6"))
+		req.Header.Set(testHeader, d.admin)
 		rec := httptest.NewRecorder()
-		d.handler.ServeHTTP(rec, upload(t, "/v1/products/sonic/streams/master/variants/broadcom/scans",
-			inventory(nowish(), "libc6")))
+		d.handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusAccepted {
 			t.Errorf("an upload against a freshly declared target returned %d: %s", rec.Code, rec.Body)
 		}

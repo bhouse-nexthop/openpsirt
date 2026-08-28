@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/dbtest"
@@ -81,12 +82,21 @@ type ingestFixture struct {
 	db      *database.DB
 	queue   *queue.Queue
 	path    string
+	// key is a pipeline's credential for the declared target, which is how a
+	// build actually sends.
+	key string
+}
+
+// sending presents the pipeline's credential, the way a build would.
+func (f *ingestFixture) sending(req *http.Request) *http.Request {
+	req.Header.Set("Authorization", "Bearer "+f.key)
+	return req
 }
 
 func (f *ingestFixture) send(t *testing.T, req *http.Request) (int, httpapi.UploadResult) {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	f.handler.ServeHTTP(rec, req)
+	f.handler.ServeHTTP(rec, f.sending(req))
 	var result httpapi.UploadResult
 	if rec.Code < 300 {
 		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
@@ -118,10 +128,21 @@ func eachIngest(t *testing.T, opts queue.Options, fn func(t *testing.T, f *inges
 			t.Fatal(err)
 		}
 
+		// A key scoped to the product, which is the common case: a key cannot
+		// imply which release an upload is for, so the upload states it.
+		rights := access.NewStore(db.DB)
+		_, secret, err := rights.NewKey(ctx, "nightly", access.Scope{ProductID: product.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		q := queue.New(db, opts)
-		handler, _ := httpapi.New(quiet, nil, httpapi.Ingest{DB: db, Queue: q})
+		handler, _ := httpapi.New(quiet, nil, httpapi.Ingest{
+			DB: db, Queue: q,
+			Access: access.NewResolver(rights, access.Trust{}),
+		})
 		fn(t, &ingestFixture{
-			handler: handler, db: db, queue: q,
+			handler: handler, db: db, queue: q, key: secret,
 			path: "/v1/products/sonic/streams/master/variants/broadcom/scans",
 		})
 	})
@@ -220,8 +241,8 @@ func TestAScanFromTheFutureIsRefusedAsABadRequest(t *testing.T) {
 
 func TestAnUndeclaredTargetSaysWhichPartIsMissing(t *testing.T) {
 	eachIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
-		req := upload(t, "/v1/products/sonic/streams/master/variants/mellanox/scans",
-			inventory(time.Now().UTC().Add(-time.Hour), "libc6"))
+		req := f.sending(upload(t, "/v1/products/sonic/streams/master/variants/mellanox/scans",
+			inventory(time.Now().UTC().Add(-time.Hour), "libc6")))
 		rec := httptest.NewRecorder()
 		f.handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusNotFound {
@@ -245,7 +266,7 @@ func TestNothingIsStoredWhenTheBacklogIsFull(t *testing.T) {
 			t.Fatalf("first upload returned %d", code)
 		}
 		rec := httptest.NewRecorder()
-		f.handler.ServeHTTP(rec, upload(t, f.path, inventory(now.Add(-time.Hour), "zlib1g")))
+		f.handler.ServeHTTP(rec, f.sending(upload(t, f.path, inventory(now.Add(-time.Hour), "zlib1g"))))
 		if rec.Code != http.StatusServiceUnavailable {
 			t.Fatalf("an upload against a full backlog returned %d, want 503", rec.Code)
 		}
@@ -271,7 +292,7 @@ func TestNothingIsStoredWhenTheBacklogIsFull(t *testing.T) {
 func TestSomethingThatIsNotAnInventoryIsRefused(t *testing.T) {
 	eachIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
 		rec := httptest.NewRecorder()
-		f.handler.ServeHTTP(rec, upload(t, f.path, `{"bomFormat": "SPDX", "specVersion": "2.3"}`))
+		f.handler.ServeHTTP(rec, f.sending(upload(t, f.path, `{"bomFormat": "SPDX", "specVersion": "2.3"}`)))
 		if rec.Code != http.StatusUnprocessableEntity {
 			t.Errorf("a document we cannot read returned %d, want 422", rec.Code)
 		}
@@ -289,7 +310,7 @@ func TestAnInventoryWithNoBuildTimeIsRefused(t *testing.T) {
 		 "components": [{"bom-ref": "a", "name": "libc", "version": "2.41"}]}`
 
 		rec := httptest.NewRecorder()
-		f.handler.ServeHTTP(rec, upload(t, f.path, undated))
+		f.handler.ServeHTTP(rec, f.sending(upload(t, f.path, undated)))
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("an inventory with no build time returned %d, want 400", rec.Code)
 		}

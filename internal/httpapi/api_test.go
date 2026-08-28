@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -29,22 +28,35 @@ func TestProbesAnswerWithoutAuthentication(t *testing.T) {
 	}
 }
 
-func TestVersionEndpointReportsTheBuild(t *testing.T) {
+func TestTheVersionIsNotToldToStrangers(t *testing.T) {
+	// Which build is running is small reconnaissance, but it is
+	// reconnaissance: it says which published issues might apply here. Every
+	// documented route is authenticated, and this one is not an exception
+	// because it looks harmless.
 	h := newTestHandler(t)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/version", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /v1/version unauthenticated = %d, want 401", rec.Code)
+	}
+}
+
+func TestAProcessThatCannotTellWhoIsAskingAnswersNobody(t *testing.T) {
+	// Failing closed. A deployment whose sign-in is not configured serves
+	// nothing rather than serving everybody, and the probes still answer so
+	// that the failure is visible as a service that is up and refusing.
+	h := newTestHandler(t)
+	for _, path := range []string{"/v1/version", "/v1/products"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("GET %s = %d, want 401", path, rec.Code)
+		}
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /v1/version = %d, want 200", rec.Code)
-	}
-	var body struct {
-		Version string `json:"version"`
-		Go      string `json:"go"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode: %v (body %q)", err, rec.Body.String())
-	}
-	if body.Version == "" || body.Go == "" {
-		t.Errorf("incomplete: %+v", body)
+		t.Errorf("the liveness probe answered %d", rec.Code)
 	}
 }
 

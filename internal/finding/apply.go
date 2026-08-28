@@ -7,6 +7,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
@@ -90,6 +91,11 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 				at := place{componentID: component.ID, consumerID: consumerID}
 				wanted[key{vulnerabilityID, at}] = Finding{
 					TargetID: targetID, Kind: Vulnerable,
+					// What a scanner found in a shipped component is public
+					// knowledge by the time it reaches us: the advisory it
+					// matched is published. What is not disclosed is a finding
+					// somebody entered here.
+					Visibility:      access.Public,
 					VulnerabilityID: vulnerabilityID,
 					ComponentID:     component.ID,
 					ConsumerID:      optional(consumerID),

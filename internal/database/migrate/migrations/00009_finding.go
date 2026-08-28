@@ -114,6 +114,11 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			id               ` + t.id + `,
 			target_id        ` + t.ref + ` NOT NULL REFERENCES target(id),
 			kind             ` + t.kind + ` NOT NULL,
+			-- Whether this has been disclosed. Not who may read it: every
+			-- request is authenticated either way. Anything unrecognized
+			-- reads as undisclosed, so a value added later cannot default
+			-- rows that predate it to visible.
+			visibility       ` + t.kind + ` NOT NULL,
 			vulnerability_id ` + t.ref + ` NOT NULL REFERENCES vulnerability(id),
 			component_id     ` + t.ref + ` NOT NULL REFERENCES component(id),
 			consumer_id      ` + t.refNull + ` NULL REFERENCES component(id),

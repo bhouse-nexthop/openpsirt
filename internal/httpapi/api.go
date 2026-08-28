@@ -8,12 +8,14 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/version"
 )
 
@@ -29,6 +31,43 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	router := chi.NewMux()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Recoverer)
+	// One resolution step, before any handler. Doing it here rather than in
+	// each handler is the whole point: a handler that forgets is a handler
+	// answering for everybody, and the forgetting is invisible until somebody
+	// reads the one that did.
+	//
+	// It attaches whoever was recognized and refuses nobody. What a subject
+	// may reach is decided further down, where the query is, so that a route
+	// added later cannot be less careful than the one beside it.
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !strings.HasPrefix(r.URL.Path, "/v1/") {
+				// The probes. A container probe cannot sign in, and they
+				// report nothing beyond whether this process can serve.
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			var subject access.Subject
+			var err error
+			if in.Access == nil {
+				err = access.ErrDenied
+			} else {
+				subject, err = in.Access.Resolve(r.Context(), r)
+			}
+			if err != nil {
+				// Refused here rather than in a handler, so that nothing
+				// about the request is examined first. Otherwise an
+				// unauthenticated caller learns whether their body was
+				// well-formed, which is a small thing to hand somebody who
+				// has not identified themselves at all.
+				refuse(w)
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(access.With(r.Context(), subject)))
+		})
+	})
+
 	// RealIP is deliberately absent. It rewrites the client address from
 	// X-Forwarded-For and similar, which any caller can set, so it is only
 	// safe behind a proxy known to overwrite them. Trusting proxy-supplied
@@ -64,6 +103,17 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	registerCatalog(api, Declaring{Store: in.catalog})
 
 	return router, api
+}
+
+// refuse answers somebody unrecognized.
+//
+// The same answer whoever they are: unknown, known and granted nothing, or
+// holding a credential that has been revoked. Saying which would tell an
+// outsider whether a name or a key is real.
+func refuse(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(http.StatusUnauthorized)
+	_, _ = w.Write([]byte(`{"title":"Unauthorized","status":401,"detail":"not authorized"}` + "\n"))
 }
 
 func plainOK(w http.ResponseWriter, _ *http.Request) {
