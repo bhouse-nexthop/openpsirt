@@ -9,3 +9,8 @@ nobody can tell a producer quirk from a typo in.
 | `build-fragment.cdx.json` | Real output. One artifact a build step produced, on its way into an inventory. It names no component of its own, which is why it is refused |
 | `suppression-from-patch.openvex.json` | Real output. One claim a build extracted from a patch of its own. It names a source tree rather than a package, which is what makes matching a claim to a component something that can fail |
 | `image.cdx.json` | Written by hand, in the shape of the aggregate inventory a switch operating-system build emits: an image at the root, containers under it, packages under those, a shared library reached from several of them, and a forked component whose pedigree carries the version it was forked from. Not a producer's output, and not a substitute for one |
+
+`producer-paths.txt` records every key path these documents contain and what
+the reader does with it. Regenerate with `go test ./internal/sbom -update`,
+which adds paths it has not seen before as deliberately skipped and leaves
+every decision already made alone.

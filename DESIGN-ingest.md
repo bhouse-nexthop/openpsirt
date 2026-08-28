@@ -220,6 +220,29 @@ Everything a refusal quotes back came from the file, so what it quotes is
 bounded in length. An error is one of the few places a scan file's contents
 reach a person.
 
+### What a producer emits that we do not read
+
+A field nobody reads because it was considered and a field nobody reads
+because nobody noticed it look identical in the code, and only one of them is a
+decision.
+
+So every key path our recorded documents contain is written down, with what is
+done with it — acted on, or seen and deliberately left alone. A document
+containing a path that list does not have fails the check, which makes a
+producer's new field a thing somebody answers rather than a thing that quietly
+goes nowhere. The reverse is checked too: a path the reader acts on that no
+recorded document contains is a branch nothing exercises.
+
+This is a check on the recorded documents, not on what we accept. **The reader
+itself ignores anything it does not recognise**, because producers following
+the same specification differ in what they choose to fill in, and refusing a
+document for carrying more than we read would reject perfectly good scans.
+
+The same walk answers the question a large document otherwise hides: how many
+*distinct structures* it contains, as opposed to how many components. The
+structures carried by a single component are the ones a small document does
+not have and a hand-written one does not think of.
+
 ### Choices the decisions did not cover
 
 | Choice | Why this way |
