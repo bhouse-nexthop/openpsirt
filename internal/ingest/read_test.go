@@ -15,6 +15,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
+	"github.com/bhouse-nexthop/openpsirt/internal/scanner"
 	"github.com/bhouse-nexthop/openpsirt/internal/schema"
 )
 
@@ -142,8 +143,19 @@ func TestAnAcceptedScanBecomesStoredGraph(t *testing.T) {
 		if err != nil || len(nodes) != 3 {
 			t.Errorf("%d nodes are present, want 3 (%v)", len(nodes), err)
 		}
-		if depth, _ := f.queue.Depth(t.Context()); depth != 0 {
-			t.Errorf("%d jobs still waiting", depth)
+		// Reading an inventory leaves scanning to be done. The two are
+		// separate work because they happen at different times: an inventory
+		// is read once, and scanned again and again as the vulnerability data
+		// moves under it.
+		waiting, err := f.queue.Claim(t.Context(), "test")
+		if err != nil || waiting == nil {
+			t.Fatalf("no scan was left to be done (%v)", err)
+		}
+		if waiting.Kind != scanner.JobKind {
+			t.Errorf("left %q to be done, want a scan", waiting.Kind)
+		}
+		if waiting.Reference != strconv.FormatInt(f.branch, 10) {
+			t.Errorf("left a scan of %q, want the target just read", waiting.Reference)
 		}
 	})
 }

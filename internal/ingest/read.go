@@ -13,6 +13,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
+	"github.com/bhouse-nexthop/openpsirt/internal/scanner"
 )
 
 // JobKind names the work an accepted upload leaves behind.
@@ -205,6 +206,15 @@ func (r *Reader) read(ctx context.Context, reference string) (*Result, error) {
 		Components: len(doc.Components), Suppressions: len(claims),
 		ClaimsOpened: claimed.Opened, ClaimsClosed: claimed.Closed,
 		Retained: !target.Moves,
+	}
+
+	// What was just stored has to be scanned: the inventory is new, and the
+	// vulnerability data has moved since whatever last looked at this target.
+	// The work is left behind rather than done here because it is a different
+	// job with a different rhythm — an inventory is read once and scanned
+	// again and again.
+	if _, err := r.queue.Add(ctx, scanner.JobKind, strconv.FormatInt(scan.TargetID, 10)); err != nil {
+		return nil, fmt.Errorf("scan %d: leave the scanning to be done: %w", scanID, err)
 	}
 
 	// A branch is superseded by the next night's build, so what it sent is not

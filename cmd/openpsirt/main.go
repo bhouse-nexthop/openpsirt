@@ -19,6 +19,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
+	"github.com/bhouse-nexthop/openpsirt/internal/scanner"
 	"github.com/bhouse-nexthop/openpsirt/internal/schema"
 	"github.com/bhouse-nexthop/openpsirt/internal/version"
 )
@@ -93,12 +94,13 @@ func run(args []string, stdout, stderr *os.File) error {
 	work := queue.New(db, queue.DefaultOptions())
 	handler, _ := httpapi.New(logger, db.Validate, httpapi.Ingest{DB: db, Queue: work})
 
-	// Every replica both serves and reads. A separate worker deployment would
-	// be a second thing to run and a second thing to get wrong for an
-	// installation this size, and the queue already stops two of them taking
-	// the same scan.
-	reader := ingest.NewReader(db, work, sbom.Limits{}, logger, workerName())
-	return serve(cfg, logger, handler, reader)
+	// Every replica serves, reads and scans. Separate worker deployments would
+	// be more things to run and more things to get wrong for an installation
+	// this size, and the queue already stops two of them taking the same work.
+	name := workerName()
+	reader := ingest.NewReader(db, work, sbom.Limits{}, logger, name)
+	runner := scanner.NewRunner(db, work, scanner.Grype{Path: cfg.ScannerPath}, logger, name)
+	return serve(cfg, logger, handler, reader, runner)
 }
 
 // closeQuietly closes the database at shutdown. A failure here changes nothing
@@ -191,7 +193,7 @@ func newLogger(cfg config.Config, w *os.File) *slog.Logger {
 	return slog.New(slog.NewTextHandler(w, opts))
 }
 
-func serve(cfg config.Config, logger *slog.Logger, handler http.Handler, reader *ingest.Reader) error {
+func serve(cfg config.Config, logger *slog.Logger, handler http.Handler, reader *ingest.Reader, runner *scanner.Runner) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -199,6 +201,9 @@ func serve(cfg config.Config, logger *slog.Logger, handler http.Handler, reader 
 	// scan is not picked up during the seconds we are on our way out.
 	if reader != nil {
 		go reader.Run(ctx, readInterval)
+	}
+	if runner != nil {
+		go runner.Run(ctx, readInterval)
 	}
 
 	srv := &http.Server{

@@ -156,3 +156,32 @@ func (s *Store) CurrentEdges(ctx context.Context, targetID int64) ([]Edge, error
 		Scan(ctx)
 	return edges, err
 }
+
+// CurrentComponents returns what a target contains now, as the scanner needs
+// to be given it.
+//
+// The scanner is fed from here rather than from the file a build sent, because
+// that file is not kept for a moving line: a nightly scan is superseded the
+// next night. Re-scanning a year-old release against today's vulnerability
+// data works from this, which is why what is not stored can never be scanned.
+func (s *Store) CurrentComponents(ctx context.Context, targetID int64) ([]Described, error) {
+	var rows []Component
+	err := s.db.NewSelect().Model(&rows).
+		Join("JOIN graph_node AS n ON n.component_id = c.id").
+		Where("n.target_id = ?", targetID).
+		Where("n.closed_scan_id IS NULL").
+		Where("n.is_root = ?", false).
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read what a target contains: %w", err)
+	}
+
+	described := make([]Described, 0, len(rows))
+	for _, row := range rows {
+		described = append(described, Described{
+			Purl: row.Purl, CPE: row.CPE, Name: row.Name, Version: row.Version,
+			UpstreamName: row.UpstreamName, UpstreamVersion: row.UpstreamVersion,
+		})
+	}
+	return described, nil
+}

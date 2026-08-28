@@ -95,7 +95,7 @@ identical content writes nothing; an older scan is rejected; **re-ingesting the
 same content with every producer identifier shuffled changes no stored
 identity** — the test that proves ING-05 and MDL-06.
 
-**Produces:** `DESIGN-data-model.md`, `DESIGN-ingest.md`
+**Produces:** `DESIGN-data-model.md`, `DESIGN-ingest.md`, `DESIGN-findings.md`
 
 ---
 

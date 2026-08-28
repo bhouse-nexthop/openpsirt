@@ -163,8 +163,14 @@ func (s *Store) Begin(ctx context.Context, run Run) (*Run, error) {
 	return &run, nil
 }
 
-// Finish records that it ended, and why if it went wrong.
-func (s *Store) Finish(ctx context.Context, runID int64, cause error) error {
+// Finish records that a run ended, what produced it, and why it went wrong if
+// it did.
+//
+// The versions arrive here rather than at the start because they are the
+// scanner's answer, not our question: what it says it is and what data it
+// matched against are known once it has run. A finding that appeared or
+// vanished because either moved is unexplainable without them.
+func (s *Store) Finish(ctx context.Context, runID int64, version, databaseVersion string, cause error) error {
 	done := s.now().Truncate(time.Microsecond)
 	failure := ""
 	if cause != nil {
@@ -172,6 +178,7 @@ func (s *Store) Finish(ctx context.Context, runID int64, cause error) error {
 	}
 	_, err := s.db.NewUpdate().Model((*Run)(nil)).
 		Set("finished_at = ?", done).Set("failure = ?", failure).
+		Set("scanner_version = ?", version).Set("database_version = ?", databaseVersion).
 		Where("id = ?", runID).Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("record the end of scan run %d: %w", runID, err)

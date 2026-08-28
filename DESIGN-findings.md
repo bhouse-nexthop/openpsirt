@@ -135,6 +135,23 @@ knows exactly what it is about, while the second may name a whole source tree.
 Where neither is attached, the claims are read in a stable order so that which
 one is recorded does not change between runs.
 
+## Scanning is separate work from reading
+
+An inventory is read once, when it arrives. It is scanned again and again, as
+the vulnerability data moves underneath it — a release built a year ago has the
+same components it always had and a different answer every month. So reading an
+inventory leaves a scan to be done rather than doing it, and the two are
+separate jobs with different rhythms.
+
+The scanner is given what we stored, not the file the build sent. That file is
+not kept for a moving line, so anything not stored can never be scanned — which
+is the argument for capturing a component's second identifier scheme at ingest
+rather than when a scanner first asks for it.
+
+The product itself is left out of what the scanner sees. It is not a package
+any vulnerability database has heard of, and including it invites a match on a
+name that happens to collide.
+
 ## A run is recorded whether or not it found anything
 
 Which scanner, which version of it, which vulnerability database, and whether

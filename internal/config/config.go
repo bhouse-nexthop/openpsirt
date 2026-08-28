@@ -39,6 +39,13 @@ type Config struct {
 	DBMaxIdle     int
 	DBIdleTimeout time.Duration
 	DBLifetime    time.Duration
+	// ScannerPath is where the vulnerability scanner lives. Empty means
+	// whatever the environment resolves.
+	//
+	// The scanner is a requirement of a deployment rather than an option:
+	// without it there is nothing to triage, because the vulnerability data is
+	// produced here rather than sent to us.
+	ScannerPath string
 	// AutoMigrate applies outstanding schema changes at startup.
 	//
 	// On by default: a self-hosted operator should not need a separate step,
@@ -57,6 +64,7 @@ func Load() (Config, error) {
 		LogFormat:     env("LOG_FORMAT", "text"),
 		ShutdownGrace: duration("SHUTDOWN_GRACE", 15*time.Second),
 		DatabaseURL:   env("DATABASE_URL", ""),
+		ScannerPath:   env("SCANNER_PATH", ""),
 		AutoMigrate:   env("AUTO_MIGRATE", "true") != "false",
 		ReadTimeout:   5 * time.Minute,
 		WriteTimeout:  5 * time.Minute,
