@@ -97,6 +97,9 @@ func Open(t *testing.T, url string) *database.DB {
 // that enforce foreign keys during a bulk delete — which is not all of them,
 // so it will look engine-specific rather than like the ordering mistake it is.
 var tables = []string{
+	"graph_edge",
+	"graph_node",
+	"component",
 	"job",
 	"scan",
 	"variant",

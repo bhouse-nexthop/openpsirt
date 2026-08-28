@@ -2,7 +2,7 @@
 
 What a scan is filed against, and why the shape is what it is.
 
-Satisfies MDL-01, MDL-02, MDL-11, MDL-17, ING-09, ING-11.
+Satisfies MDL-01, MDL-02, MDL-03, MDL-04, MDL-11, MDL-17, ING-09, ING-11, STA-08.
 
 ## The tracked unit
 
@@ -75,6 +75,82 @@ One behavioural difference is worth knowing beyond the declarations: a stream
 points at its parent branch, and **MySQL and MariaDB enforce that
 self-reference during a bulk delete** where PostgreSQL and SQLite do not. Any
 code clearing streams must detach the parent first.
+
+## The dependency graph
+
+A scan describes what a build contained: a set of components, and which of them
+depends on which. That is stored as **nodes and edges**, never flattened into a
+list — a flat list cannot answer "why is this here", which is the first
+question anyone asks about a finding.
+
+### A component is shared; a node is not
+
+| | |
+|---|---|
+| **Component** | A package at a version. One row, however many products ship it |
+| **Node** | That component's presence in one variant |
+| **Edge** | One node depending on another |
+
+A component reached by several parents is **one node with several edges**. The
+graph is a graph, not a tree. Storing a node per route would multiply the graph
+by its own sharing, and the routes are derivable from the edges anyway.
+
+### Identity comes from content, not from the file
+
+A component's identity is derived from what it is — the package identifier
+where the producer emits one, name and version where it does not — and hashed
+to a fixed width.
+
+Identifiers the file supplies are not used. Nothing guarantees they are stable
+between builds of the same product or consistent between producers, and an
+identity that moves takes every triage decision attached to it along.
+
+Upstream name and version are carried alongside (MDL-04). A shipped fork often
+has a version string of its own while the vulnerability lives on the upstream
+one.
+
+### The top level is marked
+
+The root — the product itself — is stored as a node like any other, flagged.
+Its version changes on every build and its name differs per variant, so it is
+excluded from identity and from expiry (MDL-07). Marking it is what lets
+everything walking upwards stop there.
+
+## History is intervals, not snapshots
+
+Every node and edge records the scan that opened it and, once gone, the scan
+that closed it. An open row is what is present now; a closed row is what a past
+release contained.
+
+**Rows are closed, never deleted.** What a release shipped is a question asked
+years later, and a deleted row cannot answer it.
+
+### An unchanged build writes nothing
+
+Applying a scan compares it against what is currently open and writes only the
+difference. A rebuild that changed nothing writes no rows at all — not an
+insert, not a re-stamped timestamp.
+
+This is the point of the whole shape (STA-08). Scans arrive nightly and change
+very little; storage that grows per scan grows with the calendar, and a product
+tracked for a year would cost the same whether or not anything happened to it.
+There is a test that asserts it, and it has been checked by breaking the
+comparison and watching that test fail — an assertion nobody has seen fail is
+not evidence.
+
+### One transaction
+
+A scan's graph is applied whole. A half-applied graph is indistinguishable from
+components having been removed, which would close findings that are still
+present and are still someone's problem.
+
+### Refusals
+
+| | |
+|---|---|
+| A component with no name or no version | Cannot be identified, so cannot be tracked |
+| An edge naming a component the scan never described | The file is malformed. Inventing the missing component would report a dependency nobody declared |
+
 
 ## Not yet decided
 
