@@ -124,7 +124,7 @@ gets ticked without being read.
 |---|---|
 | **Injection — SQL** | Every value parameterized. **Every identifier from an allowlist** — sort columns, filter fields and partition names cannot be bound by a placeholder, so a column name arriving from a query parameter is the live hole (SEC-01, SEC-02) |
 | **Injection — output** | Component names, versions and descriptions come from a third party's SBOM and get rendered to staff who hold the most access. Encoded on output, and **never passed through the markdown renderer** — that is for text a person typed here (SEC-04, SEC-16) |
-| **Injection — markdown** | Source stored, never rendered HTML. Raw HTML off at the parser rather than stripped after. Link schemes limited to `http`, `https`, `mailto`. **Nothing remote is fetched by a rendered document, images included** (SEC-11 to SEC-15) |
+| **Injection — markdown** | Policy enforced at submission, **before storage**: raw HTML off at the parser rather than stripped after, link schemes limited to `http`, `https`, `mailto`, **nothing remote fetched by a rendered document, images included**. Source stored, never rendered HTML, and the sanitiser still runs on render because stored text predates later rules (SEC-11 to SEC-15) |
 | **Broken access control** | Enforced in the data layer with a subject, never per handler. Covers counts, aggregates, search and exports — not just row reads (ACC-04, ACC-07). An attachment fetch is authorised against its finding's visibility before any signed URL is issued (ATT-06) |
 | **Cryptographic failures** | API keys and personal tokens hashed at rest, shown once (SEC-03). Session identifiers unguessable |
 | **Insecure design** | Does the change contradict a recorded decision? Cite the identifier if so |
