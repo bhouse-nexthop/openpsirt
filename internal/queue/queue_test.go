@@ -54,7 +54,7 @@ func TestWorkIsHandedOutOnce(t *testing.T) {
 				name := fmt.Sprintf("worker-%d", w)
 				<-start
 				for {
-					job, err := q.Claim(ctx, name)
+					job, err := q.Claim(ctx, name, "ingest")
 					if err != nil {
 						t.Errorf("%s: claim: %v", name, err)
 						return
@@ -89,7 +89,7 @@ func TestWorkIsHandedOutOnce(t *testing.T) {
 
 func TestNothingToDoReturnsNothing(t *testing.T) {
 	each(t, queue.DefaultOptions(), func(t *testing.T, _ *database.DB, q *queue.Queue) {
-		job, err := q.Claim(t.Context(), "worker")
+		job, err := q.Claim(t.Context(), "worker", "ingest")
 		if err != nil {
 			t.Fatalf("claim on an empty queue: %v", err)
 		}
@@ -105,7 +105,7 @@ func TestFailedWorkComesBackLater(t *testing.T) {
 		if _, err := q.Add(ctx, "ingest", "x"); err != nil {
 			t.Fatal(err)
 		}
-		job, err := q.Claim(ctx, "worker")
+		job, err := q.Claim(ctx, "worker", "ingest")
 		if err != nil || job == nil {
 			t.Fatalf("claim: %v %+v", err, job)
 		}
@@ -114,7 +114,7 @@ func TestFailedWorkComesBackLater(t *testing.T) {
 		}
 		// Held back deliberately, so a dependency that is briefly unavailable
 		// is not hammered while it recovers.
-		again, err := q.Claim(ctx, "worker")
+		again, err := q.Claim(ctx, "worker", "ingest")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -136,7 +136,7 @@ func TestWorkThatKeepsFailingIsSetAside(t *testing.T) {
 			t.Fatal(err)
 		}
 		for attempt := 1; attempt <= opts.MaxAttempts; attempt++ {
-			job, err := q.Claim(ctx, "worker")
+			job, err := q.Claim(ctx, "worker", "ingest")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -147,7 +147,7 @@ func TestWorkThatKeepsFailingIsSetAside(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if job, err := q.Claim(ctx, "worker"); err != nil || job != nil {
+		if job, err := q.Claim(ctx, "worker", "ingest"); err != nil || job != nil {
 			t.Errorf("work was retried past its limit: %+v %v", job, err)
 		}
 		var state string
@@ -169,13 +169,13 @@ func TestAStaleClaimIsTakenOverByAnotherWorker(t *testing.T) {
 		if _, err := q.Add(ctx, "ingest", "abandoned"); err != nil {
 			t.Fatal(err)
 		}
-		first, err := q.Claim(ctx, "worker-that-dies")
+		first, err := q.Claim(ctx, "worker-that-dies", "ingest")
 		if err != nil || first == nil {
 			t.Fatalf("first claim: %v", err)
 		}
 		time.Sleep(20 * time.Millisecond)
 
-		second, err := q.Claim(ctx, "worker-that-lives")
+		second, err := q.Claim(ctx, "worker-that-lives", "ingest")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -207,7 +207,7 @@ func TestABacklogThatIsTooDeepIsRefused(t *testing.T) {
 			t.Errorf("error is %v, want ErrBacklogFull", err)
 		}
 		// Doing some of the work must make room again.
-		job, err := q.Claim(ctx, "worker")
+		job, err := q.Claim(ctx, "worker", "ingest")
 		if err != nil || job == nil {
 			t.Fatal(err)
 		}
@@ -229,7 +229,7 @@ func TestOldestWorkGoesFirst(t *testing.T) {
 			}
 		}
 		for _, want := range []string{"first", "second", "third"} {
-			job, err := q.Claim(ctx, "worker")
+			job, err := q.Claim(ctx, "worker", "ingest")
 			if err != nil || job == nil {
 				t.Fatalf("claim %s: %v", want, err)
 			}
@@ -239,6 +239,35 @@ func TestOldestWorkGoesFirst(t *testing.T) {
 			if err := q.Succeed(ctx, job.ID); err != nil {
 				t.Fatal(err)
 			}
+		}
+	})
+}
+
+func TestAWorkerDoesNotTakeAnotherKindOfWork(t *testing.T) {
+	// Workers of different sorts share one queue. One taking another's work
+	// would not fail: a job's reference means something different to each of
+	// them, so the wrong worker would act on it, get an answer, and mark it
+	// done. The work it was meant for simply never happens.
+	each(t, queue.DefaultOptions(), func(t *testing.T, _ *database.DB, q *queue.Queue) {
+		ctx := t.Context()
+		if _, err := q.Add(ctx, "ingest", "42"); err != nil {
+			t.Fatal(err)
+		}
+
+		other, err := q.Claim(ctx, "scanner", "vulnerability.scan")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if other != nil {
+			t.Fatalf("a scanner took %q work referring to %q", other.Kind, other.Reference)
+		}
+
+		mine, err := q.Claim(ctx, "reader", "ingest")
+		if err != nil || mine == nil {
+			t.Fatalf("the work was not there for the worker it was left for (%v)", err)
+		}
+		if mine.Reference != "42" {
+			t.Errorf("claimed %q", mine.Reference)
 		}
 	})
 }

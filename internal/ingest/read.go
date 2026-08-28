@@ -60,7 +60,7 @@ type Result struct {
 // Once claims one scan and reads it, reporting whether there was anything to
 // do.
 func (r *Reader) Once(ctx context.Context) (*Result, error) {
-	job, err := r.queue.Claim(ctx, r.name)
+	job, err := r.queue.Claim(ctx, r.name, JobKind)
 	if err != nil {
 		return nil, err
 	}

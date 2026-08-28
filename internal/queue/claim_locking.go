@@ -25,10 +25,15 @@ import (
 // different job. The query cannot be written portably, so each engine is
 // spelled out rather than hidden behind an abstraction that would make it look
 // portable when it is not.
-func claimableID(ctx context.Context, tx bun.Tx, engine database.Engine, now, staleBefore time.Time) (int64, error) {
+func claimableID(ctx context.Context, tx bun.Tx, engine database.Engine, kind string, now, staleBefore time.Time) (int64, error) {
+	// Filtered by kind. Workers of different sorts share one queue, and a
+	// worker that took work meant for another would do the wrong thing to it
+	// and then mark it done — the reference means something different to each
+	// of them, so the mistake does not even fail.
 	const base = `SELECT id FROM job
-		 WHERE (state = ? AND run_after <= ?)
-		    OR (state = ? AND claimed_at < ?)
+		 WHERE kind = ?
+		   AND ((state = ? AND run_after <= ?)
+		    OR  (state = ? AND claimed_at < ?))
 		 ORDER BY id
 		 LIMIT 1`
 
@@ -50,7 +55,7 @@ func claimableID(ctx context.Context, tx bun.Tx, engine database.Engine, now, st
 	}
 
 	var id int64
-	err := tx.NewRaw(query, Pending, now, Running, staleBefore).Scan(ctx, &id)
+	err := tx.NewRaw(query, kind, Pending, now, Running, staleBefore).Scan(ctx, &id)
 	if err != nil {
 		if isNoRows(err) {
 			return 0, nil

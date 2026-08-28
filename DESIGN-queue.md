@@ -75,3 +75,15 @@ every other product's scans arriving late for reasons nobody can see.
 A kind, a reference, and its state. **Never a payload.** The reference points at
 the thing being worked on, so the queue stays small however large that thing
 is — which matters when the thing is a scan file measured in tens of megabytes.
+
+## A worker takes only its own kind of work
+
+Reading an inventory and scanning one are different jobs sharing one queue. A
+worker claiming whatever was oldest would take work meant for another, and that
+does not fail: a job's reference means something different to each of them, so
+the wrong worker acts on it, gets an answer, and marks it done. The work it was
+left for never happens, and nothing says so.
+
+So the kind is part of claiming rather than something a worker checks
+afterwards. It was found by running the whole thing end to end — every test
+until then had one worker.

@@ -49,7 +49,7 @@ type Outcome struct {
 // Once claims one target and scans it, reporting whether there was anything to
 // do.
 func (r *Runner) Once(ctx context.Context) (*Outcome, error) {
-	job, err := r.queue.Claim(ctx, r.name)
+	job, err := r.queue.Claim(ctx, r.name, JobKind)
 	if err != nil || job == nil {
 		return nil, err
 	}

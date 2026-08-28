@@ -147,7 +147,7 @@ func TestAnAcceptedScanBecomesStoredGraph(t *testing.T) {
 		// separate work because they happen at different times: an inventory
 		// is read once, and scanned again and again as the vulnerability data
 		// moves under it.
-		waiting, err := f.queue.Claim(t.Context(), "test")
+		waiting, err := f.queue.Claim(t.Context(), "test", scanner.JobKind)
 		if err != nil || waiting == nil {
 			t.Fatalf("no scan was left to be done (%v)", err)
 		}

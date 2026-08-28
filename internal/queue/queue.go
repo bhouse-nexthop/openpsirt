@@ -147,14 +147,19 @@ func (q *Queue) depthIn(ctx context.Context, db bun.IDB) (int, error) {
 // MaxBacklog is how much work may be waiting before more is refused.
 func (q *Queue) MaxBacklog() int { return q.opts.MaxBacklog }
 
-// Claim takes the oldest runnable job for this worker, or returns nil when
-// there is nothing to do.
+// Claim takes the oldest runnable job of a kind, or returns nil when there is
+// nothing of that kind to do.
+//
+// The kind is required. Workers of different sorts share one queue, and one
+// taking another's work would not fail — a job's reference means something
+// different to each of them, so the wrong worker would act on it, get an
+// answer, and mark it done.
 //
 // Two workers must never get the same job. That is guaranteed by the update
 // below, which only succeeds if the job is still claimable — portably, on
 // every engine. The engine-specific row locking in claim_locking.go is about
 // throughput, not correctness.
-func (q *Queue) Claim(ctx context.Context, worker string) (*Job, error) {
+func (q *Queue) Claim(ctx context.Context, worker, kind string) (*Job, error) {
 	now := q.now().Truncate(time.Microsecond)
 
 	// A job whose claim has gone stale is available again: the worker holding
@@ -163,7 +168,7 @@ func (q *Queue) Claim(ctx context.Context, worker string) (*Job, error) {
 
 	var job *Job
 	err := q.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		id, err := claimableID(ctx, tx, q.db.Server.Engine, now, staleBefore)
+		id, err := claimableID(ctx, tx, q.db.Server.Engine, kind, now, staleBefore)
 		if err != nil || id == 0 {
 			return err
 		}

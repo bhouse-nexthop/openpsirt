@@ -693,3 +693,27 @@ func TestUpstreamDecliningToFixIsAMovement(t *testing.T) {
 		}
 	})
 }
+
+func TestEveryStatusTheFormatDefinesCanBeStored(t *testing.T) {
+	// The vocabulary belongs to the exchange format rather than to us, and its
+	// longest word is longer than a short identifier column allows. A claim
+	// that cannot be stored fails the whole scan that carried it.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		var claims []sbom.Suppression
+		for _, status := range []sbom.Status{
+			sbom.NotAffected, sbom.Affected, sbom.AlreadyFixed, sbom.UnderInvestigation,
+		} {
+			claim := aClaim("CVE-2026-1", status, libnl, sbom.FromStatement)
+			claim.Justification = "vulnerable_code_cannot_be_controlled_by_adversary"
+			claims = append(claims, claim)
+		}
+		applied, err := f.store.RecordClaims(t.Context(), f.target, f.lastScan, claims)
+		if err != nil {
+			t.Fatalf("recording every status the format defines: %v", err)
+		}
+		if applied.Opened != 4 {
+			t.Errorf("stored %d claims, want one per status", applied.Opened)
+		}
+	})
+}

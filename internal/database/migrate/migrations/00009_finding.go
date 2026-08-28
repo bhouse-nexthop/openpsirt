@@ -91,7 +91,10 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			target_id      ` + t.ref + ` NOT NULL REFERENCES target(id),
 			identity       ` + t.hash + ` NOT NULL,
 			vulnerability  ` + t.name + ` NOT NULL,
-			status         ` + t.kind + ` NOT NULL,
+			-- The status vocabulary is the exchange format's, not ours, and
+			-- its longest word today is longer than a short identifier
+			-- column allows. Whatever it adds next is not ours to bound.
+			status         ` + t.name + ` NOT NULL,
 			justification  ` + t.name + ` NULL,
 			statement      ` + t.text + ` NULL,
 			origin         ` + t.kind + ` NOT NULL,
