@@ -235,3 +235,37 @@ func now() time.Time { return time.Now().UTC().Truncate(time.Microsecond) }
 func isNoRows(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "no rows")
 }
+
+// Target is a variant with everything above it, which is what filing a scan
+// needs: what it is of, whether that line moves, and what to call the thing
+// the scan is about when the scan does not name it.
+type Target struct {
+	Product string
+	Stream  string
+	Kind    Kind
+	Variant string
+	// Moves says whether the line this was filed against is one that advances.
+	// A branch is superseded by the next build; a tag never is, so what it
+	// shipped has to be answerable years later.
+	Moves bool
+}
+
+// Describe reads back what a variant belongs to.
+func (s *Store) Describe(ctx context.Context, variantID int64) (*Target, error) {
+	var v Variant
+	if err := s.db.NewSelect().Model(&v).Where("id = ?", variantID).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("look up variant %d: %w", variantID, err)
+	}
+	var st Stream
+	if err := s.db.NewSelect().Model(&st).Where("id = ?", v.StreamID).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("look up the stream variant %d belongs to: %w", variantID, err)
+	}
+	var p Product
+	if err := s.db.NewSelect().Model(&p).Where("id = ?", st.ProductID).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("look up the product stream %d belongs to: %w", st.ID, err)
+	}
+	return &Target{
+		Product: p.Name, Stream: st.Name, Kind: st.Kind, Variant: v.Name,
+		Moves: st.Kind == Branch,
+	}, nil
+}

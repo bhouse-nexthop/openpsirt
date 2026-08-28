@@ -16,7 +16,9 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/config"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/httpapi"
+	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
+	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
 	"github.com/bhouse-nexthop/openpsirt/internal/schema"
 	"github.com/bhouse-nexthop/openpsirt/internal/version"
 )
@@ -88,15 +90,36 @@ func run(args []string, stdout, stderr *os.File) error {
 
 	// Readiness asks whether we can serve, which means the database answers
 	// and answers promptly — not merely that the process is up.
-	handler, _ := httpapi.New(logger, db.Validate, httpapi.Ingest{
-		DB:    db,
-		Queue: queue.New(db, queue.DefaultOptions()),
-	})
-	return serve(cfg, logger, handler)
+	work := queue.New(db, queue.DefaultOptions())
+	handler, _ := httpapi.New(logger, db.Validate, httpapi.Ingest{DB: db, Queue: work})
+
+	// Every replica both serves and reads. A separate worker deployment would
+	// be a second thing to run and a second thing to get wrong for an
+	// installation this size, and the queue already stops two of them taking
+	// the same scan.
+	reader := ingest.NewReader(db, work, sbom.Limits{}, logger, workerName())
+	return serve(cfg, logger, handler, reader)
 }
 
 // closeQuietly closes the database at shutdown. A failure here changes nothing
 // about the exit, but silence would hide a genuinely stuck connection.
+// readInterval is how long an idle reader waits before asking for work again.
+//
+// It bounds how long a producer waits to see its scan reflected, which nobody
+// is watching a clock for, and a queue that is not empty drains without
+// waiting for it.
+const readInterval = 5 * time.Second
+
+// workerName identifies this process in a claim, so a job held by something
+// that has since died can be told apart from one being worked on.
+func workerName() string {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		host = "unknown"
+	}
+	return fmt.Sprintf("%s/%d", host, os.Getpid())
+}
+
 func closeQuietly(db *database.DB, logger *slog.Logger) {
 	if err := db.Close(); err != nil {
 		logger.Warn("closing the database", "error", err)
@@ -168,9 +191,15 @@ func newLogger(cfg config.Config, w *os.File) *slog.Logger {
 	return slog.New(slog.NewTextHandler(w, opts))
 }
 
-func serve(cfg config.Config, logger *slog.Logger, handler http.Handler) error {
+func serve(cfg config.Config, logger *slog.Logger, handler http.Handler, reader *ingest.Reader) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Reading stops when the signal arrives, before the server drains, so a
+	// scan is not picked up during the seconds we are on our way out.
+	if reader != nil {
+		go reader.Run(ctx, readInterval)
+	}
 
 	srv := &http.Server{
 		Addr:    cfg.Addr,

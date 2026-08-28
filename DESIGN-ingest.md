@@ -178,6 +178,35 @@ deployment therefore needs a writable temporary path even though its root
 filesystem is read-only, which the packaging provides.
 
 
+## What happens after the response
+
+A worker claims the scan, reads its documents, and applies what they describe.
+Every replica does both: a separate worker deployment would be a second thing
+to run and a second thing to get wrong for an installation this size, and the
+queue already stops two of them taking the same scan.
+
+The suppression documents are read here even though applying them waits on the
+scan itself. A document that cannot be read is a fault in what the build sent,
+and finding that out while the producer still has the build in front of them is
+worth more than finding out later.
+
+**A failure is recorded against the scan, not only against the job.** A
+producer sending files nothing can read has to be visible as exactly that. A
+job that keeps retrying is visible only to whoever operates this deployment,
+which is the wrong person to be the only one who knows.
+
+Once a scan has been read, what it sent is either discarded or kept, according
+to whether the line it was filed against moves.
+
+### Waiting rather than being told
+
+The queue is polled. A notification mechanism exists on one of the four
+supported engines and nothing portable replaces it, so an idle reader asks
+again after a few seconds. That interval bounds how long a producer waits to
+see its scan reflected, which nobody is watching a clock for — and a queue that
+is not empty drains at the speed of the work rather than the speed of the poll.
+
+
 ## Where a document lives between arriving and being read
 
 Reading is asynchronous, so a document has to be somewhere from the moment it

@@ -78,6 +78,9 @@ func asStored(t time.Time) time.Time { return t.UTC().Truncate(storedPrecision) 
 // ErrRejected is returned for any arriving scan we decline to take.
 var ErrRejected = errors.New("scan rejected")
 
+// ErrNoScan is returned when something names a scan that is not there.
+var ErrNoScan = errors.New("no such scan")
+
 // Arriving describes a scan someone is trying to send us.
 type Arriving struct {
 	// VariantID is the already-resolved target.
@@ -106,6 +109,9 @@ type Scan struct {
 	ParserVersion string    `bun:"parser_version,notnull"`
 	Credential    string    `bun:"credential"`
 	Status        Status    `bun:"status,notnull"`
+	// Failure says why a scan that was taken could not be read. Empty until
+	// something goes wrong, which is most of the time.
+	Failure string `bun:"failure"`
 }
 
 // Store records scans and answers what to do with a new one.
@@ -246,4 +252,41 @@ func isNoRows(err error) bool {
 		}
 	}
 	return false
+}
+
+// ByID reads back a scan.
+func (s *Store) ByID(ctx context.Context, id int64) (*Scan, error) {
+	var scan Scan
+	if err := s.db.NewSelect().Model(&scan).Where("id = ?", id).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("%w: %d: %w", ErrNoScan, id, err)
+	}
+	return &scan, nil
+}
+
+// MarkFailed records that a scan was taken and could not be read.
+//
+// The reason is kept with it. A producer sending files nothing can read needs
+// to be visible as exactly that, rather than as a scan that was accepted and
+// then quietly did nothing.
+func (s *Store) MarkFailed(ctx context.Context, id int64, cause error) error {
+	reason := ""
+	if cause != nil {
+		reason = cause.Error()
+	}
+	_, err := s.db.NewUpdate().Model((*Scan)(nil)).
+		Set("status = ?", Failed).
+		Set("failure = ?", truncate(reason, 2000)).
+		Where("id = ?", id).Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("record that scan %d failed: %w", id, err)
+	}
+	return nil
+}
+
+// truncate bounds what is stored from a message that quotes a scan file.
+func truncate(s string, most int) string {
+	if len(s) <= most {
+		return s
+	}
+	return s[:most]
 }

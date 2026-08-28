@@ -21,9 +21,6 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/version"
 )
 
-// ScanJobKind names the work an accepted upload leaves behind.
-const ScanJobKind = "scan.read"
-
 // Ingest is what the upload endpoint needs to do its job.
 type Ingest struct {
 	DB     *database.DB
@@ -183,7 +180,7 @@ func upload(ctx context.Context, in Ingest, input *UploadInput) (*UploadOutput, 
 				return err
 			}
 		}
-		_, err = in.Queue.AddTx(ctx, tx, ScanJobKind, fmt.Sprint(scan.ID))
+		_, err = in.Queue.AddTx(ctx, tx, ingest.JobKind, fmt.Sprint(scan.ID))
 		return err
 	})
 
