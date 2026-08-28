@@ -2,7 +2,7 @@
 
 What happens to a scan when it arrives.
 
-Satisfies ING-07, ING-11, ING-14 to ING-19, ING-28 to ING-31, ACC-12.
+Satisfies ING-07, ING-11, ING-14 to ING-23, ING-28 to ING-35, ACC-12.
 
 ## Deciding before parsing
 
@@ -55,19 +55,27 @@ found later: it says exactly which scans were read by the faulty code.
 ## What actually arrives
 
 Measured against a real producer's output rather than assumed from the
-specification. Three documents, not one file:
+specification. A build sends two things:
 
 | | |
 |---|---|
 | **Inventory** | Every component that ships, with its dependency edges |
-| **Vulnerability report** | Issues found against that inventory, referring to components by package identifier |
-| **Suppression statements** | Findings the build has already argued are not applicable |
+| **Suppressions** | Findings the build has already argued are not applicable, usually because it carries a patch |
 
-They are separate because a build is reproducible and a vulnerability report is
-not — new issues are disclosed daily, so binding the two would mean either a
-build that will not reproduce or a report that goes stale. It also means a
-year-old inventory can be re-scanned against today's data without rebuilding
-anything, which is what makes a shipped release answerable years later.
+**The vulnerability data is produced here, not sent to us.** The inventory is
+reproducible and a vulnerability report is not — new issues are disclosed daily
+— so a producer that emitted both would have to give up one of the two
+properties. Keeping the inventory standalone is also what lets a year-old
+release be re-scanned against today's data without rebuilding anything.
+
+Running the scan ourselves is what makes counts comparable between products. A
+producer running its own scanner measures each product with whatever version its
+pipeline installed, so a difference between two products may only be a
+difference in their build images.
+
+A producer-supplied vulnerability report is still accepted. Findings from one
+carry their scan provenance, so a portfolio report never silently averages two
+scanners.
 
 ### The join is on package identifier, and it carries no path
 
@@ -95,19 +103,18 @@ identity in its pedigree — what it was forked from, and at what version. That
 is what a scanner matches issues against, and it is why pedigree is kept rather
 than flattened away.
 
-### Suppression leaves no trace in the inventory
+### Suppressions are applied here, not upstream of us
 
-A suppressed finding simply stops appearing. The component is there, the version
-is unchanged, the pedigree is unchanged — and the finding is gone.
+The build's judgement about its own carried patches is never refuted. What
+changed is where it is applied: rather than receiving results a producer already
+filtered, we receive the suppressions and apply them to our own scan.
 
-Nothing in the inventory can explain that, which is why the suppression
-statements are ingested too. Without them every legitimate suppression would be
-reported as a disappearance we cannot account for, and those are unsuppressable
-by design (STA-05) — so the warnings that matter would drown in warnings that
-do not.
-
-Reading them does not re-decide anything. The build's judgement stands
-(ING-02); the statements are read to explain, not to argue.
+Same outcome, and it removes a failure that the other arrangement made
+invisible. A finding suppressed upstream simply stopped appearing — component
+present, version unchanged, pedigree unchanged — which is indistinguishable from
+a scanner fault, and lands in a bucket STA-05 makes unsuppressable by design.
+Applying them here means a suppressed finding is a thing we can see and account
+for.
 
 ### Identifiers for the same issue vary
 

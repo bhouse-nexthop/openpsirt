@@ -81,6 +81,8 @@ The data model and everything that fills it.
 - Products, streams, tags, variants, with declaration before use
 - Graph storage — nodes, edges, validity intervals, path identity
 - CycloneDX adapter behind a producer-agnostic interface
+- Inventory and suppressions in one multipart upload
+- **The scan step**: run the scanner over an ingested inventory, apply the build's suppressions, record the findings and the scan's provenance
 - Streaming parse, asynchronous queue, ordering, duplicate handling, atomicity
 - Current state and change events
 
@@ -169,10 +171,15 @@ declared fix that did not land shows as a missed target.
 
 ---
 
-## Stage 7 — Shipped-release rescanning and lifecycle
+## Stage 7 — Scan scheduling and lifecycle
 
-- Retain release SBOMs and their suppressions; scheduled rescanning
+- Scheduled re-scanning of everything tracked, against a moving vulnerability database
+- Retention of release inventories and their suppressions
 - End-of-life dates and everything they switch off
+
+The scan itself lands in Stage 2, because under ING-20 the vulnerability data is
+produced here rather than sent to us — so without it there is nothing to triage
+in Stage 4. What remains here is the schedule and the lifecycle around it.
 
 **Proves it works:** a CVE published after a release was built surfaces against
 that release, and raises an alert rather than sitting in a report.
