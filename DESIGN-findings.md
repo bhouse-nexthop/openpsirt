@@ -163,6 +163,30 @@ here. The rule it exists to protect still holds either way: current state is
 never purged, and it carries its own summary fields so that dropping anything
 older cannot silently break a finding that has been open for years.
 
+## What the fan-out actually costs
+
+Measured on one real switch image, scanned live:
+
+| | |
+|---|---:|
+| Components scanned | 8,523 |
+| Distinct vulnerabilities | 5,652 |
+| Components carrying at least one | 437 |
+| **Findings** | **335,021** |
+| …of which one kernel | **305,487** |
+
+The kernel is 91% of it: 4,849 issues in it, and 62 modules built against it.
+Those edges are real and the producer emits them deliberately, so that anyone
+can reason about kernel-ABI risk — but which module is loaded does not change
+whether the kernel has a bug, and nobody triaging wants the same judgement
+sixty-two times.
+
+The model is not wrong: a finding is a component at a place, and those are the
+places. What the number settles is that **grouping cannot be an afterthought in
+how this is presented**. A person decides about an issue in a component; the
+decision is recorded against every place it covers, and which places those are
+is something they can see and narrow.
+
 ## Scanning is separate work from reading
 
 An inventory is read once, when it arrives. It is scanned again and again, as

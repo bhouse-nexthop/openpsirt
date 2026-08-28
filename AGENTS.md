@@ -98,6 +98,23 @@ Append, sort, and use a cross-reference to point at the related decision.
 Identifiers never change. Renumbering breaks every commit message and design
 document that cites one.
 
+## Decisions carry the evidence that forced them
+
+**Where a decision was settled by a measurement, the measurement goes in the
+justification.** Not "the fan-out is large" but "335,021 findings for one
+image, 305,487 of them a single kernel across 62 modules". Not "walking is
+cheap" but "3 ms on PostgreSQL, 11 ms on MySQL, for the worst component in a
+real graph".
+
+A number is checkable and a judgement is not. Somebody reading this in two
+years can re-run the measurement and see whether it still holds, which is the
+difference between a decision that can be revisited and one that has to be
+taken on trust. It is also the honest record of *why now* — several of these
+were held open specifically until there was something real to measure.
+
+The same applies to a reversal: what was believed, what was measured, and which
+of the two was wrong.
+
 ## Code conventions
 
 **No implementation-timeline language in code or comments.** Never write "for
