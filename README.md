@@ -54,6 +54,7 @@ each is built:
 | [DESIGN-build.md](DESIGN-build.md) | Layout, the validation pipeline, how a change is checked |
 | [DESIGN-database.md](DESIGN-database.md) | Four engines, migrations, locking |
 | [DESIGN-data-model.md](DESIGN-data-model.md) | What a scan is filed against, and the dependency graph |
+| [DESIGN-findings.md](DESIGN-findings.md) | What a scan run found, and where |
 | [DESIGN-ingest.md](DESIGN-ingest.md) | What happens to a scan when it arrives, and how one is read |
 | [DESIGN-packaging.md](DESIGN-packaging.md) | Container image and Helm chart |
 
