@@ -2,7 +2,7 @@
 
 How OpenPSIRT is delivered, and what a deployment looks like.
 
-Satisfies SCP-03, SCP-12 to SCP-14, and the probe behaviour DAT-10 requires.
+Satisfies SCP-03, SCP-12 to SCP-14, and the probe behavior DAT-10 requires.
 
 ## The image
 

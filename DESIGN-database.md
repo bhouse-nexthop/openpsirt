@@ -100,7 +100,7 @@ out, and the two driver hooks it does call before reuse only inspect local state
 in our drivers — neither performs a round trip, so neither notices a half-open
 socket.
 
-So the defence is to ensure a connection is never idle long enough to be killed
+So the defense is to ensure a connection is never idle long enough to be killed
 behind our back.
 
 | Setting | Default | Why |
@@ -149,7 +149,7 @@ otherwise.
 Test packages run **one at a time**. They share the database servers, and the
 rollback test drops every table — in parallel, that makes unrelated packages
 fail depending on timing. Giving each package its own database would also work;
-serialising is one flag and the suite runs in seconds.
+serializing is one flag and the suite runs in seconds.
 
 CI provides all four, and then checks that all four actually ran. A skipped
 engine passes silently, which would make the matrix decorative.
@@ -165,7 +165,7 @@ What the suite pins:
   released — driven directly, from two pools
 
 Note what the concurrency test in the schema package does **not** cover. Every
-caller serialises on the in-process mutex before reaching the advisory lock, so
+caller serializes on the in-process mutex before reaching the advisory lock, so
 a test driving goroutines through the normal path passes with the entire
 advisory lock deleted. It pins the mutex and nothing else, and says so.
 

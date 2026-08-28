@@ -45,7 +45,7 @@ type Document struct {
 	// arrive as a directory rather than a file, so there is rarely one.
 	Ordinal int `bun:"ordinal,notnull"`
 	// ContentHash is over the bytes as received, which is what makes a
-	// re-upload recognisable without reading it again.
+	// re-upload recognizable without reading it again.
 	ContentHash string    `bun:"content_hash,notnull"`
 	SizeBytes   int64     `bun:"size_bytes,notnull"`
 	CreatedAt   time.Time `bun:"created_at,notnull"`

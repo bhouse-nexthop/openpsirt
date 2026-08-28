@@ -13,7 +13,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/uptrace/bun"
 
-	"github.com/bhouse-nexthop/openpsirt/internal/catalogue"
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
@@ -28,14 +28,14 @@ type Ingest struct {
 	Limits sbom.Limits
 }
 
-// catalogue returns a store over this deployment's database, or nothing when
+// catalog returns a store over this deployment's database, or nothing when
 // there is no database — which is the process that only renders the API
 // document.
-func (in Ingest) catalogue() *catalogue.Store {
+func (in Ingest) catalog() *catalog.Store {
 	if in.DB == nil {
 		return nil
 	}
-	return catalogue.NewStore(in.DB.DB)
+	return catalog.NewStore(in.DB.DB)
 }
 
 // uploadParts are the documents a build sends.
@@ -132,7 +132,7 @@ func upload(ctx context.Context, in Ingest, input *UploadInput) (*UploadOutput, 
 			fmt.Sprintf("%d scans are already waiting to be read; try again shortly", depth))
 	}
 
-	target, err := catalogue.NewStore(in.DB.DB).Resolve(ctx, input.Product, input.Stream, input.Variant)
+	target, err := catalog.NewStore(in.DB.DB).Resolve(ctx, input.Product, input.Stream, input.Variant)
 	if err != nil {
 		// The message names which part is missing, which is what whoever sees
 		// the failed upload needs in order to declare it.

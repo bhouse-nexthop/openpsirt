@@ -70,7 +70,7 @@ type Options struct {
 	// refused so a runaway producer cannot push everyone else's work behind
 	// its own.
 	MaxBacklog int
-	// ClaimTimeout is how long a claim is honoured before another worker may
+	// ClaimTimeout is how long a claim is honored before another worker may
 	// take the job. It must exceed the longest a job legitimately takes, or
 	// two workers end up running the same work.
 	ClaimTimeout time.Duration

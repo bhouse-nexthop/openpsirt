@@ -12,7 +12,7 @@ place to triage what it finds and track it through to a fix.
 > **Status: early development.** Not usable yet, and **there is no
 > authentication** — do not expose it to a network you do not control. What
 > exists so far is the build and validation pipeline, the database layer across
-> all four supported engines, the catalogue and dependency graph, and the
+> all four supported engines, the catalog and dependency graph, and the
 > reader that turns a build's inventory into one. Nothing accepts an upload
 > yet. The design record is in [DECISIONS.md](DECISIONS.md).
 
@@ -42,7 +42,7 @@ place to triage what it finds and track it through to a fix.
 
 | | |
 |---|---|
-| [DECISIONS.md](DECISIONS.md) | Every decision, with reasoning, organised by area |
+| [DECISIONS.md](DECISIONS.md) | Every decision, with reasoning, organized by area |
 | [IMPLEMENTATION.md](IMPLEMENTATION.md) | Build order. Temporary — deleted once the work lands |
 | [AGENTS.md](AGENTS.md) | Conventions for anyone, human or otherwise, working in this repository |
 
@@ -58,6 +58,6 @@ each is built:
 | [DESIGN-ingest.md](DESIGN-ingest.md) | What happens to a scan when it arrives, and how one is read |
 | [DESIGN-packaging.md](DESIGN-packaging.md) | Container image and Helm chart |
 
-## Licence
+## License
 
 Apache 2.0. See [LICENSE](LICENSE).

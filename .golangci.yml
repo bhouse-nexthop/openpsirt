@@ -1,4 +1,4 @@
-# Rule selection and tool behaviour live here and nowhere else.
+# Rule selection and tool behavior live here and nowhere else.
 #
 # The set below is tuned rather than enabled wholesale. Enabling every linter a
 # tool offers buries the findings worth acting on under style noise, and a noisy

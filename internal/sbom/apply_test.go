@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bhouse-nexthop/openpsirt/internal/catalogue"
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/dbtest"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
@@ -29,12 +29,12 @@ func TestAProducerDocumentBecomesTheStoredGraph(t *testing.T) {
 		}
 		dbtest.Reset(t, db)
 
-		cat := catalogue.NewStore(db.DB)
+		cat := catalog.NewStore(db.DB)
 		product, err := cat.DeclareProduct(ctx, "sonic", "SONiC")
 		if err != nil {
 			t.Fatal(err)
 		}
-		stream, err := cat.DeclareStream(ctx, product.ID, "master", catalogue.Branch, nil)
+		stream, err := cat.DeclareStream(ctx, product.ID, "master", catalog.Branch, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

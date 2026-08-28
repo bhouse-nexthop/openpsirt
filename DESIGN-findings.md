@@ -42,7 +42,7 @@ knows the first as an alias. Matching only the leading name makes those two
 issues, splitting the findings and every decision between them. That ordering
 is what the test pins, because the other ordering passes either way.
 
-An issue is filed under the most widely recognised of its names, so what a
+An issue is filed under the most widely recognized of its names, so what a
 person sees is the name they will find in an advisory. The rest are kept, and
 any of them finds the row.
 
@@ -60,7 +60,7 @@ rather than done quietly as a side effect of reading a scan.
 
 A rating, not a score, and often with the method given as unspecified. Numeric
 scores come from the ranking feeds instead — there is nothing in a report to
-normalise.
+normalize.
 
 ## Fix state is kept
 
@@ -91,7 +91,7 @@ others is how a scanner fault or a silently changed database becomes invisible.
 
 The reason is worked out from what the build now contains, compared against
 what the finding was about. That comparison reads the departed component from
-the component catalogue rather than from the current build — the reason it is
+the component catalog rather than from the current build — the reason it is
 closing is usually that it is no longer there to read.
 
 ## A run is recorded whether or not it found anything

@@ -19,7 +19,7 @@ func init() {
 // Components are global and deduplicated: the same library at the same version
 // is one row however many products ship it. Without that, a component shared
 // across a portfolio is stored once per variant per scan, and the row count
-// grows with the product catalogue rather than with reality.
+// grows with the product catalog rather than with reality.
 //
 // Nodes and edges are held with validity intervals rather than one set per
 // scan. A nightly rebuild changes very little, so recording only what changed

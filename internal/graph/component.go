@@ -92,13 +92,13 @@ func (d Described) Valid() error {
 	return nil
 }
 
-// Components reads and writes the shared component catalogue.
+// Components reads and writes the shared component catalog.
 type Components struct {
 	db  bun.IDB
 	now func() time.Time
 }
 
-// NewComponents returns a catalogue over db.
+// NewComponents returns a catalog over db.
 func NewComponents(db bun.IDB) *Components {
 	return &Components{db: db, now: func() time.Time { return time.Now().UTC() }}
 }
@@ -109,7 +109,7 @@ func NewComponents(db bun.IDB) *Components {
 // Deduplication is the point. The same library at the same version is one row
 // however many products ship it; without that, a component shared across a
 // portfolio is stored once per variant per scan and the table grows with the
-// catalogue rather than with reality.
+// catalog rather than with reality.
 func (c *Components) Intern(ctx context.Context, described []Described) (map[string]int64, error) {
 	byIdentity := make(map[string]Described, len(described))
 	for _, d := range described {

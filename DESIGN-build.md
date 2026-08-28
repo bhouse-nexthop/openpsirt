@@ -17,7 +17,7 @@ Satisfies CIG-01 to CIG-08, SCP-06, SCP-07, API-04, API-10, API-11.
 | `internal/database/migrate/migrations/` | The migrations themselves |
 | `internal/schema/` | Applies this application's schema. Exists so that using the runner registers the migrations |
 | `internal/dbtest/` | Runs a test against every database available to it |
-| `internal/catalogue/` | Products, streams and variants. See `DESIGN-data-model.md` |
+| `internal/catalog/` | Products, streams and variants. See `DESIGN-data-model.md` |
 | `internal/ingest/` | What happens to an arriving scan. See `DESIGN-ingest.md` |
 | `internal/queue/` | Durable background work. See `DESIGN-queue.md` |
 | `docs/` | The published documentation site |
@@ -37,7 +37,7 @@ with the same command and the same pinned tool versions — CIG-05.
 | `make test` | Tests with the race detector |
 | `make lint` | Static analysis, pinned version |
 | `make govulncheck` | Known vulnerabilities in dependencies |
-| `make licences` | Licences of shipped dependencies against the allowlist |
+| `make licenses` | Licenses of shipped dependencies against the allowlist |
 | `make openapi` | Regenerates the API document from the code |
 | `make sbom` | Generates our own CycloneDX bill of materials |
 | `make sbom` | Generates our own CycloneDX bill of materials |
@@ -61,21 +61,21 @@ Otherwise it cannot read the compiler's export data and fails on every file with
 an unhelpful message about import versions. The pinned version moves when the
 language version does.
 
-## Licences
+## Licenses
 
 Shipped dependencies must be permissively licensed: Apache-2.0, BSD-2-Clause,
 BSD-3-Clause, ISC, MIT or MPL-2.0 — SCP-06. Checked two ways, because they catch
-different things: `make licences` walks what the module actually links, and
+different things: `make licenses` walks what the module actually links, and
 dependency review inspects what a pull request adds.
 
-A short exception list covers modules whose licence the classifier cannot read.
-Each entry names the licence and why the tool fails on it, and the licence has
+A short exception list covers modules whose license the classifier cannot read.
+Each entry names the license and why the tool fails on it, and the license has
 been read by hand before being added. The alternative — lowering the classifier's
-confidence threshold — would accept every other unreadable licence silently,
+confidence threshold — would accept every other unreadable license silently,
 which is the opposite of what the check is for.
 
 Build tooling is exempt (SCP-07). The linter is GPL-licensed; running a tool
-over the code affects its licence no more than the compiler does.
+over the code affects its license no more than the compiler does.
 
 ## The API document
 
@@ -93,8 +93,8 @@ We ingest SBOMs, so we publish one — CycloneDX, the format this project treats
 as authoritative on the way in. Generated from the built binary's module graph
 rather than from source, so it describes what ships (SCP-08, SCP-09).
 
-Licence fields are not populated reliably by the generator, and nothing depends
-on them: licence compliance is gated by the allowlist check instead (SCP-10).
+License fields are not populated reliably by the generator, and nothing depends
+on them: license compliance is gated by the allowlist check instead (SCP-10).
 
 Once ingest exists, this file is the project's own first test fixture.
 

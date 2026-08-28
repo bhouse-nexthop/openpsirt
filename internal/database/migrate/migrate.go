@@ -17,12 +17,12 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 )
 
-// running serialises migration work within this process.
+// running serializes migration work within this process.
 //
 // It exists because the migration library keeps its dialect and logger in
 // package-level state. Two goroutines migrating at once would race on those
 // regardless of any database lock — a real race, and one the race detector
-// finds immediately. Migrations are rare and brief, so serialising them
+// finds immediately. Migrations are rare and brief, so serializing them
 // process-wide costs nothing and removes the whole class of problem.
 //
 // This is separate from the database lock, which excludes *other processes*.

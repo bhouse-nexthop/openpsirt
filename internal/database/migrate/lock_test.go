@@ -12,7 +12,7 @@ import (
 // TestLockExcludesAnotherConnection is the only test that exercises the
 // advisory lock.
 //
-// It cannot be written through schema.Up: every caller there serialises on the
+// It cannot be written through schema.Up: every caller there serializes on the
 // in-process mutex before reaching acquire, so a test driving goroutines
 // through Up passes with the entire advisory lock deleted. It proves the mutex
 // and nothing else. This drives acquire directly, from two separate pools.

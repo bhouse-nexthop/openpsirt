@@ -1,4 +1,4 @@
-package catalogue_test
+package catalog_test
 
 import (
 	"errors"
@@ -6,15 +6,15 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/bhouse-nexthop/openpsirt/internal/catalogue"
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/dbtest"
 	"github.com/bhouse-nexthop/openpsirt/internal/schema"
 )
 
 // each runs fn against every available engine, with the schema applied and the
-// catalogue emptied first so a persistent server behaves like a fresh one.
-func each(t *testing.T, fn func(t *testing.T, db *database.DB, s *catalogue.Store)) {
+// catalog emptied first so a persistent server behaves like a fresh one.
+func each(t *testing.T, fn func(t *testing.T, db *database.DB, s *catalog.Store)) {
 	t.Helper()
 	dbtest.Each(t, func(t *testing.T, db *database.DB) {
 		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -23,24 +23,24 @@ func each(t *testing.T, fn func(t *testing.T, db *database.DB, s *catalogue.Stor
 		}
 		dbtest.Reset(t, db)
 
-		fn(t, db, catalogue.NewStore(db.DB))
+		fn(t, db, catalog.NewStore(db.DB))
 	})
 }
 
 func TestDeclareAndResolve(t *testing.T) {
-	each(t, func(t *testing.T, _ *database.DB, s *catalogue.Store) {
+	each(t, func(t *testing.T, _ *database.DB, s *catalog.Store) {
 		ctx := t.Context()
 		p, err := s.DeclareProduct(ctx, "sonic", "SONiC")
 		if err != nil {
 			t.Fatalf("declare product: %v", err)
 		}
-		br, err := s.DeclareStream(ctx, p.ID, "release-2.4", catalogue.Branch, nil)
+		br, err := s.DeclareStream(ctx, p.ID, "release-2.4", catalog.Branch, nil)
 		if err != nil {
 			t.Fatalf("declare branch: %v", err)
 		}
 		// A tag records the branch it was cut from, which is what lets a
 		// branch be compared against its last release.
-		tag, err := s.DeclareStream(ctx, p.ID, "v2.4.1", catalogue.Tag, &br.ID)
+		tag, err := s.DeclareStream(ctx, p.ID, "v2.4.1", catalog.Tag, &br.ID)
 		if err != nil {
 			t.Fatalf("declare tag: %v", err)
 		}
@@ -64,10 +64,10 @@ func TestDeclareAndResolve(t *testing.T) {
 func TestResolveNamesTheMissingPart(t *testing.T) {
 	// Whoever sees the failed upload needs to know what to declare, not that
 	// something somewhere was wrong.
-	each(t, func(t *testing.T, _ *database.DB, s *catalogue.Store) {
+	each(t, func(t *testing.T, _ *database.DB, s *catalog.Store) {
 		ctx := t.Context()
 		p, _ := s.DeclareProduct(ctx, "sonic", "SONiC")
-		br, _ := s.DeclareStream(ctx, p.ID, "release-2.4", catalogue.Branch, nil)
+		br, _ := s.DeclareStream(ctx, p.ID, "release-2.4", catalog.Branch, nil)
 		if _, err := s.DeclareVariant(ctx, br.ID, "broadcom", true); err != nil {
 			t.Fatal(err)
 		}
@@ -82,7 +82,7 @@ func TestResolveNamesTheMissingPart(t *testing.T) {
 				t.Errorf("%v resolved, but should not have", tc)
 				continue
 			}
-			if !errors.Is(err, catalogue.ErrNotFound) {
+			if !errors.Is(err, catalog.ErrNotFound) {
 				t.Errorf("error is not ErrNotFound: %v", err)
 			}
 			if !contains(err.Error(), tc.want) {
@@ -93,26 +93,26 @@ func TestResolveNamesTheMissingPart(t *testing.T) {
 }
 
 func TestNamesAreUniqueWithinTheirParent(t *testing.T) {
-	each(t, func(t *testing.T, _ *database.DB, s *catalogue.Store) {
+	each(t, func(t *testing.T, _ *database.DB, s *catalog.Store) {
 		ctx := t.Context()
 		p, _ := s.DeclareProduct(ctx, "sonic", "SONiC")
-		if _, err := s.DeclareProduct(ctx, "sonic", "again"); !errors.Is(err, catalogue.ErrExists) {
+		if _, err := s.DeclareProduct(ctx, "sonic", "again"); !errors.Is(err, catalog.ErrExists) {
 			t.Errorf("duplicate product accepted: %v", err)
 		}
-		a, _ := s.DeclareStream(ctx, p.ID, "release-2.4", catalogue.Branch, nil)
-		if _, err := s.DeclareStream(ctx, p.ID, "release-2.4", catalogue.Tag, nil); !errors.Is(err, catalogue.ErrExists) {
+		a, _ := s.DeclareStream(ctx, p.ID, "release-2.4", catalog.Branch, nil)
+		if _, err := s.DeclareStream(ctx, p.ID, "release-2.4", catalog.Tag, nil); !errors.Is(err, catalog.ErrExists) {
 			t.Errorf("duplicate stream accepted: %v", err)
 		}
 		if _, err := s.DeclareVariant(ctx, a.ID, "broadcom", true); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.DeclareVariant(ctx, a.ID, "broadcom", false); !errors.Is(err, catalogue.ErrExists) {
+		if _, err := s.DeclareVariant(ctx, a.ID, "broadcom", false); !errors.Is(err, catalog.ErrExists) {
 			t.Errorf("duplicate variant accepted: %v", err)
 		}
 
 		// The same variant name in a different stream is a different variant:
 		// variants belong to a stream, not to the product.
-		b, _ := s.DeclareStream(ctx, p.ID, "release-2.5", catalogue.Branch, nil)
+		b, _ := s.DeclareStream(ctx, p.ID, "release-2.5", catalog.Branch, nil)
 		if _, err := s.DeclareVariant(ctx, b.ID, "broadcom", true); err != nil {
 			t.Errorf("the same variant name in another stream was rejected: %v", err)
 		}
@@ -120,7 +120,7 @@ func TestNamesAreUniqueWithinTheirParent(t *testing.T) {
 }
 
 func TestBadNamesAreRejected(t *testing.T) {
-	each(t, func(t *testing.T, _ *database.DB, s *catalogue.Store) {
+	each(t, func(t *testing.T, _ *database.DB, s *catalog.Store) {
 		ctx := t.Context()
 		for _, name := range []string{"", "   ", " leading", "trailing ", string(make([]byte, 200))} {
 			if _, err := s.DeclareProduct(ctx, name, ""); err == nil {
@@ -131,10 +131,10 @@ func TestBadNamesAreRejected(t *testing.T) {
 }
 
 func TestStreamKindIsChecked(t *testing.T) {
-	each(t, func(t *testing.T, _ *database.DB, s *catalogue.Store) {
+	each(t, func(t *testing.T, _ *database.DB, s *catalog.Store) {
 		ctx := t.Context()
 		p, _ := s.DeclareProduct(ctx, "sonic", "SONiC")
-		if _, err := s.DeclareStream(ctx, p.ID, "x", catalogue.Kind("release"), nil); err == nil {
+		if _, err := s.DeclareStream(ctx, p.ID, "x", catalog.Kind("release"), nil); err == nil {
 			t.Error("an unrecognised stream kind was accepted")
 		}
 	})

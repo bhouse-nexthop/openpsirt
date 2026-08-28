@@ -21,11 +21,11 @@ GOLICENSES_VERSION  ?= v1.6.0
 CDXGOMOD_VERSION    ?= v1.12.0
 
 # Permissive only, for anything that ships. Build tooling is unrestricted.
-ALLOWED_LICENCES := Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,MPL-2.0
+ALLOWED_LICENSES := Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,MPL-2.0
 
-# Modules the classifier cannot read, whose licence has been checked by hand.
+# Modules the classifier cannot read, whose license has been checked by hand.
 # Each entry needs a reason. Lowering the confidence threshold instead would
-# silently accept every other unreadable licence too, which is the opposite of
+# silently accept every other unreadable license too, which is the opposite of
 # what this check is for.
 #
 #   modernc.org/mathutil  BSD-3-Clause. Verified by reading LICENSE: three
@@ -33,9 +33,9 @@ ALLOWED_LICENCES := Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,MPL-2.0
 #                         fails on its wording, which says "neither the names
 #                         of the authors" where the canonical text says
 #                         "neither the name of the copyright holder".
-LICENCE_EXCEPTIONS := modernc.org/mathutil
+LICENSE_EXCEPTIONS := modernc.org/mathutil
 
-.PHONY: all build test vet lint fmt openapi openapi-current run clean check check-packaging tools govulncheck licences sbom
+.PHONY: all build test vet lint fmt openapi openapi-current run clean check check-packaging tools govulncheck licenses sbom
 
 all: check build
 
@@ -46,7 +46,7 @@ build:
 # One package at a time. Packages otherwise run in parallel against the same
 # database server, and the rollback test drops every table while another
 # package is using them. Isolating each package into its own database would
-# also work; serialising is one flag, and the suite is seconds long.
+# also work; serializing is one flag, and the suite is seconds long.
 test:
 	$(GO) test -race -count=1 -p 1 ./...
 
@@ -62,10 +62,10 @@ fmt:
 govulncheck:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
-licences:
+licenses:
 	$(GO) run github.com/google/go-licenses@$(GOLICENSES_VERSION) check ./... \
-		--allowed_licenses=$(ALLOWED_LICENCES) \
-		$(foreach m,$(LICENCE_EXCEPTIONS),--ignore=$(m))
+		--allowed_licenses=$(ALLOWED_LICENSES) \
+		$(foreach m,$(LICENSE_EXCEPTIONS),--ignore=$(m))
 
 # We ingest SBOMs, so we publish one for ourselves. CycloneDX because that is
 # the format this project treats as authoritative on the way in.
@@ -84,7 +84,7 @@ openapi:
 # Everything CI runs, reachable from one command. Container and chart checks
 # are included because CI runs them; omitting them meant four of nine jobs
 # could not be reproduced locally.
-check: build vet lint test govulncheck licences openapi-current sbom
+check: build vet lint test govulncheck licenses openapi-current sbom
 
 # CI fails when the committed document has drifted, so check the same thing.
 openapi-current: openapi

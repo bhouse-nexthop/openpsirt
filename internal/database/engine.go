@@ -82,7 +82,7 @@ func ParseURL(raw string) (Target, error) {
 	if !ok {
 		return Target{}, fmt.Errorf("unsupported database %q: want one of postgres, mysql, mariadb, sqlite", u.Scheme)
 	}
-	// Normalise the scheme into the URL the driver receives. Accepting
+	// Normalize the scheme into the URL the driver receives. Accepting
 	// "POSTGRES://" and passing it through unchanged had pgx reject it and
 	// silently fall back to environment defaults, producing an error that
 	// named the supplied URL while describing a connection somewhere else.

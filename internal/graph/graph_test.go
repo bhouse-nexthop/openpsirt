@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bhouse-nexthop/openpsirt/internal/catalogue"
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/dbtest"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
@@ -52,12 +52,12 @@ func each(t *testing.T, fn func(t *testing.T, f *fixture)) {
 		}
 		dbtest.Reset(t, db)
 
-		cat := catalogue.NewStore(db.DB)
+		cat := catalog.NewStore(db.DB)
 		p, err := cat.DeclareProduct(ctx, "sonic", "SONiC")
 		if err != nil {
 			t.Fatal(err)
 		}
-		br, err := cat.DeclareStream(ctx, p.ID, "release-2.4", catalogue.Branch, nil)
+		br, err := cat.DeclareStream(ctx, p.ID, "release-2.4", catalog.Branch, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

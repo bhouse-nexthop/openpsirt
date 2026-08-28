@@ -13,7 +13,7 @@ import (
 )
 
 func TestIdleConnectionsAreReaped(t *testing.T) {
-	// The whole defence rests on this: a connection must be closed by us
+	// The whole defense rests on this: a connection must be closed by us
 	// before anything in the path kills it behind our back. Asserting the
 	// setting was applied would prove nothing, so this checks the pool's own
 	// count of connections it closed for being idle too long.

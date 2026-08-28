@@ -323,7 +323,7 @@ paths:
           description: Error
       summary: List declared products
       tags:
-        - Catalogue
+        - Catalog
     post:
       description: Records a product so scans may be filed against it. Declaring one that already exists succeeds without changing anything, so this can run on every build.
       operationId: declare-product
@@ -348,7 +348,7 @@ paths:
           description: Error
       summary: Declare a product
       tags:
-        - Catalogue
+        - Catalog
   /v1/products/{product}/streams:
     get:
       operationId: list-streams
@@ -373,7 +373,7 @@ paths:
           description: Error
       summary: List a product's branches and tags
       tags:
-        - Catalogue
+        - Catalog
     post:
       description: Records a line of a product. A branch moves and is rebuilt; a tag never changes and is what somebody received.
       operationId: declare-stream
@@ -404,7 +404,7 @@ paths:
           description: Error
       summary: Declare a branch or a tag
       tags:
-        - Catalogue
+        - Catalog
   /v1/products/{product}/streams/{stream}/variants:
     get:
       operationId: list-variants
@@ -434,7 +434,7 @@ paths:
           description: Error
       summary: List the ways a stream is built
       tags:
-        - Catalogue
+        - Catalog
     post:
       description: Records one of the parallel builds of a stream — a chip variant, an architecture, a platform. A variant belongs to its stream, so one introduced in a later release does not appear to have existed in earlier ones.
       operationId: declare-variant
@@ -470,7 +470,7 @@ paths:
           description: Error
       summary: Declare a way a stream is built
       tags:
-        - Catalogue
+        - Catalog
   /v1/products/{product}/streams/{stream}/variants/{variant}/scans:
     post:
       description: Takes a build's inventory and the suppressions it carries, against a product, stream and variant that have already been declared. The documents are read after the response, so a successful reply means they were accepted rather than that they parsed.

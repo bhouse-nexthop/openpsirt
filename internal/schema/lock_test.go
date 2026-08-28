@@ -12,7 +12,7 @@ import (
 func TestConcurrentMigrationsInOneProcessDoNotCollide(t *testing.T) {
 	// This covers goroutines in a single process, and nothing more.
 	//
-	// It cannot test the advisory lock: every caller serialises on the
+	// It cannot test the advisory lock: every caller serializes on the
 	// in-process mutex before reaching it, so this passes with the entire
 	// advisory lock deleted — verified. The lock that excludes *other
 	// instances* is tested in internal/database/migrate, driving acquire

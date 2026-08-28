@@ -71,7 +71,7 @@ Only the column declarations differ; everything queried is portable.
 | Booleans | One engine has no boolean type |
 | Text lengths | A unique index needs a bounded width on some engines |
 
-One behavioural difference is worth knowing beyond the declarations: a stream
+One behavioral difference is worth knowing beyond the declarations: a stream
 points at its parent branch, and **MySQL and MariaDB enforce that
 self-reference during a bulk delete** where PostgreSQL and SQLite do not. Any
 code clearing streams must detach the parent first.

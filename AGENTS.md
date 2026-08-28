@@ -13,7 +13,7 @@ so and cite its ID — do not quietly implement something else.
 | File | Holds | Lifetime |
 |---|---|---|
 | `DECISIONS.md` | **Why** — every decision, with reasoning, by area | Permanent |
-| `DESIGN-*.md` | **How** — structures, flows, behaviour | Permanent |
+| `DESIGN-*.md` | **How** — structures, flows, behavior | Permanent |
 | `IMPLEMENTATION.md` | Build order | **Temporary — deleted when the work lands** |
 | Code | What runs | — |
 
@@ -32,7 +32,7 @@ work.
 
 All at the repository root, named `DESIGN-<area>.md`.
 
-- **Keep them language-agnostic.** They describe behaviour, architecture and
+- **Keep them language-agnostic.** They describe behavior, architecture and
   domain concepts — SBOM structure, dependency paths, triage outcomes,
   visibility rules. Never type names, struct fields, function signatures or
   source paths. Implementation pointers belong in code.
@@ -50,7 +50,7 @@ All at the repository root, named `DESIGN-<area>.md`.
 **Never reference a plan document or its stage numbers** from code, comments,
 commit messages, test names or design documents. "Stage 3", "as planned in
 Stage 1" and similar become dead pointers the moment the file goes. Refer to the
-*behaviour* instead, and link to a `DESIGN-*.md` section.
+*behavior* instead, and link to a `DESIGN-*.md` section.
 
 Name regression tests for the invariant they pin, not for where the work sat in
 a plan.
@@ -103,16 +103,24 @@ document that cites one.
 **No implementation-timeline language in code or comments.** Never write "for
 now", "temporarily", "first cut", "later", "in this phase", "step N", or
 anything describing *when* in the build something happens. Such notes rot the
-moment the next change lands. Comment the current behaviour and why. If
-something genuinely is missing, describe the missing behaviour or the
+moment the next change lands. Comment the current behavior and why. If
+something genuinely is missing, describe the missing behavior or the
 limitation — not when it will arrive.
 
 **No ticket or tracker references in code, comments or documents.** A bare
 number is unactionable at the code and rots as work is split or superseded.
-Describe the behaviour, reason or limitation instead, and keep issue linkage in
+Describe the behavior, reason or limitation instead, and keep issue linkage in
 the tracker and the pull request.
 
 **Comment density matches the surrounding code.** Explain why, not what.
+
+**American spelling, everywhere.** License, not licence. Catalog, normalize,
+behavior, color, authorize. It applies to prose, comments and identifiers
+alike — a codebase that spells one word two ways makes both unsearchable, and
+the choice matters less than the consistency.
+
+Two things are exempt because they are not ours to respell: text quoted from a
+producer's output, and field names defined by a format we consume.
 
 **The name is written OpenPSIRT.** In prose and in anything a person reads —
 documentation, the API description, the version the binary prints, a chart
@@ -135,12 +143,12 @@ gets ticked without being read.
 |---|---|
 | **Injection — SQL** | Every value parameterized. **Every identifier from an allowlist** — sort columns, filter fields and partition names cannot be bound by a placeholder, so a column name arriving from a query parameter is the live hole (SEC-01, SEC-02) |
 | **Injection — output** | Component names, versions and descriptions come from a third party's SBOM and get rendered to staff who hold the most access. Encoded on output, and **never passed through the markdown renderer** — that is for text a person typed here (SEC-04, SEC-16) |
-| **Injection — markdown** | Policy enforced at submission, **before storage**: raw HTML off at the parser rather than stripped after, link schemes limited to `http`, `https`, `mailto`, **nothing remote fetched by a rendered document, images included**. Source stored, never rendered HTML, and the sanitiser still runs on render because stored text predates later rules. **The fenced-block language tag is input** — allowlisted before it reaches a class attribute (SEC-11 to SEC-15, SEC-18) |
-| **Broken access control** | Enforced in the data layer with a subject, never per handler. Covers counts, aggregates, search and exports — not just row reads (ACC-04, ACC-07). An attachment fetch is authorised against its finding's visibility before any signed URL is issued (ATT-06) |
+| **Injection — markdown** | Policy enforced at submission, **before storage**: raw HTML off at the parser rather than stripped after, link schemes limited to `http`, `https`, `mailto`, **nothing remote fetched by a rendered document, images included**. Source stored, never rendered HTML, and the sanitizer still runs on render because stored text predates later rules. **The fenced-block language tag is input** — allowlisted before it reaches a class attribute (SEC-11 to SEC-15, SEC-18) |
+| **Broken access control** | Enforced in the data layer with a subject, never per handler. Covers counts, aggregates, search and exports — not just row reads (ACC-04, ACC-07). An attachment fetch is authorized against its finding's visibility before any signed URL is issued (ATT-06) |
 | **Cryptographic failures** | API keys and personal tokens hashed at rest, shown once (SEC-03). Session identifiers unguessable |
 | **Insecure design** | Does the change contradict a recorded decision? Cite the identifier if so |
 | **Security misconfiguration** | Container non-root with a read-only root filesystem. Trusted-header sign-in off by default and only from configured sources (ACC-19, ACC-20) |
-| **Vulnerable components** | `govulncheck` and dependency review gate. A new dependency needs a permissive licence (SCP-06) |
+| **Vulnerable components** | `govulncheck` and dependency review gate. A new dependency needs a permissive license (SCP-06) |
 | **Authentication failures** | No account created automatically on any path; unauthorized users get a generic message that does not say why (ACC-21) |
 | **Data integrity** | A scan file is hostile input. Bounded size, depth and component count; never used as a filesystem path (SEC-05, SEC-06). Markdown fields are length-bounded and rendering is time-bounded (SEC-17) |
 | **Separation of duties** | An approval points at one revision of a justification. Anything that lets approved text change without withdrawing the approval defeats TRI-07 silently (TRI-24, TRI-25) |
@@ -163,7 +171,7 @@ gets ticked without being read.
   authorship that nobody has signed for, and mixing the two makes the sign-off
   chain ambiguous. Tools that add one by default must be told not to.
 - Explain **why** in the body. The diff already shows what.
-- Design document updates belong in the same commit as the behaviour they
+- Design document updates belong in the same commit as the behavior they
   describe.
 - Branch protection is not enforced yet — early development. The static analysis
   gate still runs; do not push past it on the grounds that nothing blocks you.

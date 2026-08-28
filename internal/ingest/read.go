@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/bhouse-nexthop/openpsirt/internal/catalogue"
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
@@ -128,7 +128,7 @@ func (r *Reader) read(ctx context.Context, reference string) (*Result, error) {
 		return nil, err
 	}
 
-	target, err := catalogue.NewStore(r.db.DB).Describe(ctx, scan.VariantID)
+	target, err := catalog.NewStore(r.db.DB).Describe(ctx, scan.VariantID)
 	if err != nil {
 		return nil, err
 	}

@@ -16,7 +16,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/schema"
 )
 
-// declaring is a server over an empty catalogue.
+// declaring is a server over an empty catalog.
 type declaring struct{ handler http.Handler }
 
 func (d *declaring) post(t *testing.T, path, body string) (int, map[string]any) {
@@ -44,7 +44,7 @@ func (d *declaring) do(t *testing.T, req *http.Request) (int, map[string]any) {
 	return rec.Code, body
 }
 
-func eachCatalogue(t *testing.T, fn func(t *testing.T, d *declaring)) {
+func eachCatalog(t *testing.T, fn func(t *testing.T, d *declaring)) {
 	t.Helper()
 	dbtest.Each(t, func(t *testing.T, db *database.DB) {
 		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -63,7 +63,7 @@ func TestDeclaringTheSameThingTwiceSucceeds(t *testing.T) {
 	// A pipeline declares before every build. Failing the second one makes the
 	// step something everybody works around, and then a scan arrives against
 	// something nobody declared.
-	eachCatalogue(t, func(t *testing.T, d *declaring) {
+	eachCatalog(t, func(t *testing.T, d *declaring) {
 		code, body := d.post(t, "/v1/products", `{"name": "sonic", "display_name": "SONiC"}`)
 		if code != http.StatusCreated {
 			t.Fatalf("first declaration returned %d, want 201: %v", code, body)
@@ -86,7 +86,7 @@ func TestRedeclaringSomethingDifferentlyIsRefused(t *testing.T) {
 	// The other half of being able to declare repeatedly. A pipeline that has
 	// quietly changed what it means by a name must not pass, or the name stops
 	// meaning anything.
-	eachCatalogue(t, func(t *testing.T, d *declaring) {
+	eachCatalog(t, func(t *testing.T, d *declaring) {
 		d.post(t, "/v1/products", `{"name": "sonic"}`)
 		d.post(t, "/v1/products/sonic/streams", `{"name": "2.4.0", "kind": "tag"}`)
 
@@ -103,7 +103,7 @@ func TestRedeclaringSomethingDifferentlyIsRefused(t *testing.T) {
 func TestAVariantShipsUnlessItSaysOtherwise(t *testing.T) {
 	// An unclassified artifact should rank as though it reaches customers, so
 	// leaving the field out must not read as a denial.
-	eachCatalogue(t, func(t *testing.T, d *declaring) {
+	eachCatalog(t, func(t *testing.T, d *declaring) {
 		d.post(t, "/v1/products", `{"name": "sonic"}`)
 		d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
 
@@ -123,7 +123,7 @@ func TestAVariantShipsUnlessItSaysOtherwise(t *testing.T) {
 }
 
 func TestDeclaringUnderSomethingUndeclaredSaysWhichPart(t *testing.T) {
-	eachCatalogue(t, func(t *testing.T, d *declaring) {
+	eachCatalog(t, func(t *testing.T, d *declaring) {
 		code, body := d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
 		if code != http.StatusNotFound {
 			t.Fatalf("a stream under an undeclared product returned %d, want 404", code)
@@ -136,7 +136,7 @@ func TestDeclaringUnderSomethingUndeclaredSaysWhichPart(t *testing.T) {
 
 func TestATagRecordsTheBranchItWasCutFrom(t *testing.T) {
 	// It is what lets a branch be compared against its last release.
-	eachCatalogue(t, func(t *testing.T, d *declaring) {
+	eachCatalog(t, func(t *testing.T, d *declaring) {
 		d.post(t, "/v1/products", `{"name": "sonic"}`)
 		d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
 
@@ -156,7 +156,7 @@ func TestATagRecordsTheBranchItWasCutFrom(t *testing.T) {
 func TestWhatHasBeenDeclaredCanBeListed(t *testing.T) {
 	// The first question after an upload is refused for naming something
 	// undeclared.
-	eachCatalogue(t, func(t *testing.T, d *declaring) {
+	eachCatalog(t, func(t *testing.T, d *declaring) {
 		d.post(t, "/v1/products", `{"name": "sonic"}`)
 		d.post(t, "/v1/products", `{"name": "onie"}`)
 		d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
@@ -183,7 +183,7 @@ func TestWhatHasBeenDeclaredCanBeListed(t *testing.T) {
 func TestADeclaredTargetCanBeUploadedAgainst(t *testing.T) {
 	// The two halves have to meet: what declaration writes is what an upload
 	// resolves. Testing them apart would let the names diverge.
-	eachCatalogue(t, func(t *testing.T, d *declaring) {
+	eachCatalog(t, func(t *testing.T, d *declaring) {
 		d.post(t, "/v1/products", `{"name": "sonic"}`)
 		d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
 		d.post(t, "/v1/products/sonic/streams/master/variants", `{"name": "broadcom"}`)

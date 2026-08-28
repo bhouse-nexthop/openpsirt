@@ -64,7 +64,7 @@ func (s *Store) Apply(ctx context.Context, variantID, runID int64, reported []Re
 				applied.Unplaced++
 				continue
 			}
-			vulnerabilityID, known := vulnerabilities[normalise(r.Issue.Identifier)]
+			vulnerabilityID, known := vulnerabilities[normalize(r.Issue.Identifier)]
 			if !known {
 				return fmt.Errorf("issue %q was not recorded", r.Issue.Identifier)
 			}
@@ -117,7 +117,7 @@ func (s *Store) Apply(ctx context.Context, variantID, runID int64, reported []Re
 			closing = append(closing, f)
 		}
 		// What a closing finding was about is read from the component
-		// catalogue rather than from what the variant currently contains — the
+		// catalog rather than from what the variant currently contains — the
 		// whole reason it is closing is usually that it is no longer there.
 		departed, err := componentsByID(ctx, tx, closing)
 		if err != nil {
@@ -257,7 +257,7 @@ func (c consumers) of(componentID int64) []int64 {
 //
 // A component under the product itself is recorded as being under nothing: the
 // product's name differs per variant, so keying on it would stop the same
-// place being recognised across them.
+// place being recognized across them.
 func openPlaces(ctx context.Context, db bun.IDB, variantID int64) (consumers, error) {
 	var edges []struct {
 		ChildComponentID  int64 `bun:"child_component_id"`

@@ -13,7 +13,7 @@ import (
 )
 
 func init() {
-	goose.AddMigrationContext(upCatalogue, downCatalogue)
+	goose.AddMigrationContext(upCatalog, downCatalog)
 }
 
 // What a scan can be filed against: a product, one of its streams, and a
@@ -24,7 +24,7 @@ func init() {
 // Branches and tags share a table. They differ only in that a branch moves and
 // a tag never does, and everything else about them is the same — a product,
 // variants, findings, an end-of-life date (MDL-17).
-func upCatalogue(ctx context.Context, tx *sql.Tx) error {
+func upCatalog(ctx context.Context, tx *sql.Tx) error {
 	e := migrate.EngineFrom(ctx)
 	t := typesFor(e)
 	if t == nil {
@@ -84,7 +84,7 @@ func upCatalogue(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-func downCatalogue(ctx context.Context, tx *sql.Tx) error {
+func downCatalog(ctx context.Context, tx *sql.Tx) error {
 	for _, table := range []string{"variant", "stream", "product"} {
 		if _, err := tx.ExecContext(ctx, `DROP TABLE `+table); err != nil {
 			return err

@@ -40,7 +40,7 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 
 	statements := []string{
 		// identity is derived from the identifier this issue is filed under
-		// here, which is whichever of its names is the most widely recognised.
+		// here, which is whichever of its names is the most widely recognized.
 		`CREATE TABLE vulnerability (
 			id            ` + t.id + `,
 			identity      ` + t.hash + ` NOT NULL,

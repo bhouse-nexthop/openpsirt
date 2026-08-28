@@ -19,7 +19,7 @@ import (
 // pooling a connection, one before reusing it — only inspect local state in
 // the drivers we use, so neither notices a half-open socket.
 //
-// So the defence is to make sure a connection is never idle long enough to be
+// So the defense is to make sure a connection is never idle long enough to be
 // killed behind our back, rather than to detect it afterwards.
 type Pool struct {
 	// MaxOpen caps concurrent connections. Unbounded, a burst opens more than

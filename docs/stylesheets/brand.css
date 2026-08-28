@@ -1,9 +1,9 @@
-/* Colours taken from the mark, replacing a theme default indigo that sits
+/* Colors taken from the mark, replacing a theme default indigo that sits
    badly against it.
 
    In light mode the header is white, set in mkdocs.yml rather than here: the
    mark is drawn for a light background, with a navy outer frame around a white
-   inner field. Measured against a coloured header its frame falls to about
+   inner field. Measured against a colored header its frame falls to about
    1.3:1 and the mark reads as a white blob; against white it is 15:1.
 
    These values cover the dark scheme's header and the accent in both. */

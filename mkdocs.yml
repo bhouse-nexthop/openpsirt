@@ -8,12 +8,12 @@ theme:
   logo: assets/openpsirt-mark.svg
   favicon: assets/openpsirt-mark.svg
   palette:
-    # Colours are defined in stylesheets/brand.css and taken from the mark.
+    # Colors are defined in stylesheets/brand.css and taken from the mark.
     # The theme's default primary is an indigo that clashes with it.
     - media: "(prefers-color-scheme: light)"
       scheme: default
       # White, because the mark is drawn for a light background: its outer
-      # frame is navy and its inner field is white. On any coloured header the
+      # frame is navy and its inner field is white. On any colored header the
       # frame falls below 2:1 against the background and the mark reads as a
       # white blob.
       primary: white

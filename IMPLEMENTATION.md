@@ -18,7 +18,7 @@ each stage produces, not here.
 | Document | Answers | Changes when |
 |---|---|---|
 | `DECISIONS.md` | **Why** something is the way it is | A decision is made or reversed |
-| `DESIGN-*.md` | **How** it actually works — structures, flows, behaviour | The implementation changes |
+| `DESIGN-*.md` | **How** it actually works — structures, flows, behavior | The implementation changes |
 | Code | What runs | Continuously |
 
 The chain matters for audits. Code points at a design document, a design
@@ -41,7 +41,7 @@ every change is checked automatically.
 - Repository layout, Go module, a binary that builds, starts, serves a health
   endpoint and reports its version
 - CI: build, test, static analysis gate, `govulncheck`, dependency review,
-  secret scanning, licence check
+  secret scanning, license check
 - The test harness and CI matrix skeleton, running even with almost no tests
 - Documentation building and publishing
 - Container image and Helm chart, both verified in CI
@@ -192,7 +192,7 @@ that release, and raises an alert rather than sitting in a report.
 
 - Manual entry, visibility handling, disclosure dates and escalation
 - Advisory publication: CSAF, and GitHub Security Advisories where they apply
-- Attachments: object store, authorised fetch, redaction (`ATT`)
+- Attachments: object store, authorized fetch, redaction (`ATT`)
 
 Attachments land here rather than earlier because the access rule they need is
 the same one private findings need, and building it twice is how the second one
@@ -214,4 +214,4 @@ going through the application.
 | Component library | Decided against a real screen in the interface stage, not in the abstract |
 | Partition column and granularity | Needs the schema in front of us — settled during the database stage |
 | External tracker hand-off | Optional, and the seams are built rather than the integration |
-| Markdown renderer and sanitiser | The requirements are settled (`SEC-11` to `SEC-17`); the library pair is picked when the code is written |
+| Markdown renderer and sanitizer | The requirements are settled (`SEC-11` to `SEC-17`); the library pair is picked when the code is written |

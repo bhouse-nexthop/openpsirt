@@ -130,14 +130,14 @@ mind.
 
 A rating, not a vector, and often with the method given explicitly as
 unspecified. Numeric scores come from the feeds instead (ING-10, RNK-04) — there
-is nothing in the report to normalise.
+is nothing in the report to normalize.
 
 
 ## What happens at the door
 
 A build sends everything in one request: the inventory, and however many
 suppression documents it has, as named parts. One request means one
-authorisation and one transaction — a build whose inventory landed and whose
+authorization and one transaction — a build whose inventory landed and whose
 suppressions did not would have every carried patch reported as an outstanding
 vulnerability, which is worse than the upload having failed outright.
 
@@ -358,7 +358,7 @@ goes nowhere. The reverse is checked too: a path the reader acts on that no
 recorded document contains is a branch nothing exercises.
 
 This is a check on the recorded documents, not on what we accept. **The reader
-itself ignores anything it does not recognise**, because producers following
+itself ignores anything it does not recognize**, because producers following
 the same specification differ in what they choose to fill in, and refusing a
 document for carrying more than we read would reject perfectly good scans.
 

@@ -124,7 +124,7 @@ func (a Applied) Unchanged() bool { return a.Opened == 0 && a.Closed == 0 }
 // Names only, never versions: a version in the key would lapse every decision
 // the next time anything was rebuilt. Where a component sits directly under
 // the product, its name stands alone, because the product's name differs per
-// variant and including it would stop the same place being recognised across
+// variant and including it would stop the same place being recognized across
 // them.
 func PlaceIdentity(component, consumer string) string {
 	basis := strings.TrimSpace(component)

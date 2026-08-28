@@ -1,4 +1,4 @@
-// Package catalogue holds what a scan can be filed against: the products, the
+// Package catalog holds what a scan can be filed against: the products, the
 // branches and tags within them, and the variants each of those is built as.
 //
 // Everything here is declared before it can be targeted. A scan naming
@@ -6,7 +6,7 @@
 // otherwise create one that looks entirely real — its own findings, its own
 // counts, its own place in every report — while the real one appears to have
 // stopped being scanned.
-package catalogue
+package catalog
 
 import (
 	"context"
@@ -28,7 +28,7 @@ const (
 	Tag Kind = "tag"
 )
 
-// Valid reports whether k is a kind we recognise.
+// Valid reports whether k is a kind we recognize.
 func (k Kind) Valid() bool { return k == Branch || k == Tag }
 
 // ErrNotFound is returned when something named has not been declared.
@@ -84,7 +84,7 @@ type Variant struct {
 	CreatedAt      time.Time `bun:"created_at,notnull"`
 }
 
-// Store reads and writes the catalogue.
+// Store reads and writes the catalog.
 type Store struct{ db bun.IDB }
 
 // NewStore returns a store over db.
