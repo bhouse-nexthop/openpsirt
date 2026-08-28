@@ -133,6 +133,36 @@ unspecified. Numeric scores come from the feeds instead (ING-10, RNK-04) — the
 is nothing in the report to normalise.
 
 
+## Where a document lives between arriving and being read
+
+Reading is asynchronous, so a document has to be somewhere from the moment it
+is accepted until a worker picks it up. It lives in the database.
+
+The alternatives each fail a constraint already settled. More than one replica
+runs, so a file on the receiving node is not there for whoever takes the work.
+An object store is optional by decision — everything except attachments works
+without one — so ingest cannot be the thing that makes it mandatory. The
+database is the one place every deployment already has.
+
+**Content is split across rows.** A single value of tens of megabytes runs into
+a maximum packet size on two of the four engines, and that limit is server
+configuration rather than anything a client can discover. Bounded rows stay
+inside every default in circulation, and let a document be read as a stream
+rather than held whole — which is the same reason the parser streams.
+
+The hash is computed from the bytes as they are stored. A hash the sender
+supplied describes the file they meant to send, not the one that arrived.
+
+### Retention is not symmetric
+
+A nightly scan's documents are deleted once it has been read: the next night
+supersedes it, and keeping them grows storage with the calendar rather than
+with what is being tracked. A tagged release keeps both its inventory and its
+suppressions, because re-scanning it years later needs what it contained *and*
+what the build had already argued about its own carried patches. Keeping only
+the first would quietly undo every one of those arguments on the next re-scan.
+
+
 ## Reading a document
 
 ### The header is read separately from the contents
