@@ -1,0 +1,63 @@
+package migrations
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+
+	"github.com/pressly/goose/v3"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/database/migrate"
+)
+
+func init() {
+	goose.AddMigrationContext(upScan, downScan)
+}
+
+// The record of what arrived: which variant it was filed against, when the
+// producer says it was built, when we received it, what it hashed to, and
+// which credential sent it.
+//
+// The file itself is not kept for a branch — it is superseded the next night —
+// so this row plus the extracted data is the whole record of an ingest. The
+// hash is what makes a re-upload idempotent, and the parser version is what
+// bounds the damage if a parser bug is found later.
+func upScan(ctx context.Context, tx *sql.Tx) error {
+	e := migrate.EngineFrom(ctx)
+	t := typesFor(e)
+	if t == nil {
+		return fmt.Errorf("no schema for %s", e)
+	}
+
+	statements := []string{
+		`CREATE TABLE scan (
+			id             ` + t.id + `,
+			variant_id     ` + t.ref + ` NOT NULL,
+			content_hash   ` + t.hash + ` NOT NULL,
+			built_at       ` + t.timestamp + ` NOT NULL,
+			received_at    ` + t.timestamp + ` NOT NULL,
+			parser_version ` + t.name + ` NOT NULL,
+			credential     ` + t.name + ` NULL,
+			status         ` + t.kind + ` NOT NULL,
+			CONSTRAINT scan_variant_fk FOREIGN KEY (variant_id) REFERENCES variant (id),
+			CONSTRAINT scan_content_unique UNIQUE (variant_id, content_hash)
+		)` + t.suffix,
+
+		// Answering "what is the newest accepted scan for this variant" is on
+		// the path of every ingest, so it gets its own index rather than a
+		// scan of everything ever received.
+		`CREATE INDEX scan_newest_idx ON scan (variant_id, status, built_at)`,
+	}
+
+	for _, stmt := range statements {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("%s: %w", firstLine(stmt), err)
+		}
+	}
+	return nil
+}
+
+func downScan(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `DROP TABLE scan`)
+	return err
+}

@@ -21,21 +21,8 @@ func each(t *testing.T, fn func(t *testing.T, db *database.DB, s *catalogue.Stor
 		if err := schema.Up(t.Context(), db, quiet); err != nil {
 			t.Fatalf("migrate: %v", err)
 		}
-		// Child rows first, and break the self-reference before deleting
-		// streams: a tag points at the branch it was cut from, and MySQL and
-		// MariaDB enforce that during a bulk delete even though the rows are
-		// all going. PostgreSQL and SQLite happen not to.
-		if _, err := db.ExecContext(t.Context(), "DELETE FROM variant"); err != nil {
-			t.Fatalf("clear variant: %v", err)
-		}
-		if _, err := db.ExecContext(t.Context(), "UPDATE stream SET parent_id = NULL"); err != nil {
-			t.Fatalf("detach stream parents: %v", err)
-		}
-		for _, table := range []string{"stream", "product"} {
-			if _, err := db.ExecContext(t.Context(), "DELETE FROM "+table); err != nil {
-				t.Fatalf("clear %s: %v", table, err)
-			}
-		}
+		dbtest.Reset(t, db)
+
 		fn(t, db, catalogue.NewStore(db.DB))
 	})
 }

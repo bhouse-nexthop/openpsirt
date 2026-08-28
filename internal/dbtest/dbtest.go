@@ -88,3 +88,40 @@ func Open(t *testing.T, url string) *database.DB {
 	})
 	return db
 }
+
+// tables lists every table, in an order safe to delete from: children before
+// the rows they reference.
+//
+// **Add new tables at the top.** A table missing from this list leaves rows
+// behind between tests, and one in the wrong position fails on the engines
+// that enforce foreign keys during a bulk delete — which is not all of them,
+// so it will look engine-specific rather than like the ordering mistake it is.
+var tables = []string{
+	"scan",
+	"variant",
+	"stream",
+	"product",
+	"application_setting",
+}
+
+// Reset empties every table, leaving the schema in place.
+//
+// It lives here rather than in each test package so that adding a table is one
+// change instead of one per package. Before this, a new table with a foreign
+// key silently broke the cleanup of every package that predated it.
+func Reset(t *testing.T, db *database.DB) {
+	t.Helper()
+	ctx := context.Background()
+
+	// A tag points at the branch it was cut from. MySQL and MariaDB enforce
+	// that self-reference during a bulk delete even though every row is going;
+	// PostgreSQL and SQLite happen not to.
+	if _, err := db.ExecContext(ctx, "UPDATE stream SET parent_id = NULL"); err != nil {
+		t.Fatalf("detach stream parents: %v", err)
+	}
+	for _, table := range tables {
+		if _, err := db.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+			t.Fatalf("clear %s: %v", table, err)
+		}
+	}
+}

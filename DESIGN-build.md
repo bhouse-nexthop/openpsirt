@@ -18,6 +18,7 @@ Satisfies CIG-01 to CIG-08, SCP-06, SCP-07, API-04, API-10, API-11.
 | `internal/schema/` | Applies this application's schema. Exists so that using the runner registers the migrations |
 | `internal/dbtest/` | Runs a test against every database available to it |
 | `internal/catalogue/` | Products, streams and variants. See `DESIGN-data-model.md` |
+| `internal/ingest/` | What happens to an arriving scan. See `DESIGN-ingest.md` |
 | `docs/` | The published documentation site |
 | `assets/` | Logo files |
 

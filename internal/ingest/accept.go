@@ -1,0 +1,246 @@
+// Package ingest decides what happens to a scan that arrives, and records it.
+//
+// The decisions here are about the scan's metadata rather than its contents:
+// whether it is newer than what we already hold, whether we have seen this
+// exact file before, and whether its timestamp is believable. Parsing is a
+// separate concern and happens only for a scan that is accepted.
+package ingest
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/uptrace/bun"
+)
+
+// Status is what became of a scan.
+type Status string
+
+const (
+	// Accepted means the scan was taken and is, or was, the current picture.
+	Accepted Status = "accepted"
+	// Failed means it was taken and could not be parsed. Recorded so a
+	// producer sending unparseable files is visible rather than silent.
+	Failed Status = "failed"
+)
+
+// Outcome is what an arriving scan should have happen to it.
+type Outcome int
+
+const (
+	// Accept it: newer than what we hold, and not seen before.
+	Accept Outcome = iota
+	// AlreadyHave it: byte-for-byte what we already took. Report success
+	// without doing the work again.
+	AlreadyHave
+	// NotNewer than the scan we already hold, so taking it would replace the
+	// current picture with a stale one.
+	NotNewer
+	// BuiltInFuture, so its timestamp cannot be trusted.
+	BuiltInFuture
+)
+
+// String names the outcome for logs and errors.
+func (o Outcome) String() string {
+	switch o {
+	case Accept:
+		return "accept"
+	case AlreadyHave:
+		return "already have"
+	case NotNewer:
+		return "not newer"
+	case BuiltInFuture:
+		return "built in the future"
+	}
+	return "unknown"
+}
+
+// futureTolerance is how far ahead of us a build time may be before we refuse
+// it. Clocks disagree by seconds; a few minutes covers that without accepting
+// a date that would wedge the target.
+const futureTolerance = 5 * time.Minute
+
+// storedPrecision is the finest resolution every supported database keeps.
+//
+// Go carries nanoseconds and no engine here stores them, so a value written
+// and read back is slightly older than the one still in memory. The ordering
+// comparison then reports a scan as newer than itself, and a second file
+// claiming the same build time is accepted when it should not be. Rounding to
+// what the database will actually keep, before comparing or storing, makes the
+// two agree.
+const storedPrecision = time.Microsecond
+
+// asStored rounds a time to what the database will keep, in UTC.
+func asStored(t time.Time) time.Time { return t.UTC().Truncate(storedPrecision) }
+
+// ErrRejected is returned for any arriving scan we decline to take.
+var ErrRejected = errors.New("scan rejected")
+
+// Arriving describes a scan someone is trying to send us.
+type Arriving struct {
+	// VariantID is the already-resolved target.
+	VariantID int64
+	// ContentHash is the hex digest of the file exactly as received.
+	ContentHash string
+	// BuiltAt is when the producer says the scan was made. This orders scans,
+	// not the time we happened to receive them: uploads retry, transfer slowly
+	// and queue, so arrival order says nothing about which is newer.
+	BuiltAt time.Time
+	// ParserVersion is the version of the code that will read it.
+	ParserVersion string
+	// Credential identifies what sent it. Blank until sign-in exists.
+	Credential string
+}
+
+// Scan is a scan we took.
+type Scan struct {
+	bun.BaseModel `bun:"table:scan,alias:sc"`
+
+	ID            int64     `bun:"id,pk,autoincrement"`
+	VariantID     int64     `bun:"variant_id,notnull"`
+	ContentHash   string    `bun:"content_hash,notnull"`
+	BuiltAt       time.Time `bun:"built_at,notnull"`
+	ReceivedAt    time.Time `bun:"received_at,notnull"`
+	ParserVersion string    `bun:"parser_version,notnull"`
+	Credential    string    `bun:"credential"`
+	Status        Status    `bun:"status,notnull"`
+}
+
+// Store records scans and answers what to do with a new one.
+type Store struct {
+	db bun.IDB
+	// now is overridable so tests can place a build time relative to a fixed
+	// point rather than to the wall clock.
+	now func() time.Time
+}
+
+// NewStore returns a store over db.
+func NewStore(db bun.IDB) *Store {
+	return &Store{db: db, now: func() time.Time { return time.Now().UTC() }}
+}
+
+// Decide says what should happen to an arriving scan, without recording
+// anything.
+//
+// The order of these checks matters. A future build time is refused first,
+// because accepting one would mean nothing legitimate could ever be newer and
+// the target would take no further scans. A file we already hold is next, so a
+// retry after a timeout that actually succeeded reports success rather than
+// failing the pipeline for work that landed. Only then does age matter.
+func (s *Store) Decide(ctx context.Context, a Arriving) (Outcome, error) {
+	built := asStored(a.BuiltAt)
+	if built.After(s.now().Add(futureTolerance)) {
+		return BuiltInFuture, nil
+	}
+
+	seen, err := s.byContent(ctx, a.VariantID, a.ContentHash)
+	if err != nil {
+		return Accept, err
+	}
+	if seen != nil {
+		return AlreadyHave, nil
+	}
+
+	newest, err := s.Newest(ctx, a.VariantID)
+	if err != nil {
+		return Accept, err
+	}
+	if newest != nil && !built.After(asStored(newest.BuiltAt)) {
+		return NotNewer, nil
+	}
+	return Accept, nil
+}
+
+// Record decides and, when the answer is to take it, writes the scan.
+//
+// The returned scan is the one now current for that variant: for a file we
+// already hold, that is the row we took the first time.
+func (s *Store) Record(ctx context.Context, a Arriving) (*Scan, Outcome, error) {
+	outcome, err := s.Decide(ctx, a)
+	if err != nil {
+		return nil, outcome, err
+	}
+
+	switch outcome {
+	case AlreadyHave:
+		existing, err := s.byContent(ctx, a.VariantID, a.ContentHash)
+		return existing, AlreadyHave, err
+
+	case NotNewer:
+		newest, _ := s.Newest(ctx, a.VariantID)
+		held := "none"
+		if newest != nil {
+			held = newest.BuiltAt.Format(time.RFC3339Nano)
+		}
+		return nil, NotNewer, fmt.Errorf(
+			"%w: built %s, but this variant already holds a scan built %s",
+			ErrRejected, a.BuiltAt.Format(time.RFC3339Nano), held)
+
+	case BuiltInFuture:
+		return nil, BuiltInFuture, fmt.Errorf(
+			"%w: built %s, which is ahead of this server's clock. Accepting it would mean no later scan is ever newer",
+			ErrRejected, a.BuiltAt.Format(time.RFC3339Nano))
+	}
+
+	scan := &Scan{
+		VariantID:     a.VariantID,
+		ContentHash:   a.ContentHash,
+		BuiltAt:       asStored(a.BuiltAt),
+		ReceivedAt:    s.now().Truncate(time.Microsecond),
+		ParserVersion: a.ParserVersion,
+		Credential:    a.Credential,
+		Status:        Accepted,
+	}
+	if _, err := s.db.NewInsert().Model(scan).Exec(ctx); err != nil {
+		return nil, Accept, fmt.Errorf("record scan: %w", err)
+	}
+	return scan, Accept, nil
+}
+
+// Newest returns the most recently built accepted scan for a variant, or nil.
+func (s *Store) Newest(ctx context.Context, variantID int64) (*Scan, error) {
+	scan := new(Scan)
+	err := s.db.NewSelect().Model(scan).
+		Where("variant_id = ?", variantID).
+		Where("status = ?", Accepted).
+		Order("built_at DESC").
+		Limit(1).
+		Scan(ctx)
+	if err != nil {
+		if isNoRows(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return scan, nil
+}
+
+func (s *Store) byContent(ctx context.Context, variantID int64, hash string) (*Scan, error) {
+	scan := new(Scan)
+	err := s.db.NewSelect().Model(scan).
+		Where("variant_id = ?", variantID).
+		Where("content_hash = ?", hash).
+		Scan(ctx)
+	if err != nil {
+		if isNoRows(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return scan, nil
+}
+
+func isNoRows(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for i := 0; i+7 <= len(msg); i++ {
+		if msg[i:i+7] == "no rows" {
+			return true
+		}
+	}
+	return false
+}
