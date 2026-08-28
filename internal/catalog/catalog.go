@@ -160,6 +160,12 @@ func (s *Store) DeclareStream(ctx context.Context, productID int64, name string,
 	if _, err := s.db.NewInsert().Model(st).Exec(ctx); err != nil {
 		return nil, fmt.Errorf("declare stream %q: %w", name, err)
 	}
+	// A new release is built as the same things the product is already built
+	// as. Making somebody restate that list is how one release ends up with a
+	// variant spelled differently from the last.
+	if err := s.seedVariants(ctx, productID, st.ID); err != nil {
+		return nil, err
+	}
 	return st, nil
 }
 

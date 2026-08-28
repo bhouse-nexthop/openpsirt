@@ -26,17 +26,36 @@ A tag records the branch it was cut from, where that is known. That parent is
 what lets a branch be compared against its last release, and what a new line
 seeds its decisions from.
 
-### A variant belongs to a stream, not to a product
+### A variant is the product's, and each release carries its own row
 
-A variant introduced in a later release must not appear to have existed in
-earlier ones. So the same variant name in two streams is two variants, and a
-scan naming a variant that stream does not have is rejected rather than
-matched against a similarly-named one elsewhere.
+What a product is built as — a chip, an architecture, an operating system — is
+a property of the product. It does not stop being one because each release
+records which of them it was actually built as.
+
+So the vocabulary belongs to the product and the rows belong to the releases.
+A release is **seeded** with the variants its product already builds, and a
+variant introduced later appears only from the release that introduced it
+onward. Seeding runs forward and never backward, which is what keeps a new chip
+from looking like something shipped years ago.
+
+**Nobody restates the list per release.** Somebody made to retype it will
+eventually retype it differently, and `win`, `windows` and `win32` across three
+releases are three variants as far as everything downstream is concerned —
+three sets of findings, three sets of decisions, three columns in every report
+— with nothing in the data saying they were meant to be one. It is the same
+slip that would invent a stream, except it recurs every release instead of
+once.
+
+A name the product has never used is therefore refused, and the refusal says
+what it does build. Something genuinely new is still declared, said
+deliberately rather than typed accidentally. The first release of a product can
+say anything: a vocabulary has to start somewhere.
 
 Each variant records whether it is customer-facing. It feeds ranking — a
 critical in a test-only artifact matters less than a medium in something a
 customer runs — and defaults to customer-facing, because an unclassified
-artifact should rank as though it ships.
+artifact should rank as though it ships. A seeded variant carries what the
+product already meant by that name.
 
 ## Declared before use
 

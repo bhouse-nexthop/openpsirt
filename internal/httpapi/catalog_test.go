@@ -114,7 +114,7 @@ func TestAVariantShipsUnlessItSaysOtherwise(t *testing.T) {
 		}
 
 		_, body = d.post(t, "/v1/products/sonic/streams/master/variants",
-			`{"name": "test-only", "customer_facing": false}`)
+			`{"name": "test-only", "customer_facing": false, "introduce": true}`)
 		item, _ = body["item"].(map[string]any)
 		if item["customer_facing"] != false {
 			t.Errorf("a variant declared as internal reported %v", item["customer_facing"])

@@ -39,6 +39,11 @@ type VariantBody struct {
 	// saying no. An unclassified artifact should rank as though it ships,
 	// which means the default is yes and silence must not read as a denial.
 	CustomerFacing *bool `json:"customer_facing,omitempty" doc:"Whether this reaches customers. Defaults to yes"`
+	// Introduce says this name is new to the product rather than a
+	// misspelling of one it already builds. A release is seeded with the
+	// variants the product already has, so declaring one is only needed when
+	// something genuinely new starts shipping.
+	Introduce bool `json:"introduce,omitempty" doc:"Set when this variant is new to the product rather than one it already builds"`
 }
 
 // declaredOutput reports what a declaration did.
@@ -147,7 +152,7 @@ func registerCatalog(api huma.API, d Declaring) {
 		if in.Body.CustomerFacing != nil {
 			facing = *in.Body.CustomerFacing
 		}
-		variant, created, err := store.EnsureVariant(ctx, stream.ID, in.Body.Name, facing)
+		variant, created, err := store.EnsureVariant(ctx, stream.ID, in.Body.Name, facing, in.Body.Introduce)
 		if err != nil {
 			return nil, declineDeclaration(err)
 		}

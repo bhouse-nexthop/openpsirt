@@ -160,7 +160,7 @@ inputs.
 
 | # | Decision | Why |
 |---|---|---|
-| MDL-01 | The tracked unit is (product, stream or tag, variant). Variants belong to a stream, not to the product | A variant added in a later release shouldn't retroactively exist in earlier ones. Releases and variants are **declared before use** (ING-11), not discovered from ingest — an earlier draft said the opposite and was corrected |
+| MDL-01 | The tracked unit is (product, stream or tag, variant). **A variant is a property of the product; each release carries its own row for the ones it is built as, seeded from the product and never restated by hand** | A variant added in a later release shouldn't retroactively exist in earlier ones. Releases and variants are **declared before use** (ING-11), not discovered from ingest — an earlier draft said the opposite and was corrected |
 | MDL-02 | A variant is any parallel build of the same source differing only in target — chip variant, **operating system**, CPU architecture, platform | Broader than the chip-variant example suggests |
 | MDL-03 | The dependency graph is stored as nodes and edges, never flattened | The same package appears at many versions and many places. A flat list can't answer "why is this here" |
 | MDL-04 | Upstream provenance is kept and shown | A shipped `frr_10.5.4-sonic-0` matches CVEs through its upstream identity. Drop it and findings become unexplainable |
@@ -664,6 +664,7 @@ themselves.
 | Variants declared, not discovered | An early decision had variants appear automatically from whatever a scan named. Reversed once the typo case was considered: a misspelled release is indistinguishable from a real one (ING-11) |
 | Path identity narrowed to the direct consumer | A chain of names was measured against a real image and multiplied: 49,170 places for one shared library, against 48 direct consumers. A chain restates one fact once per route through a package family (MDL-06) |
 | Paths settled as not materialized | Held open until a real SBOM could be measured. It was, and walking the edges answers the question in milliseconds on every engine (MDL-18) |
+| Variants stopped being restated per release | "A variant belongs to a stream, not to a product" was the wrong half of the truth. What a product is built as is the product's; only which of them a release was built as is the release's. Releases are seeded, and a name the product has never used is refused — the typo that invents a stream was inventing a variant once per release (MDL-01) |
 | Renumbered to grouped prefixes | Was a flat `D1`–`D110` sequence in rough chronological order. Regrouped by area so the topic is visible in the ID. Remediation and reporting were split out of an overloaded triage section at the same time. Old `D` numbers are retired and do not map forward |
 | Same-origin UI serving restored | Recorded as a leaning in the long version and dropped when the document was condensed. Recovered as API-07, and it is load-bearing for how sign-in works |
 | Machine authentication restored | How CI authenticates was an open item in the long version and was dropped when the document was condensed. Recovered as ACC-10 to ACC-13 |

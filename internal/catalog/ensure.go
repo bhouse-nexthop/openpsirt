@@ -70,7 +70,10 @@ func (s *Store) EnsureStream(ctx context.Context, productID int64, name string, 
 
 // EnsureVariant declares a way a stream is built, or confirms one already
 // declared.
-func (s *Store) EnsureVariant(ctx context.Context, streamID int64, name string, customerFacing bool) (*Variant, bool, error) {
+//
+// Introducing says the name is genuinely new to the product rather than a
+// misspelling of one it already uses.
+func (s *Store) EnsureVariant(ctx context.Context, streamID int64, name string, customerFacing, introducing bool) (*Variant, bool, error) {
 	existing, err := s.VariantByName(ctx, streamID, name)
 	switch {
 	case err == nil:
@@ -87,11 +90,28 @@ func (s *Store) EnsureVariant(ctx context.Context, streamID int64, name string, 
 		return nil, false, err
 	}
 
+	stream, err := s.streamByID(ctx, streamID)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := s.checkKnown(ctx, stream.ProductID, name, introducing); err != nil {
+		return nil, false, err
+	}
+
 	created, err := s.DeclareVariant(ctx, streamID, name, customerFacing)
 	if err != nil {
 		return nil, false, err
 	}
 	return created, true, nil
+}
+
+// streamByID reads a stream by its identifier.
+func (s *Store) streamByID(ctx context.Context, streamID int64) (*Stream, error) {
+	var st Stream
+	if err := s.db.NewSelect().Model(&st).Where("id = ?", streamID).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("look up stream %d: %w", streamID, err)
+	}
+	return &st, nil
 }
 
 // facing names the two states in the words somebody reading an error would.

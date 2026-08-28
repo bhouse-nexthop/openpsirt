@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
@@ -110,11 +111,74 @@ func TestNamesAreUniqueWithinTheirParent(t *testing.T) {
 			t.Errorf("duplicate variant accepted: %v", err)
 		}
 
-		// The same variant name in a different stream is a different variant:
-		// variants belong to a stream, not to the product.
+		// A new release is built as the same things the product already is,
+		// so it arrives already carrying them rather than needing them
+		// restated.
 		b, _ := s.DeclareStream(ctx, p.ID, "release-2.5", catalog.Branch, nil)
-		if _, err := s.DeclareVariant(ctx, b.ID, "broadcom", true); err != nil {
-			t.Errorf("the same variant name in another stream was rejected: %v", err)
+		carried, err := s.Variants(ctx, b.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(carried) != 1 || carried[0].Name != "broadcom" {
+			t.Errorf("a new release carried %+v, want the product's variants", carried)
+		}
+		// The row is its own, per release: the same name in two releases is
+		// two rows, which is what keeps a variant introduced later from
+		// appearing in earlier ones.
+		if carried[0].StreamID != b.ID {
+			t.Error("a carried variant belongs to the wrong release")
+		}
+	})
+}
+
+func TestAVariantNameTheProductDoesNotUseIsRefused(t *testing.T) {
+	// The typo that would invent a stream invents a variant once per release.
+	// "win", "windows" and "win32" across three releases are three sets of
+	// findings and three sets of decisions, and nothing in the data says they
+	// were meant to be one.
+	each(t, func(t *testing.T, _ *database.DB, s *catalog.Store) {
+		ctx := t.Context()
+		p, err := s.DeclareProduct(ctx, "windows-agent", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, err := s.DeclareStream(ctx, p.ID, "2024", catalog.Branch, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A vocabulary has to start somewhere: the first release can say
+		// anything, because there is nothing to have misspelled.
+		if _, _, err := s.EnsureVariant(ctx, first.ID, "windows", true, false); err != nil {
+			t.Fatalf("the first variant of a product was refused: %v", err)
+		}
+
+		next, err := s.DeclareStream(ctx, p.ID, "2025", catalog.Branch, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _, err = s.EnsureVariant(ctx, next.ID, "win32", true, false)
+		if !errors.Is(err, catalog.ErrUnknownVariant) {
+			t.Errorf("a variant the product does not build was accepted: %v", err)
+		}
+		if err != nil && !strings.Contains(err.Error(), "windows") {
+			t.Errorf("the refusal does not say what it does build: %v", err)
+		}
+
+		// Something genuinely new still gets in, said deliberately.
+		if _, _, err := s.EnsureVariant(ctx, next.ID, "linux", true, true); err != nil {
+			t.Errorf("a genuinely new variant was refused: %v", err)
+		}
+		// And from then on it is one of the product's own.
+		later, err := s.DeclareStream(ctx, p.ID, "2026", catalog.Branch, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		carried, err := s.Variants(ctx, later.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(carried) != 2 {
+			t.Errorf("the next release carried %d variants, want both", len(carried))
 		}
 	})
 }

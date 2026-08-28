@@ -88,7 +88,7 @@ func eachReader(t *testing.T, fn func(t *testing.T, f *readerFixture)) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		branchVariant, err := cat.DeclareVariant(ctx, branch.ID, "broadcom", true)
+		branchVariant, _, err := cat.EnsureVariant(ctx, branch.ID, "broadcom", true, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -96,7 +96,9 @@ func eachReader(t *testing.T, fn func(t *testing.T, f *readerFixture)) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		tagVariant, err := cat.DeclareVariant(ctx, tag.ID, "broadcom", true)
+		// The tag already carries the product's variants, so this resolves the
+		// seeded row rather than making a second one.
+		tagVariant, _, err := cat.EnsureVariant(ctx, tag.ID, "broadcom", true, false)
 		if err != nil {
 			t.Fatal(err)
 		}
