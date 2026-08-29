@@ -165,8 +165,8 @@ func upload(ctx context.Context, in Ingest, input *UploadInput) (*UploadOutput, 
 	// The names are resolved to things before the pair is recorded, so that
 	// whether this sender may file against them is decided first. Recording
 	// and then refusing would leave a row created by a request that failed.
-	catalogue := catalog.NewStore(in.DB.DB)
-	named, err := catalogue.LocateVisible(ctx, subject, input.Product, input.Stream, input.Variant)
+	catalog := catalog.NewStore(in.DB.DB)
+	named, err := catalog.LocateVisible(ctx, subject, input.Product, input.Stream, input.Variant)
 	if err != nil {
 		// The message names which part is missing, which is what whoever sees
 		// the failed upload needs in order to declare it — and a target this
@@ -207,7 +207,7 @@ func upload(ctx context.Context, in Ingest, input *UploadInput) (*UploadOutput, 
 			fmt.Sprintf("%d scans are already waiting to be read; try again shortly", depth))
 	}
 
-	target, err := catalogue.TargetFor(ctx, named.StreamID, named.VariantID)
+	target, err := catalog.TargetFor(ctx, named.StreamID, named.VariantID)
 	if err != nil {
 		return nil, wentWrong(in.Logger, "the target could not be recorded", err)
 	}
@@ -245,7 +245,7 @@ func upload(ctx context.Context, in Ingest, input *UploadInput) (*UploadOutput, 
 		result  UploadResult
 		outcome ingest.Outcome
 	)
-	err = in.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+	err = database.InTransaction(ctx, in.DB.DB, func(ctx context.Context, tx bun.Tx) error {
 		scan, taken, err := ingest.NewStore(tx).Record(ctx, arriving)
 		// Recorded before the error is checked: a refusal carries the reason
 		// in the outcome, and that is what decides which answer the producer
@@ -421,7 +421,7 @@ func registerReceipts(api huma.API, in Ingest) {
 			sender = subject.Identity
 		}
 		scans := ingest.NewStore(in.DB.DB)
-		receipts, total, err := scans.Receipts(ctx, target.ID, sender, input.Limit, input.Offset)
+		receipts, total, err := scans.Receipts(ctx, subject, target.ID, sender, input.Limit, input.Offset)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "the scans could not be read", err)
 		}

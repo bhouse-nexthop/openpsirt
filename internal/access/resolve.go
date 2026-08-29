@@ -145,6 +145,20 @@ func (r *Resolver) WithLogger(l *slog.Logger) *Resolver {
 // keyHeader is how a pipeline presents its credential.
 const keyHeader = "Authorization"
 
+// viaBrowser marks an arrival a browser made by itself, where no session of
+// ours stands behind it.
+//
+// The trusted-header path is the case: the proxy authenticates from its own
+// cookie, which the browser attaches without anybody asking, so a
+// state-changing request needs the same forgery guard a session gets. There is
+// no session row to hold an echoed value, so this session carries none and
+// nothing can match it — a deployment on that path answers such requests only
+// when it is told which origins it serves.
+var viaBrowser = &Session{}
+
+// FromBrowserWithoutSession reports whether this is such an arrival.
+func FromBrowserWithoutSession(session *Session) bool { return session == viaBrowser }
+
 // SessionCookie is what a browser holds after signing in. It carries the
 // session token and nothing else — no identity, no roles, nothing a page could
 // read and act on — and it is marked so that scripts cannot read it at all.
@@ -212,14 +226,19 @@ func (r *Resolver) Resolve(ctx context.Context, req *http.Request) (Subject, *Se
 		who := Arrival{Provider: ProxyProvider, Subject: identity, Username: identity}
 		if r.mode(ctx) == GroupBound {
 			subject, err := r.store.AdmitByGroups(ctx, who, r.trust.groupsFrom(req))
-			return subject, nil, err
+			return subject, viaBrowser, err
 		}
 		person, err := r.store.MatchProvider(ctx, who.Provider, who.Subject, who.Username)
 		if err != nil {
 			return Subject{}, nil, ErrDenied
 		}
 		subject, err := r.store.Resolve(ctx, person.Identity)
-		return subject, nil, err
+		// Reported as a browser arrival with no session of ours behind it. The
+		// proxy authenticates from a cookie the browser sends by itself, which
+		// is precisely what makes a hostile page able to act as the signed-in
+		// user — so this path needs the same guard a session gets, even though
+		// there is no session row to bind a value to.
+		return subject, viaBrowser, err
 	}
 
 	return r.fromCookie(ctx, req)

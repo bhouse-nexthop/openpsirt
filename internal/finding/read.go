@@ -126,7 +126,7 @@ type Group struct {
 	// Places is how many consumers pull this component in here. It is part of
 	// what is read rather than a detail: sixty-two places and one place are
 	// different situations to somebody deciding, and a group that hides its
-	// size invites a judgement made about one being applied to sixty-one
+	// size invites a judgment made about one being applied to sixty-one
 	// unseen.
 	Places int
 	// Answered counts the places the build has already argued about.
@@ -175,7 +175,7 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		Where("f.closed_run_id IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		GroupExpr("f.vulnerability_id, f.component_id").
-		// Most places first, because that is the most decisions one judgement
+		// Most places first, because that is the most decisions one judgment
 		// covers. Ranking by how much an issue matters needs scores that are
 		// not gathered yet.
 		OrderExpr("places DESC, f.vulnerability_id, f.component_id").

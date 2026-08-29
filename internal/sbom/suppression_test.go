@@ -191,7 +191,7 @@ func TestAVulnerabilityNamedAsPlainTextIsRead(t *testing.T) {
 }
 
 func TestAStatusNothingCanReadIsRefused(t *testing.T) {
-	// Ignoring it would let a build's judgement go missing silently, which is
+	// Ignoring it would let a build's judgment go missing silently, which is
 	// what applying the claims here exists to prevent.
 	_, err := sbom.ReadSuppressions(strings.NewReader(statement(
 		`{"vulnerability": {"name": "CVE-2026-1"}, "status": "probably_fine",

@@ -61,7 +61,11 @@ func (s *Store) NewToken(ctx context.Context, personID int64, name string, produ
 		ceiling = MaxTokenLifetime
 	}
 	if lifetime <= 0 {
-		lifetime = DefaultTokenLifetime
+		// The default is what somebody gets for not saying, so it is clamped
+		// to what is allowed rather than compared against it. Refusing a mint
+		// that asked for nothing, naming a limit nobody tried to exceed, would
+		// make every deployment with a short ceiling reject its own default.
+		lifetime = min(DefaultTokenLifetime, ceiling)
 	}
 	if lifetime > ceiling {
 		return nil, "", fmt.Errorf("a token may last at most %s here", ceiling)
@@ -113,16 +117,30 @@ func (s *Store) ResolveToken(ctx context.Context, presented string) (Subject, er
 		return Subject{}, err
 	}
 
-	used := s.now().Truncate(time.Microsecond)
-	if _, err := s.db.NewUpdate().Model((*Token)(nil)).
-		Set("last_used_at = ?", used).Where("id = ?", token.ID).Exec(ctx); err != nil {
-		return Subject{}, fmt.Errorf("record that a token was used: %w", err)
+	// Coarse, like the others: a script driving this token makes as many
+	// requests as it likes, and each one would otherwise rewrite the same row.
+	if used := s.now().Truncate(time.Microsecond); staleEnough(token.LastUsedAt, used) {
+		if _, err := s.db.NewUpdate().Model((*Token)(nil)).
+			Set("last_used_at = ?", used).Where("id = ?", token.ID).Exec(ctx); err != nil {
+			return Subject{}, fmt.Errorf("record that a token was used: %w", err)
+		}
 	}
 
+	// Marked before any narrowing, because it is true of every token: what
+	// arrives on one may not mint another, narrowed or not. A token that can
+	// mint is a token whose limits are one request deep — the holder asks for
+	// a wider one and gets it, because minting resolves through the owner.
+	subject = subject.delegate()
 	if token.ProductID != nil {
 		subject = subject.narrowedTo(*token.ProductID)
 	}
 	return subject, nil
+}
+
+// delegate marks a subject as arriving on a minted credential.
+func (s Subject) delegate() Subject {
+	s.delegated = true
+	return s
 }
 
 // narrowedTo keeps only what this subject holds on one product.
@@ -133,7 +151,7 @@ func (s *Store) ResolveToken(ctx context.Context, presented string) (Subject, er
 // product carrying it would not be narrowed at all.
 func (s Subject) narrowedTo(productID int64) Subject {
 	narrowed := Subject{
-		ID: s.ID, Identity: s.Identity, Kind: s.Kind,
+		ID: s.ID, Identity: s.Identity, Kind: s.Kind, delegated: s.delegated,
 		grants: map[int64][]Role{},
 	}
 	if held, ok := s.grants[productID]; ok {

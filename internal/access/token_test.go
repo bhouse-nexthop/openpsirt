@@ -100,8 +100,16 @@ func TestANarrowedTokenReachesLessThanItsOwnerAndNeverMore(t *testing.T) {
 		if err := f.store.Withdraw(ctx, person.ID, sonic, access.PublicRead); err != nil {
 			t.Fatal(err)
 		}
-		if subject, err := f.store.ResolveToken(ctx, narrowed); err == nil && subject.Reads(access.Public, sonic) {
+		// Asserted unconditionally. Guarding this on the resolution succeeding
+		// would make the property stop being checked the moment resolution
+		// failed for any unrelated reason, and the test would still pass.
+		switch subject, err := f.store.ResolveToken(ctx, narrowed); {
+		case err == nil && subject.Reads(access.Public, sonic):
 			t.Error("narrowing granted what its owner had lost")
+		case err == nil:
+			if reached, all := subject.Products(); all || len(reached) != 0 {
+				t.Errorf("a token whose owner holds nothing still reaches %v (all=%v)", reached, all)
+			}
 		}
 	})
 }
@@ -200,11 +208,103 @@ func TestOneKindOfCredentialIsNeverLookedUpAsAnother(t *testing.T) {
 		if got := keySecret[:4]; got != access.KeyPrefix {
 			t.Errorf("a pipeline key begins %q", got)
 		}
+		// These two would hold with the prefixes deleted, because the stores
+		// query different tables — so they pin the shape and not the dispatch.
 		if _, err := f.store.ResolveKey(ctx, secret); err == nil {
 			t.Error("a personal token resolved as a pipeline key")
 		}
 		if _, err := f.store.ResolveToken(ctx, keySecret); err == nil {
 			t.Error("a pipeline key resolved as a personal token")
+		}
+	})
+}
+
+func TestATokenCannotMintOrWithdrawAnother(t *testing.T) {
+	// Without this every limit on a token is one request deep: the holder asks
+	// for a wider one and gets it, because minting resolves through the owner.
+	// An administrator's narrowed token would mint one carrying administration.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		boss, err := f.store.Ensure(ctx, "boss", "", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sonic := f.products["sonic"]
+		_, narrow, err := f.store.NewToken(ctx, boss.ID, "narrow", &sonic, time.Hour, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		subject, err := f.store.ResolveToken(ctx, narrow)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if subject.Admin {
+			t.Fatal("a narrowed token carried administration")
+		}
+		if !subject.Delegated() {
+			t.Error("a token did not arrive marked as a minted credential")
+		}
+
+		// And the same holds for one that was never narrowed: the limit is on
+		// minting, not on how wide the token happens to be.
+		_, wide, err := f.store.NewToken(ctx, boss.ID, "wide", nil, time.Hour, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		whole, err := f.store.ResolveToken(ctx, wide)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !whole.Delegated() {
+			t.Error("an un-narrowed token did not arrive marked as a minted credential")
+		}
+	})
+}
+
+func TestTwoCredentialsMayNotShareAName(t *testing.T) {
+	// A key's name is what an ingest records as having sent a scan, what
+	// receipts are narrowed by, and what an administrator revokes. Two sharing
+	// one makes each able to read the other's uploads, and makes a revocation
+	// report success having withdrawn whichever row came back first.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		if _, _, err := f.store.NewKey(ctx, "nightly", access.Scope{ProductID: f.products["sonic"]}); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := f.store.NewKey(ctx, "nightly", access.Scope{ProductID: f.products["onie"]}); err == nil {
+			t.Error("two keys were given one name")
+		}
+
+		person, err := f.store.Ensure(ctx, "someone", "", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := f.store.NewToken(ctx, person.ID, "scripting", nil, time.Hour, 0); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := f.store.NewToken(ctx, person.ID, "scripting", nil, time.Hour, 0); err == nil {
+			t.Error("one person was given two tokens with one name")
+		}
+	})
+}
+
+func TestATokenDefaultsToWhateverTheCeilingAllows(t *testing.T) {
+	// Somebody who states no lifetime asked to exceed nothing, so a deployment
+	// with a short ceiling has to give them the ceiling rather than refuse
+	// them while naming a limit they never mentioned.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		person, err := f.store.Ensure(ctx, "someone", "", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		token, _, err := f.store.NewToken(ctx, person.ID, "unstated", nil, 0, 24*time.Hour)
+		if err != nil {
+			t.Fatalf("a mint that stated no lifetime was refused: %v", err)
+		}
+		if got := token.ExpiresAt.Sub(token.CreatedAt); got != 24*time.Hour {
+			t.Errorf("lasted %v, want the ceiling of 24h", got)
 		}
 	})
 }

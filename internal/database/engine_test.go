@@ -2,7 +2,7 @@ package database
 
 import "testing"
 
-func TestParseURLRecognisesEachEngine(t *testing.T) {
+func TestParseURLRecognizesEachEngine(t *testing.T) {
 	for _, tc := range []struct {
 		url    string
 		engine Engine

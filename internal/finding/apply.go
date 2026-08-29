@@ -38,7 +38,7 @@ type key struct {
 func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Reported) (Applied, error) {
 	var applied Applied
 
-	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+	err := database.InTransaction(ctx, s.db, func(ctx context.Context, tx bun.Tx) error {
 		issues := make([]Named, 0, len(reported))
 		for _, r := range reported {
 			issues = append(issues, r.Issue)

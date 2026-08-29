@@ -6,11 +6,11 @@
 package signin
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -43,7 +43,19 @@ func guardedClient(hosts ...string) *http.Client {
 		allowed[strings.ToLower(host)] = true
 	}
 
-	dialer := &net.Dialer{Timeout: fetchTimeout}
+	// Control rather than a wrapped DialContext. DialContext is handed the
+	// *unresolved* host and port from the URL, so a check there sees a name
+	// and never an address. Control runs once per address the name resolved
+	// to, after resolution and before the connection is made, which is both
+	// where the address actually exists and the only place a check cannot be
+	// slipped past by a name that resolves differently the second time it is
+	// asked.
+	dialer := &net.Dialer{
+		Timeout: fetchTimeout,
+		Control: func(_, address string, _ syscall.RawConn) error {
+			return reachable(address)
+		},
+	}
 	return &http.Client{
 		Timeout: fetchTimeout,
 		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
@@ -51,14 +63,7 @@ func guardedClient(hosts ...string) *http.Client {
 		},
 		Transport: &guard{
 			allowed: allowed,
-			inner: &http.Transport{
-				DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-					if err := reachable(address); err != nil {
-						return nil, err
-					}
-					return dialer.DialContext(ctx, network, address)
-				},
-			},
+			inner:   &http.Transport{DialContext: dialer.DialContext},
 		},
 	}
 }
@@ -97,13 +102,28 @@ func reachable(address string) error {
 	}
 	ip := net.ParseIP(host)
 	if ip == nil {
-		// The dialer resolves before it gets here, so anything that is not an
-		// address at this point is something unexpected rather than a name.
+		// Reached only from the dialer's control step, which runs on a
+		// resolved address. Anything that is not one here is unexpected
+		// rather than a name still awaiting resolution.
 		return fmt.Errorf("refused a connection to %q: not an address", host)
 	}
 	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() ||
+		sharedAddressSpace(ip) {
 		return fmt.Errorf("refused a connection to %s: a provider is not reached inside this network", ip)
 	}
 	return nil
+}
+
+// sharedAddressSpace covers the ranges the standard library does not treat as
+// private but which are not the public internet either: the carrier-grade
+// translation block, and the block meaning "this network".
+func sharedAddressSpace(ip net.IP) bool {
+	for _, block := range []string{"100.64.0.0/10", "0.0.0.0/8"} {
+		_, network, err := net.ParseCIDR(block)
+		if err == nil && network.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }

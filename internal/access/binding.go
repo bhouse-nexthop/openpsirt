@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/uptrace/bun"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
 )
 
 // Mode is where a person's roles come from, for the whole deployment.
@@ -171,9 +173,46 @@ func (s *Store) AdmitByGroups(ctx context.Context, who Arrival, groups []string)
 		return Subject{}, ErrDenied
 	}
 
-	roles, admin, err := s.rolesFor(ctx, groups)
+	// Applied whole. This runs on every request in a deployment where a proxy
+	// reports membership, so two requests from one person overlap constantly —
+	// and the middle of it is a moment when their derived roles have been
+	// removed and not yet written back. Without a transaction a second request
+	// reads that moment and refuses somebody who holds everything they should,
+	// or collides on the row the first is about to insert.
+	// Retried whole, and everything it depends on is read inside it. A
+	// clustered database certifies a write when it commits rather than when
+	// the statement runs, so two nodes signing the same person in find out at
+	// commit — and the loser is told the whole transaction was rolled back,
+	// including the reads it decided from.
+	db, err := s.handle()
 	if err != nil {
 		return Subject{}, err
+	}
+	var person *Account
+	if err := database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+		var err error
+		person, err = (&Store{db: tx, now: s.now}).admit(ctx, who, groups)
+		return err
+	}); err != nil {
+		return Subject{}, err
+	}
+
+	// Read after the writes are committed, and deliberately not inside them.
+	// What this sign-in yields is whatever they now hold, and somebody who
+	// left every group holds nothing — but the leaving has to stand. Deciding
+	// inside the transaction would make the refusal roll back the very
+	// withdrawal that caused it, so their roles would come back each time they
+	// were turned away.
+	return s.Resolve(ctx, person.Identity)
+}
+
+// admit records what a sign-in changes, and returns whose it was. It says
+// nothing about whether they get in.
+func (s *Store) admit(ctx context.Context, who Arrival, groups []string) (*Account, error) {
+
+	roles, admin, err := s.rolesFor(ctx, groups)
+	if err != nil {
+		return nil, err
 	}
 
 	// Somebody unknown and in no mapped group was never authorized, so nothing
@@ -189,7 +228,7 @@ func (s *Store) AdmitByGroups(ctx context.Context, who Arrival, groups []string)
 	person, err := s.MatchProvider(ctx, who.Provider, who.Subject, who.Username)
 	known := err == nil
 	if !known && len(roles) == 0 && !admin {
-		return Subject{}, ErrDenied
+		return nil, ErrDenied
 	}
 
 	if !known {
@@ -198,38 +237,41 @@ func (s *Store) AdmitByGroups(ctx context.Context, who Arrival, groups []string)
 			CreatedAt: s.now().Truncate(time.Microsecond),
 		}
 		if _, err := s.db.NewInsert().Model(person).Exec(ctx); err != nil {
-			return Subject{}, fmt.Errorf("record %q: %w", who.handle(), err)
+			return nil, fmt.Errorf("record %q: %w", who.handle(), err)
 		}
 		// The mapping authorized them, so the way they arrived is recorded and
 		// pinned now rather than waiting for a second sign-in.
 		if err := s.Claim(ctx, person.ID, who.Provider, who.Username); err != nil {
-			return Subject{}, err
+			return nil, err
 		}
 		if _, err := s.MatchProvider(ctx, who.Provider, who.Subject, who.Username); err != nil {
-			return Subject{}, err
+			return nil, err
 		}
 	}
 
 	// An administrator named in configuration keeps it whatever the groups
 	// say. That naming is the documented way back in when the mapping is
 	// wrong or the provider is unreachable (ACC-32).
-	effective := admin || person.IsBootstrap
-	if person.IsAdmin != effective {
+	// Somebody promoted inside the application keeps that: their
+	// administration did not come from a group, so a group not mentioning them
+	// says nothing about it. Only what a group granted is taken back by a
+	// group, which is what admin_derived records.
+	effective := admin || person.IsBootstrap || (person.IsAdmin && !person.AdminDerived)
+	if person.IsAdmin != effective || person.AdminDerived != admin {
 		if _, err := s.db.NewUpdate().Model((*Account)(nil)).
-			Set("is_admin = ?", effective).Where("id = ?", person.ID).Exec(ctx); err != nil {
-			return Subject{}, fmt.Errorf("record what %q administers: %w", person.Identity, err)
+			Set("is_admin = ?", effective).Set("admin_derived = ?", admin).
+			Where("id = ?", person.ID).Exec(ctx); err != nil {
+			return nil, fmt.Errorf("record what %q administers: %w", person.Identity, err)
 		}
 		person.IsAdmin = effective
+		person.AdminDerived = admin
 	}
 
 	if err := s.replaceDerived(ctx, person.ID, roles); err != nil {
-		return Subject{}, err
+		return nil, err
 	}
 
-	// Resolved rather than assembled here, so that what this sign-in yields is
-	// read from what the person now holds. Somebody who left every group holds
-	// nothing and is refused by the same rule that refuses a stranger.
-	return s.Resolve(ctx, person.Identity)
+	return person, nil
 }
 
 // rolesFor reads what a set of groups maps to.
@@ -308,6 +350,20 @@ func (s *Store) replaceDerived(ctx context.Context, personID int64, roles map[in
 // once nothing refreshes them would leave roles nobody assigned and nothing
 // will ever withdraw.
 func (s *Store) SwitchTo(ctx context.Context, mode Mode) error {
+	// Applied whole, because a sign-in that overlaps it would otherwise write
+	// derived grants back after they were cleared — leaving roles in a
+	// deployment where nothing derives them any more, which is exactly what
+	// clearing them was for.
+	db, err := s.handle()
+	if err != nil {
+		return err
+	}
+	return database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+		return (&Store{db: tx, now: s.now}).switchTo(ctx, mode)
+	})
+}
+
+func (s *Store) switchTo(ctx context.Context, mode Mode) error {
 	switch mode {
 	case GroupBound:
 		if _, err := s.db.NewUpdate().Model((*Grant)(nil)).
@@ -325,12 +381,24 @@ func (s *Store) SwitchTo(ctx context.Context, mode Mode) error {
 			Where("source = ?", Assigned).Exec(ctx); err != nil {
 			return fmt.Errorf("restore the assigned roles: %w", err)
 		}
-		// Administration derived from a group goes with it. What was named in
-		// configuration does not: that is the way back in, and it is applied
-		// again at every startup regardless of mode.
+		// Administration derived from a group goes with it — but only what a
+		// group actually derived. Somebody an administrator promoted inside
+		// the application never got it from a group, and clearing theirs would
+		// make a mode switch destroy access that was never derived and cannot
+		// be restored by switching back.
+		//
+		// Which is which is knowable from the identity: a person admitted by a
+		// group mapping is the one whose administration came from one. Anybody
+		// holding a role assigned to them, or named in configuration, keeps it.
 		if _, err := s.db.NewUpdate().Model((*Account)(nil)).
 			Set("is_admin = ?", false).
-			Where("is_bootstrap = ?", false).Exec(ctx); err != nil {
+			Where("is_bootstrap = ?", false).
+			Where("admin_derived = ?", true).Exec(ctx); err != nil {
+			return fmt.Errorf("clear what groups administered: %w", err)
+		}
+		if _, err := s.db.NewUpdate().Model((*Account)(nil)).
+			Set("admin_derived = ?", false).
+			Where("admin_derived = ?", true).Exec(ctx); err != nil {
 			return fmt.Errorf("clear what groups administered: %w", err)
 		}
 	default:

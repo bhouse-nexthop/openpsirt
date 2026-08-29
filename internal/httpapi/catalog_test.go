@@ -37,6 +37,7 @@ func (d *declaring) post(t *testing.T, path, body string) (int, map[string]any) 
 func (d *declaring) postAs(t *testing.T, who, path, body string) (int, map[string]any) {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
+	fromOurOwnPage(req)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(testHeader, who)
 	return d.do(t, req)
@@ -232,6 +233,7 @@ func TestADeclaredTargetCanBeUploadedAgainst(t *testing.T) {
 		req := upload(t, "/v1/products/sonic/streams/master/variants/broadcom/scans",
 			inventory(nowish(), "libc6"))
 		req.Header.Set(testHeader, d.admin)
+		fromOurOwnPage(req)
 		rec := httptest.NewRecorder()
 		d.handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusAccepted {

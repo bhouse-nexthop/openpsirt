@@ -178,7 +178,7 @@ Measured on one real switch image, scanned live:
 The kernel is 91% of it: 4,849 issues in it, and 62 modules built against it.
 Those edges are real and the producer emits them deliberately, so that anyone
 can reason about kernel-ABI risk — but which module is loaded does not change
-whether the kernel has a bug, and nobody triaging wants the same judgement
+whether the kernel has a bug, and nobody triaging wants the same judgment
 sixty-two times.
 
 The model is not wrong: a finding is a component at a place, and those are the

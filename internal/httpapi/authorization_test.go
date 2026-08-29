@@ -38,6 +38,18 @@ func declaredBody(method, path, name string) io.Reader {
 	return strings.NewReader(`{"name": "` + name + `"}`)
 }
 
+// fromOurOwnPage makes a request look like one a browser made from a page this
+// deployment served, which is what every ordinary request is.
+//
+// A browser states the origin of the page that caused a state-changing
+// request, and will not let a page lie about it — so a request that states
+// none is not one a browser made from our own page, and is refused. Tests that
+// authenticate through the proxy header have to say so, or every write they
+// make is measuring the forgery guard instead of the thing under test.
+func fromOurOwnPage(req *http.Request) {
+	req.Header.Set("Origin", "http://"+req.Host)
+}
+
 // reach is a server with two products and people holding various things, so
 // that every combination of who-asks and what-they-ask-for can be checked
 // rather than a representative few.
@@ -64,6 +76,7 @@ func (r *reach) body(t *testing.T, who, method, path string) response {
 	if who != "" {
 		req.Header.Set(testHeader, who)
 	}
+	fromOurOwnPage(req)
 	rec := httptest.NewRecorder()
 	r.handler.ServeHTTP(rec, req)
 	return response{code: rec.Code, text: rec.Body.String()}
@@ -90,6 +103,7 @@ func (r *reach) as(t *testing.T, who, method, path string) int {
 	if who != "" {
 		req.Header.Set(testHeader, who)
 	}
+	fromOurOwnPage(req)
 	rec := httptest.NewRecorder()
 	r.handler.ServeHTTP(rec, req)
 	return rec.Code

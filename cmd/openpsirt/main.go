@@ -1,4 +1,4 @@
-// Command openpsirt serves the openpsirt API.
+// Command openpsirt serves the OpenPSIRT API.
 package main
 
 import (
@@ -93,8 +93,6 @@ func run(args []string, stdout, stderr *os.File) error {
 		logger.Info("automatic migration is off; run \"openpsirt migrate up\" separately")
 	}
 
-	// Readiness asks whether we can serve, which means the database answers
-	// and answers promptly — not merely that the process is up.
 	// Named administrators are granted at every start, which is what makes
 	// this the way back in rather than a one-time setup step.
 	if err := access.Bootstrap(ctx, access.NewStore(db.DB), cfg.BootstrapAdmins); err != nil {
@@ -133,6 +131,17 @@ func run(args []string, stdout, stderr *os.File) error {
 	if err != nil {
 		return err
 	}
+	if len(providers) > 0 && cfg.BaseURL == "" {
+		// A provider sends people back to an address, and it compares that
+		// address against what it was registered with. Deriving it from
+		// whatever a request claims its host is would make the address depend
+		// on the request — so it is stated, and a deployment that configured a
+		// provider without stating it stops here rather than at somebody's
+		// first sign-in.
+		return fmt.Errorf(
+			"%sBASE_URL has to name the address people reach this on, because a provider is configured",
+			"OPENPSIRT_")
+	}
 
 	work := queue.New(db, queue.DefaultOptions())
 	handler, _ := httpapi.New(logger, db.Validate, httpapi.Ingest{
@@ -157,8 +166,6 @@ func run(args []string, stdout, stderr *os.File) error {
 	return serve(cfg, logger, handler, reader, runner)
 }
 
-// closeQuietly closes the database at shutdown. A failure here changes nothing
-// about the exit, but silence would hide a genuinely stuck connection.
 // readInterval is how long an idle reader waits before asking for work again.
 //
 // It bounds how long a producer waits to see its scan reflected, which nobody
@@ -176,6 +183,8 @@ func workerName() string {
 	return fmt.Sprintf("%s/%d", host, os.Getpid())
 }
 
+// closeQuietly closes the database at shutdown. A failure here changes nothing
+// about the exit, but silence would hide a genuinely stuck connection.
 func closeQuietly(db *database.DB, logger *slog.Logger) {
 	if err := db.Close(); err != nil {
 		logger.Warn("closing the database", "error", err)

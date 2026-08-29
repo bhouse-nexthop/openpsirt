@@ -3,6 +3,7 @@ package httpapi_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -91,6 +92,9 @@ func eachSignIn(t *testing.T, fn func(t *testing.T, r *signInReach)) {
 			Access:    access.NewResolver(rights, access.Trust{}),
 			Providers: map[string]signin.Provider{"stub": provider},
 			PlainHTTP: true,
+			// Stated, because a provider compares the callback against what
+			// it was registered with, so it cannot be taken from the request.
+			BaseURL: "http://example.com",
 		})
 		fn(t, &signInReach{handler: handler, provider: provider, rights: rights})
 	})
@@ -189,8 +193,12 @@ func TestACallbackWithoutTheSignInThatStartedItIsRefused(t *testing.T) {
 
 func TestSomebodyWhoAuthenticatesButWasGrantedNothingGetsInNowhere(t *testing.T) {
 	eachSignIn(t, func(t *testing.T, r *signInReach) {
-		for _, who := range []string{"ungranted", "a-stranger"} {
-			r.provider.says = &signin.Identity{Subject: "2", Username: who}
+		// A distinct subject each time. Reusing one made the second case match
+		// the first person by their pinned identifier and rename them, so the
+		// stranger path was never reached and the test quietly demonstrated
+		// identity mutation while claiming to test refusal.
+		for i, who := range []string{"ungranted", "a-stranger"} {
+			r.provider.says = &signin.Identity{Subject: fmt.Sprintf("subject-%d", i+2), Username: who}
 			rec := callback(t, r, "the-state", "a-code", true)
 			if rec.Code != http.StatusUnauthorized {
 				t.Errorf("%q answered %d, want 401", who, rec.Code)
@@ -279,3 +287,40 @@ func hasSession(cookies []*http.Cookie) bool {
 // errClientSecretRejected stands for the sort of fault a provider reports:
 // specific, useful to an operator, and nobody else's business.
 var errClientSecretRejected = errors.New("the client secret was rejected")
+
+func TestAnIdentifierAlreadyPinnedIsNotRedeemableByAnotherName(t *testing.T) {
+	// The property the reused-subject test was standing on without checking.
+	// Somebody whose identifier is pinned is that person whatever name the
+	// provider now reports, and a different identifier reporting a pinned
+	// name is somebody else.
+	eachSignIn(t, func(t *testing.T, r *signInReach) {
+		r.provider.says = &signin.Identity{Subject: "1001", Username: "granted"}
+		if rec := callback(t, r, "the-state", "a-code", true); rec.Code != http.StatusFound {
+			t.Fatalf("the authorized person could not sign in: %d", rec.Code)
+		}
+
+		// Somebody else, presenting the name that person signs in under.
+		r.provider.says = &signin.Identity{Subject: "2002", Username: "granted"}
+		if rec := callback(t, r, "the-state", "a-code", true); rec.Code != http.StatusUnauthorized {
+			t.Errorf("somebody else redeemed a pinned name: %d", rec.Code)
+		}
+
+		// And the original, renamed, is still themselves.
+		r.provider.says = &signin.Identity{Subject: "1001", Username: "granted-elsewhere"}
+		if rec := callback(t, r, "the-state", "a-code", true); rec.Code != http.StatusFound {
+			t.Errorf("a rename locked somebody out of their own account: %d", rec.Code)
+		}
+	})
+}
+
+func TestAnIdentityTokenNamingNobodyIsRefused(t *testing.T) {
+	// A provider that verifies but names no subject leaves nothing stable to
+	// match on, which would quietly reduce this deployment to matching by
+	// name — the thing the pinning exists to replace.
+	eachSignIn(t, func(t *testing.T, r *signInReach) {
+		r.provider.says = &signin.Identity{Subject: "", Username: "granted"}
+		if rec := callback(t, r, "the-state", "a-code", true); rec.Code != http.StatusUnauthorized {
+			t.Errorf("a sign-in naming no subject answered %d, want 401", rec.Code)
+		}
+	})
+}

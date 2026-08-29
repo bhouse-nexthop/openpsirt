@@ -60,6 +60,15 @@ func registerTokens(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
+		// A token cannot mint a token. Minting resolves through the owner, so
+		// a narrowed one could otherwise ask for a wide one and be given it —
+		// which makes every limit on a token exactly one request deep,
+		// including the lifetime ceiling and, for an administrator's token,
+		// administration itself.
+		if subject.Delegated() {
+			return nil, huma.Error403Forbidden(
+				"a token cannot mint another; sign in to mint one")
+		}
 
 		var productID *int64
 		if input.Body.Product != "" {
@@ -115,6 +124,13 @@ func registerTokens(api huma.API, in Ingest) {
 		subject, rights, _, err := mine(ctx, in)
 		if err != nil {
 			return nil, err
+		}
+		// Withdrawing is minting's mirror: a leaked token that could revoke
+		// its owner's others would be a way to lock them out of their own
+		// scripting while keeping the one that leaked.
+		if subject.Delegated() {
+			return nil, huma.Error403Forbidden(
+				"a token cannot withdraw another; sign in to withdraw one")
 		}
 		token, err := rights.TokenByName(ctx, subject.ID, input.Name)
 		if err != nil {

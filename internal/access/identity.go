@@ -111,12 +111,31 @@ func (s *Store) MatchProvider(ctx context.Context, provider, subject, username s
 		return nil, ErrDenied
 	}
 
-	if subject != "" && claimed.Subject == nil {
+	if claimed.Subject == nil {
+		if subject == "" {
+			// Nothing to pin to. A provider that names somebody without a
+			// stable identifier leaves this authorization redeemable by name
+			// forever, which is the matching this whole shape exists to
+			// replace — so it is refused rather than admitted unpinned.
+			// The proxy path is the exception and states a subject of its own.
+			return nil, ErrDenied
+		}
+
 		bound := s.now().Truncate(time.Microsecond)
-		if _, err := s.db.NewUpdate().Model((*Identity)(nil)).
+		result, err := s.db.NewUpdate().Model((*Identity)(nil)).
 			Set("subject = ?", subject).Set("bound_at = ?", bound).
-			Where("id = ?", claimed.ID).Where("subject IS NULL").Exec(ctx); err != nil {
+			Where("id = ?", claimed.ID).Where("subject IS NULL").Exec(ctx)
+		if err != nil {
 			return nil, fmt.Errorf("pin %q at %q: %w", username, provider, err)
+		}
+		// Whether this pinned it is the whole question. Two arrivals can reach
+		// here at once holding different identifiers, and exactly one may
+		// redeem the authorization — so the one whose update matched nothing
+		// is somebody else, and is refused rather than admitted on the
+		// strength of a row the other just claimed.
+		pinned, err := result.RowsAffected()
+		if err != nil || pinned != 1 {
+			return nil, ErrDenied
 		}
 	}
 	return s.byID(ctx, claimed.PersonID)

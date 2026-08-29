@@ -136,25 +136,46 @@ func (g *GitHub) Complete(ctx context.Context, code string, pending Pending, red
 // roles to teams would admit nobody at all rather than admitting everybody,
 // which is the direction to fail in (ACC-24, ACC-41).
 func (g *GitHub) teams(ctx context.Context, token *oauth2.Token) ([]string, error) {
-	var memberships []struct {
-		Slug         string `json:"slug"`
-		Organization struct {
-			Login string `json:"login"`
-		} `json:"organization"`
-	}
-	if err := g.get(ctx, token, "https://api.github.com/user/teams?per_page=100", &memberships); err != nil {
-		return nil, err
-	}
-
-	names := make([]string, 0, len(memberships))
-	for _, membership := range memberships {
-		if membership.Organization.Login != g.organization {
-			continue
+	// Paged through rather than read once. This endpoint reports teams across
+	// every organization somebody belongs to, so a single page is not a page
+	// of *our* teams — and truncating it would silently strip roles from
+	// whoever happens to be in a lot of teams, which is a refusal nobody could
+	// diagnose from either side.
+	names := []string{}
+	for page := 1; page <= maxTeamPages; page++ {
+		var memberships []struct {
+			Slug         string `json:"slug"`
+			Organization struct {
+				Login string `json:"login"`
+			} `json:"organization"`
 		}
-		names = append(names, membership.Slug)
+		url := fmt.Sprintf("https://api.github.com/user/teams?per_page=%d&page=%d", teamPageSize, page)
+		if err := g.get(ctx, token, url, &memberships); err != nil {
+			return nil, err
+		}
+		for _, membership := range memberships {
+			if membership.Organization.Login != g.organization {
+				continue
+			}
+			names = append(names, membership.Slug)
+		}
+		if len(memberships) < teamPageSize {
+			return names, nil
+		}
 	}
-	return names, nil
+	// More pages than anybody reasonably has. Reported rather than truncated:
+	// a silently short list would withdraw roles, and doing that without
+	// saying so is the failure this whole path is written to avoid.
+	return nil, fmt.Errorf("github reports more than %d pages of teams, which is more than this reads",
+		maxTeamPages)
 }
+
+// How much of GitHub's team listing is read. The page size is its maximum, and
+// the page limit is a bound on an answer that should never be near it.
+const (
+	teamPageSize = 100
+	maxTeamPages = 20
+)
 
 // get asks GitHub something, through the client that will talk to GitHub and
 // nowhere else.

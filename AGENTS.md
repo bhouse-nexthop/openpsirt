@@ -68,6 +68,8 @@ unpick later.
 | **A finding is a component at a specific place.** Do not deduplicate up to the package. Grouping is presentation only | MDL-05, REL-02 |
 | **Identity is structural; expiry is version-based.** Never mix them — that is how an unrelated top-level bump invalidates a leaf decision | MDL-08 |
 | **The tests run on every supported engine.** SQLite-only tests catch none of the portability traps | DAT-12 |
+| **Every transaction is retryable as a whole**, through the one helper. A cluster certifies at `COMMIT`, so a write whose statements all succeeded can still be rolled back under it | DAT-30 |
+| **Nothing a transaction depends on is read outside it.** A retry re-runs the closure against a moved database, so a value fetched before it began describes a world that is gone. Anything the closure uses but does not fetch is a defect | DAT-31 |
 | **SQL values are parameterized and SQL identifiers come from an allowlist.** A placeholder cannot bind a column name, so a sort column from a query parameter is the real risk | SEC-01, SEC-02 |
 
 ## Source file size
@@ -119,7 +121,7 @@ image, 305,487 of them a single kernel across 62 modules". Not "walking is
 cheap" but "3 ms on PostgreSQL, 11 ms on MySQL, for the worst component in a
 real graph".
 
-A number is checkable and a judgement is not. Somebody reading this in two
+A number is checkable and a judgment is not. Somebody reading this in two
 years can re-run the measurement and see whether it still holds, which is the
 difference between a decision that can be revisited and one that has to be
 taken on trust. It is also the honest record of *why now* — several of these
@@ -144,7 +146,7 @@ the tracker and the pull request.
 
 **Comment density matches the surrounding code.** Explain why, not what.
 
-**American spelling, everywhere.** License, not licence. Catalog, normalize,
+**American spelling, everywhere.** License, not license. Catalog, normalize,
 behavior, color, authorize. It applies to prose, comments and identifiers
 alike — a codebase that spells one word two ways makes both unsearchable, and
 the choice matters less than the consistency.

@@ -24,9 +24,13 @@ type Account struct {
 	IsAdmin     bool   `bun:"is_admin,notnull"`
 	// IsBootstrap is set from configuration at every startup, and is what
 	// keeps a re-derivation from group membership out of the way back in.
-	IsBootstrap bool       `bun:"is_bootstrap,notnull"`
-	CreatedAt   time.Time  `bun:"created_at,notnull"`
-	LastSeenAt  *time.Time `bun:"last_seen_at"`
+	IsBootstrap bool `bun:"is_bootstrap,notnull"`
+	// AdminDerived says a group granted this rather than a person. Only what
+	// a group gave is taken back when groups stop deciding, so somebody
+	// promoted inside the application survives a change of mode.
+	AdminDerived bool       `bun:"admin_derived,notnull"`
+	CreatedAt    time.Time  `bun:"created_at,notnull"`
+	LastSeenAt   *time.Time `bun:"last_seen_at"`
 }
 
 // Grant is one role held against one product.
@@ -65,6 +69,32 @@ type Key struct {
 type Store struct {
 	db  bun.IDB
 	now func() time.Time
+}
+
+// handle returns the connection this store was built over, or reports that it
+// is already inside a transaction.
+//
+// A store built over a transaction cannot start another, and a retry that
+// re-ran the inner half alone would repeat part of a transaction whose other
+// part had been rolled back. Saying so is better than silently doing it.
+func (s *Store) handle() (*bun.DB, error) {
+	db, ok := s.db.(*bun.DB)
+	if !ok {
+		return nil, fmt.Errorf("this store is already inside a transaction")
+	}
+	return db, nil
+}
+
+// seenResolution is how coarse a last-used record is.
+//
+// It answers "is this still in use", which is a question about days. Recording
+// it to the second would make every read a write on the row a person touches
+// most, for a precision nothing asks for.
+const seenResolution = time.Hour
+
+// staleEnough reports whether a last-used stamp is old enough to rewrite.
+func staleEnough(recorded *time.Time, now time.Time) bool {
+	return recorded == nil || now.Sub(*recorded) >= seenResolution
 }
 
 // NewStore returns a store over db.
@@ -147,10 +177,18 @@ func (s *Store) Resolve(ctx context.Context, identity string) (Subject, error) {
 		return Subject{}, ErrDenied
 	}
 
-	seen := s.now().Truncate(time.Microsecond)
-	if _, err := s.db.NewUpdate().Model((*Account)(nil)).
-		Set("last_seen_at = ?", seen).Where("id = ?", person.ID).Exec(ctx); err != nil {
-		return Subject{}, fmt.Errorf("record that %q was seen: %w", identity, err)
+	// Written only when it has gone stale, not on every request. Every
+	// authenticated request passes through here, so writing each time makes a
+	// person's own row the hottest in the database and makes every read a
+	// write — which a replica cannot serve from a follower and which, on a
+	// cluster, turns two concurrent requests from one person into a
+	// certification conflict at commit. The date is what anybody reads it for,
+	// so an hour's resolution loses nothing.
+	if seen := s.now().Truncate(time.Microsecond); staleEnough(person.LastSeenAt, seen) {
+		if _, err := s.db.NewUpdate().Model((*Account)(nil)).
+			Set("last_seen_at = ?", seen).Where("id = ?", person.ID).Exec(ctx); err != nil {
+			return Subject{}, fmt.Errorf("record that %q was seen: %w", identity, err)
+		}
 	}
 	return NewPerson(person.ID, person.Identity, person.IsAdmin, grants), nil
 }
@@ -261,6 +299,13 @@ func hashSecret(secret string) string {
 }
 
 // People lists everybody who has been granted something, with what they hold.
+// People lists everybody and what they hold, inactive grants included and
+// marked as such.
+//
+// The rows are returned whole rather than filtered, because this is the view
+// an access review reads: a grant that has been set aside has to be visible as
+// set aside, not hidden and not counted. What must never happen is an inactive
+// row reading like a live one, which is what the caller renders.
 func (s *Store) People(ctx context.Context) ([]Account, map[int64][]Grant, error) {
 	var people []Account
 	if err := s.db.NewSelect().Model(&people).Order("identity").Scan(ctx); err != nil {

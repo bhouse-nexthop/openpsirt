@@ -84,7 +84,7 @@ func (a ClaimsApplied) Unchanged() bool { return a.Opened == 0 && a.Closed == 0 
 func (s *Store) RecordClaims(ctx context.Context, targetID, scanID int64, claims []sbom.Suppression) (ClaimsApplied, error) {
 	var applied ClaimsApplied
 
-	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+	err := database.InTransaction(ctx, s.db, func(ctx context.Context, tx bun.Tx) error {
 		wanted := map[string]Claim{}
 		for _, claim := range claims {
 			for _, subject := range claim.Targets {

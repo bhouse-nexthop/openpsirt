@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/uptrace/bun"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
 )
 
 // Node is a component's presence in a variant.
@@ -90,7 +92,7 @@ func NewStore(db *bun.DB) *Store {
 func (s *Store) Apply(ctx context.Context, targetID, scanID int64, snap Snapshot) (Applied, error) {
 	var applied Applied
 
-	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+	err := database.InTransaction(ctx, s.db, func(ctx context.Context, tx bun.Tx) error {
 		// Taken first, before anything is read. Two scans of one target can be
 		// in flight at once — the queue hands different jobs to different
 		// workers by design — and without this both would read the same open

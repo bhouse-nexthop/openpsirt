@@ -354,7 +354,7 @@ func (c *reader) ancestor(described *graph.Described) error {
 
 // patches reads what a component's carried patches say they resolve.
 //
-// This is the build's judgement about its own patches, arriving attached to
+// This is the build's judgment about its own patches, arriving attached to
 // the component it is about rather than in a separate document that has to be
 // matched back to one. A patch only claims a vulnerability where it says so —
 // in its own name, or in a header declaring what it fixes — so what is read

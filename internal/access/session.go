@@ -111,18 +111,30 @@ func (s *Store) ResolveSession(ctx context.Context, token string) (Subject, *Ses
 		return Subject{}, nil, err
 	}
 
-	used := s.now().Truncate(time.Microsecond)
-	if _, err := s.db.NewUpdate().Model((*Session)(nil)).
-		Set("last_used_at = ?", used).Where("id = ?", session.ID).Exec(ctx); err != nil {
-		return Subject{}, nil, fmt.Errorf("record that a session was used: %w", err)
+	// Coarse, for the same reason a person's own row is: every request on this
+	// session comes through here, and writing each time makes the row a
+	// contention point that a cluster then has to certify on every parallel
+	// request from one browser.
+	if used := s.now().Truncate(time.Microsecond); staleEnough(session.LastUsedAt, used) {
+		if _, err := s.db.NewUpdate().Model((*Session)(nil)).
+			Set("last_used_at = ?", used).Where("id = ?", session.ID).Exec(ctx); err != nil {
+			return Subject{}, nil, fmt.Errorf("record that a session was used: %w", err)
+		}
+		session.LastUsedAt = &used
 	}
-	session.LastUsedAt = &used
 	return subject, session, nil
 }
 
 // MatchesCSRF reports whether the value a request echoed belongs to this
 // session, compared in constant time.
 func (session *Session) MatchesCSRF(presented string) bool {
+	// A session holding no value matches nothing. Two empty strings compare
+	// equal, so without this a session that somehow carries none would accept
+	// a request that echoed nothing — which is every request a hostile page
+	// makes.
+	if session.CSRFToken == "" {
+		return false
+	}
 	return subtle.ConstantTimeCompare([]byte(session.CSRFToken), []byte(presented)) == 1
 }
 

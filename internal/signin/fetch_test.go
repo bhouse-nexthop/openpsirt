@@ -1,6 +1,7 @@
 package signin
 
 import (
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -72,6 +73,75 @@ func TestAProviderIsNotFollowedToSomewhereElse(t *testing.T) {
 		t.Error("a redirect was followed")
 	} else if !strings.Contains(err.Error(), "refused a redirect") {
 		t.Errorf("refused for the wrong reason: %v", err)
+	}
+}
+
+func TestTheAddressGuardSeesAnAddressAndNotAName(t *testing.T) {
+	// The test whose absence hid a total failure. Everything else here calls
+	// reachable() with address literals, so nothing noticed that a request
+	// through the client never got that far: a dialer is handed the
+	// *unresolved* name from the URL, and a check written against an address
+	// refuses every name — including every real provider's.
+	//
+	// A name is what distinguishes the two. The URL below names a host rather
+	// than an address, so a guard that runs before resolution can only say
+	// "not an address", while one that runs after says what it actually
+	// found. Asserting on which of those comes back is the whole point.
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("a request reached a server inside this network")
+	}))
+	defer server.Close()
+
+	_, port, err := net.SplitHostPort(strings.TrimPrefix(server.URL, "https://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := guardedClient("localhost")
+
+	_, err = client.Get("https://localhost:" + port)
+	if err == nil {
+		t.Fatal("a request to this machine was allowed")
+	}
+	if strings.Contains(err.Error(), "not an address") {
+		t.Fatalf("the guard ran before the name was resolved, so it refuses every provider: %v", err)
+	}
+	if !strings.Contains(err.Error(), "not reached inside this network") {
+		t.Errorf("refused for the wrong reason: %v", err)
+	}
+}
+
+func TestAnAllowedProviderSurvivesEveryLayerOfTheClient(t *testing.T) {
+	// A guard that refuses everything would pass every refusal test in this
+	// file. This is the other direction: a request the client is meant to
+	// allow has to actually come back.
+	//
+	// The server is on this machine, which the address guard refuses by
+	// design, so that one check is stood down and nothing else is — scheme,
+	// host allowlist and redirect policy all stay as a deployment gets them.
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"issuer":"https://issuer.example"}`))
+	}))
+	defer server.Close()
+
+	host, _, err := net.SplitHostPort(strings.TrimPrefix(server.URL, "https://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := guardedClient(host)
+	transport, ok := client.Transport.(*guard).inner.(*http.Transport)
+	if !ok {
+		t.Fatal("the guarded client is not built the way this test assumes")
+	}
+	transport.DialContext = (&net.Dialer{}).DialContext
+	transport.TLSClientConfig = server.Client().Transport.(*http.Transport).TLSClientConfig
+
+	resp, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatalf("the guarded client could not reach a provider it was allowed to reach: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("answered %s", resp.Status)
 	}
 }
 

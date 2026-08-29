@@ -54,9 +54,10 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 		// under. A report naming any of them finds the same row.
 		`CREATE TABLE vulnerability_alias (
 			id               ` + t.id + `,
-			vulnerability_id ` + t.ref + ` NOT NULL REFERENCES vulnerability(id),
+			vulnerability_id ` + t.ref + ` NOT NULL,
 			identifier       ` + t.name + ` NOT NULL,
-			CONSTRAINT vulnerability_alias_unique UNIQUE (identifier)
+			CONSTRAINT vulnerability_alias_unique UNIQUE (identifier),
+			CONSTRAINT vulnerability_alias_vulnerability_id_fk FOREIGN KEY (vulnerability_id) REFERENCES vulnerability(id)
 		)` + t.suffix,
 
 		// One execution of a scanner over one variant. Recorded whether it ran
@@ -64,14 +65,15 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 		// scanners without saying so is worse than no report.
 		`CREATE TABLE scan_run (
 			id               ` + t.id + `,
-			target_id        ` + t.ref + ` NOT NULL REFERENCES target(id),
+			target_id        ` + t.ref + ` NOT NULL,
 			scanner          ` + t.name + ` NOT NULL,
 			scanner_version  ` + t.name + ` NULL,
 			database_version ` + t.name + ` NULL,
 			ran_here         ` + t.boolean + ` NOT NULL,
 			started_at       ` + t.timestamp + ` NOT NULL,
 			finished_at      ` + t.timestamp + ` NULL,
-			failure          ` + t.text + ` NULL
+			failure          ` + t.text + ` NULL,
+			CONSTRAINT scan_run_target_id_fk FOREIGN KEY (target_id) REFERENCES target(id)
 		)` + t.suffix,
 
 		// What a build has already argued does not apply to it.
@@ -88,7 +90,7 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 		// nothing.
 		`CREATE TABLE suppression (
 			id             ` + t.id + `,
-			target_id      ` + t.ref + ` NOT NULL REFERENCES target(id),
+			target_id      ` + t.ref + ` NOT NULL,
 			identity       ` + t.hash + ` NOT NULL,
 			vulnerability  ` + t.free + ` NOT NULL,
 			-- The status vocabulary is the exchange format's, not ours, and
@@ -100,8 +102,11 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			origin         ` + t.kind + ` NOT NULL,
 			subject_purl   ` + t.text + ` NULL,
 			subject_name   ` + t.free + ` NULL,
-			opened_scan_id ` + t.ref + ` NOT NULL REFERENCES scan(id),
-			closed_scan_id ` + t.refNull + ` NULL REFERENCES scan(id)
+			opened_scan_id ` + t.ref + ` NOT NULL,
+			closed_scan_id ` + t.refNull + ` NULL,
+			CONSTRAINT suppression_target_id_fk FOREIGN KEY (target_id) REFERENCES target(id),
+			CONSTRAINT suppression_opened_scan_id_fk FOREIGN KEY (opened_scan_id) REFERENCES scan(id),
+			CONSTRAINT suppression_closed_scan_id_fk FOREIGN KEY (closed_scan_id) REFERENCES scan(id)
 		)` + t.suffix,
 
 		`CREATE INDEX suppression_open_idx ON suppression (target_id, closed_scan_id)`,
@@ -112,16 +117,16 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 		// graph of every variant it might apply to.
 		`CREATE TABLE finding (
 			id               ` + t.id + `,
-			target_id        ` + t.ref + ` NOT NULL REFERENCES target(id),
+			target_id        ` + t.ref + ` NOT NULL,
 			kind             ` + t.kind + ` NOT NULL,
 			-- Whether this has been disclosed. Not who may read it: every
 			-- request is authenticated either way. Anything unrecognized
 			-- reads as undisclosed, so a value added later cannot default
 			-- rows that predate it to visible.
 			visibility       ` + t.kind + ` NOT NULL,
-			vulnerability_id ` + t.ref + ` NOT NULL REFERENCES vulnerability(id),
-			component_id     ` + t.ref + ` NOT NULL REFERENCES component(id),
-			consumer_id      ` + t.refNull + ` NULL REFERENCES component(id),
+			vulnerability_id ` + t.ref + ` NOT NULL,
+			component_id     ` + t.ref + ` NOT NULL,
+			consumer_id      ` + t.refNull + ` NULL,
 			place_identity   ` + t.hash + ` NOT NULL,
 			fix_state        ` + t.kind + ` NULL,
 			-- A scanner reports every version that fixes an issue, and for a
@@ -130,14 +135,21 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			-- A finding the build has already argued about is marked, not
 			-- dropped: one that simply stopped appearing is
 			-- indistinguishable from a scanner fault.
-			suppressed_by    ` + t.refNull + ` NULL REFERENCES suppression(id),
+			suppressed_by    ` + t.refNull + ` NULL,
 			-- What is true of a finding now, alongside when it became true.
 			-- A finding open for years outlives whatever record of the change
 			-- was kept elsewhere, so it carries its own.
 			last_changed_at  ` + t.timestamp + ` NOT NULL,
-			opened_run_id    ` + t.ref + ` NOT NULL REFERENCES scan_run(id),
-			closed_run_id    ` + t.refNull + ` NULL REFERENCES scan_run(id),
-			closed_because   ` + t.kind + ` NULL
+			opened_run_id    ` + t.ref + ` NOT NULL,
+			closed_run_id    ` + t.refNull + ` NULL,
+			closed_because   ` + t.kind + ` NULL,
+			CONSTRAINT finding_target_id_fk FOREIGN KEY (target_id) REFERENCES target(id),
+			CONSTRAINT finding_vulnerability_id_fk FOREIGN KEY (vulnerability_id) REFERENCES vulnerability(id),
+			CONSTRAINT finding_component_id_fk FOREIGN KEY (component_id) REFERENCES component(id),
+			CONSTRAINT finding_consumer_id_fk FOREIGN KEY (consumer_id) REFERENCES component(id),
+			CONSTRAINT finding_suppressed_by_fk FOREIGN KEY (suppressed_by) REFERENCES suppression(id),
+			CONSTRAINT finding_opened_run_id_fk FOREIGN KEY (opened_run_id) REFERENCES scan_run(id),
+			CONSTRAINT finding_closed_run_id_fk FOREIGN KEY (closed_run_id) REFERENCES scan_run(id)
 		)` + t.suffix,
 
 		// What is open now, per variant, is the query behind every screen.

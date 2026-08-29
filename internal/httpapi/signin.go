@@ -58,7 +58,12 @@ func begin(w http.ResponseWriter, r *http.Request, in Ingest) {
 		return
 	}
 
-	where, pending, err := provider.Begin(r.Context(), in.redirectURI(r, provider.Name()))
+	callback, err := in.redirectURI(r, provider.Name())
+	if err != nil {
+		wentWrongHere(w, in, "a sign-in could not be started", err)
+		return
+	}
+	where, pending, err := provider.Begin(r.Context(), callback)
 	if err != nil {
 		wentWrongHere(w, in, "a sign-in could not be started", err)
 		return
@@ -106,7 +111,12 @@ func complete(w http.ResponseWriter, r *http.Request, in Ingest) {
 		return
 	}
 
-	identity, err := provider.Complete(r.Context(), code, pending, in.redirectURI(r, provider.Name()))
+	callback, err := in.redirectURI(r, provider.Name())
+	if err != nil {
+		wentWrongHere(w, in, "a sign-in could not be completed", err)
+		return
+	}
+	identity, err := provider.Complete(r.Context(), code, pending, callback)
 	if err != nil {
 		// Logged rather than described. What went wrong between us and a
 		// provider is an operator's problem, and telling whoever is at the
@@ -221,16 +231,23 @@ func pendingFrom(r *http.Request) (signin.Pending, error) {
 // compares this against what it was registered with, so it has to be the
 // address people actually arrive on rather than whatever this process thinks
 // it is called — behind a proxy those differ.
-func (in Ingest) redirectURI(r *http.Request, provider string) string {
+func (in Ingest) redirectURI(r *http.Request, provider string) (string, error) {
 	base := strings.TrimSuffix(in.BaseURL, "/")
 	if base == "" {
-		scheme := "https"
-		if in.PlainHTTP {
-			scheme = "http"
-		}
-		base = scheme + "://" + r.Host
+		// The Host header is whatever the caller sent. Building the address a
+		// provider will send somebody back to out of it means a request
+		// claiming another host produces an authorization URL pointing there,
+		// and whether that is exploitable depends entirely on how strictly the
+		// provider matches its registered addresses — which is not ours to
+		// assume.
+		//
+		// So a deployment that configured a provider has to say where it is
+		// served. It is one setting, it is already needed for the provider's
+		// own registration to match, and failing here is visible where the
+		// alternative is not.
+		return "", errors.New("this deployment has not been told the address it is served on")
 	}
-	return base + "/v1/sign-in/" + provider + "/callback"
+	return base + "/v1/sign-in/" + provider + "/callback", nil
 }
 
 // refuseSignIn answers a sign-in that will not be completed.

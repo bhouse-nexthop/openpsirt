@@ -197,7 +197,7 @@ func TestStreamKindIsChecked(t *testing.T) {
 		ctx := t.Context()
 		p, _ := s.DeclareProduct(ctx, "sonic", "SONiC")
 		if _, err := s.DeclareStream(ctx, p.ID, "x", catalog.Kind("release"), nil); err == nil {
-			t.Error("an unrecognised stream kind was accepted")
+			t.Error("an unrecognized stream kind was accepted")
 		}
 	})
 }

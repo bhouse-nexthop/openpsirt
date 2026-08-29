@@ -96,7 +96,7 @@ func (v *suppressions) statement() (Suppression, error) {
 		return Suppression{}, fmt.Errorf("a claim names no vulnerability, so there is nothing it could be about")
 	}
 	if !claim.Status.known() {
-		// Ignoring a claim we cannot read would let a build's judgement go
+		// Ignoring a claim we cannot read would let a build's judgment go
 		// missing silently, which is the failure this arrangement exists to
 		// remove.
 		return Suppression{}, fmt.Errorf("claim about %s says %q, which is not a status this reads",

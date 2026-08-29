@@ -79,9 +79,10 @@ func TestWhatASessionReachesIsReadNowRatherThanRemembered(t *testing.T) {
 	})
 }
 
-func TestANegativeLifetimeIsNotAWayToMakeAPermanentSession(t *testing.T) {
+func TestAnUnstatedLifetimeTakesTheDefault(t *testing.T) {
 	// StartSession takes a lifetime from configuration, and configuration is
-	// edited by hand. A nonsense value has to land somewhere safe.
+	// edited by hand. Zero and anything below it are read as "nobody said",
+	// which lands on the default rather than on a session that never ends.
 	each(t, func(t *testing.T, f *fixture) {
 		ctx := t.Context()
 		person, err := f.store.Ensure(ctx, "someone", "", false)
@@ -91,13 +92,16 @@ func TestANegativeLifetimeIsNotAWayToMakeAPermanentSession(t *testing.T) {
 		if err := f.store.GrantRole(ctx, person.ID, f.products["sonic"], access.PublicRead); err != nil {
 			t.Fatal(err)
 		}
-		issued, err := f.store.StartSession(ctx, person.ID, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := issued.Session.ExpiresAt.Sub(issued.Session.CreatedAt); got != access.DefaultSessionLifetime {
-			t.Errorf("a lifetime of zero produced %v, want the default %v",
-				got, access.DefaultSessionLifetime)
+		for _, stated := range []time.Duration{0, -time.Minute, -time.Hour * 1000} {
+			issued, err := f.store.StartSession(ctx, person.ID, stated)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := issued.Session.ExpiresAt.Sub(issued.Session.CreatedAt)
+			if got != access.DefaultSessionLifetime {
+				t.Errorf("a lifetime of %v produced %v, want the default %v",
+					stated, got, access.DefaultSessionLifetime)
+			}
 		}
 	})
 }

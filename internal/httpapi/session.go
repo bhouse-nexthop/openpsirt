@@ -11,11 +11,15 @@ import (
 
 // SignOutOutput carries nothing. What matters is the cookie it clears.
 type SignOutOutput struct {
-	// SetCookie clears the session in the browser as well as in the database.
-	// Clearing only one leaves a browser holding a credential that stopped
-	// working, which reads to whoever holds it as the application being
-	// broken rather than as having signed out.
-	SetCookie http.Cookie `header:"Set-Cookie"`
+	// SetCookie clears what the browser holds as well as what the database
+	// does. Clearing only the database leaves a browser holding a credential
+	// that stopped working, which reads as the application being broken rather
+	// than as having signed out.
+	//
+	// Both cookies, because both were set. The value a page echoes is not a
+	// credential on its own, but leaving it behind means a signed-out browser
+	// still carries something from the session it left.
+	SetCookie []http.Cookie `header:"Set-Cookie"`
 	Status    int
 }
 
@@ -42,7 +46,13 @@ func registerSession(api huma.API, in Ingest) {
 		if err := access.NewStore(in.DB.DB).EndSession(ctx, session.ID); err != nil {
 			return nil, wentWrong(in.Logger, "the session could not be ended", err)
 		}
-		return &SignOutOutput{SetCookie: clearedCookie(in.PlainHTTP), Status: http.StatusNoContent}, nil
+		return &SignOutOutput{
+			SetCookie: []http.Cookie{
+				clearedCookie(in.PlainHTTP),
+				browserCookie(csrfCookieName, "", true, in.PlainHTTP, -1),
+			},
+			Status: http.StatusNoContent,
+		}, nil
 	})
 }
 
@@ -65,8 +75,11 @@ func SessionCookie(token string, plainHTTP bool) http.Cookie {
 // cookie does that — so what a script reading it gains is the ability to make
 // a request the browser could already have been made to make.
 func CSRFCookie(token string, plainHTTP bool) http.Cookie {
-	return browserCookie("openpsirt_csrf", token, true, plainHTTP, 0)
+	return browserCookie(csrfCookieName, token, true, plainHTTP, 0)
 }
+
+// csrfCookieName is where a page reads the value it echoes back.
+const csrfCookieName = "openpsirt_csrf"
 
 // clearedCookie is what tells a browser to forget the session. Its attributes
 // match the ones it was set with, because a browser matches on those before it
@@ -92,7 +105,24 @@ func clearedCookie(plainHTTP bool) http.Cookie {
 // that asked for it, and that HttpOnly is off only for the value a page has to
 // read in order to echo it.
 //
-//nolint:gosec // G124 cannot see that Secure is cleared only for a deployment
+// browserCookie builds the cookies this API sets, in one place so their
+// attributes are argued about once.
+//
+// SameSite=Lax so a browser does not attach them to a state-changing request
+// from another site — a second guard beside the value a page echoes rather
+// than a replacement for it, since neither covers every browser somebody
+// arrives with.
+//
+// plainHTTP clears Secure, for running this locally without TLS. A Secure
+// cookie is simply never sent over plain HTTP, so leaving it set there would
+// make sign-in fail silently: the browser drops the cookie and every request
+// afterwards looks like a stranger's. It is a parameter rather than a default
+// so that reaching it is deliberate.
+//
+// readable turns HttpOnly off, which exactly one cookie needs: the value a
+// page has to read in order to echo it back.
+//
+//nolint:gosec // G124 cannot see that Secure is cleared only for a deployment that asked for it, nor that HttpOnly is off only for the value a page must read.
 func browserCookie(name, value string, readable, plainHTTP bool, maxAge int) http.Cookie {
 	return http.Cookie{
 		Name: name, Value: value, Path: "/",

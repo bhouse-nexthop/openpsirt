@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/uptrace/bun"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
 )
 
 // Setting is one named value.
@@ -77,52 +79,44 @@ func (s *Store) Get(ctx context.Context, name string) (string, bool, error) {
 // first time. Two administrators setting the same thing at once resolve
 // against the primary key: one insert wins, the loser retries as an update.
 func (s *Store) Set(ctx context.Context, name, value string) error {
-	now := s.now().Truncate(time.Microsecond)
-
-	present, err := s.update(ctx, name, value, now)
-	if err != nil {
-		return err
+	db, ok := s.db.(*bun.DB)
+	if !ok {
+		return fmt.Errorf("this store is already inside a transaction")
 	}
-	if present {
+
+	// Inside one transaction, and retried whole. Written as two statements it
+	// could report success having stored nothing: the update matches no row,
+	// another writer inserts one, and a separate existence check then sees a
+	// row that the caller's value never reached. Whether the row exists and
+	// what it says have to be decided in the same view.
+	return database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+		now := s.now().Truncate(time.Microsecond)
+
+		if _, err := tx.NewUpdate().Model((*Setting)(nil)).
+			Set("value = ?", value).Set("updated_at = ?", now).
+			Where("name = ?", name).Exec(ctx); err != nil {
+			return fmt.Errorf("record the %q setting: %w", name, err)
+		}
+
+		// Asked inside the transaction, so what it sees is what the update
+		// just wrote against. Rows touched is not the question: two of the
+		// four engines report nothing touched when an update writes a value
+		// identical to the one already stored, which is the same number "no
+		// such setting" reports.
+		n, err := tx.NewSelect().Model((*Setting)(nil)).Where("name = ?", name).Count(ctx)
+		if err != nil {
+			return fmt.Errorf("record the %q setting: %w", name, err)
+		}
+		if n > 0 {
+			return nil
+		}
+
+		row := &Setting{Name: name, Value: value, UpdatedAt: now}
+		if _, err := tx.NewInsert().Model(row).Exec(ctx); err != nil {
+			return fmt.Errorf("record the %q setting: %w", name, err)
+		}
 		return nil
-	}
-
-	row := &Setting{Name: name, Value: value, UpdatedAt: now}
-	if _, err := s.db.NewInsert().Model(row).Exec(ctx); err == nil {
-		return nil
-	}
-
-	// Somebody inserted it between the update and here, so what failed is the
-	// race rather than the setting.
-	present, err = s.update(ctx, name, value, now)
-	if err != nil {
-		return err
-	}
-	if !present {
-		return fmt.Errorf("record the %q setting: it was neither updated nor inserted", name)
-	}
-	return nil
-}
-
-// update writes a setting and reports whether there was one to write.
-//
-// Whether a row exists is asked separately rather than read from the number of
-// rows the update touched. Two of the four engines report nothing touched when
-// an update writes a value identical to the one already stored, so a count of
-// zero means either "no such setting" or "that setting already said exactly
-// this" — and treating the second as the first would send the caller on to an
-// insert that cannot succeed.
-func (s *Store) update(ctx context.Context, name, value string, now time.Time) (bool, error) {
-	if _, err := s.db.NewUpdate().Model((*Setting)(nil)).
-		Set("value = ?", value).Set("updated_at = ?", now).
-		Where("name = ?", name).Exec(ctx); err != nil {
-		return false, fmt.Errorf("record the %q setting: %w", name, err)
-	}
-	n, err := s.db.NewSelect().Model((*Setting)(nil)).Where("name = ?", name).Count(ctx)
-	if err != nil {
-		return false, fmt.Errorf("record the %q setting: %w", name, err)
-	}
-	return n > 0, nil
+	})
 }
 
 // Duration reads a setting as a length of time, falling back to fallback where

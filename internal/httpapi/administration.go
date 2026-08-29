@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -16,21 +17,56 @@ type Administering struct {
 	Access  func() *access.Store
 	Catalog func() *catalog.Store
 	Logger  *slog.Logger
+	// Mode says where roles come from, read per request because an
+	// administrator can change it without a restart.
+	Mode func(context.Context) access.Mode
 }
 
 // PersonBody is somebody who has been granted access.
 type PersonBody struct {
-	Identity    string `json:"identity" minLength:"1" maxLength:"191" doc:"What a sign-in path calls them"`
+	Identity    string `json:"identity" minLength:"1" maxLength:"191" doc:"What to call them here"`
 	DisplayName string `json:"display_name,omitempty" doc:"What to show instead of the identity"`
 	Admin       bool   `json:"admin,omitempty" doc:"Whether they administer this deployment"`
+	// Provider and Username are how they will sign in. Recording somebody
+	// without them records a person with access and no door to come through,
+	// so they are required when somebody is first recorded.
+	//
+	// The username is what an administrator can type: a provider's own
+	// identifier for somebody is not knowable until they have arrived, so the
+	// authorization is written in the name and pinned to the identifier the
+	// first time it is redeemed.
+	Provider string `json:"provider,omitempty" doc:"Which sign-in path they will arrive by, such as proxy for a trusted header"`
+	Username string `json:"username,omitempty" doc:"What that provider calls them. Defaults to the identity"`
 	// Holds is what they may do, listed as product and role.
 	Holds []HeldBody `json:"holds,omitempty"`
+	// SignsInBy lists the ways they can arrive, when reading.
+	SignsInBy []SignInBody `json:"signs_in_by,omitempty"`
+}
+
+// SignInBody is one way somebody may arrive.
+type SignInBody struct {
+	Provider string `json:"provider"`
+	Username string `json:"username"`
+	// Pinned says the provider's own identifier has been bound, which happens
+	// at the first successful sign-in. Until then the authorization is still
+	// waiting to be redeemed by whoever arrives under that name.
+	Pinned bool `json:"pinned"`
 }
 
 // HeldBody is one role against one product.
 type HeldBody struct {
 	Product string `json:"product" minLength:"1" doc:"The product the role is held against"`
 	Role    string `json:"role" enum:"reporting,approver,public-read,private-read,public-triage,private-triage" doc:"What they may do with it"`
+	// Effective says whether this grants anything right now. An assignment set
+	// aside by a change of role-assignment mode is kept so the change can be
+	// undone, and it grants nothing while it sits there — so it is shown, and
+	// shown as what it is. An access review that counted it would be recording
+	// access that does not exist.
+	Effective bool `json:"effective" doc:"Whether this grants anything right now"`
+	// Source says where it came from: assigned by an administrator, or derived
+	// from a group. "Where did this access come from" is the question an audit
+	// asks first.
+	Source string `json:"source,omitempty" enum:"assigned,derived" doc:"Whether an administrator assigned this or a group derived it"`
 }
 
 // KeyBody is a pipeline credential, without its secret.
@@ -80,9 +116,19 @@ func registerAdministration(api huma.API, a Administering) {
 			body := PersonBody{
 				Identity: person.Identity, DisplayName: person.DisplayName, Admin: person.IsAdmin,
 			}
+			doors, err := store.Identities(ctx, person.ID)
+			if err != nil {
+				return nil, wentWrong(a.Logger, "cannot read how they sign in", err)
+			}
+			for _, door := range doors {
+				body.SignsInBy = append(body.SignsInBy, SignInBody{
+					Provider: door.Provider, Username: door.Username, Pinned: door.Subject != nil,
+				})
+			}
 			for _, grant := range held[person.ID] {
 				body.Holds = append(body.Holds, HeldBody{
 					Product: named[grant.ProductID], Role: string(grant.Role),
+					Effective: grant.Active, Source: string(grant.Source),
 				})
 			}
 			out.Body.Items = append(out.Body.Items, body)
@@ -107,11 +153,42 @@ func registerAdministration(api huma.API, a Administering) {
 		_, lookupErr := store.ByIdentity(ctx, in.Body.Identity)
 		created := lookupErr != nil
 
+		// Recording somebody is not the same as recording how they sign in,
+		// and access without a way to arrive is access nobody can use. So the
+		// door is recorded with them, and a first recording that names none is
+		// refused rather than half-done.
+		provider := strings.TrimSpace(in.Body.Provider)
+		username := strings.TrimSpace(in.Body.Username)
+		if username == "" {
+			username = strings.TrimSpace(in.Body.Identity)
+		}
+		if created && provider == "" {
+			return nil, huma.Error422UnprocessableEntity(
+				"say which provider they will sign in by, or they are somebody with access and no way to use it")
+		}
+
 		person, err := store.Ensure(ctx, in.Body.Identity, in.Body.DisplayName, in.Body.Admin)
 		if err != nil {
 			return nil, huma.Error400BadRequest(err.Error())
 		}
+		if provider != "" {
+			if err := store.Claim(ctx, person.ID, provider, username); err != nil {
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			}
+		}
 
+		if len(in.Body.Holds) > 0 {
+			// Roles come from one place at a time. Assigning one while groups
+			// decide would produce exactly the hybrid that has no answer to
+			// "where did this access come from" — and worse than the drift
+			// that rule anticipates, since nothing re-derives an assignment,
+			// so it would outlive every group change without ever having had
+			// a group behind it.
+			if a.Mode != nil && a.Mode(ctx) == access.GroupBound {
+				return nil, huma.Error409Conflict(
+					"roles are derived from groups here, so they are granted by binding a group rather than a person")
+			}
+		}
 		for _, hold := range in.Body.Holds {
 			product, err := names.ProductByName(ctx, hold.Product)
 			if err != nil {

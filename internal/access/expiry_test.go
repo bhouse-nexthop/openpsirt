@@ -12,8 +12,9 @@ import (
 )
 
 // atClock is a store whose sense of now a test moves, because a session
-// expires by time passing rather than by being born expired — the constructor
-// deliberately refuses to issue one that has already run out.
+// expires by time passing rather than by being born expired — a lifetime of
+// zero or less is taken as "unstated" and becomes the default, so there is no
+// way to ask for one that has already run out.
 func atClock(t *testing.T, db *database.DB, at *time.Time) (*Store, int64) {
 	t.Helper()
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))

@@ -167,7 +167,7 @@ func (q *Queue) Claim(ctx context.Context, worker, kind string) (*Job, error) {
 	staleBefore := now.Add(-q.opts.ClaimTimeout)
 
 	var job *Job
-	err := q.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+	err := database.InTransaction(ctx, q.db.DB, func(ctx context.Context, tx bun.Tx) error {
 		id, err := claimableID(ctx, tx, q.db.Server.Engine, kind, now, staleBefore)
 		if err != nil || id == 0 {
 			return err

@@ -386,7 +386,7 @@ func TestAnAliasSuppliedLaterFindsTheIssueAlreadyHeld(t *testing.T) {
 	})
 }
 
-func TestAnIssueIsFiledUnderItsMostRecognisedName(t *testing.T) {
+func TestAnIssueIsFiledUnderItsMostRecognizedName(t *testing.T) {
 	// What somebody sees should be the name they will find in an advisory,
 	// not whichever database the scanner happened to consult first.
 	each(t, func(t *testing.T, f *fixture) {

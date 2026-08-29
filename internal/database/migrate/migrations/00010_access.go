@@ -23,7 +23,7 @@ func init() {
 // (ACC-30).
 //
 // Admin is a property of the person rather than a grant against a product,
-// because it is the one role that is global (ACC-07). Modelling it as a grant
+// because it is the one role that is global (ACC-07). Modeling it as a grant
 // would mean a row whose product is absent, and a uniqueness rule over a
 // column that may be absent behaves differently on each of the four engines.
 func upAccess(ctx context.Context, tx *sql.Tx) error {
@@ -49,6 +49,11 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 			-- administrator named in configuration — who is the documented way
 			-- back in when the group mapping is wrong (ACC-29, ACC-32).
 			is_bootstrap ` + t.boolean + ` NOT NULL,
+			-- admin_derived says a group granted administration rather than a
+			-- person. Only what a group gave is taken back when groups stop
+			-- deciding, so somebody promoted inside the application survives a
+			-- change of mode rather than losing access nothing can restore.
+			admin_derived ` + t.boolean + ` NOT NULL,
 			created_at   ` + t.timestamp + ` NOT NULL,
 			last_seen_at ` + t.timestamp + ` NULL,
 			CONSTRAINT person_identity_unique UNIQUE (identity)
@@ -59,8 +64,8 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 		// merely unreadable but invisible (ACC-08).
 		`CREATE TABLE role_grant (
 			id         ` + t.id + `,
-			person_id  ` + t.ref + ` NOT NULL REFERENCES person(id),
-			product_id ` + t.ref + ` NOT NULL REFERENCES product(id),
+			person_id  ` + t.ref + ` NOT NULL,
+			product_id ` + t.ref + ` NOT NULL,
 			role       ` + t.kind + ` NOT NULL,
 			-- source says where a grant came from. A grant derived from group
 			-- membership is replaced wholesale at each sign-in, so losing the
@@ -81,6 +86,8 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 			-- a live one derived from a group that happens to grant the same
 			-- thing. Keying without the source forbids that pair, which is the
 			-- pair ACC-36 exists to keep.
+			CONSTRAINT role_grant_person_fk FOREIGN KEY (person_id) REFERENCES person(id),
+			CONSTRAINT role_grant_product_fk FOREIGN KEY (product_id) REFERENCES product(id),
 			CONSTRAINT role_grant_unique UNIQUE (person_id, product_id, role, source)
 		)` + t.suffix,
 
@@ -107,12 +114,13 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 		// opposite behavior is a configurable option on one of them.
 		`CREATE TABLE person_identity (
 			id         ` + t.id + `,
-			person_id  ` + t.ref + ` NOT NULL REFERENCES person(id),
+			person_id  ` + t.ref + ` NOT NULL,
 			provider   ` + t.name + ` NOT NULL,
 			subject    ` + t.name + ` NULL,
 			username   ` + t.name + ` NOT NULL,
 			created_at ` + t.timestamp + ` NOT NULL,
 			bound_at   ` + t.timestamp + ` NULL,
+			CONSTRAINT person_identity_person_fk FOREIGN KEY (person_id) REFERENCES person(id),
 			CONSTRAINT person_identity_username_unique UNIQUE (provider, username),
 			CONSTRAINT person_identity_subject_unique UNIQUE (provider, subject)
 		)` + t.suffix,
@@ -135,13 +143,22 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 			id           ` + t.id + `,
 			name         ` + t.name + ` NOT NULL,
 			secret_hash  ` + t.hash + ` NOT NULL,
-			product_id   ` + t.ref + ` NOT NULL REFERENCES product(id),
-			stream_id    ` + t.refNull + ` NULL REFERENCES stream(id),
-			variant_id   ` + t.refNull + ` NULL REFERENCES variant(id),
+			product_id   ` + t.ref + ` NOT NULL,
+			stream_id    ` + t.refNull + ` NULL,
+			variant_id   ` + t.refNull + ` NULL,
 			created_at   ` + t.timestamp + ` NOT NULL,
 			last_used_at ` + t.timestamp + ` NULL,
 			revoked_at   ` + t.timestamp + ` NULL,
-			CONSTRAINT api_key_secret_unique UNIQUE (secret_hash)
+			CONSTRAINT api_key_product_fk FOREIGN KEY (product_id) REFERENCES product(id),
+			CONSTRAINT api_key_stream_fk FOREIGN KEY (stream_id) REFERENCES stream(id),
+			CONSTRAINT api_key_variant_fk FOREIGN KEY (variant_id) REFERENCES variant(id),
+			CONSTRAINT api_key_secret_unique UNIQUE (secret_hash),
+			-- The name is what an ingest records as having sent a scan, and
+			-- what an administrator revokes by. Two keys sharing one would
+			-- make each able to read the other's receipts, and would make a
+			-- revocation report success having withdrawn whichever row came
+			-- back first.
+			CONSTRAINT api_key_name_unique UNIQUE (name)
 		)` + t.suffix,
 
 		`CREATE INDEX api_key_product_idx ON api_key (product_id)`,
@@ -167,10 +184,11 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 			id           ` + t.id + `,
 			token_hash   ` + t.hash + ` NOT NULL,
 			csrf_token   ` + t.hash + ` NOT NULL,
-			person_id    ` + t.ref + ` NOT NULL REFERENCES person(id),
+			person_id    ` + t.ref + ` NOT NULL,
 			created_at   ` + t.timestamp + ` NOT NULL,
 			expires_at   ` + t.timestamp + ` NOT NULL,
 			last_used_at ` + t.timestamp + ` NULL,
+			CONSTRAINT session_person_fk FOREIGN KEY (person_id) REFERENCES person(id),
 			CONSTRAINT session_token_unique UNIQUE (token_hash)
 		)` + t.suffix,
 
@@ -190,9 +208,10 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 		`CREATE TABLE group_role (
 			id         ` + t.id + `,
 			group_name ` + t.name + ` NOT NULL,
-			product_id ` + t.ref + ` NOT NULL REFERENCES product(id),
+			product_id ` + t.ref + ` NOT NULL,
 			role       ` + t.kind + ` NOT NULL,
 			created_at ` + t.timestamp + ` NOT NULL,
+			CONSTRAINT group_role_product_fk FOREIGN KEY (product_id) REFERENCES product(id),
 			CONSTRAINT group_role_unique UNIQUE (group_name, product_id, role)
 		)` + t.suffix,
 
@@ -213,16 +232,21 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 			id           ` + t.id + `,
 			name         ` + t.name + ` NOT NULL,
 			secret_hash  ` + t.hash + ` NOT NULL,
-			person_id    ` + t.ref + ` NOT NULL REFERENCES person(id),
+			person_id    ` + t.ref + ` NOT NULL,
 			-- product_id narrows a token below its owner rather than above:
 			-- what it reaches is the intersection, so pinning it to something
 			-- they cannot read reaches nothing rather than granting it.
-			product_id   ` + t.refNull + ` NULL REFERENCES product(id),
+			product_id   ` + t.refNull + ` NULL,
 			created_at   ` + t.timestamp + ` NOT NULL,
 			expires_at   ` + t.timestamp + ` NOT NULL,
 			last_used_at ` + t.timestamp + ` NULL,
 			revoked_at   ` + t.timestamp + ` NULL,
-			CONSTRAINT personal_token_secret_unique UNIQUE (secret_hash)
+			CONSTRAINT personal_token_person_fk FOREIGN KEY (person_id) REFERENCES person(id),
+			CONSTRAINT personal_token_product_fk FOREIGN KEY (product_id) REFERENCES product(id),
+			CONSTRAINT personal_token_secret_unique UNIQUE (secret_hash),
+			-- Its owner names it and withdraws it by that name, so two of
+			-- theirs may not share one.
+			CONSTRAINT personal_token_name_unique UNIQUE (person_id, name)
 		)` + t.suffix,
 
 		`CREATE INDEX personal_token_person_idx ON personal_token (person_id)`,

@@ -88,13 +88,12 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 				refuse(w)
 				return
 			}
-			// A request that arrived on a cookie is a request the browser
-			// sent by itself, cookie attached without anybody asking. That is
-			// what lets a hostile page act as the signed-in user, so a
-			// state-changing one has to echo a value only our own pages can
-			// read (ACC-18). Requests carrying a key are exempt: nothing
-			// sends those automatically, so the guard would protect nothing.
-			if session != nil && changesSomething(r.Method) && !session.MatchesCSRF(r.Header.Get(access.CSRFHeader)) {
+			// A request a browser made by itself is one somebody else's page
+			// may have caused, because the credential goes along without
+			// anybody asking — our cookie, or the proxy's. Requests carrying a
+			// key are exempt: nothing sends those automatically, so the guard
+			// would protect nothing and break every build (ACC-18).
+			if !meantToBeSent(r, session, in.BaseURL) {
 				refuse(w)
 				return
 			}
@@ -149,7 +148,7 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	registerSession(api, in)
 	registerTokens(api, in)
 	registerBindings(api, Administering{
-		Access: in.rights, Catalog: in.catalog, Logger: logger,
+		Access: in.rights, Catalog: in.catalog, Logger: logger, Mode: in.Mode,
 	}, func() *setting.Store {
 		if in.DB == nil {
 			return nil
@@ -158,10 +157,10 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	})
 	registerCatalog(api, Declaring{Store: in.catalog, Logger: logger})
 	registerAdministration(api, Administering{
-		Access: in.rights, Catalog: in.catalog, Logger: logger,
+		Access: in.rights, Catalog: in.catalog, Logger: logger, Mode: in.Mode,
 	})
 	registerRevocation(api, Administering{
-		Access: in.rights, Catalog: in.catalog, Logger: logger,
+		Access: in.rights, Catalog: in.catalog, Logger: logger, Mode: in.Mode,
 	})
 
 	return router, api

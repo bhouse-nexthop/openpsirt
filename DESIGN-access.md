@@ -2,8 +2,8 @@
 
 Who is asking, and what they may reach.
 
-Satisfies ACC-02 to ACC-08, ACC-10 to ACC-15, ACC-16 to ACC-21, ACC-22 to
-ACC-32, ACC-36 to ACC-41, ACC-50, SEC-03.
+Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-50 to ACC-52, SEC-03,
+SEC-07.
 
 ## Authenticating is not being authorized
 
@@ -60,7 +60,7 @@ reader of the shipping catalog, so a key sees the one product it may send to
 and everything else reads as not declared.
 
 Admin is a property of the person rather than a grant against a product,
-because it is the one role that is global. Modelling it as a grant would mean a
+because it is the one role that is global. Modeling it as a grant would mean a
 row whose product is absent, and a uniqueness rule over a column that may be
 absent behaves differently on each of the four engines.
 
@@ -71,8 +71,9 @@ remembers to ask.
 
 | Asker | How | What it may do |
 |---|---|---|
-| A person | A trusted header today; a provider later | What their roles allow |
-| A pipeline | A key it holds | Send scans. Nothing else |
+| A person | A session cookie, issued after signing in through a provider, or a username a trusted proxy asserts on every request | What their roles allow |
+| A person's own script | A token they minted, which reaches no further than they do and may not mint another | A narrowed view of what they may do |
+| A pipeline | An API key | Send scans, and read back what became of its own |
 
 **A pipeline may send and nothing else** — no reading findings, no triage, no
 reporting. A build server has no business holding a person's permissions, and
@@ -127,6 +128,129 @@ container bypasses the proxy entirely. **A half-configuration stops the
 process**, because a header named with nothing to trust it from is either a
 mistake or the first half of one, and it is never a fallback for sign-in that
 was not configured.
+
+## Signing in through a provider
+
+Two adapters behind one interface. One speaks OpenID Connect, for an identity
+provider. The other speaks plain OAuth 2.0, for a forge that is not an OpenID
+Connect provider at all — it issues no identity token and publishes no
+discovery document, so there is nothing for the first adapter to verify and the
+account has to be asked about instead. Writing one adapter would have meant
+pretending otherwise.
+
+**The exchange happens here and the browser gets a session of ours.** A
+provider's token is never handed to a page: one of them is opaque and this API
+could not check it anyway, so a browser holding one would mean a second way to
+authenticate, verified by a second path, readable by anything that got into the
+page.
+
+What has to survive the round trip to the provider — the value the provider
+echoes back, the one tying its answer to this request, and the proof-key secret
+— is left with the browser where no script can read it. The alternative is a
+table of half-finished sign-ins, which has to be swept and which anybody can
+fill by starting sign-ins they never come back from.
+
+The value the provider echoes is compared **before** anything is exchanged. It
+is what stops somebody handing a signed-in person a callback of their own
+making and having the session come back as theirs. The proof key is sent as a
+digest and kept as the secret it hashes, so an authorization code taken in
+flight cannot be exchanged by whoever took it. And the identity token has to
+carry the value tying it to this sign-in, or it belongs to a different one.
+
+**An identity token that names no subject is refused.** The specification
+requires one and the verification does not check, and without one there is
+nothing stable to match on — which would quietly reduce that deployment to
+matching by name, the thing the next section exists to replace.
+
+Where a provider states an address as somebody's name, it is used only when the
+provider also says it verified it. An unverified one is whatever the account
+holder typed, and an authorization waiting under somebody's work address would
+otherwise be redeemable by anybody willing to claim that address.
+
+### Where a provider is reached, and where it is not
+
+Discovery, the key fetches that follow it, and the calls made to a forge all go
+through a client that will talk to the configured host and nowhere else, will
+not follow a redirect, and will not connect to an address inside this network.
+
+Those addresses come from configuration and from a document fetched over the
+network — which is to say from outside. An unrestricted client pointed at a
+discovery document is a request-forgery primitive: it fetches whatever the
+document names, from inside the network, with whatever the network trusts this
+process to reach.
+
+**Pinning the fetch is not enough on its own.** A document fetched from the
+right host can still name endpoints on another one, which would turn every
+sign-in into a redirect of the issuer's choosing. So the endpoints a provider
+publishes are checked against the issuer's own host when the adapter is built,
+and a provider that would misdirect people stops the process instead of
+misdirecting the first person to sign in.
+
+The address check runs **after** the name is resolved and before the connection
+is made. Checked earlier it would see a name rather than an address and refuse
+everything; checked by resolving separately and then connecting, it would leave
+a window in which the name resolves to something else the second time it is
+asked.
+
+The address a provider sends somebody back to is stated in configuration rather
+than taken from the request. Taking it from the request would make it whatever
+a caller claimed the host was, and whether that can be exploited depends
+entirely on how strictly a provider matches its registered addresses — which is
+not ours to assume. A deployment that configured a provider without stating its
+address does not start.
+
+### A proxy in front instead
+
+A reverse proxy authenticates and passes the username on, which lets a
+deployment run with no provider at all and suits operators who already
+authenticate at their ingress.
+
+It has no stable identifier of its own — it asserts a username on every request
+and there is nothing else to match on. That is a property of the arrangement
+rather than a gap: the proxy is the authority there, and a deployment trusting
+it has already accepted that what it says is who somebody is.
+
+Known limitation: proxies that deliver identity in a signed token rather than
+plain headers are not supported by this path, because reading a header cannot
+verify a signature. Such deployments configure a provider instead.
+
+## Sessions, and proving a write was meant
+
+A session is stored, not held in a process, so it works whichever replica
+answers and so deleting the row cuts access off at once — the mechanism relied
+on when somebody leaves, because group membership is only re-read at the next
+sign-in.
+
+**A session holds no roles.** It establishes who is asking; what they may reach
+is read at the moment they ask. A role withdrawn from somebody takes effect on
+their next request rather than at their next sign-in.
+
+The token is stored hashed for the same reason a key is, and the cookie
+carrying it cannot be read by script. Every session has an end: the lifetime is
+exactly the window in which somebody who moved out of a team still holds what
+the team gave them.
+
+### A browser's credential arrives whoever asked for the request
+
+That is what makes forgery possible, and it is true of both browser paths — our
+own cookie, and the proxy's. So a state-changing request has to show it came
+from one of our own pages.
+
+| Arriving by | Shown how |
+|---|---|
+| A session of ours | A value bound to that session, which our pages read and echo. A page from another origin cannot read it |
+| A proxy's header | Where the request came from. There is no session to hold a value, and a browser will not let a page misstate its own origin |
+
+Where the request came from is checked for **both**, because it costs nothing
+and still holds when the echoed value has leaked. A request stating another
+origin, or stating none, is not one of ours.
+
+Requests carrying a key or a token are exempt. Nothing sends those
+automatically, so there is no request somebody else can cause a pipeline to
+make, and the guard would break every build while protecting nothing.
+
+Safe methods are named as a list, so a method nobody thought of is guarded
+rather than exempt by having been forgotten.
 
 ## A name authorizes; an identifier decides
 
@@ -262,6 +386,12 @@ read from what they hold at the moment it is used, so a role withdrawn from
 them cuts the token at the same instant — including one withdrawn because a
 group membership went away, which is the case with nothing else to notice it. A
 snapshot would quietly outlive the access it was granted from.
+
+**A token may not mint or withdraw another.** Minting resolves through the
+owner, so a token that could mint would ask for a wider one and be given it —
+which makes every limit on a token exactly one request deep, the lifetime
+ceiling included, and an administrator's narrowed token a way to get an
+un-narrowed one.
 
 It can be narrowed below its owner and never above. Narrowing **intersects**:
 a token pinned to a product its owner cannot read reaches nothing rather than

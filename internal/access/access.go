@@ -112,7 +112,17 @@ type Subject struct {
 	grants map[int64][]Role
 	// scope is what a pipeline's key allows. Absent for a person.
 	scope *Scope
+	// delegated says this subject arrived on a credential its owner minted
+	// rather than by signing in. What it may reach is already bounded by the
+	// owner, but it may not mint another: a credential able to issue
+	// credentials narrows to nothing, because the narrow one can always ask
+	// for a wide one.
+	delegated bool
 }
+
+// Delegated reports whether this subject arrived on a credential minted by a
+// person rather than on a sign-in.
+func (s Subject) Delegated() bool { return s.delegated }
 
 // Scope is the set of constraints on a key.
 //

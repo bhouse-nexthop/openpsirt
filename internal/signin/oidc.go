@@ -164,13 +164,27 @@ func (o *OIDC) Complete(ctx context.Context, code string, pending Pending, redir
 		return nil, fmt.Errorf("the identity token from %q belongs to a different sign-in", o.name)
 	}
 
+	// The specification requires a subject and the verifier does not check for
+	// one, so an identity token naming nobody would otherwise be accepted and
+	// leave this sign-in with nothing stable to be matched on.
+	if strings.TrimSpace(verified.Subject) == "" {
+		return nil, fmt.Errorf("the identity token from %q names no subject", o.name)
+	}
+
 	claims := map[string]any{}
 	if err := verified.Claims(&claims); err != nil {
 		return nil, fmt.Errorf("read the claims from %q: %w", o.name, err)
 	}
 
-	username, err := usernameFrom(
-		text(claims[o.usernameClaim]), text(claims["email"]), verified.Subject)
+	// The email is a fallback only where the provider says it verified it. An
+	// unverified one is whatever the account holder typed, and an
+	// authorization waiting under somebody's work address would be redeemable
+	// by anybody willing to claim that address at the provider.
+	fallback := ""
+	if verified, ok := claims["email_verified"].(bool); ok && verified {
+		fallback = text(claims["email"])
+	}
+	username, err := usernameFrom(text(claims[o.usernameClaim]), fallback, verified.Subject)
 	if err != nil {
 		return nil, err
 	}

@@ -3,7 +3,7 @@
 What happens to a scan when it arrives.
 
 Satisfies ING-01, ING-02, ING-04, ING-05, ING-07, ING-11, ING-14 to ING-23,
-ING-28 to ING-35, MDL-19, ACC-12, SEC-05, SEC-06.
+ING-28 to ING-35, MDL-19, ACC-12, ACC-50, SEC-05, SEC-06.
 
 ## Deciding before parsing
 
@@ -121,7 +121,7 @@ an error.
 
 ### Suppressions are applied here, not upstream of us
 
-The build's judgement about its own carried patches is never refuted. What
+The build's judgment about its own carried patches is never refuted. What
 changed is where it is applied: rather than receiving results a producer already
 filtered, we receive the suppressions and apply them to our own scan.
 
@@ -468,7 +468,7 @@ door would lose the distinction before anyone triaging saw it.
 Two of the four remove a finding from what somebody has to look at; the other
 two say the build looked, which is information rather than an answer. A claim
 whose status is not one we can read is refused rather than ignored — ignoring
-it lets a build's judgement go missing silently, which is the failure applying
+it lets a build's judgment go missing silently, which is the failure applying
 the claims here exists to remove.
 
 ### A carried patch reports as fixed
@@ -491,7 +491,7 @@ line, which is why the claim can be taken as read.
 | A claim against a source tree matches a component of that name, or a fork of one | The build knows which packages came out of a tree and we do not. Name equality is the most that can be said, and it is what the producer intends by writing one |
 | A claim is matched at every place its component sits | One claim, however many places — the fan-out is ours either way |
 
-**A claim that matched nothing is reported, not dropped.** A build's judgement
+**A claim that matched nothing is reported, not dropped.** A build's judgment
 that went nowhere means a finding it already answered comes back as noise, and
 nothing distinguishes that from a finding nobody has looked at yet. The
 producer's own automatically-extracted claims name source trees rather than
@@ -501,7 +501,7 @@ packages, so this is the ordinary case rather than the exceptional one.
 
 | Choice | Why this way |
 |---|---|
-| A claim naming an unreadable status refuses the document | A claim we cannot act on is one the build believes it made. Failing loudly is better than a build's judgement silently going missing |
+| A claim naming an unreadable status refuses the document | A claim we cannot act on is one the build believes it made. Failing loudly is better than a build's judgment silently going missing |
 | A claim with no justification is kept rather than refused | The format only requires one for a single status, and what to do about an unjustified claim is a triage question, not a reading one |
 | Both shapes read into one thing, with the origin recorded | They differ in precision rather than in meaning, and the difference is worth keeping without needing two of everything downstream |
 | Only a security claim is read from a patch | A patch resolves defects and improvements as readily as vulnerabilities |

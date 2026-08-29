@@ -2,9 +2,12 @@ package ingest
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 
 	"github.com/uptrace/bun"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
@@ -47,7 +50,19 @@ type Receipt struct {
 // here rather than in the caller: filtering a page after it has been read
 // returns short pages and a total counting rows the reader was not shown,
 // which is both wrong and a count of somebody else's uploads.
-func (s *Store) Receipts(ctx context.Context, targetID int64, credential string, limit, offset int) ([]Receipt, int, error) {
+func (s *Store) Receipts(ctx context.Context, subject access.Subject, targetID int64, credential string, limit, offset int) ([]Receipt, int, error) {
+	// Asked here rather than only in the handler. A check beside the query
+	// cannot be skipped by adding another endpoint, which is the whole reason
+	// visibility is decided in this layer — and receipts carry a producer's
+	// own failure text, so reaching them is reaching something.
+	productID, err := productOf(ctx, s.db, targetID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if !subject.Sees(productID) {
+		return nil, 0, fmt.Errorf("no build is declared there")
+	}
+
 	sent := func(q *bun.SelectQuery) *bun.SelectQuery {
 		q = q.Where("target_id = ?", targetID)
 		if credential != "" {
@@ -143,4 +158,20 @@ func progressOf(sc Scan, job queue.Job, runs []finding.Run) (Progress, string) {
 		return Scanned, ""
 	}
 	return Scanning, ""
+}
+
+// productOf reads which product a build belongs to, so that reaching it can be
+// decided from the row rather than from what a caller said about it.
+func productOf(ctx context.Context, db bun.IDB, targetID int64) (int64, error) {
+	var productID int64
+	err := db.NewSelect().
+		TableExpr("target AS t").
+		Join("JOIN stream AS st ON st.id = t.stream_id").
+		Column("st.product_id").
+		Where("t.id = ?", targetID).
+		Scan(ctx, &productID)
+	if err != nil {
+		return 0, fmt.Errorf("no build is declared there")
+	}
+	return productID, nil
 }

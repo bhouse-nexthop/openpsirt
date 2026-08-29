@@ -2,8 +2,8 @@
 
 How OpenPSIRT talks to a database, and why the awkward parts are awkward.
 
-Satisfies DAT-01 to DAT-17, and the portability constraints in Section 6 of
-`DECISIONS.md`.
+Satisfies SCP-15, DAT-01 to DAT-17, DAT-30 to DAT-32, and the portability
+constraints in Section 6 of `DECISIONS.md`.
 
 ## Four engines, one set of queries
 
@@ -85,6 +85,60 @@ at once and they would otherwise migrate simultaneously.
 
 SQLite needs no advisory lock — it is only ever used by one process — but it did
 need the other two settings below.
+
+## Any number of replicas, coordinated only through the database
+
+Replicas are identical and there is no leader. Every one serves requests, reads
+scans and runs vulnerability scans, and adding one is adding one. Nothing is
+held in a process that decides anything: sessions are rows, settings and roles
+are read per request, and the only in-memory lock stops a single process
+migrating twice — the database lock is what stops two processes doing it.
+
+Four things need coordinating, and each is coordinated where every replica can
+see it:
+
+| | How |
+|---|---|
+| Two workers taking one job | The claim selects a row and locks it, skipping locked rows, inside a transaction |
+| Two replicas migrating at startup | A database-level lock, with a bounded wait, so one migrates and the rest wait and then serve |
+| Two scans of one build | The apply takes the build's own row first, so the second waits rather than interleaving |
+| An administrator changing a setting | Read per request, so a change takes effect on every replica at once rather than after a restart |
+
+SQLite cannot take part — it is a single file — so a scaled deployment runs on
+one of the three servers.
+
+## A cluster refuses a write when it commits, not when it runs
+
+This is the difference between a design that works on one server and one that
+works on several, and it is easy to miss because nothing about the failing code
+looks wrong.
+
+A clustered deployment certifies a write across nodes **at `COMMIT`**. Two
+nodes that touched the same rows both run every statement successfully, and one
+of them is told at the end that the whole transaction was rolled back. Code
+written for a single server checks each statement, sees them all succeed, and
+never learns that none of them happened.
+
+So **every transaction is retryable as a whole**, through one helper, on the
+failures that mean a race was lost — deadlock, lock-wait timeout, serialization
+failure. Anything else is reported rather than retried: an unrecognized failure
+treated as retryable turns a constraint violation into a deployment that
+hammers its database and hangs, where reporting it turns a lost race into an
+error somebody can read.
+
+The rule that makes retrying safe is the one worth checking in review:
+**nothing a transaction depends on may be read outside it.** A retry re-runs
+the closure against a database that has moved, so a value read before the
+transaction began — or carried over from the attempt that just failed —
+describes a world that no longer exists. A write decided from it is worse than
+the conflict that forced the retry, because the conflict was reported and this
+is not. Anything a closure uses but does not fetch is a defect, however
+reasonable it looks.
+
+Recognizing which failures are worth retrying is engine-specific, and is the
+third place allowed to be, beside the migration data-definition and the queue's
+locking. What each engine calls "you lost a race" is a different code in a
+different error type, and there is no portable spelling of the question.
 
 ## Connections
 
