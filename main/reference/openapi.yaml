@@ -828,6 +828,26 @@ paths:
       summary: Grant somebody access
       tags:
         - Administration
+  /v1/people/tokens:
+    get:
+      description: Stale tokens are otherwise found only when somebody leaves and nobody knows what breaks if they are turned off.
+      operationId: list-all-tokens
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyTokenBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List everybody's personal credentials
+      tags:
+        - Administration
   /v1/people/{identity}/roles/{product}/{role}:
     delete:
       description: A grant is a statement about now. Withdrawing one removes it rather than marking it, because what somebody used to hold is answered by the record of what they did.
@@ -858,6 +878,55 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Take a role away
+      tags:
+        - Administration
+  /v1/people/{identity}/sessions:
+    delete:
+      description: Takes effect at once, whichever copy of the application answers next. Roles and group mappings are re-read at sign-in, so withdrawing one takes effect then; this is what makes somebody leaving immediate instead.
+      operationId: end-sessions
+      parameters:
+        - in: path
+          name: identity
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Sign somebody out everywhere
+      tags:
+        - Administration
+  /v1/people/{identity}/tokens/{name}:
+    delete:
+      description: An owner withdraws their own through the access paths. This is for the ones whose owner is no longer here to do it.
+      operationId: revoke-anyones-token
+      parameters:
+        - in: path
+          name: identity
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Withdraw somebody's personal credential
       tags:
         - Administration
   /v1/products:
