@@ -87,6 +87,38 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 		)` + t.suffix,
 
 		`CREATE INDEX api_key_product_idx ON api_key (product_id)`,
+
+		// A person's session, held here rather than in a process's memory:
+		// several copies of the application may answer, and a session has to
+		// work whichever one does. Storing it also makes revocation immediate
+		// — deleting the row cuts access off at once (ACC-16), which is the
+		// mechanism relied on when somebody leaves, because group membership
+		// is only ever re-read at the next sign-in (ACC-38).
+		//
+		// The token is stored hashed for the same reason a key is: a store
+		// that can hand back what it holds hands over every live session along
+		// with a copy of the database. It is not derived from anything about
+		// the person, so there is nothing to guess at.
+		//
+		// csrf_token is a second value bound to the same session. The session
+		// cookie is sent by the browser automatically, which is what makes a
+		// hostile page able to act as the signed-in user; this one has to be
+		// read and echoed by script that the same-origin policy allows only
+		// our own pages to run (ACC-18).
+		`CREATE TABLE session (
+			id           ` + t.id + `,
+			token_hash   ` + t.hash + ` NOT NULL,
+			csrf_token   ` + t.hash + ` NOT NULL,
+			person_id    ` + t.ref + ` NOT NULL REFERENCES person(id),
+			created_at   ` + t.timestamp + ` NOT NULL,
+			expires_at   ` + t.timestamp + ` NOT NULL,
+			last_used_at ` + t.timestamp + ` NULL,
+			CONSTRAINT session_token_unique UNIQUE (token_hash)
+		)` + t.suffix,
+
+		`CREATE INDEX session_person_idx ON session (person_id)`,
+		// Expired rows are cleared in bulk rather than one at a time.
+		`CREATE INDEX session_expires_idx ON session (expires_at)`,
 	}
 
 	for _, stmt := range statements {
@@ -99,6 +131,7 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 
 func downAccess(ctx context.Context, tx *sql.Tx) error {
 	for _, stmt := range []string{
+		`DROP TABLE session`,
 		`DROP TABLE api_key`,
 		`DROP TABLE role_grant`,
 		`DROP TABLE person`,

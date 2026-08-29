@@ -235,6 +235,24 @@ func (s Subject) MaySend(productID, streamID, variantID int64) bool {
 	return true
 }
 
+// sessionKey carries the browser session a request arrived on, where it
+// arrived on one. It is separate from the subject because most requests have
+// no session — a pipeline's key and a proxy's header both resolve to a subject
+// without one — and because what it is for is narrow: deciding whether a
+// state-changing request was made by our own page or by somebody else's.
+type sessionKey struct{}
+
+// WithSession attaches the session a request arrived on.
+func WithSession(ctx context.Context, session *Session) context.Context {
+	return context.WithValue(ctx, sessionKey{}, session)
+}
+
+// SessionFrom returns the session a request arrived on, if it arrived on one.
+func SessionFrom(ctx context.Context) *Session {
+	session, _ := ctx.Value(sessionKey{}).(*Session)
+	return session
+}
+
 // contextKey is unexported so nothing outside this package can put a subject
 // into a context by accident, or take one out without going through here.
 type contextKey struct{}

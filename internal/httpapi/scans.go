@@ -35,6 +35,10 @@ type Ingest struct {
 	// Logger records a fault where an operator can read it, rather than
 	// describing it to whoever asked.
 	Logger *slog.Logger
+	// PlainHTTP says this deployment is served without TLS, which is what
+	// running it locally looks like. It only ever loosens a cookie, so it is
+	// named for what it is rather than for what it switches off.
+	PlainHTTP bool
 }
 
 // catalog returns a store over this deployment's database, or nothing when

@@ -98,20 +98,34 @@ func (r *Resolver) WithLogger(l *slog.Logger) *Resolver {
 // keyHeader is how a pipeline presents its credential.
 const keyHeader = "Authorization"
 
+// SessionCookie is what a browser holds after signing in. It carries the
+// session token and nothing else — no identity, no roles, nothing a page could
+// read and act on — and it is marked so that scripts cannot read it at all.
+const SessionCookie = "openpsirt_session"
+
+// CSRFHeader is where a page echoes the value bound to its session.
+const CSRFHeader = "X-CSRF-Token"
+
 // Resolve works out who is asking.
 //
 // One step for every sort of credential, so that what a request is allowed to
 // do is decided in one place rather than in each handler that remembers to
 // ask.
-func (r *Resolver) Resolve(ctx context.Context, req *http.Request) (Subject, error) {
+func (r *Resolver) Resolve(ctx context.Context, req *http.Request) (Subject, *Session, error) {
 	if secret, ok := bearer(req.Header.Get(keyHeader)); ok {
-		return r.store.ResolveKey(ctx, secret)
+		subject, err := r.store.ResolveKey(ctx, secret)
+		return subject, nil, err
 	}
 
+	// The proxy is asked before the cookie, where one is configured. In that
+	// arrangement the proxy is the authority on who is here and says so on
+	// every request, while a cookie says who was here when it was issued —
+	// so honoring the cookie first would let a stale one outrank a live
+	// assertion about the same browser.
 	if r.trust.Enabled() {
 		identity := strings.TrimSpace(req.Header.Get(r.trust.Header))
 		if identity == "" {
-			return Subject{}, ErrDenied
+			return r.fromCookie(ctx, req)
 		}
 		if !r.trust.trusts(req.RemoteAddr) {
 			// The header is present and this is not somewhere it is honored
@@ -125,12 +139,28 @@ func (r *Resolver) Resolve(ctx context.Context, req *http.Request) (Subject, err
 			// find out: the request simply fails, correctly, forever.
 			r.logger.Warn("refused a trusted header presented from an untrusted source",
 				"header", r.trust.Header, "source", req.RemoteAddr)
-			return Subject{}, ErrDenied
+			return Subject{}, nil, ErrDenied
 		}
-		return r.store.Resolve(ctx, identity)
+		subject, err := r.store.Resolve(ctx, identity)
+		return subject, nil, err
 	}
 
-	return Subject{}, ErrDenied
+	return r.fromCookie(ctx, req)
+}
+
+// fromCookie resolves a browser's session.
+//
+// The session is handed back alongside the subject because a request carrying
+// one is a request a browser made by itself: the cookie is attached without
+// anybody asking for it, which is exactly what makes cross-site request
+// forgery possible and what the value bound to the session guards against
+// (ACC-18). Nothing else needs to know which door a request came through.
+func (r *Resolver) fromCookie(ctx context.Context, req *http.Request) (Subject, *Session, error) {
+	cookie, err := req.Cookie(SessionCookie)
+	if err != nil || cookie.Value == "" {
+		return Subject{}, nil, ErrDenied
+	}
+	return r.store.ResolveSession(ctx, cookie.Value)
 }
 
 // bearer reads a presented credential.

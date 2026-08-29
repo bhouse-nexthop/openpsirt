@@ -1,0 +1,150 @@
+package httpapi_test
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
+)
+
+// asBrowser makes a request the way a signed-in browser does: the cookie goes
+// by itself, and anything that changes something has to echo the value bound
+// to the session.
+func asBrowser(t *testing.T, r *reach, issued *access.Issued, method, path, csrf string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, declaredBody(method, path, "declared-in-a-browser"))
+	if method == http.MethodPost {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	// A cookie on the way *to* a server carries a name and a value and
+	// nothing else: Secure, HttpOnly and SameSite are instructions a server
+	// gives a browser, and mean nothing on a request.
+	req.AddCookie(&http.Cookie{Name: access.SessionCookie, Value: issued.Token}) //nolint:gosec // a request cookie carries no attributes
+	if csrf != "" {
+		req.Header.Set(access.CSRFHeader, csrf)
+	}
+	rec := httptest.NewRecorder()
+	r.handler.ServeHTTP(rec, req)
+	return rec
+}
+
+// signIn issues a session for somebody the fixture already granted something.
+func signIn(t *testing.T, r *reach, identity string) *access.Issued {
+	t.Helper()
+	person, err := r.rights.ByIdentity(t.Context(), identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issued, err := r.rights.StartSession(t.Context(), person.ID, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return issued
+}
+
+func TestABrowserIsRecognizedByItsSessionAlone(t *testing.T) {
+	// No header, no key. The cookie is the whole credential, which is what a
+	// deployment with a real identity provider looks like.
+	eachReach(t, func(t *testing.T, r *reach) {
+		issued := signIn(t, r, "reader")
+		if got := asBrowser(t, r, issued, http.MethodGet, "/v1/products", "").Code; got != http.StatusOK {
+			t.Errorf("a signed-in browser reading products answered %d, want 200", got)
+		}
+	})
+}
+
+func TestAWriteFromABrowserHasToProveItCameFromOurOwnPage(t *testing.T) {
+	// The cookie is attached by the browser whoever asked for the request, so
+	// on its own it says nothing about who wanted it sent. The echoed value is
+	// what separates our page from somebody else's.
+	eachReach(t, func(t *testing.T, r *reach) {
+		issued := signIn(t, r, "admin")
+		other := signIn(t, r, "reader")
+
+		for _, c := range []struct {
+			what string
+			csrf string
+			want int
+		}{
+			{"nothing echoed", "", http.StatusUnauthorized},
+			{"a guess", "not-the-value", http.StatusUnauthorized},
+			{"another session's value", other.CSRF, http.StatusUnauthorized},
+			{"its own value", issued.CSRF, http.StatusCreated},
+		} {
+			got := asBrowser(t, r, issued, http.MethodPost, "/v1/products", c.csrf).Code
+			if got != c.want {
+				t.Errorf("declaring a product with %s answered %d, want %d", c.what, got, c.want)
+			}
+		}
+	})
+}
+
+func TestReadingFromABrowserNeedsNothingEchoed(t *testing.T) {
+	// The guard is against a request being made, not against one being read.
+	// Requiring it on reads would break every ordinary page load for nothing.
+	eachReach(t, func(t *testing.T, r *reach) {
+		// GET alone, because it is the only safe method this API routes.
+		// HEAD and OPTIONS are treated as safe by the guard regardless, so
+		// that adding a route for either later does not quietly make it one
+		// that has to echo a value to be read.
+		issued := signIn(t, r, "reader")
+		if got := asBrowser(t, r, issued, http.MethodGet, "/v1/products", "").Code; got != http.StatusOK {
+			t.Errorf("GET with nothing echoed answered %d, want 200", got)
+		}
+	})
+}
+
+func TestAKeyIsNotAskedToEchoAnything(t *testing.T) {
+	// Nothing sends a key automatically, so there is no request somebody else
+	// can cause a pipeline to make, and the guard would protect nothing while
+	// breaking every build.
+	eachReach(t, func(t *testing.T, r *reach) {
+		path := "/v1/products/mine/streams/master/variants/broadcom/scans"
+		if got := r.asKey(t, http.MethodGet, path); got != http.StatusOK {
+			t.Errorf("a key reading its receipts answered %d, want 200", got)
+		}
+	})
+}
+
+func TestSigningOutStopsTheCookieWorking(t *testing.T) {
+	eachReach(t, func(t *testing.T, r *reach) {
+		issued := signIn(t, r, "reader")
+
+		out := asBrowser(t, r, issued, http.MethodDelete, "/v1/session", issued.CSRF)
+		if out.Code != http.StatusNoContent {
+			t.Fatalf("signing out answered %d: %s", out.Code, out.Body.String())
+		}
+		// The browser is told to drop it as well as the row being deleted.
+		if cleared := out.Header().Get("Set-Cookie"); !strings.Contains(cleared, access.SessionCookie+"=") ||
+			!strings.Contains(cleared, "Max-Age=0") {
+			t.Errorf("signing out did not clear the cookie: %q", cleared)
+		}
+
+		if got := asBrowser(t, r, issued, http.MethodGet, "/v1/products", "").Code; got != http.StatusUnauthorized {
+			t.Errorf("the session still worked after signing out: %d", got)
+		}
+	})
+}
+
+func TestSigningOutIsNotSomethingAKeyCanDo(t *testing.T) {
+	eachReach(t, func(t *testing.T, r *reach) {
+		if got := r.asKey(t, http.MethodDelete, "/v1/session"); got == http.StatusNoContent {
+			t.Error("a pipeline signed out of a session it never had")
+		}
+	})
+}
+
+func TestASessionForSomebodyGrantedNothingReachesNothing(t *testing.T) {
+	// Issuing a session does not decide anything about access. Somebody whose
+	// roles were withdrawn between sign-in and now is refused on the next
+	// request rather than at the next sign-in.
+	eachReach(t, func(t *testing.T, r *reach) {
+		issued := signIn(t, r, "nothing")
+		if got := asBrowser(t, r, issued, http.MethodGet, "/v1/products", "").Code; got != http.StatusUnauthorized {
+			t.Errorf("a session for somebody granted nothing answered %d, want 401", got)
+		}
+	})
+}

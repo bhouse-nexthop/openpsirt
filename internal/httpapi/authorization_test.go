@@ -38,6 +38,9 @@ type reach struct {
 	handler http.Handler
 	key     string
 	revoked string
+	// rights is the store behind the handler, so a test can sign somebody in
+	// without a provider to sign in through.
+	rights *access.Store
 }
 
 // response is what came back, for the tests that compare answers rather than
@@ -170,7 +173,7 @@ func eachReach(t *testing.T, fn func(t *testing.T, r *reach)) {
 			DB: db, Queue: queue.New(db, queue.DefaultOptions()),
 			Access: access.NewResolver(rights, access.Trust{Header: testHeader, From: sources}),
 		})
-		fn(t, &reach{handler: handler, key: secret, revoked: revokedSecret})
+		fn(t, &reach{handler: handler, key: secret, revoked: revokedSecret, rights: rights})
 	})
 }
 

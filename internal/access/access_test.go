@@ -341,14 +341,14 @@ func TestTheHeaderIsRefusedFromSomewhereUntrusted(t *testing.T) {
 		trusted := httptest.NewRequest(http.MethodGet, "/", nil)
 		trusted.Header.Set("X-User", "someone")
 		trusted.RemoteAddr = "10.9.9.9:5555"
-		if _, err := resolver.Resolve(ctx, trusted); err != nil {
+		if _, _, err := resolver.Resolve(ctx, trusted); err != nil {
 			t.Errorf("a header from a trusted source: %v", err)
 		}
 
 		elsewhere := httptest.NewRequest(http.MethodGet, "/", nil)
 		elsewhere.Header.Set("X-User", "someone")
 		elsewhere.RemoteAddr = "203.0.113.7:5555"
-		if _, err := resolver.Resolve(ctx, elsewhere); !errors.Is(err, access.ErrDenied) {
+		if _, _, err := resolver.Resolve(ctx, elsewhere); !errors.Is(err, access.ErrDenied) {
 			t.Errorf("a header from anywhere else was honored: %v", err)
 		}
 	})
@@ -369,7 +369,7 @@ func TestAKeyIsAcceptedWhereverItComesFrom(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer "+secret)
 		req.RemoteAddr = "203.0.113.7:5555"
 
-		subject, err := resolver.Resolve(ctx, req)
+		subject, _, err := resolver.Resolve(ctx, req)
 		if err != nil {
 			t.Fatalf("a key from an ordinary address: %v", err)
 		}

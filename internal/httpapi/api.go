@@ -26,6 +26,19 @@ import (
 // readiness probe only reflects the process being up.
 type Ready func(context.Context) error
 
+// changesSomething reports whether a method is one that writes.
+//
+// Named as a list of what is safe rather than of what is not: a method absent
+// from the list is treated as changing something, so an unusual one is guarded
+// by default rather than by having been thought of.
+func changesSomething(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return false
+	}
+	return true
+}
+
 func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	in.Logger = logger
 	router := chi.NewMux()
@@ -57,11 +70,12 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 			}
 
 			var subject access.Subject
+			var session *access.Session
 			var err error
 			if in.Access == nil {
 				err = access.ErrDenied
 			} else {
-				subject, err = in.Access.Resolve(r.Context(), r)
+				subject, session, err = in.Access.Resolve(r.Context(), r)
 			}
 			if err != nil {
 				// Refused here rather than in a handler, so that nothing
@@ -72,7 +86,22 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 				refuse(w)
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(access.With(r.Context(), subject)))
+			// A request that arrived on a cookie is a request the browser
+			// sent by itself, cookie attached without anybody asking. That is
+			// what lets a hostile page act as the signed-in user, so a
+			// state-changing one has to echo a value only our own pages can
+			// read (ACC-18). Requests carrying a key are exempt: nothing
+			// sends those automatically, so the guard would protect nothing.
+			if session != nil && changesSomething(r.Method) && !session.MatchesCSRF(r.Header.Get(access.CSRFHeader)) {
+				refuse(w)
+				return
+			}
+
+			ctx := access.With(r.Context(), subject)
+			if session != nil {
+				ctx = access.WithSession(ctx, session)
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
 
@@ -110,6 +139,7 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	registerScans(api, in)
 	registerFindings(api, in)
 	registerReceipts(api, in)
+	registerSession(api, in)
 	registerCatalog(api, Declaring{Store: in.catalog, Logger: logger})
 	registerAdministration(api, Administering{
 		Access: in.rights, Catalog: in.catalog, Logger: logger,
