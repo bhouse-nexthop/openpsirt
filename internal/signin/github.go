@@ -1,0 +1,182 @@
+package signin
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strconv"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/github"
+)
+
+// GitHub signs somebody in through GitHub's OAuth 2.0.
+//
+// A separate adapter because GitHub is not an OpenID Connect provider: it
+// issues no identity token and publishes no discovery document, so there is
+// nothing to verify and the account has to be asked for instead (ACC-01). What
+// comes back is an opaque token this API could not check by itself, which is
+// also why the browser never holds one (ACC-15).
+type GitHub struct {
+	config oauth2.Config
+	client *http.Client
+	// organization bounds whose teams count as groups. Without it every team
+	// in every organization somebody belongs to would map to roles here.
+	organization string
+}
+
+// GitHubConfig is what an operator supplies for GitHub sign-in.
+type GitHubConfig struct {
+	ClientID     string
+	ClientSecret string
+	// Organization is whose teams bind to roles. Empty means groups are not
+	// read at all, which is the right answer for a deployment assigning roles
+	// directly.
+	Organization string
+}
+
+// gitHubAPI and gitHubAuth are where this talks to, and the only hosts it may.
+const (
+	gitHubAPI  = "api.github.com"
+	gitHubAuth = "github.com"
+)
+
+// NewGitHub returns an adapter for GitHub sign-in.
+func NewGitHub(cfg GitHubConfig) (*GitHub, error) {
+	if cfg.ClientID == "" || cfg.ClientSecret == "" {
+		return nil, fmt.Errorf("github sign-in needs a client identifier and secret")
+	}
+
+	// read:org is asked for only where teams are actually bound to roles.
+	// Asking for it otherwise puts a scope on the consent screen that this
+	// deployment has no use for, which is how people learn to approve scopes
+	// without reading them.
+	scopes := []string{"read:user", "user:email"}
+	if cfg.Organization != "" {
+		scopes = append(scopes, "read:org")
+	}
+
+	return &GitHub{
+		config: oauth2.Config{
+			ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret,
+			Endpoint: github.Endpoint, Scopes: scopes,
+		},
+		client:       guardedClient(gitHubAPI, gitHubAuth),
+		organization: cfg.Organization,
+	}, nil
+}
+
+// Name is how a sign-in path names this provider.
+func (g *GitHub) Name() string { return "github" }
+
+// Begin returns where to send the browser.
+func (g *GitHub) Begin(_ context.Context, redirectURI string) (string, Pending, error) {
+	pending, err := newPending()
+	if err != nil {
+		return "", Pending{}, err
+	}
+	config := g.config
+	config.RedirectURL = redirectURI
+
+	return config.AuthCodeURL(pending.State,
+		oauth2.SetAuthURLParam("code_challenge", pending.challenge()),
+		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
+	), pending, nil
+}
+
+// Complete exchanges the code and asks GitHub who this is.
+func (g *GitHub) Complete(ctx context.Context, code string, pending Pending, redirectURI string) (*Identity, error) {
+	config := g.config
+	config.RedirectURL = redirectURI
+
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, g.client)
+	token, err := config.Exchange(ctx, code,
+		oauth2.SetAuthURLParam("code_verifier", pending.Verifier))
+	if err != nil {
+		return nil, fmt.Errorf("exchange what github sent back: %w", err)
+	}
+
+	var account struct {
+		Login string `json:"login"`
+		ID    int64  `json:"id"`
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	}
+	if err := g.get(ctx, token, "https://api.github.com/user", &account); err != nil {
+		return nil, err
+	}
+	username, err := usernameFrom(account.Login)
+	if err != nil {
+		return nil, err
+	}
+
+	identity := &Identity{
+		// The numeric identifier rather than the login: a login can be changed
+		// by its owner and then taken by somebody else, and matching on it
+		// would eventually hand one person's access to another.
+		Subject:     strconv.FormatInt(account.ID, 10),
+		Username:    username,
+		DisplayName: account.Name,
+		Email:       account.Email,
+	}
+	if g.organization != "" {
+		identity.Groups, err = g.teams(ctx, token)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return identity, nil
+}
+
+// teams reads the organization teams somebody belongs to.
+//
+// An organization can restrict which OAuth applications may see membership. If
+// it has, this comes back empty rather than failing — so a deployment binding
+// roles to teams would admit nobody at all rather than admitting everybody,
+// which is the direction to fail in (ACC-24, ACC-41).
+func (g *GitHub) teams(ctx context.Context, token *oauth2.Token) ([]string, error) {
+	var memberships []struct {
+		Slug         string `json:"slug"`
+		Organization struct {
+			Login string `json:"login"`
+		} `json:"organization"`
+	}
+	if err := g.get(ctx, token, "https://api.github.com/user/teams?per_page=100", &memberships); err != nil {
+		return nil, err
+	}
+
+	names := make([]string, 0, len(memberships))
+	for _, membership := range memberships {
+		if membership.Organization.Login != g.organization {
+			continue
+		}
+		names = append(names, membership.Slug)
+	}
+	return names, nil
+}
+
+// get asks GitHub something, through the client that will talk to GitHub and
+// nowhere else.
+func (g *GitHub) get(ctx context.Context, token *oauth2.Token, url string, into any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("ask github: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := g.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("ask github: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("github answered %s", resp.Status)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(into); err != nil {
+		return fmt.Errorf("read what github answered: %w", err)
+	}
+	return nil
+}

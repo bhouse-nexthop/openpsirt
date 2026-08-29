@@ -23,6 +23,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
 	"github.com/bhouse-nexthop/openpsirt/internal/scanner"
 	"github.com/bhouse-nexthop/openpsirt/internal/schema"
+	"github.com/bhouse-nexthop/openpsirt/internal/signin"
 	"github.com/bhouse-nexthop/openpsirt/internal/version"
 )
 
@@ -102,12 +103,24 @@ func run(args []string, stdout, stderr *os.File) error {
 		logger.Info("administrators granted from configuration", "count", len(cfg.BootstrapAdmins))
 	}
 
+	// Providers are built at startup so a misconfigured one stops the process
+	// rather than producing a deployment whose sign-in fails later, in a way
+	// only the person trying to sign in ever sees.
+	providers, err := signInProviders(ctx, cfg, logger)
+	if err != nil {
+		return err
+	}
+
 	work := queue.New(db, queue.DefaultOptions())
 	handler, _ := httpapi.New(logger, db.Validate, httpapi.Ingest{
 		DB: db, Queue: work,
 		Access: access.NewResolver(access.NewStore(db.DB), access.Trust{
 			Header: cfg.TrustedHeader, From: cfg.TrustedSources,
 		}).WithLogger(logger),
+		Providers:       providers,
+		BaseURL:         cfg.BaseURL,
+		PlainHTTP:       cfg.PlainHTTP,
+		SessionLifetime: cfg.SessionLifetime,
 	})
 
 	// Every replica serves, reads and scans. Separate worker deployments would
@@ -274,4 +287,39 @@ func serve(cfg config.Config, logger *slog.Logger, handler http.Handler, reader 
 	}
 	logger.Info("stopped")
 	return nil
+}
+
+// signInProviders builds the ways somebody may sign in.
+//
+// A deployment may configure none, which is the arrangement where a reverse
+// proxy authenticates instead (ACC-19) — so an empty set is not a fault.
+func signInProviders(ctx context.Context, cfg config.Config, logger *slog.Logger) (map[string]signin.Provider, error) {
+	providers := map[string]signin.Provider{}
+
+	if cfg.OIDCIssuer != "" {
+		provider, err := signin.NewOIDC(ctx, signin.OIDCConfig{
+			Name: cfg.OIDCName, Issuer: cfg.OIDCIssuer,
+			ClientID: cfg.OIDCClientID, ClientSecret: cfg.OIDCClientSecret,
+			GroupsClaim: cfg.OIDCGroupsClaim, UsernameClaim: cfg.OIDCUsernameClaim,
+		})
+		if err != nil {
+			return nil, err
+		}
+		providers[provider.Name()] = provider
+		logger.Info("sign-in configured", "provider", provider.Name(), "issuer", cfg.OIDCIssuer)
+	}
+
+	if cfg.GitHubClientID != "" {
+		provider, err := signin.NewGitHub(signin.GitHubConfig{
+			ClientID: cfg.GitHubClientID, ClientSecret: cfg.GitHubClientSecret,
+			Organization: cfg.GitHubOrg,
+		})
+		if err != nil {
+			return nil, err
+		}
+		providers[provider.Name()] = provider
+		logger.Info("sign-in configured", "provider", provider.Name(), "organization", cfg.GitHubOrg)
+	}
+
+	return providers, nil
 }

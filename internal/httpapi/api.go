@@ -8,6 +8,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -64,7 +65,7 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 			// The probes are the exception, because a container probe cannot
 			// sign in and they report nothing beyond whether this process can
 			// serve.
-			if open[r.URL.Path] {
+			if open[r.URL.Path] || strings.HasPrefix(r.URL.Path, openPrefix) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -104,6 +105,11 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
+
+	// Sign-in is mounted before the API description is built, because these
+	// are browser redirects rather than operations: nothing calls them with a
+	// generated client, and the answer is a 302 carrying cookies.
+	registerSignIn(router, in)
 
 	// RealIP is deliberately absent. It rewrites the client address from
 	// X-Forwarded-For and similar, which any caller can set, so it is only
@@ -168,6 +174,15 @@ var open = map[string]bool{
 	"/healthz": true,
 	"/readyz":  true,
 }
+
+// openPrefix is the one place a prefix is used rather than a named route,
+// because sign-in cannot name its routes in advance: the provider is part of
+// the path and the set of providers is configuration.
+//
+// It is narrow on purpose. Everything under it either redirects to a provider
+// or refuses, and nothing under it reads anything — so a route added here by
+// mistake can leak a redirect and not data.
+const openPrefix = "/v1/sign-in/"
 
 // refuse answers somebody unrecognized.
 //

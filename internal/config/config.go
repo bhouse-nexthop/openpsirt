@@ -62,6 +62,31 @@ type Config struct {
 	// for either to do anything.
 	TrustedHeader  string
 	TrustedSources []net.IPNet
+	// BaseURL is the address people arrive on. Behind a proxy that is not what
+	// this process thinks it is called, and a provider compares the callback
+	// against what it was registered with, so it has to be stated.
+	BaseURL string
+	// PlainHTTP serves without TLS, which is what running this locally looks
+	// like. It only loosens cookies, and it is named for what it is.
+	PlainHTTP bool
+	// SessionLifetime bounds a sign-in. Zero takes the built-in default.
+	SessionLifetime time.Duration
+
+	// OIDC is an OpenID Connect provider. Issuer being empty means none is
+	// configured.
+	OIDCName          string
+	OIDCIssuer        string
+	OIDCClientID      string
+	OIDCClientSecret  string
+	OIDCGroupsClaim   string
+	OIDCUsernameClaim string
+
+	// GitHub is OAuth 2.0 rather than OpenID Connect, so it is configured
+	// separately. GitHubOrg being empty means teams are not read at all.
+	GitHubClientID     string
+	GitHubClientSecret string
+	GitHubOrg          string
+
 	// AutoMigrate applies outstanding schema changes at startup.
 	//
 	// On by default: a self-hosted operator should not need a separate step,
@@ -76,19 +101,33 @@ const envPrefix = "OPENPSIRT_"
 // Load reads configuration from the environment.
 func Load() (Config, error) {
 	c := Config{
-		Addr:          env("ADDR", ":8080"),
-		LogFormat:     env("LOG_FORMAT", "text"),
-		ShutdownGrace: duration("SHUTDOWN_GRACE", 15*time.Second),
-		DatabaseURL:   env("DATABASE_URL", ""),
-		ScannerPath:   env("SCANNER_PATH", ""),
-		TrustedHeader: env("TRUSTED_HEADER", ""),
-		AutoMigrate:   env("AUTO_MIGRATE", "true") != "false",
-		ReadTimeout:   5 * time.Minute,
-		WriteTimeout:  5 * time.Minute,
-		DBMaxOpen:     number("DB_MAX_OPEN", 25),
-		DBMaxIdle:     number("DB_MAX_IDLE", 25),
-		DBIdleTimeout: duration("DB_IDLE_TIMEOUT", time.Minute),
-		DBLifetime:    duration("DB_CONN_LIFETIME", 30*time.Minute),
+		Addr:            env("ADDR", ":8080"),
+		BaseURL:         env("BASE_URL", ""),
+		PlainHTTP:       env("PLAIN_HTTP", "") != "",
+		SessionLifetime: duration("SESSION_LIFETIME", 0),
+
+		OIDCName:          env("OIDC_NAME", "oidc"),
+		OIDCIssuer:        env("OIDC_ISSUER", ""),
+		OIDCClientID:      env("OIDC_CLIENT_ID", ""),
+		OIDCClientSecret:  env("OIDC_CLIENT_SECRET", ""),
+		OIDCGroupsClaim:   env("OIDC_GROUPS_CLAIM", ""),
+		OIDCUsernameClaim: env("OIDC_USERNAME_CLAIM", ""),
+
+		GitHubClientID:     env("GITHUB_CLIENT_ID", ""),
+		GitHubClientSecret: env("GITHUB_CLIENT_SECRET", ""),
+		GitHubOrg:          env("GITHUB_ORG", ""),
+		LogFormat:          env("LOG_FORMAT", "text"),
+		ShutdownGrace:      duration("SHUTDOWN_GRACE", 15*time.Second),
+		DatabaseURL:        env("DATABASE_URL", ""),
+		ScannerPath:        env("SCANNER_PATH", ""),
+		TrustedHeader:      env("TRUSTED_HEADER", ""),
+		AutoMigrate:        env("AUTO_MIGRATE", "true") != "false",
+		ReadTimeout:        5 * time.Minute,
+		WriteTimeout:       5 * time.Minute,
+		DBMaxOpen:          number("DB_MAX_OPEN", 25),
+		DBMaxIdle:          number("DB_MAX_IDLE", 25),
+		DBIdleTimeout:      duration("DB_IDLE_TIMEOUT", time.Minute),
+		DBLifetime:         duration("DB_CONN_LIFETIME", 30*time.Minute),
 	}
 
 	c.BootstrapAdmins = access.Identities(env("BOOTSTRAP_ADMINS", ""))

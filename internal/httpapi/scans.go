@@ -20,6 +20,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
+	"github.com/bhouse-nexthop/openpsirt/internal/signin"
 	"github.com/bhouse-nexthop/openpsirt/internal/version"
 )
 
@@ -39,6 +40,16 @@ type Ingest struct {
 	// running it locally looks like. It only ever loosens a cookie, so it is
 	// named for what it is rather than for what it switches off.
 	PlainHTTP bool
+	// Providers are the ways somebody may sign in, by the name a URL uses.
+	// Empty means none is configured, and the sign-in paths are not mounted at
+	// all rather than mounted and answering that nothing is available.
+	Providers map[string]signin.Provider
+	// BaseURL is the address people arrive on, which behind a proxy is not
+	// what this process thinks it is called. A provider compares the callback
+	// against what it was registered with, so this has to be the outside one.
+	BaseURL string
+	// SessionLifetime bounds a sign-in. Zero takes the default.
+	SessionLifetime time.Duration
 }
 
 // catalog returns a store over this deployment's database, or nothing when
