@@ -47,6 +47,15 @@ func (in Ingest) catalog() *catalog.Store {
 	return catalog.NewStore(in.DB.DB)
 }
 
+// rights returns a store over who may do what, or nothing where there is no
+// database.
+func (in Ingest) rights() *access.Store {
+	if in.DB == nil {
+		return nil
+	}
+	return access.NewStore(in.DB.DB)
+}
+
 // uploadParts are the documents a build sends.
 //
 // One request carries the whole picture. A build whose inventory landed and
@@ -318,4 +327,105 @@ func store(ctx context.Context, documents *ingest.Documents, scanID int64, kind 
 	}
 	_, err := documents.Write(ctx, scanID, kind, ordinal, file)
 	return err
+}
+
+// ReceiptBody is what became of one upload.
+type ReceiptBody struct {
+	ScanID     int64  `json:"scan_id" doc:"The scan this upload became"`
+	Serial     string `json:"serial,omitempty" doc:"The identity the inventory carries for itself"`
+	BuiltAt    string `json:"built_at,omitempty" doc:"When the producer says the build was made"`
+	ReceivedAt string `json:"received_at" doc:"When it arrived here"`
+	State      string `json:"state" enum:"reading,scanning,scanned,failed" doc:"How far it has got"`
+	// Failure is the producer's own text back at them — what could not be read
+	// and where. It is not a fault in this deployment, so it is reported
+	// rather than logged away.
+	Failure string `json:"failure,omitempty" doc:"Why it could not be used, where it could not"`
+}
+
+// ReceiptsOutput is a page of what has been filed against a build.
+type ReceiptsOutput struct {
+	Body struct {
+		Items []ReceiptBody `json:"items"`
+		Total int           `json:"total"`
+	}
+}
+
+func registerReceipts(api huma.API, in Ingest) {
+	huma.Register(api, huma.Operation{
+		OperationID: "list-scans", Method: http.MethodGet,
+		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/scans",
+		Summary: "What has been filed against a build",
+		Description: "Newest first. An upload is answered before its documents are read, so this " +
+			"is where a producer finds out whether they parsed. A key may read the uploads it " +
+			"sent itself and nothing else.",
+		Tags: []string{"Ingest"},
+	}, func(ctx context.Context, input *struct {
+		Product string `path:"product"`
+		Stream  string `path:"stream"`
+		Variant string `path:"variant"`
+		Limit   int    `query:"limit" default:"20" minimum:"1" maximum:"100" doc:"How many to return"`
+		Offset  int    `query:"offset" minimum:"0" doc:"How many to skip"`
+	}) (*ReceiptsOutput, error) {
+		subject, err := requester(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if in.DB == nil {
+			return nil, huma.Error500InternalServerError("this process cannot read scans")
+		}
+
+		// Resolved and authorized together, so a build somebody may not reach
+		// reads as one that was never declared.
+		names := catalog.NewStore(in.DB.DB)
+		named, err := names.LocateVisible(ctx, subject, input.Product, input.Stream, input.Variant)
+		if err != nil {
+			return nil, huma.Error404NotFound(err.Error())
+		}
+
+		if subject.Kind == access.Pipeline &&
+			!subject.MaySend(named.ProductID, named.StreamID, named.VariantID) {
+			return nil, huma.Error403Forbidden("not authorized")
+		}
+
+		target, err := names.ExistingTarget(ctx, named.StreamID, named.VariantID)
+		out := &ReceiptsOutput{}
+		out.Body.Items = []ReceiptBody{}
+		if err != nil {
+			// Declared, and nothing has ever been filed against it.
+			return out, nil
+		}
+
+		// A key sees the receipts for what it sent and nothing more. Reading
+		// back one's own upload is the other half of the acceptance, not a
+		// report about the product.
+		var sender string
+		if subject.Kind == access.Pipeline {
+			sender = subject.Identity
+		}
+		scans := ingest.NewStore(in.DB.DB)
+		receipts, total, err := scans.Receipts(ctx, target.ID, sender, input.Limit, input.Offset)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "the scans could not be read", err)
+		}
+		for _, r := range receipts {
+			out.Body.Items = append(out.Body.Items, ReceiptBody{
+				ScanID:     r.Scan.ID,
+				Serial:     r.Scan.Serial,
+				BuiltAt:    stamp(r.Scan.BuiltAt),
+				ReceivedAt: stamp(r.Scan.ReceivedAt),
+				State:      string(r.State),
+				Failure:    r.Failure,
+			})
+		}
+		out.Body.Total = total
+		return out, nil
+	})
+}
+
+// stamp renders a time the one way the API states times.
+func stamp(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
 }

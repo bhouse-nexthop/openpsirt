@@ -187,6 +187,18 @@ how this is presented**. A person decides about an issue in a component; the
 decision is recorded against every place it covers, and which places those are
 is something they can see and narrow.
 
+So what is read back is one row per issue in a component, carrying how many
+places it occupies and how many of those the build has already argued about.
+The same image reads as 7,906 rows rather than 335,021 — a screen a person can
+work through, over a record that kept every place.
+
+The grouping is done by the database rather than after the fact. A page of
+fifty grouped rows read out of a third of a million findings is not a page of
+fifty findings, and counting in the application would mean reading all of them
+to show any of them. Only the names are fetched afterwards, in a second pass:
+aggregating text is spelled differently on every engine, and none of the
+spellings is worth an engine-specific path in the core.
+
 ## Scanning is separate work from reading
 
 An inventory is read once, when it arrives. It is scanned again and again, as

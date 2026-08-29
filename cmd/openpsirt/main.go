@@ -107,7 +107,7 @@ func run(args []string, stdout, stderr *os.File) error {
 		DB: db, Queue: work,
 		Access: access.NewResolver(access.NewStore(db.DB), access.Trust{
 			Header: cfg.TrustedHeader, From: cfg.TrustedSources,
-		}),
+		}).WithLogger(logger),
 	})
 
 	// Every replica serves, reads and scans. Separate worker deployments would

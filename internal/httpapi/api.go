@@ -108,7 +108,12 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	api := humachi.New(router, cfg)
 	registerVersion(api)
 	registerScans(api, in)
+	registerFindings(api, in)
+	registerReceipts(api, in)
 	registerCatalog(api, Declaring{Store: in.catalog, Logger: logger})
+	registerAdministration(api, Administering{
+		Access: in.rights, Catalog: in.catalog, Logger: logger,
+	})
 
 	return router, api
 }

@@ -245,3 +245,49 @@ func hashSecret(secret string) string {
 	sum := sha256.Sum256([]byte(secret))
 	return hex.EncodeToString(sum[:])
 }
+
+// People lists everybody who has been granted something, with what they hold.
+func (s *Store) People(ctx context.Context) ([]Account, map[int64][]Grant, error) {
+	var people []Account
+	if err := s.db.NewSelect().Model(&people).Order("identity").Scan(ctx); err != nil {
+		return nil, nil, fmt.Errorf("list people: %w", err)
+	}
+	var grants []Grant
+	if err := s.db.NewSelect().Model(&grants).Order("person_id", "product_id").Scan(ctx); err != nil {
+		return nil, nil, fmt.Errorf("list what people hold: %w", err)
+	}
+	held := map[int64][]Grant{}
+	for _, grant := range grants {
+		held[grant.PersonID] = append(held[grant.PersonID], grant)
+	}
+	return people, held, nil
+}
+
+// Withdraw takes a role away.
+//
+// The row is removed rather than marked. A grant is a statement about now, and
+// what somebody used to hold is answered by the record of what they did, not
+// by keeping a permission that no longer applies.
+func (s *Store) Withdraw(ctx context.Context, personID, productID int64, role Role) error {
+	_, err := s.db.NewDelete().Model((*Grant)(nil)).
+		Where("person_id = ?", personID).
+		Where("product_id = ?", productID).
+		Where("role = ?", role).Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("withdraw %q: %w", role, err)
+	}
+	return nil
+}
+
+// Keys lists the pipeline credentials, without their secrets.
+//
+// There is nothing to list them with: what is stored is a digest, and that is
+// the point. What an operator needs is which keys exist, what each reaches,
+// when it was last used, and whether it still works.
+func (s *Store) Keys(ctx context.Context) ([]Key, error) {
+	var keys []Key
+	if err := s.db.NewSelect().Model(&keys).Order("name").Scan(ctx); err != nil {
+		return nil, fmt.Errorf("list keys: %w", err)
+	}
+	return keys, nil
+}

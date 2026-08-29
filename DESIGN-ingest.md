@@ -217,6 +217,25 @@ which is the wrong person to be the only one who knows.
 Once a scan has been read, what it sent is either discarded or kept, according
 to whether the line it was filed against moves.
 
+### Which is why a sender can ask what became of it
+
+Recording a failure against the scan is only half of making a bad producer
+visible: somebody has to be able to read it. The acceptance a build received
+was issued before any of this ran, so it cannot carry the answer, and a build
+that never checks again is a build that goes green on a file nothing could
+read.
+
+So what was filed against a build can be asked for, newest first, and each
+upload reports how far it has got: taken and not yet read, read and awaiting a
+vulnerability scan, done, or refused with the reason. A key sees the uploads it
+sent itself, which is what makes this reachable from the pipeline that has the
+build in front of it rather than only by whoever operates the deployment.
+
+The four states are ours, not the queue's. Reading and scanning are two jobs
+with different rhythms and a producer has no business knowing which of our
+queues its work is sitting in — that would tie a build script to an internal
+arrangement it cannot see and we would like to keep changing.
+
 ### Two scans of one target are kept apart
 
 Uploads are accepted in the order they arrive and read in whatever order

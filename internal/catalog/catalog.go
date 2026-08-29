@@ -363,3 +363,30 @@ func (s *Store) Describe(ctx context.Context, targetID int64) (*Placement, error
 		Moves: st.Kind == Branch,
 	}, nil
 }
+
+// ProductByID finds a product by its row.
+//
+// Used where something already holds an identifier and needs the name to show:
+// a credential says which product it may send for, and an operator reading the
+// list wants the name they declared rather than a number.
+func (s *Store) ProductByID(ctx context.Context, id int64) (*Product, error) {
+	p := new(Product)
+	if err := s.db.NewSelect().Model(p).Where("id = ?", id).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("look up product %d: %w", id, err)
+	}
+	return p, nil
+}
+
+// ExistingTarget finds a release built as a variant, without recording one.
+//
+// Reading is not filing. Asking what is open against a build that has never
+// been scanned should not create the record that says it was.
+func (s *Store) ExistingTarget(ctx context.Context, streamID, variantID int64) (*Target, error) {
+	target := new(Target)
+	err := s.db.NewSelect().Model(target).
+		Where("stream_id = ?", streamID).Where("variant_id = ?", variantID).Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("nothing has been filed against this build: %w", err)
+	}
+	return target, nil
+}

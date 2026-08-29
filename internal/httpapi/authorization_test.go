@@ -192,6 +192,12 @@ func TestWhoMayReachWhat(t *testing.T) {
 			theirsVars = "/v1/products/theirs/variants"
 			absent     = "/v1/products/nosuch/streams"
 			version    = "/v1/version"
+
+			mineFound  = "/v1/products/mine/streams/master/variants/broadcom/findings"
+			mineScans  = "/v1/products/mine/streams/master/variants/broadcom/scans"
+			theirFound = "/v1/products/theirs/streams/master/variants/broadcom/findings"
+			people     = "/v1/people"
+			keys       = "/v1/keys"
 		)
 
 		for _, c := range []struct {
@@ -257,6 +263,40 @@ func TestWhoMayReachWhat(t *testing.T) {
 			{"admin", http.MethodGet, mineVars, http.StatusOK},
 			{"admin", http.MethodGet, version, http.StatusOK},
 			{"admin", http.MethodPost, products, http.StatusCreated},
+
+			// Findings follow the same visibility as everything else, and a
+			// build nobody may see is a build that was never declared.
+			{"", http.MethodGet, mineFound, http.StatusUnauthorized},
+			{"nothing", http.MethodGet, mineFound, http.StatusUnauthorized},
+			{"reader", http.MethodGet, mineFound, http.StatusOK},
+			{"private", http.MethodGet, mineFound, http.StatusOK},
+			{"triager", http.MethodGet, mineFound, http.StatusOK},
+			{"admin", http.MethodGet, mineFound, http.StatusOK},
+			{"reader", http.MethodGet, theirFound, http.StatusNotFound},
+			{"approver", http.MethodGet, mineFound, http.StatusNotFound},
+			{"reporter", http.MethodGet, mineFound, http.StatusNotFound},
+
+			// Receipts are read by whoever may read the build.
+			{"reader", http.MethodGet, mineScans, http.StatusOK},
+			{"approver", http.MethodGet, mineScans, http.StatusNotFound},
+			{"", http.MethodGet, mineScans, http.StatusUnauthorized},
+
+			// Administration is administration. Holding every product role
+			// there is does not amount to any of it.
+			{"reader", http.MethodGet, people, http.StatusForbidden},
+			{"private", http.MethodGet, people, http.StatusForbidden},
+			{"triager", http.MethodGet, people, http.StatusForbidden},
+			{"private-triage", http.MethodGet, people, http.StatusForbidden},
+			{"approver", http.MethodGet, people, http.StatusForbidden},
+			{"reporter", http.MethodGet, people, http.StatusForbidden},
+			{"reader", http.MethodGet, keys, http.StatusForbidden},
+			{"triager", http.MethodGet, keys, http.StatusForbidden},
+			{"reader", http.MethodDelete, "/v1/keys/nightly", http.StatusForbidden},
+			{"reader", http.MethodDelete, "/v1/people/admin/roles/mine/public-read", http.StatusForbidden},
+			{"", http.MethodGet, people, http.StatusUnauthorized},
+			{"nothing", http.MethodGet, keys, http.StatusUnauthorized},
+			{"admin", http.MethodGet, people, http.StatusOK},
+			{"admin", http.MethodGet, keys, http.StatusOK},
 		} {
 			if got := r.as(t, c.who, c.method, c.path); got != c.want {
 				who := c.who
@@ -324,10 +364,25 @@ func TestAPipelineCanReachNothingButSending(t *testing.T) {
 			"/v1/products/mine/streams",
 			"/v1/products/mine/variants",
 			"/v1/products/mine/streams/master/variants",
+			"/v1/products/mine/streams/master/variants/broadcom/findings",
+			"/v1/people",
+			"/v1/keys",
 		} {
 			if got := r.asKey(t, http.MethodGet, path); got != http.StatusForbidden {
 				t.Errorf("a pipeline reading %s answered %d, want 403", path, got)
 			}
+		}
+
+		// The one exception, and it is not a reading role: a sender may read
+		// back what became of what it sent. Without it an acceptance is
+		// unverifiable by the only party that can act on a rejected file.
+		if got := r.asKey(t, http.MethodGet,
+			"/v1/products/mine/streams/master/variants/broadcom/scans"); got != http.StatusOK {
+			t.Errorf("a pipeline could not read its own receipts: %d", got)
+		}
+		if got := r.asKey(t, http.MethodGet,
+			"/v1/products/theirs/streams/master/variants/broadcom/scans"); got != http.StatusNotFound {
+			t.Errorf("a pipeline reached receipts outside its scope: %d", got)
 		}
 		if got := r.asKey(t, http.MethodGet, "/v1/version"); got != http.StatusForbidden {
 			t.Errorf("a pipeline read the running version: %d", got)

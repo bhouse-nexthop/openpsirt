@@ -3,6 +3,7 @@ package access
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -76,11 +77,22 @@ func (t Trust) trusts(remote string) bool {
 type Resolver struct {
 	store *Store
 	trust Trust
+	// logger records a refusal an operator would otherwise have to guess at.
+	// What the caller is told never changes.
+	logger *slog.Logger
 }
 
 // NewResolver returns a resolver over a store.
 func NewResolver(store *Store, trust Trust) *Resolver {
-	return &Resolver{store: store, trust: trust}
+	return &Resolver{store: store, trust: trust, logger: slog.Default()}
+}
+
+// WithLogger sends refusals worth an operator's attention to l.
+func (r *Resolver) WithLogger(l *slog.Logger) *Resolver {
+	if l != nil {
+		r.logger = l
+	}
+	return r
 }
 
 // keyHeader is how a pipeline presents its credential.
@@ -104,7 +116,15 @@ func (r *Resolver) Resolve(ctx context.Context, req *http.Request) (Subject, err
 		if !r.trust.trusts(req.RemoteAddr) {
 			// The header is present and this is not somewhere it is honored
 			// from, which is either a misconfiguration or somebody reaching
-			// past the proxy. Both are refusals.
+			// past the proxy. Both are refusals, and the caller is told no
+			// more than anybody else is.
+			//
+			// It is logged because the two are indistinguishable from the
+			// outside and an operator who listed a proxy's address in one
+			// family and is being reached from the other has no other way to
+			// find out: the request simply fails, correctly, forever.
+			r.logger.Warn("refused a trusted header presented from an untrusted source",
+				"header", r.trust.Header, "source", req.RemoteAddr)
 			return Subject{}, ErrDenied
 		}
 		return r.store.Resolve(ctx, identity)

@@ -3,7 +3,7 @@
 Who is asking, and what they may reach.
 
 Satisfies ACC-02 to ACC-08, ACC-10 to ACC-14, ACC-19 to ACC-21, ACC-29 to
-ACC-31, SEC-03.
+ACC-31, ACC-50, SEC-03.
 
 ## Authenticating is not being authorized
 
@@ -90,6 +90,25 @@ redirected**. A key covering one release must not quietly accept a scan of
 another, and since a product-wide key cannot possibly imply which release an
 upload is for, the upload has to say — so it always says.
 
+### A key reads back its own receipts and nothing else
+
+Sending is not quite everything a pipeline needs. An upload is answered before
+its documents are read, so the acceptance says the file arrived and nothing
+about whether it could be used. The party who can fix a producer emitting
+unreadable files is the pipeline that ran it, and it would otherwise see a
+green build every night.
+
+So a key may ask what became of the uploads **it** sent: whether each parsed,
+and why not where it did not. Narrowed by the credential recorded on the scan,
+authorized by the same scope check that authorized sending, and reaching no
+findings, no triage and no reporting.
+
+The narrowing is what keeps this a receipt rather than a report about the
+product. Several pipelines per product is the expected arrangement, so the
+narrowing is applied in the query rather than to the page after it is read — a
+count taken before filtering says how many builds somebody else runs, which is
+the same leak in a smaller number.
+
 The secret is generated here, never chosen, and **stored hashed and shown
 once**. A credential store that can hand back what it holds gives up every
 pipeline's key along with a copy of the database. It is not a password: there
@@ -117,8 +136,10 @@ was not configured.
 | Whether they are anybody at all | The same middleware | Refusing before the request is examined means an unrecognized caller does not learn whether their body was well-formed |
 | Whether they may reach this product | The data layer, on the query | A check beside the query cannot be skipped by adding another endpoint |
 | Whether they may do this at all | The handler | Declaring a product is administration whatever the query looks like |
+| Whether a header from an untrusted source was a mistake | Logged, never answered | The caller is told no more than anybody else. An operator who trusted an address in one family and is reached from the other has no other way to find out, because the request simply fails, correctly, forever |
 
-**A pipeline is refused a read rather than shown an empty one.** "Here is
+**A pipeline is refused a read rather than shown an empty one**, receipts for
+its own uploads excepted. "Here is
 nothing" and "you cannot ask" are different statements, and the first invites a
 caller to believe the list is empty.
 
