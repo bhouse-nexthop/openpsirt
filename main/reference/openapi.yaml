@@ -250,6 +250,9 @@ components:
     HeldBody:
       additionalProperties: false
       properties:
+        effective:
+          description: Whether this grants anything right now
+          type: boolean
         product:
           description: The product the role is held against
           minLength: 1
@@ -264,9 +267,16 @@ components:
             - public-triage
             - private-triage
           type: string
+        source:
+          description: Whether an administrator assigned this or a group derived it
+          enum:
+            - assigned
+            - derived
+          type: string
       required:
         - product
         - role
+        - effective
       type: object
     Info:
       additionalProperties: false
@@ -509,9 +519,21 @@ components:
             - array
             - "null"
         identity:
-          description: What a sign-in path calls them
+          description: What to call them here
           maxLength: 191
           minLength: 1
+          type: string
+        provider:
+          description: Which sign-in path they will arrive by, such as proxy for a trusted header
+          type: string
+        signs_in_by:
+          items:
+            $ref: "#/components/schemas/SignInBody"
+          type:
+            - array
+            - "null"
+        username:
+          description: What that provider calls them. Defaults to the identity
           type: string
       required:
         - identity
@@ -591,6 +613,20 @@ components:
       required:
         - items
         - total
+      type: object
+    SignInBody:
+      additionalProperties: false
+      properties:
+        pinned:
+          type: boolean
+        provider:
+          type: string
+        username:
+          type: string
+      required:
+        - provider
+        - username
+        - pinned
       type: object
     StreamBody:
       additionalProperties: false
