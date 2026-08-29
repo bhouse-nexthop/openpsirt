@@ -148,3 +148,88 @@ func TestASessionForSomebodyGrantedNothingReachesNothing(t *testing.T) {
 		}
 	})
 }
+
+func TestAnAdministratorCanCutSomebodyOffAtOnce(t *testing.T) {
+	// Roles and group mappings are re-read at sign-in, so withdrawing one
+	// takes effect then. Somebody leaving cannot wait for that.
+	eachReach(t, func(t *testing.T, r *reach) {
+		issued := signIn(t, r, "reader")
+		if got := asBrowser(t, r, issued, http.MethodGet, "/v1/products", "").Code; got != http.StatusOK {
+			t.Fatalf("the session did not work to begin with: %d", got)
+		}
+
+		if got := r.as(t, "admin", http.MethodDelete, "/v1/people/reader/sessions"); got != http.StatusNoContent {
+			t.Fatalf("ending their sessions answered %d", got)
+		}
+		if got := asBrowser(t, r, issued, http.MethodGet, "/v1/products", "").Code; got != http.StatusUnauthorized {
+			t.Errorf("the session survived being ended: %d", got)
+		}
+	})
+}
+
+func TestCuttingSomebodyOffIsNotSomethingTheyCanDoToEachOther(t *testing.T) {
+	eachReach(t, func(t *testing.T, r *reach) {
+		for _, who := range []string{"reader", "triager", "approver", "private-triage"} {
+			if got := r.as(t, who, http.MethodDelete, "/v1/people/admin/sessions"); got != http.StatusForbidden {
+				t.Errorf("%s ended an administrator's sessions: %d", who, got)
+			}
+		}
+	})
+}
+
+func TestAnAdministratorCanWithdrawATokenWhoseOwnerHasGone(t *testing.T) {
+	// The ones that matter are found when somebody leaves and nobody knows
+	// what breaks if they are turned off.
+	eachReach(t, func(t *testing.T, r *reach) {
+		ctx := t.Context()
+		person, err := r.rights.ByIdentity(ctx, "reader")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, secret, err := r.rights.NewToken(ctx, person.ID, "scripting", nil, time.Hour, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.rights.ResolveToken(ctx, secret); err != nil {
+			t.Fatalf("the token did not work to begin with: %v", err)
+		}
+
+		if got := r.as(t, "reader", http.MethodDelete, "/v1/people/reader/tokens/scripting"); got != http.StatusForbidden {
+			t.Errorf("somebody withdrew a token through the administration path: %d", got)
+		}
+		if got := r.as(t, "admin", http.MethodDelete, "/v1/people/reader/tokens/scripting"); got != http.StatusNoContent {
+			t.Fatalf("an administrator could not withdraw it: %d", got)
+		}
+		if _, err := r.rights.ResolveToken(ctx, secret); err == nil {
+			t.Error("the token still worked after being withdrawn")
+		}
+	})
+}
+
+func TestATokenIsACredentialLikeAnyOther(t *testing.T) {
+	// It authenticates through the same one resolution step every other
+	// credential goes through, so nothing downstream knows which door it came
+	// through.
+	eachReach(t, func(t *testing.T, r *reach) {
+		person, err := r.rights.ByIdentity(t.Context(), "reader")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, secret, err := r.rights.NewToken(t.Context(), person.ID, "scripting", nil, time.Hour, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if got := r.withKey(t, secret, http.MethodGet, "/v1/products").code; got != http.StatusOK {
+			t.Errorf("a personal token could not read what its owner reads: %d", got)
+		}
+		// And reaches no further than its owner does.
+		if got := r.withKey(t, secret, http.MethodGet, "/v1/products/theirs/streams").code; got != http.StatusNotFound {
+			t.Errorf("a personal token reached past its owner: %d", got)
+		}
+		// Nor into administration.
+		if got := r.withKey(t, secret, http.MethodGet, "/v1/people").code; got != http.StatusForbidden {
+			t.Errorf("a personal token reached administration: %d", got)
+		}
+	})
+}

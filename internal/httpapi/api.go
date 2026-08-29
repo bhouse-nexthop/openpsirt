@@ -160,6 +160,9 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	registerAdministration(api, Administering{
 		Access: in.rights, Catalog: in.catalog, Logger: logger,
 	})
+	registerRevocation(api, Administering{
+		Access: in.rights, Catalog: in.catalog, Logger: logger,
+	})
 
 	return router, api
 }

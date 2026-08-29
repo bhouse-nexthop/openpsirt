@@ -256,3 +256,89 @@ func productNames(ctx context.Context, a Administering) (map[int64]string, error
 	}
 	return named, nil
 }
+
+// registerRevocation mounts what an administrator needs to cut access off now
+// rather than at the next sign-in.
+//
+// Group membership is only ever re-read when somebody signs in, so withdrawing
+// a role or a mapping takes effect at their next one. That is the right
+// mechanism for drift and the wrong one for somebody leaving. Ending their
+// sessions is what makes the deliberate case immediate.
+func registerRevocation(api huma.API, a Administering) {
+	huma.Register(api, huma.Operation{
+		OperationID: "list-all-tokens", Method: http.MethodGet, Path: "/v1/people/tokens",
+		Summary:     "List everybody's personal credentials",
+		Description: "Stale tokens are otherwise found only when somebody leaves and nobody knows what breaks if they are turned off.",
+		Tags:        []string{"Administration"},
+	}, func(ctx context.Context, _ *struct{}) (*listOutput[TokenBody], error) {
+		rights, names, err := administerable(ctx, a)
+		if err != nil {
+			return nil, err
+		}
+		tokens, err := rights.AllTokens(ctx)
+		if err != nil {
+			return nil, wentWrong(a.Logger, "cannot list the tokens", err)
+		}
+		people, _, err := rights.People(ctx)
+		if err != nil {
+			return nil, wentWrong(a.Logger, "cannot read whose tokens these are", err)
+		}
+		owners := map[int64]string{}
+		for _, person := range people {
+			owners[person.ID] = person.Identity
+		}
+		return tokenList(ctx, names, tokens, owners)
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "revoke-anyones-token", Method: http.MethodDelete,
+		Path:        "/v1/people/{identity}/tokens/{name}",
+		Summary:     "Withdraw somebody's personal credential",
+		Description: "An owner withdraws their own through the access paths. This is for the ones whose owner is no longer here to do it.",
+		Tags:        []string{"Administration"}, DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		Identity string `path:"identity"`
+		Name     string `path:"name"`
+	}) (*struct{}, error) {
+		rights, _, err := administerable(ctx, a)
+		if err != nil {
+			return nil, err
+		}
+		person, err := rights.ByIdentity(ctx, in.Identity)
+		if err != nil {
+			return nil, huma.Error404NotFound("nobody here is called that")
+		}
+		token, err := rights.TokenByName(ctx, person.ID, in.Name)
+		if err != nil {
+			return nil, huma.Error404NotFound("they hold no token called that")
+		}
+		if err := rights.RevokeToken(ctx, token.ID); err != nil {
+			return nil, wentWrong(a.Logger, "cannot revoke a token", err)
+		}
+		return &struct{}{}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "end-sessions", Method: http.MethodDelete, Path: "/v1/people/{identity}/sessions",
+		Summary: "Sign somebody out everywhere",
+		Description: "Takes effect at once, whichever copy of the application answers next. Roles " +
+			"and group mappings are re-read at sign-in, so withdrawing one takes effect then; this " +
+			"is what makes somebody leaving immediate instead.",
+		Tags: []string{"Administration"}, DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		Identity string `path:"identity"`
+	}) (*struct{}, error) {
+		rights, _, err := administerable(ctx, a)
+		if err != nil {
+			return nil, err
+		}
+		person, err := rights.ByIdentity(ctx, in.Identity)
+		if err != nil {
+			return nil, huma.Error404NotFound("nobody here is called that")
+		}
+		if err := rights.EndSessionsFor(ctx, person.ID); err != nil {
+			return nil, wentWrong(a.Logger, "cannot end the sessions", err)
+		}
+		return &struct{}{}, nil
+	})
+}
