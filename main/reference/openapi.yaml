@@ -1,5 +1,41 @@
 components:
   schemas:
+    DeclaredKeyBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DeclaredKeyBody.json
+          format: uri
+          readOnly: true
+          type: string
+        created:
+          type: boolean
+        item:
+          $ref: "#/components/schemas/KeyBody"
+      required:
+        - created
+        - item
+      type: object
+    DeclaredPersonBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DeclaredPersonBody.json
+          format: uri
+          readOnly: true
+          type: string
+        created:
+          type: boolean
+        item:
+          $ref: "#/components/schemas/PersonBody"
+      required:
+        - created
+        - item
+      type: object
     DeclaredProductBody:
       additionalProperties: false
       properties:
@@ -113,6 +149,92 @@ components:
           format: uri
           type: string
       type: object
+    FindingBody:
+      additionalProperties: false
+      properties:
+        answered:
+          description: How many of those the build has already argued do not apply
+          format: int64
+          type: integer
+        component:
+          description: What carries it
+          type: string
+        fix_state:
+          description: What upstream has done about it
+          enum:
+            - fixed
+            - none
+            - wont-fix
+          type: string
+        fixed_in:
+          description: The version that resolves it, where one exists
+          type: string
+        places:
+          description: How many places this component sits at here
+          format: int64
+          type: integer
+        severity:
+          description: As the scanner rated it. A word, not a score
+          type: string
+        upstream:
+          description: What a fork was made from, where it is one
+          type: string
+        version:
+          description: The version that ships
+          type: string
+        vulnerability:
+          description: The issue, under the name it is most widely known by
+          type: string
+      required:
+        - vulnerability
+        - component
+        - version
+        - places
+      type: object
+    FindingsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/FindingsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/FindingBody"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
+      type: object
+    HeldBody:
+      additionalProperties: false
+      properties:
+        product:
+          description: The product the role is held against
+          minLength: 1
+          type: string
+        role:
+          description: What they may do with it
+          enum:
+            - reporting
+            - approver
+            - public-read
+            - private-read
+            - public-triage
+            - private-triage
+          type: string
+      required:
+        - product
+        - role
+      type: object
     Info:
       additionalProperties: false
       properties:
@@ -140,6 +262,82 @@ components:
         - commit
         - date
         - go
+      type: object
+    KeyBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/KeyBody.json
+          format: uri
+          readOnly: true
+          type: string
+        last_used_at:
+          description: When it last sent something
+          type: string
+        name:
+          description: What this credential is for
+          maxLength: 191
+          minLength: 1
+          type: string
+        product:
+          description: The product it may send scans for. Always required
+          minLength: 1
+          type: string
+        revoked:
+          description: Whether it has been withdrawn
+          type: boolean
+        secret:
+          description: Shown once, at creation. It is stored hashed and cannot be shown again
+          type: string
+        stream:
+          description: Optionally, the one release it may send for
+          type: string
+        variant:
+          description: Optionally, the one variant it may send for
+          type: string
+      required:
+        - name
+        - product
+      type: object
+    ListBodyKeyBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyKeyBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/KeyBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyPersonBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyPersonBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/PersonBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
       type: object
     ListBodyProductBody:
       additionalProperties: false
@@ -198,6 +396,36 @@ components:
       required:
         - items
       type: object
+    PersonBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/PersonBody.json
+          format: uri
+          readOnly: true
+          type: string
+        admin:
+          description: Whether they administer this deployment
+          type: boolean
+        display_name:
+          description: What to show instead of the identity
+          type: string
+        holds:
+          items:
+            $ref: "#/components/schemas/HeldBody"
+          type:
+            - array
+            - "null"
+        identity:
+          description: What a sign-in path calls them
+          maxLength: 191
+          minLength: 1
+          type: string
+      required:
+        - identity
+      type: object
     ProductBody:
       additionalProperties: false
       properties:
@@ -218,6 +446,61 @@ components:
           type: string
       required:
         - name
+      type: object
+    ReceiptBody:
+      additionalProperties: false
+      properties:
+        built_at:
+          description: When the producer says the build was made
+          type: string
+        failure:
+          description: Why it could not be used, where it could not
+          type: string
+        received_at:
+          description: When it arrived here
+          type: string
+        scan_id:
+          description: The scan this upload became
+          format: int64
+          type: integer
+        serial:
+          description: The identity the inventory carries for itself
+          type: string
+        state:
+          description: How far it has got
+          enum:
+            - reading
+            - scanning
+            - scanned
+            - failed
+          type: string
+      required:
+        - scan_id
+        - received_at
+        - state
+      type: object
+    ReceiptsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ReceiptsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/ReceiptBody"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
       type: object
     StreamBody:
       additionalProperties: false
@@ -304,6 +587,150 @@ info:
   version: dev
 openapi: 3.1.0
 paths:
+  /v1/keys:
+    get:
+      description: "Which credentials exist, what each may send, when it was last used and whether it still works. The secrets are not here and cannot be: what is stored is a digest."
+      operationId: list-keys
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyKeyBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the pipeline credentials
+      tags:
+        - Administration
+    post:
+      description: "Creates a credential a build may send scans with, and returns its secret. The secret is shown once and stored hashed: a credential store that can hand back what it holds gives up every pipeline's key with a copy of the database."
+      operationId: create-key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeclaredKeyBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Issue a pipeline credential
+      tags:
+        - Administration
+  /v1/keys/{name}:
+    delete:
+      description: Stops it working, without removing the record of what it sent. Revoking one credential leaves every other pipeline running.
+      operationId: revoke-key
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Withdraw a pipeline credential
+      tags:
+        - Administration
+  /v1/people:
+    get:
+      description: "Everybody who may sign in, and what each of them holds. Nobody is here because they authenticated: access is granted in advance or not at all."
+      operationId: list-people
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyPersonBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List who has been granted access
+      tags:
+        - Administration
+    post:
+      description: Records somebody so that they may sign in, and optionally what they hold. Recording the same person again confirms them and adds any roles named.
+      operationId: record-person
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersonBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeclaredPersonBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Grant somebody access
+      tags:
+        - Administration
+  /v1/people/{identity}/roles/{product}/{role}:
+    delete:
+      description: A grant is a statement about now. Withdrawing one removes it rather than marking it, because what somebody used to hold is answered by the record of what they did.
+      operationId: withdraw-role
+      parameters:
+        - in: path
+          name: identity
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: role
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Take a role away
+      tags:
+        - Administration
   /v1/products:
     get:
       description: What a scan may be filed against. The first question after an upload is refused.
@@ -436,7 +863,118 @@ paths:
       summary: List what a release has been built as
       tags:
         - Catalog
+  /v1/products/{product}/streams/{stream}/variants/{variant}/findings:
+    get:
+      description: "One row per issue in a component, with the number of places it occupies. Not one row per place: a real image produced 335,021 findings and 305,487 of them were one kernel across the modules built against it, which is thousands of screens of rows differing in a column nobody reads. The places are what a decision gets recorded against."
+      operationId: list-findings
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - description: How many to return
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            description: How many to return
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - description: How many to skip
+          explode: false
+          in: query
+          name: offset
+          schema:
+            description: How many to skip
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FindingsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: What is open against a build
+      tags:
+        - Findings
   /v1/products/{product}/streams/{stream}/variants/{variant}/scans:
+    get:
+      description: Newest first. An upload is answered before its documents are read, so this is where a producer finds out whether they parsed. A key may read the uploads it sent itself and nothing else.
+      operationId: list-scans
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - description: How many to return
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 20
+            description: How many to return
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+        - description: How many to skip
+          explode: false
+          in: query
+          name: offset
+          schema:
+            description: How many to skip
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: What has been filed against a build
+      tags:
+        - Ingest
     post:
       description: Takes a build's inventory and the suppressions it carries, against a product, stream and variant that have already been declared. The documents are read after the response, so a successful reply means they were accepted rather than that they parsed.
       operationId: upload-scan
