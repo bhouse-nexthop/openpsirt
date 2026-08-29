@@ -62,6 +62,11 @@ type Config struct {
 	// for either to do anything.
 	TrustedHeader  string
 	TrustedSources []net.IPNet
+	// TrustedGroupsHeader is where that proxy reports membership, and
+	// TrustedGroupsDelimiter what separates the names. Neither header nor
+	// separator is standardized, so both are named rather than guessed.
+	TrustedGroupsHeader    string
+	TrustedGroupsDelimiter string
 	// BaseURL is the address people arrive on. Behind a proxy that is not what
 	// this process thinks it is called, and a provider compares the callback
 	// against what it was registered with, so it has to be stated.
@@ -101,10 +106,12 @@ const envPrefix = "OPENPSIRT_"
 // Load reads configuration from the environment.
 func Load() (Config, error) {
 	c := Config{
-		Addr:            env("ADDR", ":8080"),
-		BaseURL:         env("BASE_URL", ""),
-		PlainHTTP:       env("PLAIN_HTTP", "") != "",
-		SessionLifetime: duration("SESSION_LIFETIME", 0),
+		Addr:                   env("ADDR", ":8080"),
+		BaseURL:                env("BASE_URL", ""),
+		TrustedGroupsHeader:    env("TRUSTED_GROUPS_HEADER", ""),
+		TrustedGroupsDelimiter: env("TRUSTED_GROUPS_DELIMITER", ","),
+		PlainHTTP:              env("PLAIN_HTTP", "") != "",
+		SessionLifetime:        duration("SESSION_LIFETIME", 0),
 
 		OIDCName:          env("OIDC_NAME", "oidc"),
 		OIDCIssuer:        env("OIDC_ISSUER", ""),

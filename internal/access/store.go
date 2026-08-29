@@ -18,10 +18,13 @@ import (
 type Account struct {
 	bun.BaseModel `bun:"table:person,alias:pe"`
 
-	ID          int64      `bun:"id,pk,autoincrement"`
-	Identity    string     `bun:"identity,notnull"`
-	DisplayName string     `bun:"display_name"`
-	IsAdmin     bool       `bun:"is_admin,notnull"`
+	ID          int64  `bun:"id,pk,autoincrement"`
+	Identity    string `bun:"identity,notnull"`
+	DisplayName string `bun:"display_name"`
+	IsAdmin     bool   `bun:"is_admin,notnull"`
+	// IsBootstrap is set from configuration at every startup, and is what
+	// keeps a re-derivation from group membership out of the way back in.
+	IsBootstrap bool       `bun:"is_bootstrap,notnull"`
 	CreatedAt   time.Time  `bun:"created_at,notnull"`
 	LastSeenAt  *time.Time `bun:"last_seen_at"`
 }
@@ -30,10 +33,16 @@ type Account struct {
 type Grant struct {
 	bun.BaseModel `bun:"table:role_grant,alias:rg"`
 
-	ID        int64     `bun:"id,pk,autoincrement"`
-	PersonID  int64     `bun:"person_id,notnull"`
-	ProductID int64     `bun:"product_id,notnull"`
-	Role      Role      `bun:"role,notnull"`
+	ID        int64 `bun:"id,pk,autoincrement"`
+	PersonID  int64 `bun:"person_id,notnull"`
+	ProductID int64 `bun:"product_id,notnull"`
+	Role      Role  `bun:"role,notnull"`
+	// Source says whether an administrator assigned this or a group derived
+	// it, and Active whether it grants anything at all right now. A grant made
+	// inactive by a change of mode is kept so the change can be undone, and it
+	// is never counted as access while it sits there.
+	Source    Source    `bun:"source,notnull"`
+	Active    bool      `bun:"active,notnull"`
 	CreatedAt time.Time `bun:"created_at,notnull"`
 }
 
@@ -117,7 +126,11 @@ func (s *Store) Resolve(ctx context.Context, identity string) (Subject, error) {
 	}
 
 	var held []Grant
-	if err := s.db.NewSelect().Model(&held).Where("person_id = ?", person.ID).Scan(ctx); err != nil {
+	// Inactive grants are read past entirely. A row that grants nothing must
+	// never be counted as access — not here, and not in any report or review
+	// that asks what somebody holds (ACC-37).
+	if err := s.db.NewSelect().Model(&held).
+		Where("person_id = ?", person.ID).Where("active = ?", true).Scan(ctx); err != nil {
 		return Subject{}, fmt.Errorf("read what %q may do: %w", identity, err)
 	}
 	grants := map[int64][]Role{}
@@ -149,6 +162,7 @@ func (s *Store) GrantRole(ctx context.Context, personID, productID int64, role R
 	}
 	grant := &Grant{
 		PersonID: personID, ProductID: productID, Role: role,
+		Source: Assigned, Active: true,
 		CreatedAt: s.now().Truncate(time.Microsecond),
 	}
 	if _, err := s.db.NewInsert().Model(grant).Exec(ctx); err != nil {
@@ -164,7 +178,7 @@ func (s *Store) GrantRole(ctx context.Context, personID, productID int64, role R
 func (s *Store) holds(ctx context.Context, personID, productID int64, role Role) (bool, error) {
 	n, err := s.db.NewSelect().Model((*Grant)(nil)).
 		Where("person_id = ?", personID).Where("product_id = ?", productID).
-		Where("role = ?", role).Count(ctx)
+		Where("role = ?", role).Where("active = ?", true).Count(ctx)
 	return n > 0, err
 }
 

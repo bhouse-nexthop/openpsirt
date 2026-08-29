@@ -50,6 +50,9 @@ type Ingest struct {
 	BaseURL string
 	// SessionLifetime bounds a sign-in. Zero takes the default.
 	SessionLifetime time.Duration
+	// Mode says where roles come from. Read per request rather than held, so
+	// an administrator turning group binding off takes effect at once.
+	Mode func(context.Context) access.Mode
 }
 
 // catalog returns a store over this deployment's database, or nothing when

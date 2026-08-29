@@ -42,6 +42,13 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 			identity     ` + t.name + ` NOT NULL,
 			display_name ` + t.free + ` NULL,
 			is_admin     ` + t.boolean + ` NOT NULL,
+			-- is_bootstrap is set from configuration at every startup and is
+			-- kept apart from is_admin so the two cannot overwrite each other.
+			-- In group-bound mode admin is re-derived from group membership at
+			-- every sign-in, and without this that derivation would strip the
+			-- administrator named in configuration — who is the documented way
+			-- back in when the group mapping is wrong (ACC-29, ACC-32).
+			is_bootstrap ` + t.boolean + ` NOT NULL,
 			created_at   ` + t.timestamp + ` NOT NULL,
 			last_seen_at ` + t.timestamp + ` NULL,
 			CONSTRAINT person_identity_unique UNIQUE (identity)
@@ -55,8 +62,26 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 			person_id  ` + t.ref + ` NOT NULL REFERENCES person(id),
 			product_id ` + t.ref + ` NOT NULL REFERENCES product(id),
 			role       ` + t.kind + ` NOT NULL,
+			-- source says where a grant came from. A grant derived from group
+			-- membership is replaced wholesale at each sign-in, so losing the
+			-- group loses the role (ACC-22); one assigned by an administrator
+			-- is not touched by a sign-in at all.
+			source     ` + t.kind + ` NOT NULL,
+			-- active is what makes switching role-assignment modes reversible.
+			-- Turning on group-bound mode marks the assignments an
+			-- administrator made inactive rather than deleting them, so
+			-- switching back restores them instead of asking somebody to
+			-- reconstruct them from memory (ACC-36). An inactive row grants
+			-- nothing and is never counted as access (ACC-37).
+			active     ` + t.boolean + ` NOT NULL,
 			created_at ` + t.timestamp + ` NOT NULL,
-			CONSTRAINT role_grant_unique UNIQUE (person_id, product_id, role)
+			-- The source is part of what makes a grant one grant. Somebody can
+			-- hold the same role on the same product from both sides at once:
+			-- an assignment set aside when group-bound mode was turned on, and
+			-- a live one derived from a group that happens to grant the same
+			-- thing. Keying without the source forbids that pair, which is the
+			-- pair ACC-36 exists to keep.
+			CONSTRAINT role_grant_unique UNIQUE (person_id, product_id, role, source)
 		)` + t.suffix,
 
 		`CREATE INDEX role_grant_person_idx ON role_grant (person_id)`,
@@ -119,6 +144,42 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 		`CREATE INDEX session_person_idx ON session (person_id)`,
 		// Expired rows are cleared in bulk rather than one at a time.
 		`CREATE INDEX session_expires_idx ON session (expires_at)`,
+
+		// A provider group bound to a role on a product. In group-bound mode
+		// this table *is* the pre-authorization: somebody arriving for the
+		// first time in a mapped group is admitted and recorded then, which is
+		// what reconciles admitting them with never creating an account for
+		// somebody nobody authorized (ACC-27).
+		//
+		// The group is matched by the name the provider reports — a team slug
+		// from GitHub, a claim value from an identity provider — so it is
+		// stored as given rather than resolved to anything of ours.
+		`CREATE TABLE group_role (
+			id         ` + t.id + `,
+			group_name ` + t.name + ` NOT NULL,
+			product_id ` + t.ref + ` NOT NULL REFERENCES product(id),
+			role       ` + t.kind + ` NOT NULL,
+			created_at ` + t.timestamp + ` NOT NULL,
+			CONSTRAINT group_role_unique UNIQUE (group_name, product_id, role)
+		)` + t.suffix,
+
+		`CREATE INDEX group_role_name_idx ON group_role (group_name)`,
+
+		// Admin is global rather than held against a product (ACC-07), so a
+		// group mapping to it cannot live in the table above: the product
+		// would have to be absent, and a uniqueness rule over a column that
+		// may be absent behaves differently on each of the four engines. A
+		// second table with one column costs less than that difference.
+		//
+		// At least one row here is required while group-bound mode is on,
+		// checked at startup, or a deployment can lock itself out of its own
+		// administration (ACC-28).
+		`CREATE TABLE group_admin (
+			id         ` + t.id + `,
+			group_name ` + t.name + ` NOT NULL,
+			created_at ` + t.timestamp + ` NOT NULL,
+			CONSTRAINT group_admin_unique UNIQUE (group_name)
+		)` + t.suffix,
 	}
 
 	for _, stmt := range statements {
@@ -131,6 +192,8 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 
 func downAccess(ctx context.Context, tx *sql.Tx) error {
 	for _, stmt := range []string{
+		`DROP TABLE group_admin`,
+		`DROP TABLE group_role`,
 		`DROP TABLE session`,
 		`DROP TABLE api_key`,
 		`DROP TABLE role_grant`,

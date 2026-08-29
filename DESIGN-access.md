@@ -2,8 +2,8 @@
 
 Who is asking, and what they may reach.
 
-Satisfies ACC-02 to ACC-08, ACC-10 to ACC-14, ACC-19 to ACC-21, ACC-29 to
-ACC-31, ACC-50, SEC-03.
+Satisfies ACC-02 to ACC-08, ACC-10 to ACC-15, ACC-16 to ACC-21, ACC-22 to
+ACC-32, ACC-36 to ACC-41, ACC-50, SEC-03.
 
 ## Authenticating is not being authorized
 
@@ -127,6 +127,92 @@ container bypasses the proxy entirely. **A half-configuration stops the
 process**, because a header named with nothing to trust it from is either a
 mistake or the first half of one, and it is never a fallback for sign-in that
 was not configured.
+
+## Roles come from one place, for the whole deployment
+
+Either an administrator assigns them or provider groups derive them. Never
+both.
+
+A hybrid needs a precedence rule for somebody holding one role from a team and
+another directly. That rule is forgettable, and it is how a stale direct grant
+outlives somebody's removal from the team it was shadowing. One mode means one
+answer to "where did this person's access come from".
+
+### A derived role is a statement about current membership
+
+Membership is read at sign-in and never again — no provider tells us when
+somebody leaves a group, and polling every active user against a rate-limited
+API to find out is worse than the drift it would close. So every derived grant
+is **replaced wholesale at each sign-in** rather than merged: a group somebody
+left takes its roles with it, without anything having to notice that they left.
+
+The window in which a withdrawn role still applies is therefore the session
+lifetime. The deliberate case — somebody leaving, access being pulled — is
+handled at once by ending their sessions, which is a better mechanism than any
+polling interval.
+
+Somebody who signs in belonging to nothing that is mapped holds nothing, and is
+refused exactly as a stranger is. **Missing or unreadable membership yields no
+roles, never unrestricted** — that is the failure which would otherwise be
+silent and total.
+
+### The mapping is the authorization
+
+In group-bound mode somebody arriving for the first time in a mapped group is
+admitted and recorded then. That does not contradict access being granted in
+advance: an administrator made the mapping before anybody arrived, and the
+mapping *is* that advance grant. What is never true on any path is somebody
+being admitted because a provider vouched for them and nothing else.
+
+### Switching modes is reversible
+
+Turning group binding on marks what an administrator assigned **inactive rather
+than deleting it**, and turning it off makes it active again. People do switch
+back, usually on discovering that their groups do not map to how the team
+actually divides work, and deleting would make that a reconstruction from
+memory. An inactive row grants nothing and is never counted as access — not in
+a query, not in a report, not in a review.
+
+Grants derived from groups are cleared on the way out. They are a cache of what
+a provider said at somebody's last sign-in, and keeping them once nothing
+refreshes them would leave roles nobody assigned and nothing will ever
+withdraw.
+
+Because both can exist at once — an assignment set aside, and a live derived
+grant for the same role on the same product — what makes a grant unique
+includes where it came from. Keying without that forbids exactly the pair this
+is built to keep.
+
+### Somebody named in configuration keeps administration
+
+Naming administrators in configuration applies at **every** startup, not the
+first, which is what makes it the way back in rather than a setup step. It
+survives re-derivation from groups: a sign-in that stripped it would take the
+recovery path away at the moment it is needed, which is when the group mapping
+is wrong.
+
+It stays a pre-authorization and not a bypass — being named grants the role and
+admits nobody who has not authenticated. Configuration is authoritative over
+who is named, so somebody removed from it and restarted is no longer named,
+while an administrator promoted from inside the application keeps that, because
+it did not come from there.
+
+**A deployment is not allowed to start unable to administer itself.** In
+group-bound mode that means at least one group mapped to administration, or
+somebody named in configuration. The only route back from locking yourself out
+is editing the database by hand, and nobody discovers that at a good moment.
+
+### The proxy can report membership too
+
+Where a reverse proxy authenticates, it can pass group membership on in a
+second header. This extends no trust that was not already extended: anybody
+able to forge the group header could forge the username header and claim to be
+an administrator outright.
+
+Both the header name and the separator are configured, because neither is
+standardized — one common proxy sends `X-Auth-Request-Groups`, another sends
+`Remote-Groups`, and they do not agree on what separates the names. A header
+nobody named yields nothing, which is the same answer an empty one gives.
 
 ## Where each thing is decided
 

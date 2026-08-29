@@ -34,6 +34,9 @@ const (
 	// in which somebody who moved out of a team still holds what the team gave
 	// them, because group membership is only read at sign-in.
 	SessionLifetime = "session.lifetime"
+	// RoleMode is where roles come from: assigned by an administrator, or
+	// derived from provider groups. One mode for the whole deployment.
+	RoleMode = "roles.mode"
 )
 
 // Store reads and writes settings.

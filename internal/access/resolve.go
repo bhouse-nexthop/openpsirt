@@ -26,6 +26,12 @@ type Trust struct {
 	// From are the addresses the header is honored from. Header sign-in
 	// without one of these is refused rather than trusted.
 	From []net.IPNet
+	// GroupsHeader is where the proxy reports membership, and
+	// GroupsDelimiter what separates the names in it. Neither is
+	// standardized, so both are named rather than guessed. Empty means
+	// membership is not read from the proxy at all.
+	GroupsHeader    string
+	GroupsDelimiter string
 }
 
 // Enabled reports whether header sign-in is on.
@@ -55,6 +61,30 @@ func (t Trust) Configured() error {
 	return nil
 }
 
+// groupsFrom reads the membership a proxy reported.
+//
+// Neither header is standardized and neither is the separator, so both are
+// configured: oauth2-proxy sends X-Auth-Request-Groups comma-separated,
+// Authelia sends Remote-Groups, and others differ again (ACC-40). A header
+// nobody named yields nothing, which is the same answer an empty one gives —
+// no roles, never unrestricted (ACC-41).
+func (t Trust) groupsFrom(req *http.Request) []string {
+	if t.GroupsHeader == "" {
+		return nil
+	}
+	separator := t.GroupsDelimiter
+	if separator == "" {
+		separator = ","
+	}
+	var names []string
+	for _, name := range strings.Split(req.Header.Get(t.GroupsHeader), separator) {
+		if trimmed := strings.TrimSpace(name); trimmed != "" {
+			names = append(names, trimmed)
+		}
+	}
+	return names
+}
+
 // trusts reports whether a request came from somewhere the header is honored.
 func (t Trust) trusts(remote string) bool {
 	host, _, err := net.SplitHostPort(remote)
@@ -80,11 +110,28 @@ type Resolver struct {
 	// logger records a refusal an operator would otherwise have to guess at.
 	// What the caller is told never changes.
 	logger *slog.Logger
+	// mode says where roles come from. It is read per request rather than
+	// held, because an administrator can change it without a restart and a
+	// held copy would keep deriving roles after they turned it off.
+	mode func(context.Context) Mode
 }
 
 // NewResolver returns a resolver over a store.
 func NewResolver(store *Store, trust Trust) *Resolver {
-	return &Resolver{store: store, trust: trust, logger: slog.Default()}
+	return &Resolver{
+		store: store, trust: trust, logger: slog.Default(),
+		// Direct until told otherwise: the mode in which nothing is derived
+		// from what a provider says.
+		mode: func(context.Context) Mode { return Direct },
+	}
+}
+
+// WithMode tells the resolver where roles come from.
+func (r *Resolver) WithMode(mode func(context.Context) Mode) *Resolver {
+	if mode != nil {
+		r.mode = mode
+	}
+	return r
 }
 
 // WithLogger sends refusals worth an operator's attention to l.
@@ -140,6 +187,15 @@ func (r *Resolver) Resolve(ctx context.Context, req *http.Request) (Subject, *Se
 			r.logger.Warn("refused a trusted header presented from an untrusted source",
 				"header", r.trust.Header, "source", req.RemoteAddr)
 			return Subject{}, nil, ErrDenied
+		}
+		// The proxy reports membership too, where it is configured to. This
+		// extends no trust that was not already extended: anybody able to
+		// forge the group header could forge the username header and claim to
+		// be an administrator outright (ACC-39).
+		if r.mode(ctx) == GroupBound {
+			subject, err := r.store.AdmitByGroups(ctx, identity, "",
+				r.trust.groupsFrom(req))
+			return subject, nil, err
 		}
 		subject, err := r.store.Resolve(ctx, identity)
 		return subject, nil, err
@@ -210,10 +266,5 @@ func ParseSources(raw string) ([]net.IPNet, error) {
 // It is a pre-authorization rather than a bypass. Being named grants the role;
 // it does not admit anybody who has not authenticated.
 func Bootstrap(ctx context.Context, store *Store, identities []string) error {
-	for _, identity := range identities {
-		if _, err := store.Ensure(ctx, identity, "", true); err != nil {
-			return fmt.Errorf("grant administrator to %q: %w", identity, err)
-		}
-	}
-	return nil
+	return store.NameBootstrapAdmins(ctx, identities)
 }

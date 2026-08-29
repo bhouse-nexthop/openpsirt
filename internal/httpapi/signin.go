@@ -125,19 +125,23 @@ func complete(w http.ResponseWriter, r *http.Request, in Ingest) {
 	}
 	rights := access.NewStore(in.DB.DB)
 
-	// Authenticating is not being authorized. This looks somebody up; it
-	// cannot bring them into being, so somebody who signs in perfectly well
-	// and was never granted anything is refused here (ACC-21).
-	person, err := rights.ByIdentity(r.Context(), identity.Username)
+	// Authenticating is not being authorized, and which of the two questions
+	// gets asked here depends on where this deployment says roles come from.
+	//
+	// Assigned: this looks somebody up and cannot bring them into being, so
+	// somebody who signs in perfectly well and was never granted anything is
+	// refused (ACC-21).
+	//
+	// Derived: the mapping an administrator made *is* the advance
+	// authorization, so somebody arriving for the first time in a mapped group
+	// is admitted and recorded then — and somebody in no mapped group is
+	// refused exactly as a stranger is (ACC-27).
+	person, err := admit(r, in, rights, identity)
 	if err != nil {
 		if in.Logger != nil {
-			in.Logger.Info("refused somebody who authenticated but was granted nothing",
+			in.Logger.Info("refused somebody who authenticated but reaches nothing",
 				"provider", provider.Name(), "identity", identity.Username)
 		}
-		refuseSignIn(w, in)
-		return
-	}
-	if _, err := rights.Resolve(r.Context(), person.Identity); err != nil {
 		refuseSignIn(w, in)
 		return
 	}
@@ -159,6 +163,27 @@ func complete(w http.ResponseWriter, r *http.Request, in Ingest) {
 	http.SetCookie(w, &csrf)
 	http.SetCookie(w, &cleared)
 	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// admit decides whether somebody who authenticated may be here, in whichever
+// way this deployment assigns roles.
+func admit(r *http.Request, in Ingest, rights *access.Store, identity *signin.Identity) (*access.Account, error) {
+	if in.Mode != nil && in.Mode(r.Context()) == access.GroupBound {
+		if _, err := rights.AdmitByGroups(r.Context(),
+			identity.Username, identity.DisplayName, identity.Groups); err != nil {
+			return nil, err
+		}
+		return rights.ByIdentity(r.Context(), identity.Username)
+	}
+
+	person, err := rights.ByIdentity(r.Context(), identity.Username)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := rights.Resolve(r.Context(), person.Identity); err != nil {
+		return nil, err
+	}
+	return person, nil
 }
 
 // pendingFrom reads back what the sign-in remembered.
