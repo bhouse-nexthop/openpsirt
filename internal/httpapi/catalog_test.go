@@ -77,7 +77,11 @@ func eachCatalog(t *testing.T, fn func(t *testing.T, d *declaring)) {
 		dbtest.Reset(t, db)
 
 		rights := access.NewStore(db.DB)
-		if _, err := rights.Ensure(t.Context(), "admin", "Administrator", true); err != nil {
+		administrator, err := rights.Ensure(t.Context(), "admin", "Administrator", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := rights.Claim(t.Context(), administrator.ID, access.ProxyProvider, "admin"); err != nil {
 			t.Fatal(err)
 		}
 		// httptest sends from a documentation address; the fixture's proxy is

@@ -137,7 +137,11 @@ func eachReach(t *testing.T, fn func(t *testing.T, r *reach)) {
 		}
 
 		rights := access.NewStore(db.DB)
-		if _, err := rights.Ensure(ctx, "admin", "", true); err != nil {
+		administrator, err := rights.Ensure(ctx, "admin", "", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := rights.Claim(ctx, administrator.ID, access.ProxyProvider, "admin"); err != nil {
 			t.Fatal(err)
 		}
 		for who, role := range map[string]access.Role{
@@ -152,12 +156,23 @@ func eachReach(t *testing.T, fn func(t *testing.T, r *reach)) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// Recording somebody is not the same as recording how they sign
+			// in. The proxy path matches on what the proxy asserts, so that
+			// has to be claimed for them or they are somebody with access and
+			// no door to come through.
+			if err := rights.Claim(ctx, person.ID, access.ProxyProvider, who); err != nil {
+				t.Fatal(err)
+			}
 			if err := rights.GrantRole(ctx, person.ID, mine.ID, role); err != nil {
 				t.Fatal(err)
 			}
 		}
 		// Somebody who exists and was granted nothing at all.
-		if _, err := rights.Ensure(ctx, "nothing", "", false); err != nil {
+		ungranted, err := rights.Ensure(ctx, "nothing", "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := rights.Claim(ctx, ungranted.ID, access.ProxyProvider, "nothing"); err != nil {
 			t.Fatal(err)
 		}
 		_, secret, err := rights.NewKey(ctx, "nightly", access.Scope{ProductID: mine.ID})

@@ -329,8 +329,14 @@ func TestTheHeaderIsRefusedFromSomewhereUntrusted(t *testing.T) {
 	// have authenticated somebody.
 	each(t, func(t *testing.T, f *fixture) {
 		ctx := t.Context()
-		person, _ := f.store.Ensure(ctx, "someone", "", true)
-		_ = person
+		person, err := f.store.Ensure(ctx, "someone", "", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The proxy asserts a username, and that is what it is matched on.
+		if err := f.store.Claim(ctx, person.ID, access.ProxyProvider, "someone"); err != nil {
+			t.Fatal(err)
+		}
 
 		sources, err := access.ParseSources("10.9.9.9")
 		if err != nil {

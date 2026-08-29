@@ -69,12 +69,19 @@ func eachSignIn(t *testing.T, fn func(t *testing.T, r *signInReach)) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if err := rights.Claim(ctx, granted.ID, "stub", "granted"); err != nil {
+			t.Fatal(err)
+		}
 		if err := rights.GrantRole(ctx, granted.ID, product.ID, access.PublicRead); err != nil {
 			t.Fatal(err)
 		}
 		// Somebody recorded and granted nothing, who must be refused exactly
 		// as a stranger is.
-		if _, err := rights.Ensure(ctx, "ungranted", "", false); err != nil {
+		ungranted, err := rights.Ensure(ctx, "ungranted", "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := rights.Claim(ctx, ungranted.ID, "stub", "ungranted"); err != nil {
 			t.Fatal(err)
 		}
 

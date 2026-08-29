@@ -98,6 +98,7 @@ func Open(t *testing.T, url string) *database.DB {
 // so it will look engine-specific rather than like the ordering mistake it is.
 var tables = []string{
 	"personal_token",
+	"person_identity",
 	"group_admin",
 	"group_role",
 	"session",

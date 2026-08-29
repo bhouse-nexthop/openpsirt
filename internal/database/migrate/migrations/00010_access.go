@@ -86,6 +86,39 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 
 		`CREATE INDEX role_grant_person_idx ON role_grant (person_id)`,
 
+		// The ways one person may sign in.
+		//
+		// Two things go wrong when a username is the whole identity. A
+		// username moves — people change their name at work, and a forge login
+		// can be renamed and the old one then claimed by somebody else — so
+		// matching on it eventually hands one person's access to another. And
+		// a username is only unique within the provider that issued it, so a
+		// deployment with two providers configured would treat the same name
+		// from each as one person.
+		//
+		// So a sign-in is matched on the provider's own stable identifier, and
+		// the username is what an administrator types to authorize somebody
+		// before that identifier is knowable.
+		//
+		// subject is absent until the first successful sign-in binds it. All
+		// four engines treat NULLs in a unique key as distinct from each
+		// other, so many rows may await binding while no two bound rows share
+		// a subject — checked on each engine rather than assumed, because the
+		// opposite behavior is a configurable option on one of them.
+		`CREATE TABLE person_identity (
+			id         ` + t.id + `,
+			person_id  ` + t.ref + ` NOT NULL REFERENCES person(id),
+			provider   ` + t.name + ` NOT NULL,
+			subject    ` + t.name + ` NULL,
+			username   ` + t.name + ` NOT NULL,
+			created_at ` + t.timestamp + ` NOT NULL,
+			bound_at   ` + t.timestamp + ` NULL,
+			CONSTRAINT person_identity_username_unique UNIQUE (provider, username),
+			CONSTRAINT person_identity_subject_unique UNIQUE (provider, subject)
+		)` + t.suffix,
+
+		`CREATE INDEX person_identity_person_idx ON person_identity (person_id)`,
+
 		// A pipeline's credential. Ingest and nothing else: a build server has
 		// no business holding a person's permissions, which is also what keeps
 		// the visibility rules out of its reach entirely (ACC-10).
@@ -222,6 +255,7 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 func downAccess(ctx context.Context, tx *sql.Tx) error {
 	for _, stmt := range []string{
 		`DROP TABLE personal_token`,
+		`DROP TABLE person_identity`,
 		`DROP TABLE group_admin`,
 		`DROP TABLE group_role`,
 		`DROP TABLE session`,

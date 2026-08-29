@@ -166,9 +166,8 @@ func (s *Store) AdminGroups(ctx context.Context) ([]string, error) {
 // takes its roles with it (ACC-22). Assignments an administrator made are left
 // alone — in this mode they are inactive anyway, and deleting them would make
 // switching modes back a reconstruction from memory.
-func (s *Store) AdmitByGroups(ctx context.Context, identity, displayName string, groups []string) (Subject, error) {
-	identity = strings.TrimSpace(identity)
-	if identity == "" {
+func (s *Store) AdmitByGroups(ctx context.Context, who Arrival, groups []string) (Subject, error) {
+	if strings.TrimSpace(who.Username) == "" {
 		return Subject{}, ErrDenied
 	}
 
@@ -183,7 +182,11 @@ func (s *Store) AdmitByGroups(ctx context.Context, identity, displayName string,
 	// by reading what they hold — and somebody already known has to be taken
 	// through the withdrawal below first, or leaving every group would refuse
 	// this sign-in while quietly leaving the last one's roles in place.
-	person, err := s.ByIdentity(ctx, identity)
+	//
+	// Matched through the provider rather than by name, so that somebody who
+	// renamed themselves is still themselves and somebody who took the name
+	// they left behind is not.
+	person, err := s.MatchProvider(ctx, who.Provider, who.Subject, who.Username)
 	known := err == nil
 	if !known && len(roles) == 0 && !admin {
 		return Subject{}, ErrDenied
@@ -191,11 +194,19 @@ func (s *Store) AdmitByGroups(ctx context.Context, identity, displayName string,
 
 	if !known {
 		person = &Account{
-			Identity: identity, DisplayName: displayName,
+			Identity: who.handle(), DisplayName: who.DisplayName,
 			CreatedAt: s.now().Truncate(time.Microsecond),
 		}
 		if _, err := s.db.NewInsert().Model(person).Exec(ctx); err != nil {
-			return Subject{}, fmt.Errorf("record %q: %w", identity, err)
+			return Subject{}, fmt.Errorf("record %q: %w", who.handle(), err)
+		}
+		// The mapping authorized them, so the way they arrived is recorded and
+		// pinned now rather than waiting for a second sign-in.
+		if err := s.Claim(ctx, person.ID, who.Provider, who.Username); err != nil {
+			return Subject{}, err
+		}
+		if _, err := s.MatchProvider(ctx, who.Provider, who.Subject, who.Username); err != nil {
+			return Subject{}, err
 		}
 	}
 
@@ -206,7 +217,7 @@ func (s *Store) AdmitByGroups(ctx context.Context, identity, displayName string,
 	if person.IsAdmin != effective {
 		if _, err := s.db.NewUpdate().Model((*Account)(nil)).
 			Set("is_admin = ?", effective).Where("id = ?", person.ID).Exec(ctx); err != nil {
-			return Subject{}, fmt.Errorf("record what %q administers: %w", identity, err)
+			return Subject{}, fmt.Errorf("record what %q administers: %w", person.Identity, err)
 		}
 		person.IsAdmin = effective
 	}
@@ -218,7 +229,7 @@ func (s *Store) AdmitByGroups(ctx context.Context, identity, displayName string,
 	// Resolved rather than assembled here, so that what this sign-in yields is
 	// read from what the person now holds. Somebody who left every group holds
 	// nothing and is refused by the same rule that refuses a stranger.
-	return s.Resolve(ctx, identity)
+	return s.Resolve(ctx, person.Identity)
 }
 
 // rolesFor reads what a set of groups maps to.
@@ -379,18 +390,30 @@ func (s *Store) NameBootstrapAdmins(ctx context.Context, identities []string) er
 		}
 	}
 
+	handles := make([]string, 0, len(named))
+	for _, identity := range named {
+		handles = append(handles, arrivalFor(identity).handle())
+	}
+
 	clearing := s.db.NewUpdate().Model((*Account)(nil)).
 		Set("is_bootstrap = ?", false).Where("is_bootstrap = ?", true)
-	if len(named) > 0 {
-		clearing = clearing.Where("identity NOT IN (?)", bun.List(named))
+	if len(handles) > 0 {
+		clearing = clearing.Where("identity NOT IN (?)", bun.List(handles))
 	}
 	if _, err := clearing.Exec(ctx); err != nil {
 		return fmt.Errorf("clear who was named as an administrator: %w", err)
 	}
 
 	for _, identity := range named {
-		person, err := s.Ensure(ctx, identity, "", true)
+		who := arrivalFor(identity)
+		person, err := s.Ensure(ctx, who.handle(), "", true)
 		if err != nil {
+			return err
+		}
+		// Named in configuration is an authorization to sign in, so the way
+		// they will sign in is recorded with it. Without this the named
+		// administrator would exist and have no door to come through.
+		if err := s.Claim(ctx, person.ID, who.Provider, who.Username); err != nil {
 			return err
 		}
 		if _, err := s.db.NewUpdate().Model((*Account)(nil)).
@@ -399,4 +422,20 @@ func (s *Store) NameBootstrapAdmins(ctx context.Context, identities []string) er
 		}
 	}
 	return nil
+}
+
+// arrivalFor reads a named administrator.
+//
+// Written "provider:username", because a username is only unique within the
+// provider that issued it and naming a bare one would be ambiguous the moment
+// a second provider is configured. A bare name is taken as the trusted-header
+// path, which is the arrangement that has no provider at all.
+func arrivalFor(identity string) Arrival {
+	if provider, username, found := strings.Cut(identity, ":"); found {
+		provider, username = strings.TrimSpace(provider), strings.TrimSpace(username)
+		if provider != "" && username != "" {
+			return Arrival{Provider: provider, Subject: "", Username: username}
+		}
+	}
+	return Arrival{Provider: ProxyProvider, Username: strings.TrimSpace(identity)}
 }

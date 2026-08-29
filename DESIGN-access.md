@@ -128,6 +128,42 @@ process**, because a header named with nothing to trust it from is either a
 mistake or the first half of one, and it is never a fallback for sign-in that
 was not configured.
 
+## A name authorizes; an identifier decides
+
+An administrator grants access to a person they can name. A provider reports
+two things about whoever signs in: a username, and its own identifier for them.
+Only the second is stable.
+
+So the two are used for different jobs. **The username is redeemed once** — the
+first successful sign-in pins the provider's identifier to the authorization
+that was waiting under that name. **From then on the identifier decides**, and
+the username is followed as a label.
+
+That closes two failures, both of which are silent.
+
+A username moves. People rename themselves at work, and a forge login can be
+renamed and the name then registered by somebody else — at which point matching
+on the name hands one person's access to another. Under this shape the
+newcomer's identifier does not match what was pinned, so they are refused,
+while the original holder is still recognized under their new name.
+
+And a username is only unique within the provider that issued it. A deployment
+with two providers configured would otherwise treat `alice` at each as one
+person, handing whoever can register that name at either provider whatever was
+granted at the other. Every lookup is therefore scoped to the provider,
+including the one on the identifier — providers do not coordinate, and plenty
+of them issue small numbers.
+
+Pinning at first use is what lets authorization stay in advance. An
+administrator cannot know an identifier before somebody has ever arrived, so
+the grant has to be expressed in the moving name and then anchored to something
+that does not move.
+
+**The trusted header has no identifier beyond the name it asserts.** That is a
+property of the arrangement rather than a gap: the proxy is the authority
+there, it says who somebody is on every request, and a deployment trusting it
+has already accepted that.
+
 ## Roles come from one place, for the whole deployment
 
 Either an administrator assigns them or provider groups derive them. Never
