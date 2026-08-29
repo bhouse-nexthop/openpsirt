@@ -159,9 +159,21 @@ const CSRFHeader = "X-CSRF-Token"
 // do is decided in one place rather than in each handler that remembers to
 // ask.
 func (r *Resolver) Resolve(ctx context.Context, req *http.Request) (Subject, *Session, error) {
+	// Every credential says which kind it is, so this dispatches rather than
+	// trying each store in turn. Trying both would mean a pipeline's key could
+	// be looked up as somebody's personal token, and would make the cost of a
+	// wrong credential depend on which store happened to be asked first.
 	if secret, ok := bearer(req.Header.Get(keyHeader)); ok {
-		subject, err := r.store.ResolveKey(ctx, secret)
-		return subject, nil, err
+		switch {
+		case strings.HasPrefix(secret, TokenPrefix):
+			subject, err := r.store.ResolveToken(ctx, secret)
+			return subject, nil, err
+		case strings.HasPrefix(secret, KeyPrefix):
+			subject, err := r.store.ResolveKey(ctx, secret)
+			return subject, nil, err
+		}
+		// Presented something, and it is not a shape we issue.
+		return Subject{}, nil, ErrDenied
 	}
 
 	// The proxy is asked before the cookie, where one is configured. In that

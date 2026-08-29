@@ -165,6 +165,35 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 
 		`CREATE INDEX group_role_name_idx ON group_role (group_name)`,
 
+		// Somebody's own credential for scripting. It is a live reference to
+		// its owner rather than a snapshot of what they could do when it was
+		// minted: what it reaches shrinks the moment their roles shrink, and
+		// it dies with their account. A snapshot would quietly outlive the
+		// access it was granted from — including a role withdrawn by a group
+		// membership going away, which is the case with nothing to notice it
+		// (ACC-34).
+		//
+		// expires_at is not nullable. A credential that never expires is one
+		// nobody ever revokes, and the maximum is an administrator's to set
+		// (ACC-33).
+		`CREATE TABLE personal_token (
+			id           ` + t.id + `,
+			name         ` + t.name + ` NOT NULL,
+			secret_hash  ` + t.hash + ` NOT NULL,
+			person_id    ` + t.ref + ` NOT NULL REFERENCES person(id),
+			-- product_id narrows a token below its owner rather than above:
+			-- what it reaches is the intersection, so pinning it to something
+			-- they cannot read reaches nothing rather than granting it.
+			product_id   ` + t.refNull + ` NULL REFERENCES product(id),
+			created_at   ` + t.timestamp + ` NOT NULL,
+			expires_at   ` + t.timestamp + ` NOT NULL,
+			last_used_at ` + t.timestamp + ` NULL,
+			revoked_at   ` + t.timestamp + ` NULL,
+			CONSTRAINT personal_token_secret_unique UNIQUE (secret_hash)
+		)` + t.suffix,
+
+		`CREATE INDEX personal_token_person_idx ON personal_token (person_id)`,
+
 		// Admin is global rather than held against a product (ACC-07), so a
 		// group mapping to it cannot live in the table above: the product
 		// would have to be absent, and a uniqueness rule over a column that
@@ -192,6 +221,7 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 
 func downAccess(ctx context.Context, tx *sql.Tx) error {
 	for _, stmt := range []string{
+		`DROP TABLE personal_token`,
 		`DROP TABLE group_admin`,
 		`DROP TABLE group_role`,
 		`DROP TABLE session`,

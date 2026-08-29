@@ -200,7 +200,7 @@ func (s *Store) NewKey(ctx context.Context, name string, scope Scope) (*Key, str
 	if _, err := rand.Read(raw); err != nil {
 		return nil, "", fmt.Errorf("generate a key: %w", err)
 	}
-	secret := base64.RawURLEncoding.EncodeToString(raw)
+	secret := KeyPrefix + base64.RawURLEncoding.EncodeToString(raw)
 
 	key := &Key{
 		Name: name, SecretHash: hashSecret(secret),

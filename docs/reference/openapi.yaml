@@ -1,5 +1,38 @@
 components:
   schemas:
+    BindingBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/BindingBody.json
+          format: uri
+          readOnly: true
+          type: string
+        group:
+          description: The group as the provider names it — a team slug, or a claim value
+          maxLength: 191
+          minLength: 1
+          type: string
+        product:
+          description: The product the role is held against
+          type: string
+        role:
+          description: What membership of this group grants
+          enum:
+            - reporting
+            - approver
+            - public-read
+            - private-read
+            - public-triage
+            - private-triage
+            - admin
+          type: string
+      required:
+        - group
+        - role
+      type: object
     DeclaredKeyBody:
       additionalProperties: false
       properties:
@@ -301,6 +334,25 @@ components:
         - name
         - product
       type: object
+    ListBodyBindingBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyBindingBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/BindingBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
     ListBodyKeyBody:
       additionalProperties: false
       properties:
@@ -377,6 +429,25 @@ components:
       required:
         - items
       type: object
+    ListBodyTokenBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyTokenBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/TokenBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
     ListBodyVariantBody:
       additionalProperties: false
       properties:
@@ -395,6 +466,25 @@ components:
             - "null"
       required:
         - items
+      type: object
+    ModeBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ModeBody.json
+          format: uri
+          readOnly: true
+          type: string
+        mode:
+          description: Whether an administrator assigns roles or provider groups derive them
+          enum:
+            - direct
+            - group-bound
+          type: string
+      required:
+        - mode
       type: object
     PersonBody:
       additionalProperties: false
@@ -529,6 +619,45 @@ components:
       required:
         - name
         - kind
+      type: object
+    TokenBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/TokenBody.json
+          format: uri
+          readOnly: true
+          type: string
+        expires_at:
+          description: When it stops working
+          type: string
+        last_used_at:
+          description: When it was last used
+          type: string
+        lifetime:
+          description: How long it lasts, such as "720h". There is a configured maximum
+          type: string
+        name:
+          description: What its owner calls it
+          maxLength: 191
+          minLength: 1
+          type: string
+        owner:
+          description: Whose it is. Shown to an administrator listing everybody's
+          type: string
+        product:
+          description: Optionally, the one product it may reach
+          type: string
+        revoked:
+          description: Whether it has been withdrawn
+          type: boolean
+        secret:
+          description: Shown once, at creation. It is stored hashed and cannot be shown again
+          type: string
+      required:
+        - name
       type: object
     UploadResult:
       additionalProperties: false
@@ -1097,6 +1226,129 @@ paths:
       summary: Declare a way the product is built
       tags:
         - Catalog
+  /v1/roles/bindings:
+    delete:
+      description: Takes effect at each member's next sign-in, because membership is read then and never again. To cut somebody off now, end their sessions.
+      operationId: unbind-group
+      parameters:
+        - explode: false
+          in: query
+          name: group
+          required: true
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: product
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: role
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Stop a group granting something
+      tags:
+        - Administration
+    get:
+      description: "The mappings that admit people in group-bound mode. In that mode a mapping is the advance authorization: somebody arriving for the first time in a mapped group is admitted, and somebody in none is refused."
+      operationId: list-bindings
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyBindingBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: What each group grants
+      tags:
+        - Administration
+    post:
+      description: Administration is bound without a product, because it is global rather than held against one. Everything else names the product it applies to.
+      operationId: bind-group
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BindingBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BindingBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Bind a group to a role
+      tags:
+        - Administration
+  /v1/roles/mode:
+    get:
+      description: One mode for the whole deployment. A hybrid would need a precedence rule for somebody holding one role from a team and another directly, which is how a stale assignment outlives somebody's removal from the team it was shadowing.
+      operationId: get-role-mode
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModeBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Where roles come from
+      tags:
+        - Administration
+    put:
+      description: Turning group binding on sets assignments aside rather than deleting them, and turning it off restores them — so trying it is not a one-way door. Refused if it would leave nobody able to administer this deployment.
+      operationId: set-role-mode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModeBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModeBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Change where roles come from
+      tags:
+        - Administration
   /v1/session:
     delete:
       description: Ends the session the request arrived on, everywhere rather than in this browser alone — the session is stored, so it stops working whichever copy of the application answers next.
@@ -1115,6 +1367,73 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: End this session
+      tags:
+        - Access
+  /v1/tokens:
+    get:
+      description: Yours alone. A token is a live reference to you rather than a copy of what you could do when it was made, so what it reaches shrinks the moment your roles do.
+      operationId: list-my-tokens
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyTokenBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List your own credentials
+      tags:
+        - Access
+    post:
+      description: "Shown once. Expiry is not optional: a credential that never runs out is one nobody ever revokes, and those are found when somebody leaves and nobody knows what breaks if it is turned off."
+      operationId: mint-token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Mint yourself a credential
+      tags:
+        - Access
+  /v1/tokens/{name}:
+    delete:
+      description: Yours alone. An administrator withdraws anybody's through the administration paths.
+      operationId: revoke-my-token
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Withdraw one of your credentials
       tags:
         - Access
   /v1/version:

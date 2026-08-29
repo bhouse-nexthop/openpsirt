@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 	"github.com/bhouse-nexthop/openpsirt/internal/version"
 )
 
@@ -146,6 +147,15 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	registerFindings(api, in)
 	registerReceipts(api, in)
 	registerSession(api, in)
+	registerTokens(api, in)
+	registerBindings(api, Administering{
+		Access: in.rights, Catalog: in.catalog, Logger: logger,
+	}, func() *setting.Store {
+		if in.DB == nil {
+			return nil
+		}
+		return setting.NewStore(in.DB.DB)
+	})
 	registerCatalog(api, Declaring{Store: in.catalog, Logger: logger})
 	registerAdministration(api, Administering{
 		Access: in.rights, Catalog: in.catalog, Logger: logger,

@@ -37,6 +37,9 @@ const (
 	// RoleMode is where roles come from: assigned by an administrator, or
 	// derived from provider groups. One mode for the whole deployment.
 	RoleMode = "roles.mode"
+	// MaxTokenLifetime is the longest a person's own credential may last.
+	// Expiry is mandatory; this is how far out it may be set.
+	MaxTokenLifetime = "token.max-lifetime"
 )
 
 // Store reads and writes settings.

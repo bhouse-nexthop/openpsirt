@@ -214,6 +214,44 @@ standardized — one common proxy sends `X-Auth-Request-Groups`, another sends
 `Remote-Groups`, and they do not agree on what separates the names. A header
 nobody named yields nothing, which is the same answer an empty one gives.
 
+## A person's own credential
+
+Anything the interface does not offer cannot be automated, and the usual result
+is somebody driving a browser session with a script or reusing a pipeline's key
+for work it was never scoped for. So a person can mint a credential of their
+own.
+
+It is a **live reference to its owner, never a snapshot**. What it reaches is
+read from what they hold at the moment it is used, so a role withdrawn from
+them cuts the token at the same instant — including one withdrawn because a
+group membership went away, which is the case with nothing else to notice it. A
+snapshot would quietly outlive the access it was granted from.
+
+It can be narrowed below its owner and never above. Narrowing **intersects**:
+a token pinned to a product its owner cannot read reaches nothing rather than
+being granted it. Administration is dropped by narrowing entirely, because
+administration is global and a token narrowed to one product that still
+administered everything would not be narrowed at all.
+
+**Expiry is not optional**, with a maximum an administrator sets. A credential
+that never runs out is one nobody ever revokes, and the ones that matter are
+discovered when somebody leaves and nobody knows what breaks if it is turned
+off. Revoking marks rather than deletes, so what used it stays answerable after
+it stops working.
+
+### Every credential says which kind it is
+
+Pipeline keys and personal tokens carry distinct fixed prefixes. Two things
+follow.
+
+Resolution **dispatches on the prefix** rather than trying each store in turn,
+so a pipeline's key can never be looked up as somebody's personal token, and
+the cost of presenting a wrong credential does not depend on which store
+happened to be asked first.
+
+And a credential that ends up somewhere public is recognizable as one. Secret
+scanners match fixed prefixes; a bare run of base64 matches nothing.
+
 ## Where each thing is decided
 
 | Decided | Where | Why there |

@@ -28,6 +28,13 @@ func declaredBody(method, path, name string) io.Reader {
 	if strings.HasSuffix(path, "/streams") {
 		return strings.NewReader(`{"name": "` + name + `", "kind": "branch"}`)
 	}
+	if strings.HasSuffix(path, "/roles/bindings") {
+		// A body the schema accepts, so that a refusal is about the asker
+		// rather than about the request. Validation runs before the handler,
+		// so an invalid body answers 422 whoever sends it — which measures
+		// nothing about who may bind a group to a role.
+		return strings.NewReader(`{"group": "` + name + `", "product": "mine", "role": "public-read"}`)
+	}
 	return strings.NewReader(`{"name": "` + name + `"}`)
 }
 
@@ -201,6 +208,7 @@ func TestWhoMayReachWhat(t *testing.T) {
 			theirFound = "/v1/products/theirs/streams/master/variants/broadcom/findings"
 			people     = "/v1/people"
 			keys       = "/v1/keys"
+			tokens     = "/v1/tokens"
 		)
 
 		for _, c := range []struct {
@@ -300,6 +308,23 @@ func TestWhoMayReachWhat(t *testing.T) {
 			{"nothing", http.MethodGet, keys, http.StatusUnauthorized},
 			{"admin", http.MethodGet, people, http.StatusOK},
 			{"admin", http.MethodGet, keys, http.StatusOK},
+
+			// Where roles come from, and what each group grants, is
+			// administration like everything else that decides access.
+			{"reader", http.MethodGet, "/v1/roles/mode", http.StatusForbidden},
+			{"triager", http.MethodGet, "/v1/roles/bindings", http.StatusForbidden},
+			{"approver", http.MethodPost, "/v1/roles/bindings", http.StatusForbidden},
+			{"", http.MethodGet, "/v1/roles/mode", http.StatusUnauthorized},
+			{"admin", http.MethodGet, "/v1/roles/mode", http.StatusOK},
+			{"admin", http.MethodGet, "/v1/roles/bindings", http.StatusOK},
+
+			// A person's own credentials are their own. Anybody who may be
+			// here at all may hold one, and it reaches no further than they
+			// do — so holding a read role is enough, and nothing more is.
+			{"reader", http.MethodGet, tokens, http.StatusOK},
+			{"approver", http.MethodGet, tokens, http.StatusOK},
+			{"", http.MethodGet, tokens, http.StatusUnauthorized},
+			{"nothing", http.MethodGet, tokens, http.StatusUnauthorized},
 		} {
 			if got := r.as(t, c.who, c.method, c.path); got != c.want {
 				who := c.who
@@ -370,6 +395,10 @@ func TestAPipelineCanReachNothingButSending(t *testing.T) {
 			"/v1/products/mine/streams/master/variants/broadcom/findings",
 			"/v1/people",
 			"/v1/keys",
+			// A pipeline has no owner for a token to be a live reference to.
+			"/v1/tokens",
+			"/v1/roles/mode",
+			"/v1/roles/bindings",
 		} {
 			if got := r.asKey(t, http.MethodGet, path); got != http.StatusForbidden {
 				t.Errorf("a pipeline reading %s answered %d, want 403", path, got)

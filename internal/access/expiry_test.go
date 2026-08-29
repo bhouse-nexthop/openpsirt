@@ -88,3 +88,25 @@ func TestClearingExpiredSessionsLeavesTheLiveOnesAlone(t *testing.T) {
 		}
 	})
 }
+
+func TestATokenStopsWorkingOnceItHasRunOut(t *testing.T) {
+	// Expiry is the whole reason a personal token is safe to hand somebody:
+	// a credential that never runs out is one nobody ever revokes.
+	dbtest.Each(t, func(t *testing.T, db *database.DB) {
+		at := time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC)
+		store, person := atClock(t, db, &at)
+
+		_, secret, err := store.NewToken(t.Context(), person, "scripting", nil, time.Hour, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.ResolveToken(t.Context(), secret); err != nil {
+			t.Fatalf("a token refused inside its lifetime: %v", err)
+		}
+
+		at = at.Add(time.Hour + time.Second)
+		if _, err := store.ResolveToken(t.Context(), secret); err == nil {
+			t.Error("a token outlived its expiry")
+		}
+	})
+}
