@@ -1097,6 +1097,26 @@ paths:
       summary: Declare a way the product is built
       tags:
         - Catalog
+  /v1/session:
+    delete:
+      description: Ends the session the request arrived on, everywhere rather than in this browser alone — the session is stored, so it stops working whichever copy of the application answers next.
+      operationId: sign-out
+      responses:
+        "204":
+          description: No Content
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: End this session
+      tags:
+        - Access
   /v1/version:
     get:
       description: Identifies the build that is answering, so an operator can tell which version they are looking at.
