@@ -1,0 +1,214 @@
+package sbom_test
+
+import (
+	"os"
+	"os/exec"
+	"testing"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
+	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
+)
+
+// openFullSize decompresses the full-size fixture.
+//
+// Kept compressed in the repository: the shape is what matters and twenty
+// megabytes of it in every checkout is not.
+func openFullSize(t *testing.T) *os.File {
+	t.Helper()
+	if _, err := exec.LookPath("xz"); err != nil {
+		t.Skip("xz is not available, so the full-size fixture cannot be read here")
+	}
+
+	// Opened relative to a directory this test made, so the name cannot reach
+	// outside it however this file is later edited.
+	dir, err := os.OpenRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = dir.Close() })
+
+	const name = "switch-image.cdx.json"
+	out, err := dir.Create(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("xz", "--decompress", "--stdout", "testdata/switch-image.cdx.json.xz")
+	cmd.Stdout = out
+	runErr := cmd.Run()
+	if err := out.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if runErr != nil {
+		t.Fatalf("decompress the fixture: %v", runErr)
+	}
+
+	f, err := dir.Open(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	return f
+}
+
+func TestARealImageReadsAsOneComponentPerPackage(t *testing.T) {
+	// The fixture is a public switch operating-system image, and it spells
+	// some packages twice: a build that merges two sources emits one package
+	// with an architecture, a distribution and a source-package qualifier, and
+	// the same package with only an architecture — sometimes disagreeing about
+	// the architecture, and escaping the version differently.
+	//
+	// Taking a producer's identifier verbatim makes each spelling a component
+	// of its own, which double-counts the package, splits its findings, and
+	// gives half of them no vulnerability-database identifier.
+	f := openFullSize(t)
+
+	snapshot, err := sbom.Read(f, sbom.Limits{})
+	if err != nil {
+		t.Fatalf("read the fixture: %v", err)
+	}
+
+	identities := map[string]graph.Described{}
+	for _, component := range snapshot.Components {
+		identities[component.Identity()] = component
+	}
+
+	// Measured against this image when the fixture was taken. The document
+	// describes 8,374 components; they name 7,858 packages once an identifier
+	// is read for what it says rather than byte for byte, because a build that
+	// merges two sources spells 516 of them twice.
+	//
+	// The reader collapses them as it goes, so what is counted here is what
+	// came out. The number is written down rather than expressed as a
+	// tolerance: a change in it is a change in what identity means, and that
+	// is something to look at rather than absorb.
+	const packages = 7858
+	if len(snapshot.Components) != packages {
+		t.Errorf("the image read as %d components, expected %d — has the fixture or the rule changed?",
+			len(snapshot.Components), packages)
+	}
+	if len(identities) != len(snapshot.Components) {
+		t.Errorf("%d components share %d identities, so the reader kept a duplicate",
+			len(snapshot.Components), len(identities))
+	}
+}
+
+func TestTwoSpellingsOfOnePackageAreOneComponent(t *testing.T) {
+	// The shapes a merged inventory produces, side by side. The first two are
+	// lifted from the fixture and differ in the ways it actually differs — an
+	// escaped version against a plain one, and two sources disagreeing about
+	// the architecture. The third is constructed, and says so.
+	for _, c := range []struct {
+		what  string
+		one   string
+		other string
+	}{
+		{
+			"an escaped version against a plain one",
+			"pkg:deb/debian/acl@2.3.2-2%2Bb1?arch=amd64&distro=debian-13&upstream=acl%402.3.2-2",
+			"pkg:deb/debian/acl@2.3.2-2+b1?arch=amd64",
+		},
+		{
+			"sources that disagree about the architecture",
+			"pkg:deb/debian/adduser@3.152?arch=all&distro=debian-13",
+			"pkg:deb/debian/adduser@3.152?arch=amd64",
+		},
+		{
+			// Constructed rather than lifted: this producer is consistent
+			// about case. The specification calls the type case-insensitive,
+			// so two producers can disagree where one does not.
+			"a type spelled in two cases",
+			"pkg:DEB/debian/apparmor@4.1.0-1",
+			"pkg:deb/debian/apparmor@4.1.0-1?arch=amd64",
+		},
+	} {
+		one := graph.Described{Purl: c.one, Name: "x", Version: "1"}
+		other := graph.Described{Purl: c.other, Name: "x", Version: "1"}
+		if one.Identity() != other.Identity() {
+			t.Errorf("%s: read as two components\n  %s\n  %s", c.what, c.one, c.other)
+		}
+	}
+}
+
+func TestPackagesThatDifferAreStillTwoComponents(t *testing.T) {
+	// The other direction, which is what stops the reduction above being a
+	// reduction to nothing. A version, a name, a namespace and an ecosystem
+	// each still separate two packages.
+	base := "pkg:deb/debian/acl@2.3.2-2"
+	for _, other := range []string{
+		"pkg:deb/debian/acl@2.3.2-3",
+		"pkg:deb/debian/acl2@2.3.2-2",
+		"pkg:deb/ubuntu/acl@2.3.2-2",
+		"pkg:rpm/debian/acl@2.3.2-2",
+	} {
+		one := graph.Described{Purl: base}
+		two := graph.Described{Purl: other}
+		if one.Identity() == two.Identity() {
+			t.Errorf("%s and %s read as one component", base, other)
+		}
+	}
+}
+
+func TestIdentityIsReadTheSameWayWhateverEmittedIt(t *testing.T) {
+	// Nothing here knows which producer wrote an identifier, and it must not:
+	// the inventories this will be given come from build systems nobody has
+	// seen yet. So the reduction is the one the identifier specification
+	// describes — decode what is escaped, lowercase what is case-insensitive,
+	// and keep the parts that say which package this is — and it is applied
+	// the same way to every ecosystem.
+	same := []struct {
+		what  string
+		one   string
+		other string
+	}{
+		{"an operating-system package", "pkg:deb/debian/curl@7.88.1-10%2Bdeb12u5?arch=amd64", "pkg:deb/debian/curl@7.88.1-10+deb12u5"},
+		{"an rpm with a distribution tag", "pkg:rpm/redhat/openssl@3.0.7-24?arch=x86_64&distro=rhel-9", "pkg:rpm/redhat/openssl@3.0.7-24"},
+		{"a node package", "pkg:npm/lodash@4.17.21?vcs_url=git%2Bhttps://github.com/lodash/lodash", "pkg:npm/lodash@4.17.21"},
+		{"a python package", "pkg:pypi/django@4.2.1?file_name=Django-4.2.1-py3-none-any.whl", "pkg:pypi/django@4.2.1"},
+		{"a go module", "pkg:golang/github.com/gin-gonic/gin@v1.9.1?go-version=1.21", "pkg:golang/github.com/gin-gonic/gin@v1.9.1"},
+		{"a container image", "pkg:oci/alpine@sha256%3Aabc?repository_url=docker.io/library/alpine", "pkg:oci/alpine@sha256:abc"},
+		{"an ecosystem spelled in two cases", "pkg:NPM/lodash@4.17.21", "pkg:npm/lodash@4.17.21"},
+	}
+	for _, c := range same {
+		if (graph.Described{Purl: c.one}).Identity() != (graph.Described{Purl: c.other}).Identity() {
+			t.Errorf("%s: read as two components\n  %s\n  %s", c.what, c.one, c.other)
+		}
+	}
+
+	differ := []struct {
+		what  string
+		one   string
+		other string
+	}{
+		{"two versions", "pkg:npm/lodash@4.17.21", "pkg:npm/lodash@4.17.20"},
+		{"two names", "pkg:npm/lodash@4.17.21", "pkg:npm/lodash-es@4.17.21"},
+		{"two namespaces", "pkg:npm/%40scope/pkg@1.0.0", "pkg:npm/%40other/pkg@1.0.0"},
+		{"two ecosystems", "pkg:npm/lodash@4.17.21", "pkg:pypi/lodash@4.17.21"},
+		{"a name that differs only in case", "pkg:pypi/Django@4.2.1", "pkg:pypi/django@4.2.1"},
+	}
+	for _, c := range differ {
+		if (graph.Described{Purl: c.one}).Identity() == (graph.Described{Purl: c.other}).Identity() {
+			t.Errorf("%s: read as one component\n  %s\n  %s", c.what, c.one, c.other)
+		}
+	}
+}
+
+func TestAComponentWithNoIdentifierIsStillIdentified(t *testing.T) {
+	// Plenty of producers emit none. Name and version stand in, and two
+	// components that agree on both are one.
+	one := graph.Described{Name: "libfoo", Version: "1.2.3"}
+	two := graph.Described{Name: "libfoo", Version: "1.2.3"}
+	if one.Identity() != two.Identity() {
+		t.Error("two identical components with no identifier read as two")
+	}
+	if (graph.Described{Name: "libfoo", Version: "1.2.4"}).Identity() == one.Identity() {
+		t.Error("two versions with no identifier read as one")
+	}
+	// And an identifier always wins over the name, so a producer that emits
+	// both cannot be split by disagreeing with itself about the name.
+	withID := graph.Described{Purl: "pkg:deb/debian/libfoo@1.2.3", Name: "libfoo", Version: "1.2.3"}
+	renamed := graph.Described{Purl: "pkg:deb/debian/libfoo@1.2.3", Name: "libfoo-runtime", Version: "1.2.3"}
+	if withID.Identity() != renamed.Identity() {
+		t.Error("one identifier read as two components because the names differed")
+	}
+}

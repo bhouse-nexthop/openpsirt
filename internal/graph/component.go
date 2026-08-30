@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -68,13 +69,75 @@ type Described struct {
 // none — and some do not — name and version stand in. Hashing keeps the key a
 // fixed width whatever the identifier's length, which some engines need for an
 // index and all of them benefit from.
+//
+// The identifier is reduced to the parts that say what a package *is* before
+// it is hashed. A real inventory spells one package several ways, and taking
+// the identifier verbatim makes each spelling a component of its own.
 func (d Described) Identity() string {
-	basis := strings.TrimSpace(d.Purl)
+	basis := canonicalPurl(d.Purl)
 	if basis == "" {
 		basis = strings.TrimSpace(d.Name) + "@" + strings.TrimSpace(d.Version)
 	}
 	sum := sha256.Sum256([]byte(basis))
 	return hex.EncodeToString(sum[:])
+}
+
+// canonicalPurl reduces a package identifier to what identifies the package.
+//
+// Three reductions, each for something a real inventory does.
+//
+// **Qualifiers are dropped.** They qualify rather than identify — an
+// architecture, a distribution, the source package a binary came from — and a
+// build that merges two sources emits one package with them and the same
+// package without. Measured on a public switch operating-system image: 8,373
+// identifiers spelling 7,857 packages, and every one of the 516 collisions was
+// the same name at the same version. None merged a different package.
+//
+// Architecture is the one that looks like it belongs and does not. What a
+// product is built as is already a dimension of the model — a variant — so
+// putting it in a component's identity states it twice, and the same package
+// then reads as two in a report that has already separated them by variant. In
+// this image the two spellings even disagree about it: one source called a
+// package "all" and the other "amd64".
+//
+// **Escapes are decoded.** The same version arrives as `2.3.2-2%2Bb1` and
+// `2.3.2-2+b1` from the two sources, which byte comparison calls two packages.
+//
+// **The type is lowercased**, which the specification requires and which
+// nothing else here relies on.
+func canonicalPurl(purl string) string {
+	purl = strings.TrimSpace(purl)
+	if purl == "" {
+		return ""
+	}
+
+	// Cut before decoding. A name or version may legitimately contain an
+	// escaped separator, and decoding first would turn it into one.
+	if i := strings.IndexAny(purl, "?#"); i >= 0 {
+		purl = purl[:i]
+	}
+
+	scheme, rest, found := strings.Cut(purl, ":")
+	if !found {
+		return decoded(purl)
+	}
+	// The type is the first segment after the scheme, not the scheme itself,
+	// and it is the part the specification calls case-insensitive.
+	kind, path, split := strings.Cut(rest, "/")
+	if !split {
+		return strings.ToLower(scheme) + ":" + decoded(rest)
+	}
+	return strings.ToLower(scheme) + ":" + strings.ToLower(kind) + "/" + decoded(path)
+}
+
+// decoded resolves percent-escapes, leaving the text alone where they are
+// malformed — a producer's identifier is not ours to reject over spelling.
+func decoded(s string) string {
+	unescaped, err := url.PathUnescape(s)
+	if err != nil {
+		return s
+	}
+	return unescaped
 }
 
 // AsRoot returns how the product itself is stored: its name, and nothing that

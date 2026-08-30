@@ -127,6 +127,35 @@ Identifiers the file supplies are not used. Nothing guarantees they are stable
 between builds of the same product or consistent between producers, and an
 identity that moves takes every triage decision attached to it along.
 
+### One package, however a producer spells it
+
+A package identifier is read for what it says rather than byte for byte:
+escapes decoded, the ecosystem lowercased, and the qualifying parts — an
+architecture, a distribution, the source package a binary came from — left out.
+
+A real inventory needs this. A build that merges two sources emits the same
+package twice, once with those qualifiers and once without, sometimes escaping
+the version differently and sometimes disagreeing with itself about the
+architecture. Measured on a public switch operating-system image: 8,374
+described components name 7,858 packages, and every one of the 516 collisions
+was the same name at the same version. Taking the identifier verbatim would
+count those packages twice, split their findings across both halves, and leave
+only one half carrying the identifier a scanner matches on.
+
+Architecture is the one that looks like it belongs. What a product is built as
+is already a dimension of this model — it is the variant — so putting it in a
+component's identity states it twice, and the same package then reads as two in
+a report that has already separated them by variant.
+
+What this costs: two artifacts distinguished only by a qualifier read as one
+component. A component is tracked for which vulnerabilities apply to it, and a
+qualifier does not change that, so it is a conflation worth accepting.
+
+The reduction is the one the identifier specification describes, applied the
+same way to every ecosystem. Nothing here knows which producer wrote a
+document, and it must not — the inventories this will be given come from build
+systems nobody has seen yet.
+
 Upstream name and version are carried alongside (MDL-04). A shipped fork often
 has a version string of its own while the vulnerability lives on the upstream
 one.
