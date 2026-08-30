@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -77,9 +78,35 @@ type grypeDocument struct {
 			ID          string `json:"id"`
 			Severity    string `json:"severity"`
 			Description string `json:"description"`
-			Fix         struct {
-				State    string   `json:"state"`
-				Versions []string `json:"versions"`
+			// Where the issue is written up. Every match carries one, and for
+			// the great majority it is the only route to a patch.
+			DataSource string   `json:"dataSource"`
+			URLs       []string `json:"urls"`
+			Advisories []struct {
+				Link string `json:"link"`
+			} `json:"advisories"`
+			// What the published estimates say about it being used.
+			EPSS []struct {
+				EPSS float64 `json:"epss"`
+			} `json:"epss"`
+			Risk float64 `json:"risk"`
+			KEV  []struct {
+				ID string `json:"id"`
+			} `json:"knownExploited"`
+			CVSS []struct {
+				Version string `json:"version"`
+				Vector  string `json:"vector"`
+				Metrics struct {
+					BaseScore float64 `json:"baseScore"`
+				} `json:"metrics"`
+			} `json:"cvss"`
+			Fix struct {
+				State     string   `json:"state"`
+				Versions  []string `json:"versions"`
+				Available []struct {
+					Version string `json:"version"`
+					Date    string `json:"date"`
+				} `json:"available"`
 			} `json:"fix"`
 		} `json:"vulnerability"`
 		RelatedVulnerabilities []struct {
@@ -128,6 +155,7 @@ func ParseGrype(r io.Reader) (Result, error) {
 		if match.Artifact.Name == "" {
 			continue
 		}
+		score, vector := rating(match.Vulnerability.CVSS)
 		aliases := make([]string, 0, len(match.RelatedVulnerabilities))
 		for _, related := range match.RelatedVulnerabilities {
 			if related.ID != "" && related.ID != match.Vulnerability.ID {
@@ -136,11 +164,16 @@ func ParseGrype(r io.Reader) (Result, error) {
 		}
 		result.Reported = append(result.Reported, finding.Reported{
 			Issue: finding.Named{
-				Identifier: match.Vulnerability.ID,
-				Aliases:    aliases,
-				// A word, not a score, and often unspecified. Numeric scores
-				// come from the ranking feeds instead.
-				Severity: strings.ToLower(match.Vulnerability.Severity),
+				Identifier:  match.Vulnerability.ID,
+				Aliases:     aliases,
+				Severity:    strings.ToLower(match.Vulnerability.Severity),
+				Description: strings.TrimSpace(match.Vulnerability.Description),
+				Advisory:    strings.TrimSpace(match.Vulnerability.DataSource),
+				References:  references(match.Vulnerability.URLs, advisoryLinks(match.Vulnerability.Advisories)),
+				Exploited:   len(match.Vulnerability.KEV) > 0,
+				Likelihood:  firstEPSS(match.Vulnerability.EPSS),
+				Score:       score,
+				Vector:      vector,
 			},
 			Component: graph.Described{
 				Name: match.Artifact.Name, Version: match.Artifact.Version,
@@ -148,6 +181,7 @@ func ParseGrype(r io.Reader) (Result, error) {
 			},
 			FixState: fixState(match.Vulnerability.Fix.State),
 			FixedIn:  strings.Join(match.Vulnerability.Fix.Versions, ", "),
+			FixedAt:  firstFixDate(match.Vulnerability.Fix.Available),
 		})
 	}
 	return result, nil
@@ -195,4 +229,118 @@ func tail(s string) string {
 		return s
 	}
 	return "…" + s[len(s)-most:]
+}
+
+// patchLike recognizes an address that is a change rather than a write-up.
+//
+// Matched on the shape of the address, which is the only thing available: a
+// report gives a flat list of references and does not say what any of them
+// is. Recognizing them is worth the guess — somebody deciding whether to
+// backport rather than upgrade needs the change itself, and hunting for it by
+// hand is the step that does not happen when a thousand findings are waiting.
+//
+// A wrong guess costs a label, not the address, so this errs toward saying
+// less: an unrecognized reference is reported as a discussion rather than
+// asserted to be a patch.
+var patchLike = regexp.MustCompile(
+	`(?i)(/commit/|/commits/|/pull/|/merge_requests?/|/changeset/|\.patch$|\.diff$|patchwork|git\.kernel\.org|cgit)`)
+
+// advisoryLike recognizes a write-up of the issue itself.
+var advisoryLike = regexp.MustCompile(
+	`(?i)(/security/advisories/|/advisories/|nvd\.nist\.gov|cve\.org|security-tracker|\bGHSA-|\bCVE-)`)
+
+// references turns what a report points at into what it is.
+//
+// Deduplicated, because the same address arrives from several places in one
+// report and a person reading a list of eleven identical links learns nothing
+// from ten of them.
+func references(urls []string, advisories []string) []finding.Reference {
+	seen := map[string]bool{}
+	var kept []finding.Reference
+	for _, url := range append(append([]string{}, urls...), advisories...) {
+		url = strings.TrimSpace(url)
+		if url == "" || seen[url] {
+			continue
+		}
+		seen[url] = true
+		kept = append(kept, finding.Reference{URL: url, Kind: kindOf(url)})
+	}
+	return kept
+}
+
+func kindOf(url string) finding.ReferenceKind {
+	switch {
+	case patchLike.MatchString(url):
+		return finding.Patch
+	case advisoryLike.MatchString(url):
+		return finding.AdvisoryRef
+	default:
+		return finding.Report
+	}
+}
+
+// advisoryLinks flattens the structured advisory list to its addresses.
+func advisoryLinks(advisories []struct {
+	Link string `json:"link"`
+}) []string {
+	links := make([]string, 0, len(advisories))
+	for _, advisory := range advisories {
+		links = append(links, advisory.Link)
+	}
+	return links
+}
+
+// rating picks the severity score to record, and the vector it assumes.
+//
+// The first that states both. A report carries several ratings from different
+// sources and they disagree; taking the first stated is at least a stable
+// answer, and the vector travels with the number so that what the number
+// assumed is readable rather than lost.
+func rating(ratings []struct {
+	Version string `json:"version"`
+	Vector  string `json:"vector"`
+	Metrics struct {
+		BaseScore float64 `json:"baseScore"`
+	} `json:"metrics"`
+}) (float64, string) {
+	for _, rated := range ratings {
+		if rated.Metrics.BaseScore > 0 && rated.Vector != "" {
+			return rated.Metrics.BaseScore, rated.Vector
+		}
+	}
+	return 0, ""
+}
+
+// firstEPSS reads the published estimate that an issue will be exploited.
+func firstEPSS(estimates []struct {
+	EPSS float64 `json:"epss"`
+}) float64 {
+	for _, estimate := range estimates {
+		if estimate.EPSS > 0 {
+			return estimate.EPSS
+		}
+	}
+	return 0
+}
+
+// firstFixDate reads when a fix became available.
+//
+// The earliest stated, because what matters is how long the fix has existed
+// rather than which version somebody happens to be looking at.
+func firstFixDate(available []struct {
+	Version string `json:"version"`
+	Date    string `json:"date"`
+}) *time.Time {
+	var earliest *time.Time
+	for _, fix := range available {
+		stated, err := time.Parse(time.DateOnly, strings.TrimSpace(fix.Date))
+		if err != nil {
+			continue
+		}
+		if earliest == nil || stated.Before(*earliest) {
+			copied := stated
+			earliest = &copied
+		}
+	}
+	return earliest
 }

@@ -46,12 +46,54 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			identity      ` + t.hash + ` NOT NULL,
 			identifier    ` + t.free + ` NOT NULL,
 			severity      ` + t.kind + ` NULL,
+			-- What somebody triaging needs in front of them. There may be
+			-- thousands of these and very few people, so a finding that
+			-- carries its own evidence is the difference between a queue that
+			-- gets worked and one that does not.
+			description     ` + t.text + ` NULL,
+			-- Where the issue is written up. Every report carries one, and for
+			-- the great majority it is the only route to the patch — so it is
+			-- the single most valuable thing a report gives us.
+			advisory        ` + t.free + ` NULL,
+			-- Whether somebody is known to be exploiting it, and the published
+			-- estimate that they will. Together these are what separates the
+			-- handful that matter from the thousands that can wait.
+			exploited       ` + t.boolean + ` NOT NULL,
+			-- Held as parts per million rather than as a fraction. Every engine
+			-- spells an exact decimal differently and a float compares
+			-- differently again, and this has to sort in an index.
+			likelihood_ppm  ` + t.ref + ` NULL,
+			-- The severity as a number, and the statement of what it assumes.
+			-- Network-reachable and unauthenticated is a different judgment
+			-- from local-and-privileged at the same number, and the vector is
+			-- where that shows.
+			score_centi     ` + t.ref + ` NULL,
+			vector          ` + t.free + ` NULL,
 			first_seen_at ` + t.timestamp + ` NOT NULL,
 			CONSTRAINT vulnerability_identity_unique UNIQUE (identity)
 		)` + t.suffix,
 
 		// Every name an issue is known by, including the one it is filed
 		// under. A report naming any of them finds the same row.
+		`CREATE TABLE vulnerability_reference (
+			id               ` + t.id + `,
+			vulnerability_id ` + t.ref + ` NOT NULL,
+			url              ` + t.free + ` NOT NULL,
+			-- What it appears to be, as far as the address reveals. A patch is
+			-- the one worth telling apart: somebody deciding whether to
+			-- backport rather than upgrade needs it, and hunting for it by
+			-- hand is the step that does not happen when a thousand others are
+			-- waiting.
+			kind             ` + t.kind + ` NOT NULL,
+			-- The hash of the address, because the address itself is longer
+			-- than an index key may be on some engines.
+			url_identity     ` + t.hash + ` NOT NULL,
+			CONSTRAINT vulnerability_reference_vulnerability_fk FOREIGN KEY (vulnerability_id) REFERENCES vulnerability(id),
+			CONSTRAINT vulnerability_reference_unique UNIQUE (vulnerability_id, url_identity)
+		)` + t.suffix,
+
+		`CREATE INDEX vulnerability_reference_vulnerability_idx ON vulnerability_reference (vulnerability_id)`,
+
 		`CREATE TABLE vulnerability_alias (
 			id               ` + t.id + `,
 			vulnerability_id ` + t.ref + ` NOT NULL,
@@ -132,6 +174,11 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			-- A scanner reports every version that fixes an issue, and for a
 			-- kernel that is a long list.
 			fixed_in         ` + t.free + ` NULL,
+			-- When the fixing version became available. "Fixed upstream
+			-- fourteen months ago" is a different conversation from "fixed in
+			-- 0.17.0", and it is the one that says whether an upgrade is
+			-- overdue or fresh.
+			fixed_at       ` + t.date + ` NULL,
 			-- A finding the build has already argued about is marked, not
 			-- dropped: one that simply stopped appearing is
 			-- indistinguishable from a scanner fault.
@@ -174,6 +221,7 @@ func downFinding(ctx context.Context, tx *sql.Tx) error {
 		`DROP TABLE finding`,
 		`DROP TABLE suppression`,
 		`DROP TABLE scan_run`,
+		`DROP TABLE vulnerability_reference`,
 		`DROP TABLE vulnerability_alias`,
 		`DROP TABLE vulnerability`,
 	} {

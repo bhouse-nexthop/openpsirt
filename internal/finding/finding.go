@@ -92,6 +92,10 @@ type Finding struct {
 	PlaceIdentity string   `bun:"place_identity,notnull"`
 	FixState      FixState `bun:"fix_state"`
 	FixedIn       string   `bun:"fixed_in"`
+	// FixedAt is when that version became available. How long a fix has
+	// existed is a different question from which version carries it, and it is
+	// the one that says whether an upgrade is overdue or fresh.
+	FixedAt *time.Time `bun:"fixed_at"`
 	// SuppressedBy is the claim the build made that covers this, where it made
 	// one. A covered finding is kept and marked rather than dropped: a finding
 	// that simply stopped appearing is indistinguishable from a scanner fault,
@@ -115,6 +119,11 @@ type Reported struct {
 	Component graph.Described
 	FixState  FixState
 	FixedIn   string
+	// FixedAt is when the fixing version became available, where the report
+	// says. "Fixed upstream fourteen months ago" is a different conversation
+	// from "fixed in 0.17.0", and it is the one that decides whether an
+	// upgrade is overdue or fresh.
+	FixedAt *time.Time
 }
 
 // Applied describes what a run changed.

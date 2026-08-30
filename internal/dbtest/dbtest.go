@@ -97,6 +97,7 @@ func Open(t *testing.T, url string) *database.DB {
 // that enforce foreign keys during a bulk delete — which is not all of them,
 // so it will look engine-specific rather than like the ordering mistake it is.
 var tables = []string{
+	"vulnerability_reference",
 	"decision_approval",
 	"decision_revision",
 	"decision",

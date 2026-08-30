@@ -199,6 +199,55 @@ to show any of them. Only the names are fetched afterwards, in a second pass:
 aggregating text is spelled differently on every engine, and none of the
 spellings is worth an engine-specific path in the core.
 
+## A finding carries its own evidence
+
+There may be thousands of findings and very few people to work them. What
+decides whether that queue gets worked is whether somebody opening one can act
+on it, or has to go and find out about it first — so everything a report says
+about an issue is kept.
+
+Measured on a public switch operating-system image, per scan of 7,917 findings:
+
+| | |
+|---|---:|
+| Known to be exploited | **5** |
+| Published likelihood of exploitation | 7,835 |
+| Where the issue is written up | 7,917 |
+| Description | 7,879 |
+| Severity as a number, with the vector it assumed | 6,136 |
+| When a fixing version became available | 5,390 |
+| References | 11,593, of which **420 are patches** |
+
+The first row is the point. Five of nearly eight thousand are being exploited,
+and that number is what turns an impossible queue into an afternoon — it was
+being parsed and thrown away.
+
+None of it is recoverable later. A report is not kept once it has been read,
+so anything dropped at ingest is dropped for good, and the cost of keeping it
+is one pass over output already being parsed.
+
+### Telling a patch from a write-up
+
+A report gives a flat list of references and does not say what any of them is.
+They are classified by the shape of the address — a commit, a pull request, a
+diff — because somebody deciding whether to backport rather than upgrade needs
+the change itself, and hunting for it by hand is the step that does not happen
+when a thousand findings are waiting.
+
+The guess errs toward saying less. An address that is not recognized is
+reported as discussion rather than asserted to be a patch, because a wrong
+label costs more than a missing one: nobody is misled by an unlabelled link.
+
+### What a later report adds, and what it may not take away
+
+Reports disagree and arrive in an order nobody controls. So a later one fills
+in what an earlier one did not know and overwrites nothing — otherwise what is
+stored would depend on which scan happened to run last.
+
+Known-exploited is the exception, and moves forward only. It is a claim about
+the world rather than a description of an issue: a later report not mentioning
+it is a gap in that report, not the exploitation having stopped.
+
 ## Scanning is separate work from reading
 
 An inventory is read once, when it arrives. It is scanned again and again, as

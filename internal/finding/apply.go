@@ -100,7 +100,7 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 					ComponentID:     component.ID,
 					ConsumerID:      optional(consumerID),
 					PlaceIdentity:   PlaceIdentity(component.Name, present.nameOf(consumerID)),
-					FixState:        r.FixState, FixedIn: r.FixedIn,
+					FixState:        r.FixState, FixedIn: r.FixedIn, FixedAt: r.FixedAt,
 					SuppressedBy: covering,
 					OpenedRunID:  runID,
 				}
@@ -142,6 +142,7 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 			_, err := tx.NewUpdate().Model((*Finding)(nil)).
 				Set("fix_state = ?", f.FixState).
 				Set("fixed_in = ?", f.FixedIn).
+				Set("fixed_at = ?", f.FixedAt).
 				Set("suppressed_by = ?", f.SuppressedBy).
 				Set("last_changed_at = ?", now).
 				Where("id = ?", already.ID).Exec(ctx)
@@ -203,6 +204,7 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 func same(held, found Finding) bool {
 	return held.FixState == found.FixState &&
 		held.FixedIn == found.FixedIn &&
+		sameDate(held.FixedAt, found.FixedAt) &&
 		equalRef(held.SuppressedBy, found.SuppressedBy)
 }
 
@@ -458,4 +460,20 @@ func value(id *int64) int64 {
 		return 0
 	}
 	return *id
+}
+
+// sameDate compares two dates that may be absent.
+//
+// Absent and present are different, and two absences are the same — the
+// distinction matters because this decides whether a finding changed, and a
+// finding that appears to change every scan writes rows every night.
+func sameDate(a, b *time.Time) bool {
+	switch {
+	case a == nil && b == nil:
+		return true
+	case a == nil || b == nil:
+		return false
+	default:
+		return a.Equal(*b)
+	}
 }
