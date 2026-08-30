@@ -96,6 +96,10 @@ func upCatalog(ctx context.Context, tx *sql.Tx) error {
 			-- open rows where the whole shape assumes one. Updating this row
 			-- first takes a lock every engine honors, so the second waits.
 			"last_scan_id" ` + t.refNull + ` NULL,
+			-- The same lock, for the other writer. Recording what a scanner
+			-- found is a second pass over the same target, run by the same
+			-- queue, with the same two-workers-at-once problem.
+			"last_run_id" ` + t.refNull + ` NULL,
 			CONSTRAINT "target_unique" UNIQUE ("stream_id", "variant_id"),
 			CONSTRAINT "target_stream_fk" FOREIGN KEY ("stream_id") REFERENCES "stream"("id"),
 			CONSTRAINT "target_variant_fk" FOREIGN KEY ("variant_id") REFERENCES "variant"("id")

@@ -76,6 +76,24 @@ vulnerability database that has barely moved, so a run that found the same
 things writes nothing at all — the same property the graph has, for the same
 reason.
 
+### One writer at a time, per target
+
+Recording what a run found begins by taking the target row, before anything is
+read. Two runs against one target can be in flight at once — the queue hands
+different jobs to different workers by design — and without a hold, both read
+the same open findings, both compute the same difference, and both write it.
+That leaves two open rows for one finding, which everything downstream reads as
+two problems, and which two separate triage decisions can be made about.
+
+An ordinary update of that row is a lock every supported engine honors, so the
+second worker waits rather than racing. Applying a graph takes the same row for
+the same reason, in its own column: they are two passes over one target and
+each needs its own hold.
+
+The test runs two overlapping applications and counts what ends up open. It was
+checked by removing the hold, which reproduces the double-open on all three
+server engines.
+
 ### A finding that is already open still moves
 
 A fix appears. Upstream declines to fix it. The build answers it. None of those

@@ -1,11 +1,13 @@
 package finding_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -875,6 +877,50 @@ func TestFindingsInAProductSomebodyHoldsNothingOnAreRefused(t *testing.T) {
 		}
 		if _, err := f.store.CountOpen(t.Context(), elsewhere, f.target); !errors.Is(err, access.ErrDenied) {
 			t.Errorf("counting another product's findings: %v", err)
+		}
+	})
+}
+
+func TestTwoRunsAgainstOneTargetDoNotBothOpenTheSameFinding(t *testing.T) {
+	// The queue hands different jobs to different workers by design, so two
+	// runs against one target overlapping is ordinary rather than exotic.
+	// Without a hold on the target, both read the same open findings, both
+	// compute the same difference, and both write it — leaving two open rows
+	// for one finding, which everything downstream reads as two problems and
+	// which two separate triage decisions can then be made about.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		first, second := f.run(t), f.run(t)
+		reported := []finding.Reported{found("CVE-2026-1", libnl)}
+
+		var wg sync.WaitGroup
+		errs := make([]error, 2)
+		for i, runID := range []int64{first, second} {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, errs[i] = f.store.Apply(context.WithoutCancel(t.Context()), f.target, runID, reported)
+			}()
+		}
+		wg.Wait()
+		for _, err := range errs {
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		// Two consumers pull the component in, so two findings — not four, and
+		// not two of one and two of the other.
+		open := f.open(t)
+		if len(open) != 2 {
+			t.Fatalf("%d findings are open after two overlapping runs, want 2", len(open))
+		}
+		seen := map[string]bool{}
+		for _, row := range open {
+			if seen[row.PlaceIdentity] {
+				t.Errorf("two open findings for one place: %s", row.PlaceIdentity)
+			}
+			seen[row.PlaceIdentity] = true
 		}
 	})
 }

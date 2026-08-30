@@ -324,6 +324,10 @@ type Target struct {
 	// LastScanID is which scan last wrote here, and taking it is how two
 	// workers applying two scans of one target are kept apart.
 	LastScanID *int64 `bun:"last_scan_id"`
+	// LastRunID is the same thing for the pass that records what a scanner
+	// found. It is a separate write over the same target, so it needs its own
+	// hold on the row.
+	LastRunID *int64 `bun:"last_run_id"`
 }
 
 // Placement is a target with everything above it named: what it is of, whether

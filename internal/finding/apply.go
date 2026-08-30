@@ -39,6 +39,19 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 	var applied Applied
 
 	err := database.InTransaction(ctx, s.db, func(ctx context.Context, tx bun.Tx) error {
+		// Taken first, before anything is read, exactly as applying a graph
+		// does. Two runs against one target can be in flight at once — the
+		// queue hands different jobs to different workers by design — and
+		// without this both read the same open findings, both compute the same
+		// difference, and both write it, leaving two open rows where
+		// everything downstream assumes one. An ordinary row update is a lock
+		// every engine honors, so the second worker waits instead of racing.
+		if _, err := tx.NewUpdate().Table("target").
+			Set("last_run_id = ?", runID).
+			Where("id = ?", targetID).Exec(ctx); err != nil {
+			return fmt.Errorf("take the target: %w", err)
+		}
+
 		issues := make([]Named, 0, len(reported))
 		for _, r := range reported {
 			issues = append(issues, r.Issue)
