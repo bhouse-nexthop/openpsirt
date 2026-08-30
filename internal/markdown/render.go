@@ -16,10 +16,17 @@ import (
 	"github.com/yuin/goldmark/renderer/html"
 )
 
-// renderTimeout bounds how long turning text into markup may take.
+// renderTimeout bounds how long a caller waits for markup.
 //
 // Rendering is work somebody else asked us to do, and a pathological input
-// should fail one request rather than occupy a replica.
+// should fail one request rather than hold one open indefinitely.
+//
+// **It bounds the wait, not the work.** A parse cannot be interrupted, so the
+// goroutine doing it runs to completion with nobody reading the result. What
+// this buys is that the request answers and its resources are released; what
+// it does not buy is a cap on CPU. The cap on CPU is MaxBytes, applied before
+// any of this starts — which is the control that actually bounds the work, and
+// the reason a length limit is not merely tidiness.
 const renderTimeout = 2 * time.Second
 
 // parser is configured once. Raw HTML is off **at the parser** rather than
@@ -61,7 +68,24 @@ func policy() *bluemonday.Policy {
 	// Links, restricted to the schemes that cannot become a page or a script.
 	p.AllowAttrs("href").OnElements("a")
 	p.AllowURLSchemes("http", "https", "mailto")
+
+	// A link to somewhere in this deployment is ordinary — one finding
+	// referring to another — and the submission check says so and accepts it.
+	// Without this the sanitizer then deleted the whole anchor and left the
+	// text behind, so a link accepted when it was written silently stopped
+	// being a link when anybody read it. Requiring the destination to parse is
+	// what keeps "relative" from becoming "anything that is not a scheme we
+	// recognize".
+	p.AllowRelativeURLs(true)
+	p.RequireParseableURLs(true)
+
 	p.RequireNoFollowOnLinks(true)
+	// Both halves. Opening in a new tab hands the opened page a reference back
+	// to ours unless it is refused, and the address of the page somebody is
+	// reading is itself worth not sending: a link in a comment on an
+	// undisclosed finding would otherwise carry our internal address to
+	// whoever runs the site at the other end.
+	p.RequireNoReferrerOnFullyQualifiedLinks(true)
 	p.AddTargetBlankToFullyQualifiedLinks(true)
 
 	// Nothing is fetched. No image element is permitted at all, which is the
@@ -74,6 +98,11 @@ func policy() *bluemonday.Policy {
 // languageClass is the only class a code block may carry, and only for a
 // language that was allowlisted. Anything else keeps the block and loses the
 // label.
+//
+// This is the single place the allowlist is applied. A second check on the way
+// in looked like defense in depth and was really two spellings of one rule —
+// which diverge, and then the tag a submission accepted is not the tag the
+// sanitizer keeps.
 var languageClass = languagePattern()
 
 // Render turns stored source into markup.
@@ -117,20 +146,6 @@ func Render(ctx context.Context, source string) (string, error) {
 // whoever wrote the scan file a formatting language aimed at the browsers of
 // the people who hold the most access here.
 func Escaped(text string) string { return stdhtml.EscapeString(text) }
-
-// LanguageFor reads a fenced block's tag, returning what may safely reach a
-// class attribute.
-//
-// An unrecognized language becomes none rather than an error. Refusing a
-// justification over a language tag would make the tool argue with people
-// about syntax highlighting, which is not what it is for.
-func LanguageFor(tag string) string {
-	normalized := strings.ToLower(strings.TrimSpace(tag))
-	if Languages[normalized] {
-		return normalized
-	}
-	return ""
-}
 
 // languagePattern builds the expression a code block's class must match.
 //

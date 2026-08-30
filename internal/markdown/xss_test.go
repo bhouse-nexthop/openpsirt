@@ -195,20 +195,6 @@ func TestTextFromAScanFileIsNeverRendered(t *testing.T) {
 	}
 }
 
-func TestAnUnknownLanguageLosesItsLabelAndKeepsItsBlock(t *testing.T) {
-	if got := markdown.LanguageFor("go"); got != "go" {
-		t.Errorf("a known language read as %q", got)
-	}
-	if got := markdown.LanguageFor("GO"); got != "go" {
-		t.Errorf("a known language in capitals read as %q", got)
-	}
-	for _, unknown := range []string{`"><script>`, "brainfuck", "", "  "} {
-		if got := markdown.LanguageFor(unknown); got != "" {
-			t.Errorf("%q read as %q, want nothing", unknown, got)
-		}
-	}
-}
-
 func TestTextPastTheBoundIsRefused(t *testing.T) {
 	// Rendering is work somebody else asked for, and what is stored is kept
 	// forever.
@@ -250,5 +236,74 @@ func TestALegitimateLinkSurvivesWithItsAddress(t *testing.T) {
 	}
 	if !strings.Contains(rendered, "mailto:security@example.com") {
 		t.Errorf("a mail link was stripped: %q", rendered)
+	}
+}
+
+func TestAnUnknownLanguageLosesItsLabelAndKeepsItsBlock(t *testing.T) {
+	// A fenced block's language tag is typed by a person and lands in a class
+	// attribute, so it is input like any other. An unknown one loses the label
+	// rather than being refused: making the tool argue with somebody about a
+	// syntax-highlighting hint is not what it is for.
+	//
+	// Asserted through the renderer, which is where the rule is actually
+	// enforced. Asking the allowlist directly proves the allowlist agrees with
+	// itself.
+	for _, tag := range []string{`"><script>`, "brainfuck", "go\" onload=\"alert(1)"} {
+		markup, err := markdown.Render(t.Context(), "```"+tag+"\nx := 1\n```")
+		if err != nil {
+			t.Fatalf("render %q: %v", tag, err)
+		}
+		if strings.Contains(markup, "class=") {
+			t.Errorf("an unrecognized language reached a class attribute: %s", markup)
+		}
+		if !strings.Contains(markup, "<code") {
+			t.Errorf("the code block itself was lost: %s", markup)
+		}
+	}
+
+	// A recognized one keeps its label, because that is what a client-side
+	// highlighter reads.
+	markup, err := markdown.Render(t.Context(), "```go\nx := 1\n```")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(markup, `class="language-go"`) {
+		t.Errorf("a known language lost its label: %s", markup)
+	}
+}
+
+func TestALinkInsideThisDeploymentSurvivesBeingRendered(t *testing.T) {
+	// The submission check calls a relative destination ordinary and accepts
+	// it — one finding referring to another. The sanitizer then deleted the
+	// anchor and left the text, so a link accepted when it was written stopped
+	// being a link when anybody read it. Two halves of one rule disagreeing is
+	// worse than either answer, because nothing reports it.
+	for _, source := range []string{
+		"[see](../findings/3)", "[see](/v1/findings/3)", "[see](thing.md)",
+	} {
+		markup, err := markdown.Render(t.Context(), source)
+		if err != nil {
+			t.Fatalf("render %q: %v", source, err)
+		}
+		if !strings.Contains(markup, "href=") {
+			t.Errorf("%q rendered as %q, losing the link", source, markup)
+		}
+	}
+}
+
+func TestALinkThatLeavesHereSaysSoAndCarriesNothing(t *testing.T) {
+	// Opening in a new tab hands the opened page a reference back to ours
+	// unless it is refused, and the address of the page somebody is reading is
+	// itself worth not sending — a link in a comment on an undisclosed finding
+	// would otherwise carry our internal address to whoever runs the site at
+	// the other end.
+	markup, err := markdown.Render(t.Context(), "[see](https://elsewhere.example/a)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"noreferrer", "noopener", "nofollow"} {
+		if !strings.Contains(markup, required) {
+			t.Errorf("an outbound link is missing %q: %s", required, markup)
+		}
 	}
 }

@@ -54,6 +54,34 @@ deliberately changed nothing, because links had never been permitted at all —
 every one had been quietly becoming plain text, and the restriction was
 guarding a door that was already bricked up.
 
+**A link to somewhere in this deployment survives too.** One finding referring
+to another is ordinary, and the submission check says so and accepts it — while
+the sanitizer went on deleting the anchor and leaving the text behind. Two
+halves of one rule disagreeing is worse than either answer alone, because
+nothing reports it: a link accepted when it was written stopped being a link
+when anybody read it.
+
+## Markup is a representation, offered on request
+
+What comes back by default is markdown. It is what an integrating application
+can most easily lay out, and it reads as plain text as it stands, so it doubles
+as the plain form. HTML assumes a browser, which most callers of an API-first
+tool are not — so a caller that wants markup asks for it.
+
+Markup is produced on the way out, every time, and never stored. A sanitizer
+rule written next year then applies to text written last year, which it could
+not if markup had been stored when the text arrived. That is also why the
+sanitizer runs on render at all, when the submission check already refused the
+text: stored text predates rules written since, and a control that only ran
+when the text arrived protects nothing written before it existed. There is a
+test that writes a payload straight into the row, past the submission check, to
+prove the second half runs.
+
+A rendering that fails yields nothing rather than failing the request. The
+source is in the same answer and is the authoritative form; refusing to return
+a decision because one field could not be turned into markup would make a
+presentation problem into an outage.
+
 ## Nothing is fetched
 
 No image is rendered, from anywhere. Not restricted by address — the element is
@@ -94,12 +122,25 @@ The tag is allowlisted. An unrecognized language keeps the block and loses the
 label, rather than failing — refusing a justification over a language nobody
 listed would make the tool argue with people about syntax highlighting.
 
+**The allowlist is applied in one place**, by the sanitizer, on the way out. A
+second check on the way in looked like defense in depth and was two spellings
+of one rule; two spellings diverge, and then the tag a submission accepted is
+not the tag the sanitizer keeps. What is asserted is the rendered output rather
+than the allowlist, because asking the allowlist directly proves only that it
+agrees with itself.
+
 ## Bounds
 
 Every field is capped at 64 KB and rendering is time-bounded. Rendering is work
 somebody else asked us to do, what is stored is kept forever under an
 append-only rule, and a pathological input should fail one request rather than
-occupy a replica.
+hold one open indefinitely.
+
+**The time bound bounds the wait, not the work.** A parse cannot be
+interrupted, so the work runs to completion with nobody reading the result.
+What the bound buys is that the request answers and its resources are released.
+The cap on the work itself is the length limit, applied before any of it starts
+— which is why the 64 KB is a control rather than tidiness.
 
 ## Choices the decisions did not cover
 

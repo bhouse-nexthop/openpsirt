@@ -10,18 +10,23 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/markdown"
 	"github.com/bhouse-nexthop/openpsirt/internal/triage"
 )
 
 // DecisionDetail is a decision with everything needed to understand it without
 // asking again: where it applies, what it says, and how far it has got.
 type DecisionDetail struct {
-	Decision   DecisionBody `json:"decision"`
-	Place      PlaceBody    `json:"place"`
-	Reasoning  string       `json:"reasoning" doc:"The justification as it currently stands, in markdown"`
-	ProposedBy string       `json:"proposed_by"`
-	ProposedAt string       `json:"proposed_at" doc:"When the claim was made, as a date and time"`
-	AgeDays    int          `json:"age_days" doc:"How long the claim has stood. An old judgment should look like one"`
+	Decision  DecisionBody `json:"decision"`
+	Place     PlaceBody    `json:"place"`
+	Reasoning string       `json:"reasoning" doc:"The justification as it currently stands, in markdown"`
+	// ReasoningHTML is present only when html=true was asked for. Markdown is
+	// what every consumer gets by default; HTML assumes a browser, and most
+	// callers of this are not one.
+	ReasoningHTML string `json:"reasoning_html,omitempty" doc:"The same text as sanitized HTML. Only when html=true"`
+	ProposedBy    string `json:"proposed_by"`
+	ProposedAt    string `json:"proposed_at" doc:"When the claim was made, as a date and time"`
+	AgeDays       int    `json:"age_days" doc:"How long the claim has stood. An old judgment should look like one"`
 }
 
 // RevisionBody is one statement of a justification.
@@ -29,6 +34,7 @@ type RevisionBody struct {
 	ID        int64  `json:"id" doc:"What an approval names when it says which words were agreed to"`
 	Ordinal   int64  `json:"ordinal" doc:"Which revision this is, counting from one"`
 	Body      string `json:"body" doc:"The justification text, in markdown"`
+	BodyHTML  string `json:"body_html,omitempty" doc:"The same text as sanitized HTML. Only when html=true"`
 	WrittenBy string `json:"written_by"`
 	WrittenAt string `json:"written_at"`
 }
@@ -47,6 +53,7 @@ type ApprovalBody struct {
 type CommentBody struct {
 	ID        int64  `json:"id"`
 	Body      string `json:"body" doc:"The comment text, in markdown"`
+	BodyHTML  string `json:"body_html,omitempty" doc:"The same text as sanitized HTML. Only when html=true"`
 	WrittenBy string `json:"written_by"`
 	WrittenAt string `json:"written_at"`
 	EditedAt  string `json:"edited_at,omitempty" doc:"When the author last changed it, if they did"`
@@ -69,6 +76,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 		Outcome string `query:"outcome" enum:"affected,not-applicable,deferred,wont-fix" doc:"Limit to one outcome"`
 		State   string `query:"state" enum:"proposed,approved,withdrawn,lapsed" doc:"Limit to one state"`
 		Expired bool   `query:"expired" doc:"Only deferrals whose date has passed"`
+		HTML    bool   `query:"html" doc:"Also return each justification as sanitized HTML"`
 		Limit   int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 		Offset  int    `query:"offset" minimum:"0"`
 	}) (*DecisionsOutput, error) {
@@ -98,6 +106,9 @@ func registerTriageReading(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, wentWrong(in.Logger, "what was decided could not be read", err)
 		}
+		for i := range details {
+			details[i].ReasoningHTML = asHTML(ctx, in, input.HTML, details[i].Reasoning)
+		}
 
 		out := &DecisionsOutput{}
 		out.Body.Items = details
@@ -114,7 +125,8 @@ func registerTriageReading(api huma.API, in Ingest) {
 			"agreed to which of them see `GET /v1/decisions/{id}/approvals`.",
 		Tags: []string{"Triage"},
 	}, func(ctx context.Context, input *struct {
-		ID int64 `path:"id"`
+		ID   int64 `path:"id"`
+		HTML bool  `query:"html" doc:"Also return the justification as sanitized HTML"`
 	}) (*struct{ Body DecisionDetail }, error) {
 		subject, store, err := triaging(ctx, in)
 		if err != nil {
@@ -129,6 +141,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 		if err != nil || len(details) == 0 {
 			return nil, wentWrong(in.Logger, "that decision could not be read", err)
 		}
+		details[0].ReasoningHTML = asHTML(ctx, in, input.HTML, details[0].Reasoning)
 		return &struct{ Body DecisionDetail }{Body: details[0]}, nil
 	})
 
@@ -142,7 +155,8 @@ func registerTriageReading(api huma.API, in Ingest) {
 			"what an approver actually saw rather than what the text says now.",
 		Tags: []string{"Triage"},
 	}, func(ctx context.Context, input *struct {
-		ID int64 `path:"id"`
+		ID   int64 `path:"id"`
+		HTML bool  `query:"html" doc:"Also return each justification as sanitized HTML"`
 	}) (*listOutput[RevisionBody], error) {
 		subject, store, err := triaging(ctx, in)
 		if err != nil {
@@ -167,6 +181,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 		for _, revision := range revisions {
 			out.Body.Items = append(out.Body.Items, RevisionBody{
 				ID: revision.ID, Ordinal: revision.Ordinal, Body: revision.Body,
+				BodyHTML:  asHTML(ctx, in, input.HTML, revision.Body),
 				WrittenBy: names[revision.WrittenBy],
 				WrittenAt: revision.WrittenAt.Format(time.RFC3339),
 			})
@@ -232,7 +247,8 @@ func registerTriageReading(api huma.API, in Ingest) {
 			"Comments are separate from the justification and never affect an approval.",
 		Tags: []string{"Triage"},
 	}, func(ctx context.Context, input *struct {
-		ID int64 `path:"id"`
+		ID   int64 `path:"id"`
+		HTML bool  `query:"html" doc:"Also return each comment as sanitized HTML"`
 	}) (*listOutput[CommentBody], error) {
 		subject, store, err := triaging(ctx, in)
 		if err != nil {
@@ -257,6 +273,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 		for _, comment := range comments {
 			body := CommentBody{
 				ID: comment.ID, Body: comment.Body,
+				BodyHTML:  asHTML(ctx, in, input.HTML, comment.Body),
 				WrittenBy: names[comment.WrittenBy],
 				WrittenAt: comment.WrittenAt.Format(time.RFC3339),
 			}
@@ -486,4 +503,31 @@ func registerPlaceDecisions(api huma.API, in Ingest) {
 		body.NeedsApproval = made.NeedsApproval
 		return &struct{ Body DecisionBody }{Body: body}, nil
 	})
+}
+
+// asHTML renders stored markdown for a caller that asked for it.
+//
+// Markdown is what every consumer gets by default, because it is what an
+// integrating application can most easily lay out and it reads as plain text
+// as it stands. HTML assumes a browser, and in an API-first tool most callers
+// are not one — so it is available on request and never the default.
+//
+// Rendered on the way out rather than stored, every time. A sanitizer rule
+// written next year then applies to text written last year, which it could not
+// if markup had been stored when the text arrived.
+//
+// A rendering that fails yields nothing rather than failing the request. The
+// source is in the same answer and is the authoritative form; refusing to
+// return a decision because one field could not be turned into markup would
+// make a presentation problem into an outage.
+func asHTML(ctx context.Context, in Ingest, want bool, source string) string {
+	if !want || source == "" {
+		return ""
+	}
+	markup, err := markdown.Render(ctx, source)
+	if err != nil {
+		in.Logger.Warn("could not render stored text as markup", "error", err)
+		return ""
+	}
+	return markup
 }

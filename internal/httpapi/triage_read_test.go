@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -318,4 +319,67 @@ func read(t *testing.T, r *reach, who, path string, into any) {
 	if err := json.Unmarshal(got.Body.Bytes(), into); err != nil {
 		t.Fatalf("decode %s: %v (%s)", path, err, got.Body.String())
 	}
+}
+
+func TestHTMLIsOfferedOnRequestAndNeverByDefault(t *testing.T) {
+	// Markdown is what every consumer gets: it is what an integrating
+	// application can most easily lay out, and it reads as plain text as it
+	// stands. HTML assumes a browser, which in an API-first tool most callers
+	// are not — so a caller that wants it says so.
+	eachReach(t, func(t *testing.T, r *reach) {
+		place := r.scanned(t)
+		id := r.decided(t, place)
+
+		var plain struct {
+			Reasoning     string `json:"reasoning"`
+			ReasoningHTML string `json:"reasoning_html"`
+		}
+		read(t, r, "triager", fmt.Sprintf("/v1/decisions/%d", id), &plain)
+		if plain.Reasoning == "" {
+			t.Error("the default representation carries no text at all")
+		}
+		if plain.ReasoningHTML != "" {
+			t.Errorf("markup came back without being asked for: %q", plain.ReasoningHTML)
+		}
+
+		var rendered struct {
+			ReasoningHTML string `json:"reasoning_html"`
+		}
+		read(t, r, "triager", fmt.Sprintf("/v1/decisions/%d?html=true", id), &rendered)
+		if !strings.Contains(rendered.ReasoningHTML, "<p>") {
+			t.Errorf("asking for markup returned %q", rendered.ReasoningHTML)
+		}
+	})
+}
+
+func TestMarkupComesBackSanitizedHoweverItWasStored(t *testing.T) {
+	// The sanitizer runs on the way out as well as at submission, because
+	// stored text predates rules written since — a control that only ran when
+	// the text arrived protects nothing written before it existed. This writes
+	// past the submission check to prove the second half runs.
+	eachReach(t, func(t *testing.T, r *reach) {
+		place := r.scanned(t)
+		id := r.decided(t, place)
+
+		// Straight into the row, the way text stored under an older rule would
+		// already be sitting there.
+		if _, err := r.db.DB.NewUpdate().
+			Table("decision_revision").
+			Set("body = ?", "Fine, then <img src=x onerror=alert(1)> and "+
+				"[a link](javascript:alert(2)).").
+			Where("decision_id = ?", id).
+			Exec(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+
+		var rendered struct {
+			ReasoningHTML string `json:"reasoning_html"`
+		}
+		read(t, r, "triager", fmt.Sprintf("/v1/decisions/%d?html=true", id), &rendered)
+		for _, forbidden := range []string{"onerror", "javascript:", "<img"} {
+			if strings.Contains(rendered.ReasoningHTML, forbidden) {
+				t.Errorf("markup carries %q: %s", forbidden, rendered.ReasoningHTML)
+			}
+		}
+	})
 }
