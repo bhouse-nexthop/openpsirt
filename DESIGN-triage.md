@@ -2,8 +2,9 @@
 
 What people decide about findings, and when a decision stops applying.
 
-Satisfies TRI-01 to TRI-03, TRI-06 to TRI-08, TRI-10 to TRI-16, TRI-24,
-TRI-25, REL-05, REL-06, REL-09, MDL-08, MDL-19.
+Satisfies TRI-01 to TRI-03, TRI-05 to TRI-08, TRI-10 to TRI-18, TRI-20,
+TRI-21, TRI-24 to TRI-28, REL-05, REL-06, REL-09, MDL-08, MDL-19. The text
+rules themselves are in `DESIGN-text.md`.
 
 ## A decision is a claim about code, not about a release
 
@@ -221,6 +222,36 @@ finding returns looking new with the reasoning stranded behind it.
 
 A decision lapses when **either** version moves, not when both do. A component
 bumped under an unchanged consumer is the ordinary case.
+
+## A comment is not the reasoning
+
+Two different things, and the obvious mistake is treating all text on a finding
+as one. They behave differently on purpose:
+
+| | Revising the reasoning | Adding a comment |
+|---|---|---|
+| The approval standing on it | Withdrawn | Untouched |
+| What it said before | Kept and readable | Overwritten |
+| Who may change it | Anybody who may triage | Its author, and nobody else |
+
+Annotating an approved decision months later — *re-checked, still true* — is
+ordinary, and an approval that fell over each time somebody added a note would
+teach people not to add notes.
+
+A comment is overwritten when its author edits it, and nothing is kept but a
+mark that it happened. That is a deliberate exception to keeping everything:
+discussion is not the record a decision rests on. That record is the revisions
+and the approvals, and those are kept in full.
+
+Nobody else may edit somebody's words. An edit anybody could make is not a
+correction; it is a forgery with a timestamp.
+
+## Every field somebody types into runs through the same policy
+
+The reasoning, a revision of it, and a comment all go through the check before
+they are stored — so stored text is known to have passed what was in force when
+it arrived. What that policy is, and why it runs twice, is in
+`DESIGN-text.md`.
 
 ## Choices the decisions did not cover
 

@@ -1,0 +1,107 @@
+package triage
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/uptrace/bun"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/markdown"
+)
+
+// Comment is discussion on a decision.
+//
+// Not the reasoning. The obvious mistake is treating all text on a finding as
+// one thing, and the two behave differently on purpose: revising the reasoning
+// takes back the approval standing on it, and a comment never disturbs
+// anything. Annotating an approved decision months later — "re-checked, still
+// true" — is ordinary, and an approval that fell over each time somebody added
+// a note would teach people not to add notes.
+type Comment struct {
+	bun.BaseModel `bun:"table:decision_comment,alias:dc"`
+
+	ID         int64     `bun:"id,pk,autoincrement"`
+	DecisionID int64     `bun:"decision_id,notnull"`
+	Body       string    `bun:"body,notnull"`
+	WrittenBy  int64     `bun:"written_by,notnull"`
+	WrittenAt  time.Time `bun:"written_at,notnull"`
+	// EditedAt marks that the author changed it. What it said before is not
+	// kept: discussion is not the record a decision rests on, and that record
+	// — the revisions and the approvals — is kept in full.
+	EditedAt *time.Time `bun:"edited_at"`
+}
+
+// Say adds a comment to a decision.
+//
+// Allowed at any point, including long after an approval, and it disturbs
+// nothing.
+func (s *Store) Say(ctx context.Context, subject access.Subject, decisionID int64, body string) (*Comment, error) {
+	if err := s.reachable(ctx, subject, decisionID); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(body) == "" {
+		return nil, fmt.Errorf("a comment has to say something")
+	}
+	if err := markdown.Check(body); err != nil {
+		return nil, err
+	}
+
+	comment := &Comment{
+		DecisionID: decisionID, Body: body,
+		WrittenBy: subject.ID, WrittenAt: s.now().Truncate(time.Microsecond),
+	}
+	if _, err := s.db.NewInsert().Model(comment).Exec(ctx); err != nil {
+		return nil, fmt.Errorf("record a comment: %w", err)
+	}
+	return comment, nil
+}
+
+// Reword changes a comment, which only its author may do.
+//
+// Overwritten rather than revised, and marked as edited. Nobody else may
+// change somebody's words — an edit that could be made by another person is
+// not a correction, it is a forgery with a timestamp.
+func (s *Store) Reword(ctx context.Context, subject access.Subject, commentID int64, body string) error {
+	comment := new(Comment)
+	if err := s.db.NewSelect().Model(comment).
+		Where("id = ?", commentID).Scan(ctx); err != nil {
+		return fmt.Errorf("no comment to change: %w", err)
+	}
+	if comment.WrittenBy != subject.ID {
+		return fmt.Errorf("only the person who wrote a comment may change it")
+	}
+	if err := s.reachable(ctx, subject, comment.DecisionID); err != nil {
+		return err
+	}
+	if strings.TrimSpace(body) == "" {
+		return fmt.Errorf("a comment has to say something")
+	}
+	if err := markdown.Check(body); err != nil {
+		return err
+	}
+
+	if _, err := s.db.NewUpdate().Model((*Comment)(nil)).
+		Set("body = ?", body).
+		Set("edited_at = ?", s.now().Truncate(time.Microsecond)).
+		Where("id = ?", commentID).Exec(ctx); err != nil {
+		return fmt.Errorf("change a comment: %w", err)
+	}
+	return nil
+}
+
+// Discussion returns what has been said about a decision, oldest first.
+func (s *Store) Discussion(ctx context.Context, subject access.Subject, decisionID int64) ([]Comment, error) {
+	if err := s.reachable(ctx, subject, decisionID); err != nil {
+		return nil, err
+	}
+	var comments []Comment
+	if err := s.db.NewSelect().Model(&comments).
+		Where("decision_id = ?", decisionID).
+		Order("id ASC").Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read the discussion: %w", err)
+	}
+	return comments, nil
+}

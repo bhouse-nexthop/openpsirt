@@ -11,6 +11,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
+	"github.com/bhouse-nexthop/openpsirt/internal/markdown"
 )
 
 // Approve records a second person agreeing to what a decision currently says.
@@ -88,6 +89,9 @@ func (s *Store) approve(ctx context.Context, subject access.Subject, decisionID 
 func (s *Store) Revise(ctx context.Context, subject access.Subject, decisionID int64, reasoning string) (*Revision, error) {
 	if strings.TrimSpace(reasoning) == "" {
 		return nil, errors.New("a revision has to say something")
+	}
+	if err := markdown.Check(reasoning); err != nil {
+		return nil, err
 	}
 	db, ok := s.db.(*bun.DB)
 	if !ok {

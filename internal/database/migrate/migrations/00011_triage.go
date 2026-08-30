@@ -149,6 +149,32 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 
 		`CREATE INDEX "decision_approval_decision_idx" ON "decision_approval" ("decision_id")`,
 		`CREATE INDEX "decision_approval_batch_idx" ON "decision_approval" ("batch")`,
+
+		// Discussion, which is not the reasoning.
+		//
+		// The obvious mistake is treating all text on a finding as one thing.
+		// Annotating an approved decision months later — "re-checked, still
+		// true" — is ordinary, and it must not disturb the approval, because
+		// an approval that fell over every time somebody added a note would
+		// teach people not to add notes.
+		//
+		// A comment is overwritten when its author edits it, and no history is
+		// kept beyond a marker that it happened. That is a deliberate
+		// exception to keeping everything: discussion is not the record a
+		// decision rests on, and that record is the revisions and the
+		// approvals, which are kept in full.
+		`CREATE TABLE "decision_comment" (
+			"id"          ` + t.id + `,
+			"decision_id" ` + t.ref + ` NOT NULL,
+			"body"        ` + t.text + ` NOT NULL,
+			"written_by"  ` + t.ref + ` NOT NULL,
+			"written_at"  ` + t.timestamp + ` NOT NULL,
+			"edited_at"   ` + t.timestamp + ` NULL,
+			CONSTRAINT "decision_comment_decision_fk" FOREIGN KEY ("decision_id") REFERENCES "decision"("id"),
+			CONSTRAINT "decision_comment_author_fk" FOREIGN KEY ("written_by") REFERENCES "person"("id")
+		)` + t.suffix,
+
+		`CREATE INDEX "decision_comment_decision_idx" ON "decision_comment" ("decision_id")`,
 	}
 
 	for _, stmt := range statements {
@@ -161,6 +187,7 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 
 func downTriage(ctx context.Context, tx *sql.Tx) error {
 	for _, stmt := range []string{
+		`DROP TABLE "decision_comment"`,
 		`DROP TABLE "decision_approval"`,
 		`DROP TABLE "decision_revision"`,
 		`DROP TABLE "decision"`,

@@ -11,6 +11,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
+	"github.com/bhouse-nexthop/openpsirt/internal/markdown"
 )
 
 // Decision is one claim about one combination of code.
@@ -233,6 +234,12 @@ func (p Proposal) valid() error {
 	}
 	if strings.TrimSpace(p.Reasoning) == "" {
 		return errors.New("a decision needs reasoning, because somebody else has to agree with it")
+	}
+	// The same policy every other typed field goes through, run before the
+	// text is stored rather than when it is read back. Stored text is then
+	// known to have passed what was in force when it arrived.
+	if err := markdown.Check(p.Reasoning); err != nil {
+		return err
 	}
 	if p.By == 0 {
 		return errors.New("a decision needs somebody to have made it")
