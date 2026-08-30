@@ -48,11 +48,27 @@ func (f *fixture) claims(t *testing.T, at triage.Place) *triage.Decision {
 		Justification: triage.CodeNotInExecutePath,
 		Reasoning:     "The parser is never reached: we only call the encoder.",
 		By:            f.proposer,
+		// What a caller works out through NeedsApproval and passes in.
+		// Dismissing something as not applicable hides risk, so it waits.
+		NeedsApproval: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return decision
+}
+
+// agreed is a claim that has been through review and now stands. Most tests
+// here are about what happens to a standing decision — it expires, it lapses,
+// somebody comments on it — and reaching that state is a precondition rather
+// than the subject.
+func (f *fixture) agreed(t *testing.T, at triage.Place) *triage.Decision {
+	t.Helper()
+	claimed := f.claims(t, at)
+	if err := f.store.Approve(t.Context(), f.reviewer, claimed.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	return claimed
 }
 
 func each(t *testing.T, fn func(t *testing.T, f *fixture)) {
@@ -116,19 +132,76 @@ func each(t *testing.T, fn func(t *testing.T, f *fixture)) {
 	})
 }
 
-func TestADecisionStandsAgainstThePlaceItWasMadeAbout(t *testing.T) {
+func TestAClaimStandsOnlyOnceSomebodyHasAgreedToIt(t *testing.T) {
+	// The control, stated as behavior rather than as a state name. A claim
+	// that hides risk suppresses nothing while it waits — otherwise one person
+	// dismisses a finding on their own and the review queue is decorative.
 	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
 		claimed := f.claims(t, f.at())
 
-		standing, err := f.store.Applying(t.Context(), f.at())
+		if standing, _ := f.store.Applying(ctx, f.at()); standing != nil {
+			t.Error("a claim nobody has agreed to already suppresses the finding")
+		}
+
+		if err := f.store.Approve(ctx, f.reviewer, claimed.ID, ""); err != nil {
+			t.Fatal(err)
+		}
+		standing, err := f.store.Applying(ctx, f.at())
 		if err != nil {
 			t.Fatal(err)
 		}
 		if standing == nil || standing.ID != claimed.ID {
-			t.Fatalf("the decision just made does not apply where it was made: %+v", standing)
+			t.Fatalf("an agreed claim does not apply where it was made: %+v", standing)
 		}
 		if standing.RevisionID == nil {
 			t.Error("a decision was recorded with no reasoning to read")
+		}
+	})
+}
+
+func TestAClaimThatNeedsNobodyTakesEffectAtOnce(t *testing.T) {
+	// The other half. A quick "not this sprint" is ordinary triage, and making
+	// it wait for a second person would put every routine act through a queue
+	// — which is how a queue stops being read.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		soon := time.Now().UTC().Add(7 * 24 * time.Hour)
+		if _, err := f.store.Propose(ctx, f.triager, triage.Proposal{
+			Place: f.at(), Outcome: triage.Deferred, DeferredUntil: &soon,
+			Reasoning: "Not this sprint.", By: f.proposer, NeedsApproval: false,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if standing, _ := f.store.Applying(ctx, f.at()); standing == nil {
+			t.Error("a short deferral did not take effect until somebody agreed")
+		}
+	})
+}
+
+func TestAWaitingClaimDoesNotShadowAnAgreedOne(t *testing.T) {
+	// Otherwise one person overturns a decision two people made, simply by
+	// proposing something newer at the same place.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		agreed := f.agreed(t, f.at())
+
+		later, err := f.store.Propose(ctx, f.triager, triage.Proposal{
+			Place: f.at(), Outcome: triage.WontFix,
+			Reasoning: "Actually we are never fixing this.", By: f.proposer,
+			NeedsApproval: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		standing, err := f.store.Applying(ctx, f.at())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if standing == nil || standing.ID != agreed.ID {
+			t.Errorf("a claim nobody agreed to (%d) shadowed the agreed one (%d): %+v",
+				later.ID, agreed.ID, standing)
 		}
 	})
 }
@@ -139,7 +212,7 @@ func TestAnUpstreamVersionMovingLapsesADecision(t *testing.T) {
 	// when the code moves, the keys stop matching and the claim stops
 	// standing. Nothing sweeps and nothing runs on a timer.
 	each(t, func(t *testing.T, f *fixture) {
-		f.claims(t, f.at())
+		f.agreed(t, f.at())
 
 		for _, moved := range []struct {
 			what  string
@@ -184,7 +257,7 @@ func TestARebuildDoesNotLapseADecision(t *testing.T) {
 	// shipped version were compared, every decision would lapse nightly and
 	// the tool would be unusable by the second week.
 	each(t, func(t *testing.T, f *fixture) {
-		f.claims(t, f.at())
+		f.agreed(t, f.at())
 
 		// Same upstream, and everything about how it was packaged has moved.
 		// The place is derived from names, so a repackage does not touch it.
@@ -204,7 +277,7 @@ func TestADecisionIsFoundAgainAfterItLapses(t *testing.T) {
 	// written last time, is how a tool teaches people to stop writing
 	// reasoning at all.
 	each(t, func(t *testing.T, f *fixture) {
-		f.claims(t, f.at())
+		f.agreed(t, f.at())
 
 		moved := f.at()
 		moved.ComponentUpstream = "1.2.4"
@@ -247,22 +320,29 @@ func TestRevisingTheReasoningTakesBackTheApproval(t *testing.T) {
 	// saying two people had read something only one of them had.
 	each(t, func(t *testing.T, f *fixture) {
 		ctx := t.Context()
-		claimed := f.claims(t, f.at())
-		if err := f.store.Approve(ctx, f.reviewer, claimed.ID, ""); err != nil {
-			t.Fatal(err)
-		}
+		claimed := f.agreed(t, f.at())
 
 		if _, err := f.store.Revise(ctx, f.triager, claimed.ID,
 			"Actually the parser is reached, but only from a path we control."); err != nil {
 			t.Fatal(err)
 		}
 
+		// The finding is exposed again while the new words wait for somebody,
+		// which is the whole point: what one person wrote suppresses nothing
+		// on its own.
 		standing, err := f.store.Applying(ctx, f.at())
 		if err != nil {
 			t.Fatal(err)
 		}
-		if standing == nil || standing.State != triage.Proposed {
-			t.Fatalf("after revising, the decision reads as %v", standing)
+		if standing != nil {
+			t.Fatalf("revised words suppressed the finding before anybody agreed: %+v", standing)
+		}
+		waiting, _, err := f.store.Queue(ctx, f.reviewer, 10, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(waiting) != 1 || waiting[0].Decision.ID != claimed.ID {
+			t.Errorf("the revised claim is waiting for nobody: %+v", waiting)
 		}
 
 		approvals, err := f.store.Approvals(ctx, claimed.ID)
@@ -381,11 +461,21 @@ func TestABulkApprovalIsUndoneAsABatch(t *testing.T) {
 				t.Errorf("decision %d is still approved", id)
 			}
 		}
-		// The claims still stand; it is the agreement that was taken back.
+		// The claims themselves survive — it is the agreement that was taken
+		// back, not the reasoning — so each one is waiting for an approver
+		// again rather than gone. Meanwhile nothing they said is suppressing
+		// anything, because nobody has agreed to it.
 		at := f.at()
 		at.PlaceIdentity = "a"
-		if standing, _ := f.store.Applying(ctx, at); standing == nil || standing.State != triage.Proposed {
-			t.Error("undoing an approval withdrew the claim as well")
+		if standing, _ := f.store.Applying(ctx, at); standing != nil {
+			t.Errorf("an undone approval still suppresses the finding: %+v", standing)
+		}
+		waiting, _, err := f.store.Queue(ctx, f.reviewer, 10, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(waiting) != len(made) {
+			t.Errorf("%d claims came back to the queue, want %d", len(waiting), len(made))
 		}
 	})
 }
@@ -403,7 +493,7 @@ func TestDecidingIsItsOwnRight(t *testing.T) {
 			t.Errorf("somebody holding only a read role made a decision: %v", err)
 		}
 
-		claimed := f.claims(t, f.at())
+		claimed := f.agreed(t, f.at())
 		if err := f.store.Approve(ctx, f.onlooker, claimed.ID, ""); !errors.Is(err, triage.ErrNotTheirs) {
 			t.Errorf("somebody holding only a read role approved one: %v", err)
 		}
@@ -467,7 +557,7 @@ func TestUndoingABatchTouchesOnlyWhatTheUndoerMayReach(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		ctx := t.Context()
 		const batch = "one-afternoon"
-		claimed := f.claims(t, f.at())
+		claimed := f.agreed(t, f.at())
 		if err := f.store.Approve(ctx, f.reviewer, claimed.ID, batch); err != nil {
 			t.Fatal(err)
 		}

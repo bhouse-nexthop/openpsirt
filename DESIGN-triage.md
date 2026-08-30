@@ -167,6 +167,24 @@ long the finding has already been put off.
 It shows only work the reader can actually do, narrowed in the query. A work
 list containing work somebody cannot do teaches them to skip rows.
 
+### Three things are waiting, not one
+
+A claim awaiting agreement is the obvious one. The other two are what happens
+when a judgment stops covering anything, and leaving them out is how reasoning
+gets stranded:
+
+- **A deferral that has run out.** It has said what it was going to say and the
+  finding is back. If it does not appear here the finding simply resurfaces as
+  new, with what somebody wrote about it last time attached to nothing anyone
+  is looking at.
+- **A decision the code moved out from under.** Somebody made a judgment, a
+  version bump means it no longer applies, and they are the person who should
+  be told — which is the entire reason a lapse is marked rather than the
+  decision being deleted.
+
+A claim that needed nobody — a deferral under the threshold — is not here at
+all, by the same rule that keeps unreachable work out.
+
 ## Hiding risk needs a second person; a quick postponement does not
 
 A deferral shorter than a configured threshold stands on its own. A quick "not
@@ -181,6 +199,13 @@ are a year nobody approved.
 The time counted is what each deferral *asked for*, not what it has spent. The
 question is how long something has been put off, not how far into that it
 currently is.
+
+Two things are excluded from that total. A deferral that was **taken back** was
+not time the finding spent postponed, and counting it would make the number an
+approver is shown describe time that did not happen. And a deferral asking for
+a date **already past** asks for nothing — allowing it to count as a negative
+would let a back-dated request subtract from what a finding has already been
+put off for and slip the total back under the threshold.
 
 ## Re-affirming after the code moves
 

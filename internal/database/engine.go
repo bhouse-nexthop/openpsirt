@@ -144,7 +144,18 @@ func driverDSN(engine Engine, u *url.URL, raw string) (string, error) {
 		// five characters, with no error, on both of these engines and on
 		// neither of the other two — which is the shape of portability trap
 		// that only shows up in production.
-		settings := "parseTime=true&loc=UTC&sql_mode=" +
+		//
+		// **How many rows an update touched has to mean the same thing on
+		// every engine.** By default these two report how many rows the update
+		// *changed*, where the other two report how many it *matched*. Several
+		// writes here are conditional — set this state, but only if the row is
+		// still the one that was read — and they read the count back to find
+		// out whether the condition held. Under the default a write whose
+		// condition held but whose values happened to already be correct
+		// reports zero, and the caller reports a conflict that did not happen.
+		// Asking for matched rows makes the count answer the question that is
+		// actually being asked, identically everywhere.
+		settings := "parseTime=true&loc=UTC&clientFoundRows=true&sql_mode=" +
 			url.QueryEscape("CONCAT(@@sql_mode,',ANSI_QUOTES')")
 		if query != "" {
 			query += "&" + settings

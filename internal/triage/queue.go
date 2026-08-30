@@ -32,7 +32,7 @@ type Waiting struct {
 	DeferredSoFar time.Duration
 }
 
-// Queue returns what is waiting to be judged, most urgent first.
+// Queue returns what is waiting for somebody, newest first.
 //
 // Narrowed to what the asker may act on, in the query. A reviewer who cannot
 // triage a product should not be shown its claims at all — a queue is a work
@@ -42,16 +42,14 @@ func (s *Store) Queue(ctx context.Context, subject access.Subject, limit, offset
 		limit = 50
 	}
 
-	counting := reachableBy(s.db.NewSelect().Model((*Decision)(nil)).
-		Where("state = ?", Proposed), subject, "de")
+	counting := reachableBy(waiting(s.db.NewSelect().Model((*Decision)(nil)), s.now()), subject, "de")
 	total, err := counting.Count(ctx)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count what is waiting: %w", err)
 	}
 
 	var proposed []Decision
-	listing := reachableBy(s.db.NewSelect().Model(&proposed).
-		Where("state = ?", Proposed), subject, "de")
+	listing := reachableBy(waiting(s.db.NewSelect().Model(&proposed), s.now()), subject, "de")
 	if err := listing.Order("id DESC").Limit(limit).Offset(offset).Scan(ctx); err != nil {
 		return nil, 0, fmt.Errorf("read what is waiting: %w", err)
 	}
@@ -138,6 +136,10 @@ func (s *Store) DeferredSoFar(ctx context.Context, decision Decision) (time.Dura
 		Where("vulnerability_id = ?", decision.VulnerabilityID).
 		Where("place_identity = ?", decision.PlaceIdentity).
 		Where("outcome = ?", Deferred).
+		// What was taken back was not time the finding spent put off. Counting
+		// a withdrawn deferral would make the number shown to an approver —
+		// "how long has this been postponed" — include time it was not.
+		Where("state <> ?", Withdrawn).
 		Where("deferred_until IS NOT NULL").Scan(ctx); err != nil {
 		return 0, fmt.Errorf("read how long this has been put off: %w", err)
 	}
@@ -180,7 +182,14 @@ func (s *Store) NeedsApproval(ctx context.Context, p Proposal, threshold time.Du
 
 	asking := time.Duration(0)
 	if p.DeferredUntil != nil {
-		asking = time.Until(*p.DeferredUntil)
+		// Measured from this store's own clock, like every other time decision
+		// here, and never negative. A date already past asks for no time at
+		// all; letting it come out negative would let a back-dated deferral
+		// subtract from what a finding has already been postponed for and slip
+		// under the threshold.
+		if span := p.DeferredUntil.Sub(s.now()); span > 0 {
+			asking = span
+		}
 	}
 
 	// What has already been asked for about this same place.
@@ -192,4 +201,29 @@ func (s *Store) NeedsApproval(ctx context.Context, p Proposal, threshold time.Du
 		return false, err
 	}
 	return already+asking >= threshold, nil
+}
+
+// waiting narrows a query to what somebody has to look at.
+//
+// Three things, not one. A claim awaiting agreement is the obvious case. The
+// other two are what happens when a judgment stops covering anything:
+//
+// A deferral that has run out has said what it was going to say. The finding
+// is back, and if it does not appear here it simply reappears as new with the
+// reasoning stranded behind it — which is the outcome marking a lapse exists
+// to prevent.
+//
+// A decision the code moved out from under is the same shape: somebody made a
+// judgment, it no longer applies, and they are the person who should be told.
+//
+// A claim that needed nobody — a short deferral — is not here at all. A work
+// list containing work nobody has to do teaches people to skip rows.
+func waiting(query *bun.SelectQuery, now time.Time) *bun.SelectQuery {
+	return query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+		return q.
+			WhereOr("state = ? AND needs_approval = ?", Proposed, true).
+			WhereOr("state = ?", LapsedState).
+			WhereOr("state IN (?, ?) AND outcome = ? AND deferred_until IS NOT NULL AND deferred_until <= ?",
+				Proposed, Approved, Deferred, now)
+	})
 }

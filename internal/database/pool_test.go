@@ -122,3 +122,45 @@ func TestValidateFailsQuicklyAgainstSomethingUnreachable(t *testing.T) {
 		t.Errorf("gave up after %v, which is too slow to be useful", elapsed)
 	}
 }
+
+func TestAnUpdateReportsRowsMatchedNotRowsChanged(t *testing.T) {
+	// Several writes elsewhere are conditional — set this, but only if the row
+	// is still the one that was read — and they read the affected count back
+	// to find out whether the condition held. That only works if the count
+	// means "matched" on every engine.
+	//
+	// Two of the four report "changed" unless asked otherwise, so an update
+	// whose condition held but whose value was already correct reports zero
+	// and the caller announces a conflict that never happened. It surfaced as
+	// an approval failing with "the reasoning changed while this was being
+	// agreed to" on exactly those two engines, for a decision nobody had
+	// touched.
+	dbtest.Each(t, func(t *testing.T, db *database.DB) {
+		ctx := t.Context()
+		if _, err := db.NewRaw(`CREATE TABLE "matched_rows" ("id" INTEGER PRIMARY KEY, "note" VARCHAR(16))`).
+			Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			_, _ = db.NewRaw(`DROP TABLE "matched_rows"`).Exec(context.WithoutCancel(ctx))
+		})
+		if _, err := db.NewRaw(`INSERT INTO "matched_rows" ("id", "note") VALUES (1, 'same')`).
+			Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+
+		// The row exists and the condition holds. Nothing about it changes.
+		result, err := db.NewRaw(`UPDATE "matched_rows" SET "note" = 'same' WHERE "id" = 1`).Exec(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if affected != 1 {
+			t.Errorf("an update that matched a row reported %d affected; "+
+				"every conditional write reads this to mean the row was found", affected)
+		}
+	})
+}

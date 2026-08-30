@@ -13,11 +13,7 @@ func TestACommentNeverDisturbsAnApproval(t *testing.T) {
 	// note would teach people not to add notes.
 	each(t, func(t *testing.T, f *fixture) {
 		ctx := t.Context()
-		claimed := f.claims(t, f.at())
-		if err := f.store.Approve(ctx, f.reviewer, claimed.ID, ""); err != nil {
-			t.Fatal(err)
-		}
-
+		claimed := f.agreed(t, f.at())
 		if _, err := f.store.Say(ctx, f.triager, claimed.ID, "Re-checked against 1.2.4; still true."); err != nil {
 			t.Fatal(err)
 		}
@@ -44,7 +40,7 @@ func TestOnlyTheAuthorMayChangeTheirOwnWords(t *testing.T) {
 	// timestamp.
 	each(t, func(t *testing.T, f *fixture) {
 		ctx := t.Context()
-		claimed := f.claims(t, f.at())
+		claimed := f.agreed(t, f.at())
 		said, err := f.store.Say(ctx, f.triager, claimed.ID, "First thought.")
 		if err != nil {
 			t.Fatal(err)
@@ -89,7 +85,7 @@ func TestTextOnADecisionGoesThroughTheSamePolicy(t *testing.T) {
 			t.Error("a remote image was accepted as reasoning")
 		}
 
-		claimed := f.claims(t, f.at())
+		claimed := f.agreed(t, f.at())
 		if _, err := f.store.Revise(ctx, f.triager, claimed.ID, dangerous); err == nil {
 			t.Error("a remote image was accepted as a revision")
 		}
@@ -102,7 +98,7 @@ func TestTextOnADecisionGoesThroughTheSamePolicy(t *testing.T) {
 func TestDiscussionIsNotReachableWithoutTheRightToTriage(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		ctx := t.Context()
-		claimed := f.claims(t, f.at())
+		claimed := f.agreed(t, f.at())
 		if _, err := f.store.Say(ctx, f.onlooker, claimed.ID, "Adding my thoughts."); err == nil {
 			t.Error("somebody holding only a read role commented")
 		}

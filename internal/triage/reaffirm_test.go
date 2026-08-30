@@ -15,6 +15,7 @@ func (f *fixture) judged(t *testing.T, at triage.Place, severity int) *triage.De
 		Justification: triage.CodeNotInExecutePath,
 		Reasoning:     "The parser is never reached.",
 		By:            f.proposer, SeverityCenti: severity,
+		NeedsApproval: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -161,7 +162,10 @@ func TestMarkingWhatLapsedLeavesWhatStillAppliesAlone(t *testing.T) {
 	// withdraw judgments nobody revisited.
 	each(t, func(t *testing.T, f *fixture) {
 		ctx := t.Context()
-		f.judged(t, f.at(), 700)
+		agreed := f.judged(t, f.at(), 700)
+		if err := f.store.Approve(ctx, f.reviewer, agreed.ID, ""); err != nil {
+			t.Fatal(err)
+		}
 
 		// A place whose versions have not moved.
 		if err := f.store.Lapsed(ctx, f.at()); err != nil {

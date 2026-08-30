@@ -55,7 +55,7 @@ func TestMySQLDSNIsRewrittenForItsDriver(t *testing.T) {
 		t.Fatalf("ParseURL: %v", err)
 	}
 	want := "user:secret@tcp(db.example:3306)/openpsirt?parseTime=true&loc=UTC&" +
-		"sql_mode=" + url.QueryEscape("CONCAT(@@sql_mode,',ANSI_QUOTES')")
+		"clientFoundRows=true&sql_mode=" + url.QueryEscape("CONCAT(@@sql_mode,',ANSI_QUOTES')")
 	if got.DSN != want {
 		t.Errorf("DSN\n got %q\nwant %q", got.DSN, want)
 	}
@@ -77,7 +77,7 @@ func TestMySQLDSNAlwaysAsksForUTCTimesAndStandardQuoting(t *testing.T) {
 	// CONCAT, not assignment. Assigning the mode replaces it, and what it
 	// replaces includes the strictness that makes an oversized value an error
 	// rather than a silent truncation.
-	for _, want := range []string{"charset=utf8mb4", "parseTime=true", "loc=UTC", "ANSI_QUOTES", "CONCAT"} {
+	for _, want := range []string{"charset=utf8mb4", "parseTime=true", "loc=UTC", "ANSI_QUOTES", "CONCAT", "clientFoundRows=true"} {
 		if !contains(got.DSN, want) {
 			t.Errorf("DSN %q is missing %q", got.DSN, want)
 		}

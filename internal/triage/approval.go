@@ -78,9 +78,21 @@ func (s *Store) approve(ctx context.Context, subject access.Subject, decisionID 
 	if _, err := s.db.NewInsert().Model(approval).Exec(ctx); err != nil {
 		return fmt.Errorf("record an approval: %w", err)
 	}
-	if _, err := s.db.NewUpdate().Model((*Decision)(nil)).
-		Set("state = ?", Approved).Where("id = ?", decisionID).Exec(ctx); err != nil {
+	// Conditional on the revision that was read at the top still being the
+	// current one. A revision landing in between replaces the words and
+	// withdraws every agreement to them; without this condition the approval
+	// would then mark the decision agreed while naming words that no longer
+	// stand — an agreement floating free of the text, which is the one thing
+	// naming a revision exists to prevent.
+	result, err := s.db.NewUpdate().Model((*Decision)(nil)).
+		Set("state = ?", Approved).
+		Where("id = ?", decisionID).
+		Where("revision_id = ?", *decision.RevisionID).Exec(ctx)
+	if err != nil {
 		return fmt.Errorf("record an approval: %w", err)
+	}
+	if moved, err := result.RowsAffected(); err == nil && moved == 0 {
+		return fmt.Errorf("the reasoning changed while this was being agreed to; read it again")
 	}
 	return nil
 }
@@ -168,21 +180,31 @@ func (s *Store) revise(ctx context.Context, subject access.Subject, decisionID i
 // No approval needed, for the same reason revising needs none: it puts risk
 // back on the table rather than taking it off.
 func (s *Store) Withdraw(ctx context.Context, subject access.Subject, decisionID int64) error {
-	if err := s.reachable(ctx, subject, decisionID); err != nil {
-		return err
+	db, ok := s.db.(*bun.DB)
+	if !ok {
+		return fmt.Errorf("this store is already inside a transaction")
 	}
-	now := s.now().Truncate(time.Microsecond)
-	if _, err := s.db.NewUpdate().Model((*Approval)(nil)).
-		Set("withdrawn_at = ?", now).
-		Where("decision_id = ?", decisionID).
-		Where("withdrawn_at IS NULL").Exec(ctx); err != nil {
-		return fmt.Errorf("withdraw a decision: %w", err)
-	}
-	if _, err := s.db.NewUpdate().Model((*Decision)(nil)).
-		Set("state = ?", Withdrawn).Where("id = ?", decisionID).Exec(ctx); err != nil {
-		return fmt.Errorf("withdraw a decision: %w", err)
-	}
-	return nil
+	// Both writes or neither. Half of this leaves a decision reading as agreed
+	// to with every agreement marked withdrawn — which is the state the whole
+	// approval record exists to make impossible.
+	return database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+		within := &Store{db: tx, now: s.now}
+		if err := within.reachable(ctx, subject, decisionID); err != nil {
+			return err
+		}
+		now := s.now().Truncate(time.Microsecond)
+		if _, err := tx.NewUpdate().Model((*Approval)(nil)).
+			Set("withdrawn_at = ?", now).
+			Where("decision_id = ?", decisionID).
+			Where("withdrawn_at IS NULL").Exec(ctx); err != nil {
+			return fmt.Errorf("withdraw a decision: %w", err)
+		}
+		if _, err := tx.NewUpdate().Model((*Decision)(nil)).
+			Set("state = ?", Withdrawn).Where("id = ?", decisionID).Exec(ctx); err != nil {
+			return fmt.Errorf("withdraw a decision: %w", err)
+		}
+		return nil
+	})
 }
 
 // UndoBatch takes back everything one bulk approval agreed to.
@@ -191,6 +213,23 @@ func (s *Store) Withdraw(ctx context.Context, subject access.Subject, decisionID
 // available at the same size. Hunting for what a bulk approval touched, one
 // row at a time, is not an undo anybody will actually use.
 func (s *Store) UndoBatch(ctx context.Context, subject access.Subject, batch string) (int64, error) {
+	db, ok := s.db.(*bun.DB)
+	if !ok {
+		return 0, fmt.Errorf("this store is already inside a transaction")
+	}
+	var undone int64
+	// Applied whole, and every read it decides from is inside it. Reading
+	// which decisions a batch covered and then writing outside that read lets
+	// a decision withdrawn in between be flipped back to waiting.
+	err := database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+		var err error
+		undone, err = (&Store{db: tx, now: s.now}).undoBatch(ctx, subject, batch)
+		return err
+	})
+	return undone, err
+}
+
+func (s *Store) undoBatch(ctx context.Context, subject access.Subject, batch string) (int64, error) {
 	now := s.now().Truncate(time.Microsecond)
 
 	// Narrowed to what this person may reach before anything is undone. A
@@ -217,9 +256,17 @@ func (s *Store) UndoBatch(ctx context.Context, subject access.Subject, batch str
 	}
 	// Back to proposed rather than withdrawn: the claims still stand, it is
 	// the agreement to them that was taken back.
+	//
+	// Only where nothing else still agrees. A decision may carry more than one
+	// agreement, and undoing a batch is undoing that batch — sending a
+	// decision back to the queue while somebody's standing agreement to it is
+	// still recorded would discard an agreement nobody took back.
 	if _, err := s.db.NewUpdate().Model((*Decision)(nil)).
 		Set("state = ?", Proposed).
-		Where("id IN (?)", bun.List(decisions)).Exec(ctx); err != nil {
+		Where("id IN (?)", bun.List(decisions)).
+		Where("NOT EXISTS (SELECT 1 FROM decision_approval AS still " +
+			"WHERE still.decision_id = de.id AND still.withdrawn_at IS NULL)").
+		Exec(ctx); err != nil {
 		return 0, fmt.Errorf("undo an approval: %w", err)
 	}
 	return int64(len(decisions)), nil

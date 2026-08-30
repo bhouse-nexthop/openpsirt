@@ -2,7 +2,7 @@
 
 How OpenPSIRT talks to a database, and why the awkward parts are awkward.
 
-Satisfies SCP-15, DAT-01 to DAT-17, DAT-30 to DAT-32, and the portability
+Satisfies SCP-15, DAT-01 to DAT-17, DAT-30 to DAT-35, and the portability
 constraints in Section 6 of `DECISIONS.md`.
 
 ## Four engines, one set of queries
@@ -117,6 +117,32 @@ identifiers — and both were checked by reverting the fix and watching them
 fail. One engine does not constrain a text column's width at all, which is
 documented behavior and loses nothing, so what is asserted is that the data
 never changes rather than that the write is refused.
+
+### An affected-row count means rows matched
+
+The same connection asks for one more thing, for the same reason: so a count
+means the same thing everywhere.
+
+A conditional write — take this decision to approved, but only if the reasoning
+is still the revision that was read — has no way to report a lost race except
+the number of rows the update touched. Zero means somebody got there first.
+
+By default two of the engines report how many rows the update *changed*, where
+the other two report how many it *matched*. Under that reading, a write whose
+condition held but whose values already happened to be correct reports zero,
+and the caller announces a conflict that never happened. It surfaced exactly
+that way: an approval refused with "the reasoning changed while this was being
+agreed to", for a decision nobody had touched, on those two engines and neither
+of the others.
+
+The alternative was to write every conditional update so its values are
+guaranteed to differ from what is already there. That leaves a portability
+quirk for every future caller to remember, and the one who forgets is handed a
+false conflict rather than an error. Asking the connection for matched rows
+makes the count answer the question being asked, identically everywhere.
+
+A test asserts the count on all four engines, and it was checked by removing
+the setting and watching exactly the two fail.
 
 ## Any number of replicas, coordinated only through the database
 
