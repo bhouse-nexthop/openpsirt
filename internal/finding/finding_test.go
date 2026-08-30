@@ -8,8 +8,11 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
@@ -977,4 +980,59 @@ func (f *fixture) issueScore(t *testing.T, name string) int {
 		t.Fatal(err)
 	}
 	return score
+}
+
+// counter counts the statements a store actually issues.
+//
+// "It batches" is exactly the kind of claim that stays in a comment after the
+// code stops doing it, so the test counts instead of asserting.
+type counter struct{ queries atomic.Int64 }
+
+func (c *counter) BeforeQuery(ctx context.Context, _ *bun.QueryEvent) context.Context {
+	c.queries.Add(1)
+	return ctx
+}
+
+func (c *counter) AfterQuery(context.Context, *bun.QueryEvent) {}
+
+func TestNamingAPageOfFindingsDoesNotCostAQueryPerRow(t *testing.T) {
+	// This is the screen somebody opens first, against the largest product
+	// they have. Each row used to be named by two queries of its own, so a
+	// page of fifty was a hundred and one round trips and the cost grew with
+	// the page instead of staying flat.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t), []finding.Reported{
+			found("CVE-2026-1", libnl), found("CVE-2026-2", libnl),
+			found("CVE-2026-3", swss), found("CVE-2026-4", teamd),
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		counted := &counter{}
+		f.db.DB.AddQueryHook(counted)
+		groups, total, err := f.store.Groups(t.Context(), f.holding(t, access.PublicRead),
+			f.target, 50, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		issued := counted.queries.Load()
+
+		if total != 4 || len(groups) != 4 {
+			t.Fatalf("read %d of %d groups, want 4", len(groups), total)
+		}
+		for _, group := range groups {
+			if group.Vulnerability == "" || group.Component == "" {
+				t.Errorf("a row came back unnamed: %+v", group)
+			}
+		}
+		// Which product this is, the list, the count, and one lookup per kind
+		// of name. Four rows or four hundred, it is the same five statements —
+		// where a query per row would already be thirteen at four rows.
+		const flat = 5
+		if issued > flat {
+			t.Errorf("naming %d rows took %d statements, want no more than %d; "+
+				"the cost is not flat", len(groups), issued, flat)
+		}
+	})
 }

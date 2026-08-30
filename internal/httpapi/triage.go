@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -470,9 +471,31 @@ func refusedDecision(err error) error {
 	}
 	var faults markdown.Faults
 	if errors.As(err, &faults) {
-		return huma.Error422UnprocessableEntity(faults.Error())
+		return refusedText(faults)
 	}
 	return huma.Error422UnprocessableEntity(err.Error())
+}
+
+// refusedText answers a refused piece of writing with where to look.
+//
+// Each fault travels as its own detail, carrying the line and the text that
+// caused it. Flattening them into one sentence is what this used to do, and it
+// leaves an interface with nothing to point at: "remote images are not
+// allowed" against a forty-line justification means somebody hunting for it by
+// eye, which is the whole reason positions are gathered in the first place.
+func refusedText(faults markdown.Faults) error {
+	details := make([]error, 0, len(faults))
+	for _, fault := range faults {
+		details = append(details, &huma.ErrorDetail{
+			Message: fault.Reason,
+			// Where in the submitted text, not where in the request body. A
+			// client is pointing a cursor at a line somebody typed.
+			Location: fmt.Sprintf("line %d", fault.Line),
+			Value:    fault.Offending,
+		})
+	}
+	return huma.Error422UnprocessableEntity(
+		"that text cannot be stored as written", details...)
 }
 
 // decisionBody renders a decision as the API states it.

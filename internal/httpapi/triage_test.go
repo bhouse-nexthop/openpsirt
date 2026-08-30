@@ -2,6 +2,7 @@ package httpapi_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -89,16 +90,58 @@ func TestApprovingSomethingThatIsNotThereSaysSo(t *testing.T) {
 }
 
 func TestARefusalOfTypedTextSaysWhereToLook(t *testing.T) {
-	// A justification is long, and a refusal naming a category means hunting.
-	// The API carries the position because the interface can only point at the
-	// problem if the answer says where it is.
+	// A justification runs to dozens of lines, and a refusal naming only a
+	// category means somebody hunting for the offending line by eye. The
+	// answer carries the position because an interface can only point at the
+	// problem if it is told where the problem is.
+	//
+	// Against a decision that exists. The first version of this ran against an
+	// identifier nothing had ever created, so it was asserting that a missing
+	// decision is not found — which it would have done just as well with the
+	// text check removed altogether.
 	eachReach(t, func(t *testing.T, r *reach) {
-		body := `{"reasoning":"fine\nsee ![this](https://evil.example/x.png)"}`
-		got := asPerson(t, r, "triager", http.MethodPut, "/v1/decisions/1/reasoning", body)
-		// The decision does not exist here, so this is about the shape of a
-		// refusal rather than about this particular one.
-		if got.Code == http.StatusOK || got.Code == http.StatusNoContent {
-			t.Errorf("a remote image was accepted: %s", got.Body.String())
+		place := r.scanned(t)
+		id := r.decided(t, place)
+
+		body := `{"reasoning":"This is fine.\n\nBut see ![proof](https://evil.example/x.png)"}`
+		got := asPerson(t, r, "triager", http.MethodPut,
+			fmt.Sprintf("/v1/decisions/%d/reasoning", id), body)
+		if got.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("a remote image answered %d: %s", got.Code, got.Body.String())
+		}
+
+		var refusal struct {
+			Detail string `json:"detail"`
+			Errors []struct {
+				Message  string `json:"message"`
+				Location string `json:"location"`
+				Value    any    `json:"value"`
+			} `json:"errors"`
+		}
+		if err := json.Unmarshal(got.Body.Bytes(), &refusal); err != nil {
+			t.Fatalf("decode: %v (%s)", err, got.Body.String())
+		}
+		if len(refusal.Errors) == 0 {
+			t.Fatalf("the refusal carries nothing to point at: %s", got.Body.String())
+		}
+		one := refusal.Errors[0]
+		if one.Location != "line 3" {
+			t.Errorf("the fault is reported at %q, want the line it is on", one.Location)
+		}
+		if fmt.Sprint(one.Value) != "https://evil.example/x.png" {
+			t.Errorf("the refusal does not name what was wrong: %v", one.Value)
+		}
+		if !strings.Contains(one.Message, "image") {
+			t.Errorf("the reason reads as %q", one.Message)
+		}
+
+		// And nothing was stored: the reasoning still says what it said.
+		var detail struct {
+			Reasoning string `json:"reasoning"`
+		}
+		read(t, r, "triager", fmt.Sprintf("/v1/decisions/%d", id), &detail)
+		if strings.Contains(detail.Reasoning, "evil.example") {
+			t.Error("refused text was stored anyway")
 		}
 	})
 }

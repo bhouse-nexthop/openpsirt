@@ -216,6 +216,30 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		return nil, 0, fmt.Errorf("count what is open: %w", err)
 	}
 
+	// Named in two more queries rather than two per row. A page of fifty was
+	// a hundred and one round trips, every one of them a primary-key lookup —
+	// and this is the screen somebody opens first, against the largest product
+	// they have.
+	//
+	// The failures are reported rather than skipped. Each lookup used to be
+	// ignored when it failed, so a database in trouble produced a findings
+	// list with blank component names in it: a page that looks like data and
+	// is not.
+	issues := make([]int64, 0, len(rows))
+	components := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		issues = append(issues, row.VulnerabilityID)
+		components = append(components, row.ComponentID)
+	}
+	named, err := issuesNamed(ctx, s.db, issues)
+	if err != nil {
+		return nil, 0, err
+	}
+	shipped, err := componentsNamed(ctx, s.db, components)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	groups := make([]Group, 0, len(rows))
 	for _, row := range rows {
 		group := Group{
@@ -223,12 +247,10 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 			Urgency: row.Urgency, Exploited: row.Exploited,
 			FixState: FixState(row.FixState), FixedIn: row.FixedIn,
 		}
-		var issue Vulnerability
-		if err := s.db.NewSelect().Model(&issue).Where("id = ?", row.VulnerabilityID).Scan(ctx); err == nil {
+		if issue, held := named[row.VulnerabilityID]; held {
 			group.Vulnerability, group.Severity = issue.Identifier, issue.Severity
 		}
-		var component graph.Component
-		if err := s.db.NewSelect().Model(&component).Where("id = ?", row.ComponentID).Scan(ctx); err == nil {
+		if component, held := shipped[row.ComponentID]; held {
 			group.Component, group.Version = component.Name, component.Version
 			if component.UpstreamVersion != "" {
 				group.Upstream = component.UpstreamName + " " + component.UpstreamVersion
@@ -237,4 +259,41 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		groups = append(groups, group)
 	}
 	return groups, total, nil
+}
+
+// issuesNamed reads what these issues are called and how bad they are said to be.
+func issuesNamed(ctx context.Context, db *bun.DB, ids []int64) (map[int64]Vulnerability, error) {
+	held := map[int64]Vulnerability{}
+	if len(ids) == 0 {
+		return held, nil
+	}
+	var issues []Vulnerability
+	if err := db.NewSelect().Model(&issues).
+		Column("id", "identifier", "severity").
+		Where("id IN (?)", bun.List(ids)).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read what these issues are: %w", err)
+	}
+	for _, issue := range issues {
+		held[issue.ID] = issue
+	}
+	return held, nil
+}
+
+// componentsNamed reads what these components are, including the upstream they
+// were cut from where one is known.
+func componentsNamed(ctx context.Context, db *bun.DB, ids []int64) (map[int64]graph.Component, error) {
+	held := map[int64]graph.Component{}
+	if len(ids) == 0 {
+		return held, nil
+	}
+	var components []graph.Component
+	if err := db.NewSelect().Model(&components).
+		Column("id", "name", "version", "upstream_name", "upstream_version").
+		Where("id IN (?)", bun.List(ids)).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read what these components are: %w", err)
+	}
+	for _, component := range components {
+		held[component.ID] = component
+	}
+	return held, nil
 }
