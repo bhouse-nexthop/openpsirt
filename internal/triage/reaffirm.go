@@ -8,6 +8,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 )
 
 // Reaffirmation is somebody saying a lapsed claim still holds.
@@ -187,51 +188,58 @@ func (s *Store) carryApproval(ctx context.Context, made *Decision, previous Deci
 	return nil
 }
 
-// Lapsed marks the decisions a place has moved out from under.
+// Lapse marks the decisions this target's contents have moved out from under.
 //
-// Applying finds them by not matching, which is enough for reading. This is
-// for the queue: somebody has to be shown that a judgment they made no longer
-// covers anything, or it simply disappears and the finding reappears as new
-// with the reasoning stranded behind it.
-func (s *Store) Lapsed(ctx context.Context, at Place) error {
-	query := s.db.NewUpdate().Model((*Decision)(nil)).
+// A decision is stored against the upstream versions it was made about. When
+// those versions move it stops applying, and that much is automatic, because
+// what applies is matched on the versions. What is not automatic is anybody
+// finding out. Without this the finding simply reappears as though nobody had
+// ever looked at it, with the reasoning stranded on a row nothing points at —
+// which is the outcome that keeping the old decision exists to prevent.
+//
+// Run after a scan records what it found, because that is when the versions
+// have just changed. It is one statement rather than one per place: a real
+// image holds tens of thousands of places, and a sweep costing a write per
+// place is a sweep somebody turns off.
+//
+// **A decision covering nothing here is not lapsed.** A component that is gone
+// altogether closed its findings and there is nothing to ask anybody about,
+// where a component still present at a different version is exactly the
+// question somebody has to answer again.
+func (s *Store) Lapse(ctx context.Context, targetID int64) (int64, error) {
+	// Every open finding of this target at the decision's place, with the
+	// versions it currently has — stated the same way the decision was written
+	// against them, from the same expression, so that a decision cannot lapse
+	// on one path and stand on the other.
+	openHere := func() *bun.SelectQuery {
+		return s.db.NewSelect().
+			ColumnExpr("1").
+			TableExpr("finding AS f").
+			Join("JOIN component AS c ON c.id = f.component_id").
+			Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
+			Where("f.target_id = ?", targetID).
+			Where("f.closed_run_id IS NULL").
+			Where("f.vulnerability_id = de.vulnerability_id").
+			Where("f.place_identity = de.place_identity")
+	}
+
+	// Still found here, at versions that are not the ones this was decided
+	// about. Absent and empty are the same answer on the finding's side, so a
+	// decision recorded against no version matches a component stating none.
+	result, err := s.db.NewUpdate().Model((*Decision)(nil)).
 		Set("state = ?", LapsedState).
-		Where("product_id = ?", at.ProductID).
-		Where("vulnerability_id = ?", at.VulnerabilityID).
-		Where("place_identity = ?", at.PlaceIdentity).
-		Where("state IN (?, ?)", Proposed, Approved)
-
-	// Everything about this place except what it is now. A decision has moved
-	// out from under the code when *either* version differs, not when both
-	// do — a component bumped under an unchanged consumer is exactly the
-	// ordinary case, and requiring both would leave it standing.
-	query = query.WhereGroup(" AND ", func(q *bun.UpdateQuery) *bun.UpdateQuery {
-		q = notVersion(q, "component_upstream_version", at.ComponentUpstream)
-		return notVersionOr(q, "consumer_upstream_version", at.ConsumerUpstream)
-	})
-
-	if _, err := query.Exec(ctx); err != nil {
-		return fmt.Errorf("mark what the code moved out from under: %w", err)
+		Where("state IN (?, ?)", Proposed, Approved).
+		Where("EXISTS (?)", openHere()).
+		Where("NOT EXISTS (?)", openHere().
+			Where("COALESCE(de.component_upstream_version, '') = "+finding.ComponentUpstreamExpr).
+			Where("COALESCE(de.consumer_upstream_version, '') = "+finding.ConsumerUpstreamExpr)).
+		Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("mark what the code moved out from under: %w", err)
 	}
-	return nil
-}
-
-// notVersion matches rows recorded against a version other than this one.
-//
-// An absent version and a stated one are different things, so "not this
-// version" means "states some other version" where one is stated, and "states
-// any version at all" where none is.
-func notVersion(query *bun.UpdateQuery, column, stated string) *bun.UpdateQuery {
-	if stated == "" {
-		return query.Where(column + " IS NOT NULL")
+	moved, err := result.RowsAffected()
+	if err != nil {
+		return 0, nil
 	}
-	return query.Where("("+column+" IS NULL OR "+column+" <> ?)", stated)
-}
-
-// notVersionOr is the same test, joined with OR rather than AND.
-func notVersionOr(query *bun.UpdateQuery, column, stated string) *bun.UpdateQuery {
-	if stated == "" {
-		return query.WhereOr(column + " IS NOT NULL")
-	}
-	return query.WhereOr("("+column+" IS NULL OR "+column+" <> ?)", stated)
+	return moved, nil
 }

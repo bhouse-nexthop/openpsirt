@@ -129,54 +129,6 @@ func TestRepetitionAloneChangesNothing(t *testing.T) {
 	})
 }
 
-func TestWhatTheCodeMovedOutFromUnderIsMarked(t *testing.T) {
-	// Applying finds a lapsed decision by not matching, which is enough for
-	// reading. Somebody still has to be shown that a judgment they made no
-	// longer covers anything, or it disappears and the finding comes back as
-	// new with the reasoning stranded behind it.
-	each(t, func(t *testing.T, f *fixture) {
-		ctx := t.Context()
-		agreed := f.judged(t, f.at(), 700)
-		if err := f.store.Approve(ctx, f.reviewer, agreed.ID, ""); err != nil {
-			t.Fatal(err)
-		}
-
-		moved := f.at()
-		moved.ComponentUpstream = "1.2.4"
-		if err := f.store.Lapsed(ctx, moved); err != nil {
-			t.Fatal(err)
-		}
-
-		previous, err := f.store.PreviouslyAt(ctx, f.reviewer, moved)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(previous) != 1 || previous[0].State != triage.LapsedState {
-			t.Errorf("the superseded decision reads as %+v", previous)
-		}
-	})
-}
-
-func TestMarkingWhatLapsedLeavesWhatStillAppliesAlone(t *testing.T) {
-	// The dangerous direction. A sweep that marked too much would quietly
-	// withdraw judgments nobody revisited.
-	each(t, func(t *testing.T, f *fixture) {
-		ctx := t.Context()
-		agreed := f.judged(t, f.at(), 700)
-		if err := f.store.Approve(ctx, f.reviewer, agreed.ID, ""); err != nil {
-			t.Fatal(err)
-		}
-
-		// A place whose versions have not moved.
-		if err := f.store.Lapsed(ctx, f.at()); err != nil {
-			t.Fatal(err)
-		}
-		if standing, _ := f.store.Applying(ctx, f.at()); standing == nil {
-			t.Error("a decision that still applies was marked as superseded")
-		}
-	})
-}
-
 func TestAWithdrawnAgreementIsNotResurrectedByAVersionBump(t *testing.T) {
 	// The case the state check actually guards. A withdrawn decision still has
 	// its approval rows — that is deliberate, because who agreed and to what

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/dbtest"
@@ -19,6 +20,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 	"github.com/bhouse-nexthop/openpsirt/internal/scanner"
 	"github.com/bhouse-nexthop/openpsirt/internal/schema"
+	"github.com/bhouse-nexthop/openpsirt/internal/triage"
 )
 
 // stub stands in for a scanner, so what the runner does with an answer is
@@ -235,6 +237,154 @@ func TestThereIsNothingToScanWhenNothingIsWaiting(t *testing.T) {
 		outcome, err := scanner.NewRunner(f.db, f.queue, &stub{}, quiet, "test").Once(t.Context())
 		if err != nil || outcome != nil {
 			t.Errorf("an empty queue produced %+v (%v)", outcome, err)
+		}
+	})
+}
+
+// decided records an agreed claim about the one issue in this build, the way
+// somebody triaging would: keyed on where the finding sits and the versions it
+// has now.
+func (f *runFixture) decided(t *testing.T) int64 {
+	t.Helper()
+	ctx := t.Context()
+
+	rights := access.NewStore(f.db.DB)
+	product, err := catalog.NewStore(f.db.DB).ProductByName(ctx, "sonic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var people []access.Subject
+	for _, who := range []string{"proposer", "approver"} {
+		person, err := rights.Ensure(ctx, who, "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := rights.GrantRole(ctx, person.ID, product.ID, access.PublicTriage); err != nil {
+			t.Fatal(err)
+		}
+		subject, err := rights.Resolve(ctx, who)
+		if err != nil {
+			t.Fatal(err)
+		}
+		people = append(people, subject)
+	}
+
+	issue, err := finding.NewVulnerabilities(f.db.DB).ByName(ctx, "CVE-2026-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	where, err := finding.NewStore(f.db.DB).PlaceFor(ctx, people[0], f.target, issue,
+		finding.PlaceIdentity("libnl-3-200", "libswsscommon"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store := triage.NewStore(f.db.DB)
+	made, err := store.Propose(ctx, people[0], triage.Proposal{
+		Place: triage.Place{
+			ProductID: where.ProductID, VulnerabilityID: where.VulnerabilityID,
+			PlaceIdentity: where.PlaceIdentity, Visibility: where.Visibility,
+			ComponentUpstream: where.ComponentUpstream, ConsumerUpstream: where.ConsumerUpstream,
+		},
+		Outcome: triage.NotApplicable, Justification: triage.CodeNotInExecutePath,
+		Reasoning: "The parser is never reached: we only call the encoder.",
+		By:        people[0].ID, NeedsApproval: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Approve(ctx, people[1], made.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	return made.ID
+}
+
+// rebuilt stores a second inventory, optionally moving the library's version.
+func (f *runFixture) rebuilt(t *testing.T, library graph.Described) {
+	t.Helper()
+	ctx := t.Context()
+	scan, outcome, err := ingest.NewStore(f.db.DB).Record(ctx, ingest.Arriving{
+		TargetID: f.target, ContentHash: "hash-2",
+		BuiltAt: time.Now().UTC(), ParserVersion: "test",
+	})
+	if err != nil || outcome != ingest.Accept {
+		t.Fatalf("record scan: %v %v", outcome, err)
+	}
+	if _, err := graph.NewStore(f.db.DB).Apply(ctx, f.target, scan.ID, graph.Snapshot{
+		Root: root, Components: []graph.Described{swss, library},
+		Dependencies: []graph.Dependency{
+			{Parent: root, Child: swss}, {Parent: swss, Child: library},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// scan runs the scanner over whatever is currently stored.
+func (f *runFixture) scan(t *testing.T, component graph.Described) *scanner.Outcome {
+	t.Helper()
+	f.waiting(t)
+	s := &stub{reported: []finding.Reported{{
+		Issue:     finding.Named{Identifier: "CVE-2026-1", Severity: "high"},
+		Component: component, FixState: finding.FixedUpstream, FixedIn: "3.9.0",
+	}}}
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+	outcome, err := scanner.NewRunner(f.db, f.queue, s, quiet, "test").Once(t.Context())
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if outcome == nil {
+		t.Fatal("there was work waiting and nothing was done")
+	}
+	return outcome
+}
+
+func TestAScanMarksTheJudgmentsItMovedOutFromUnder(t *testing.T) {
+	// The half that is not automatic. A decision stops applying on its own
+	// when the versions move, because what applies is matched on them — but
+	// nobody finds out. Without this the finding reappears as though it had
+	// never been looked at, with the reasoning stranded on a row nothing
+	// points at, which is exactly what keeping the old decision is for.
+	eachRun(t, func(t *testing.T, f *runFixture) {
+		f.scan(t, libnl)
+		f.decided(t)
+
+		// The library moves under an unchanged consumer: the ordinary case.
+		moved := at("libnl-3-200", "3.9.0")
+		f.rebuilt(t, moved)
+		outcome := f.scan(t, moved)
+
+		if outcome.Lapsed != 1 {
+			t.Fatalf("a version bump marked %d judgments, want 1", outcome.Lapsed)
+		}
+
+		// And it reads as superseded rather than having quietly vanished.
+		rights := access.NewStore(f.db.DB)
+		who, err := rights.Resolve(t.Context(), "approver")
+		if err != nil {
+			t.Fatal(err)
+		}
+		decisions, _, _, err := triage.NewStore(f.db.DB).List(t.Context(), who, triage.Filter{}, 10, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(decisions) != 1 || decisions[0].State != triage.LapsedState {
+			t.Errorf("the superseded decision reads as %+v", decisions)
+		}
+	})
+}
+
+func TestARebuildThatMovedNothingMarksNothing(t *testing.T) {
+	// The dangerous direction. A sweep that marked too much would quietly
+	// unpick judgments nobody had revisited — nightly, since a rebuild is
+	// nightly.
+	eachRun(t, func(t *testing.T, f *runFixture) {
+		f.scan(t, libnl)
+		f.decided(t)
+
+		f.rebuilt(t, libnl)
+		if outcome := f.scan(t, libnl); outcome.Lapsed != 0 {
+			t.Errorf("a rebuild that moved nothing marked %d judgments", outcome.Lapsed)
 		}
 	})
 }

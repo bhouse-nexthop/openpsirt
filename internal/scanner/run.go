@@ -13,6 +13,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
+	"github.com/bhouse-nexthop/openpsirt/internal/triage"
 )
 
 // JobKind names the work of scanning what a target contains.
@@ -44,6 +45,10 @@ type Outcome struct {
 	RunID      int64
 	Components int
 	Applied    finding.Applied
+	// Lapsed is how many judgments this scan moved out from under, and so how
+	// many people have something waiting for them that they did not have
+	// before.
+	Lapsed int64
 }
 
 // Once claims one target and scans it, reporting whether there was anything to
@@ -152,8 +157,24 @@ func (r *Runner) assess(ctx context.Context, targetID, runID int64, components [
 	if err != nil {
 		return nil, result, err
 	}
+
+	// Now that the versions have moved, mark the judgments they moved out from
+	// under. A decision is matched on the versions it was made about, so one
+	// whose versions changed already stops applying — what this adds is that
+	// somebody is told, rather than the finding quietly reappearing as new
+	// with the reasoning stranded on a row nothing points at.
+	//
+	// A failure here is reported and not fatal. What was found is recorded and
+	// correct; the marking is a prompt, and losing a scan over a prompt would
+	// be the wrong trade.
+	lapsed, err := triage.NewStore(r.db.DB).Lapse(ctx, targetID)
+	if err != nil {
+		r.logger.Error("could not mark what the code moved out from under",
+			"target", targetID, "error", err)
+	}
+
 	return &Outcome{
 		TargetID: targetID, RunID: runID,
-		Components: len(components), Applied: applied,
+		Components: len(components), Applied: applied, Lapsed: lapsed,
 	}, result, nil
 }

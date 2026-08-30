@@ -255,6 +255,41 @@ a date **already past** asks for nothing — allowing it to count as a negative
 would let a back-dated request subtract from what a finding has already been
 put off for and slip the total back under the threshold.
 
+## A lapse is marked when the scan that caused it runs
+
+A decision stops applying the moment its versions move, because what applies is
+matched on them. That much needs no mechanism. What needs one is somebody
+finding out: without it the finding reappears as though nobody had ever looked
+at it, and the reasoning sits on a row nothing points at — which is precisely
+the outcome that keeping the old decision exists to prevent.
+
+So a scan, having just recorded the versions that moved, marks the judgments
+they moved out from under. Those land in the review queue as work.
+
+It is **one statement, not one per place**. A real image holds tens of
+thousands of places, and a sweep costing a write per place is a sweep somebody
+turns off — after which nothing lapses and the whole mechanism is decorative in
+a way nobody notices.
+
+Two boundaries matter, and both are tested by breaking them:
+
+- **A rebuild that moved nothing marks nothing.** Rebuilds are nightly, so a
+  sweep that marked too much would unpick judgments nobody had revisited, every
+  night.
+- **A decision covering nothing here is not marked.** A component that is gone
+  altogether closed its findings and there is nothing to ask anybody about. A
+  component still present at a different version is exactly the question
+  somebody has to answer again.
+
+The version a decision is compared against is written by the same expression
+that wrote it in the first place, shared rather than spelled twice. Two
+spellings is how a decision starts lapsing on one path and standing on the
+other.
+
+Failing to mark is reported and not fatal. What the scan found is recorded and
+correct; the marking is a prompt, and losing a scan over a prompt is the wrong
+trade.
+
 ## Re-affirming after the code moves
 
 Two people already agreed to the claim. A version bump is a prompt to re-check

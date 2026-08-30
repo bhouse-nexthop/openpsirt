@@ -9,6 +9,23 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 )
 
+// The upstream version a decision is keyed on, as SQL, so that everything
+// asking the question asks it the same way.
+//
+// The stated upstream version where there is one, and the component's own
+// where there is not. Most packages are not forks and state no upstream at all
+// — measured on a real image, 88% of them — so reading only the stated one
+// leaves the version half of the key empty for almost everything, and a key
+// that never changes is a decision that never lapses.
+//
+// Exported because a decision is written against these versions in one place
+// and compared against them in another. Two spellings of the same expression
+// is how a decision starts lapsing on one path and standing on the other.
+const (
+	ComponentUpstreamExpr = "COALESCE(NULLIF(c.upstream_version, ''), c.version, '')"
+	ConsumerUpstreamExpr  = "COALESCE(NULLIF(uc.upstream_version, ''), uc.version, '')"
+)
+
 // Deciding is everything a decision needs to know about where it is being
 // made, read from the findings rather than from whoever is making it.
 //
@@ -77,8 +94,8 @@ func (s *Store) PlaceFor(ctx context.Context, subject access.Subject, targetID i
 		// case TRI-11 is actually about — a fork carrying its own version
 		// while the issue lives upstream — is exactly the case that states an
 		// upstream, so it is unaffected.
-		ColumnExpr("COALESCE(NULLIF(c.upstream_version, ''), c.version) AS component_upstream").
-		ColumnExpr("COALESCE(NULLIF(uc.upstream_version, ''), uc.version, '') AS consumer_upstream").
+		ColumnExpr(ComponentUpstreamExpr+" AS component_upstream").
+		ColumnExpr(ConsumerUpstreamExpr+" AS consumer_upstream").
 		ColumnExpr("COALESCE(v.score_centi, 0) AS severity_centi").
 		Where("f.target_id = ?", targetID).
 		Where("f.vulnerability_id = ?", vulnerabilityID).
