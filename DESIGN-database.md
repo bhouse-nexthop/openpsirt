@@ -86,6 +86,27 @@ at once and they would otherwise migrate simultaneously.
 SQLite needs no advisory lock — it is only ever used by one process — but it did
 need the other two settings below.
 
+## Identifiers are quoted, everywhere
+
+A reserved word is only reserved when it is bare. Leaving identifiers unquoted
+makes the set of usable column names the intersection of four engines' keyword
+lists — a set nobody knows, that grows with every release, and whose violations
+show up only on whichever engine somebody is least likely to be developing
+against.
+
+That is not hypothetical. A column named `rank` was accepted by three engines
+and refused outright by the fourth, where it had become a window function.
+
+So every identifier in the data definition is quoted. Two of the engines quote
+with backticks by default, so their connections are asked for standard quoting
+— which is additive rather than a mode change: backticks keep working, so
+anything generating them is unaffected, and string literals are untouched. It
+changes what a double quote means, not what a quote means.
+
+There is a test that creates a table whose columns are named for reserved
+words, on all four engines. It fails if the setting is ever dropped, which was
+checked by dropping it.
+
 ## Any number of replicas, coordinated only through the database
 
 Replicas are identical and there is no leader. Every one serves requests, reads

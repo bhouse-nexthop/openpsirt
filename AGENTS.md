@@ -71,6 +71,7 @@ unpick later.
 | **Every transaction is retryable as a whole**, through the one helper. A cluster certifies at `COMMIT`, so a write whose statements all succeeded can still be rolled back under it | DAT-30 |
 | **Nothing a transaction depends on is read outside it.** A retry re-runs the closure against a moved database, so a value fetched before it began describes a world that is gone. Anything the closure uses but does not fetch is a defect | DAT-31 |
 | **SQL values are parameterized and SQL identifiers come from an allowlist.** A placeholder cannot bind a column name, so a sort column from a query parameter is the real risk | SEC-01, SEC-02 |
+| **Every identifier in the schema is quoted.** A reserved word is only reserved when bare, and the four engines do not agree on which words those are — an unquoted name fails on whichever engine somebody is least likely to be running | DAT-33, DAT-34 |
 
 ## Source file size
 

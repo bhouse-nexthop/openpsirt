@@ -28,7 +28,7 @@ func upSettings(ctx context.Context, tx *sql.Tx) error {
 	var stmt string
 	switch e := migrate.EngineFrom(ctx); e {
 	case database.Postgres:
-		stmt = `CREATE TABLE application_setting (
+		stmt = `CREATE TABLE "application_setting" (
 			name       VARCHAR(191) NOT NULL PRIMARY KEY,
 			value      TEXT         NOT NULL,
 			updated_at TIMESTAMPTZ  NOT NULL
@@ -36,7 +36,7 @@ func upSettings(ctx context.Context, tx *sql.Tx) error {
 	case database.MySQL, database.MariaDB:
 		// 191 keeps the key inside the index limit on older servers using a
 		// four-byte character set.
-		stmt = `CREATE TABLE application_setting (
+		stmt = `CREATE TABLE "application_setting" (
 			name       VARCHAR(191) NOT NULL PRIMARY KEY,
 			value      TEXT         NOT NULL,
 			updated_at DATETIME(6)  NOT NULL
@@ -46,7 +46,7 @@ func upSettings(ctx context.Context, tx *sql.Tx) error {
 		// the *declared* column type: TEXT yields a string, which will not scan
 		// into a time.Time. The same portable Go that works on the three
 		// production engines would write successfully here and fail to read.
-		stmt = `CREATE TABLE application_setting (
+		stmt = `CREATE TABLE "application_setting" (
 			name       TEXT     NOT NULL PRIMARY KEY,
 			value      TEXT     NOT NULL,
 			updated_at DATETIME NOT NULL
@@ -59,6 +59,6 @@ func upSettings(ctx context.Context, tx *sql.Tx) error {
 }
 
 func downSettings(ctx context.Context, tx *sql.Tx) error {
-	_, err := tx.ExecContext(ctx, `DROP TABLE application_setting`)
+	_, err := tx.ExecContext(ctx, `DROP TABLE "application_setting"`)
 	return err
 }

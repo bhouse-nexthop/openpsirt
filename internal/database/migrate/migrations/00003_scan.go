@@ -30,28 +30,28 @@ func upScan(ctx context.Context, tx *sql.Tx) error {
 	}
 
 	statements := []string{
-		`CREATE TABLE scan (
-			id             ` + t.id + `,
-			target_id      ` + t.ref + ` NOT NULL,
-			content_hash   ` + t.hash + ` NOT NULL,
+		`CREATE TABLE "scan" (
+			"id"             ` + t.id + `,
+			"target_id"      ` + t.ref + ` NOT NULL,
+			"content_hash"   ` + t.hash + ` NOT NULL,
 			-- The identity the document carries for itself. It is what joins a
 			-- vulnerability report to the inventory it was produced from, once
 			-- both have been copied away from the build tree and their
 			-- filenames mean nothing.
-			serial         ` + t.free + ` NULL,
-			built_at       ` + t.timestamp + ` NOT NULL,
-			received_at    ` + t.timestamp + ` NOT NULL,
-			parser_version ` + t.name + ` NOT NULL,
-			credential     ` + t.name + ` NULL,
-			status         ` + t.kind + ` NOT NULL,
-			CONSTRAINT scan_target_fk FOREIGN KEY (target_id) REFERENCES target (id),
-			CONSTRAINT scan_content_unique UNIQUE (target_id, content_hash)
+			"serial"         ` + t.free + ` NULL,
+			"built_at"       ` + t.timestamp + ` NOT NULL,
+			"received_at"    ` + t.timestamp + ` NOT NULL,
+			"parser_version" ` + t.name + ` NOT NULL,
+			"credential"     ` + t.name + ` NULL,
+			"status"         ` + t.kind + ` NOT NULL,
+			CONSTRAINT "scan_target_fk" FOREIGN KEY ("target_id") REFERENCES "target"("id"),
+			CONSTRAINT "scan_content_unique" UNIQUE ("target_id", "content_hash")
 		)` + t.suffix,
 
 		// Answering "what is the newest accepted scan for this variant" is on
 		// the path of every ingest, so it gets its own index rather than a
 		// scan of everything ever received.
-		`CREATE INDEX scan_newest_idx ON scan (target_id, status, built_at)`,
+		`CREATE INDEX "scan_newest_idx" ON "scan" ("target_id", "status", "built_at")`,
 	}
 
 	for _, stmt := range statements {
@@ -63,6 +63,6 @@ func upScan(ctx context.Context, tx *sql.Tx) error {
 }
 
 func downScan(ctx context.Context, tx *sql.Tx) error {
-	_, err := tx.ExecContext(ctx, `DROP TABLE scan`)
+	_, err := tx.ExecContext(ctx, `DROP TABLE "scan"`)
 	return err
 }

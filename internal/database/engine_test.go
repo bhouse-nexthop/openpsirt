@@ -51,20 +51,26 @@ func TestMySQLDSNIsRewrittenForItsDriver(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseURL: %v", err)
 	}
-	want := "user:secret@tcp(db.example:3306)/openpsirt?parseTime=true&loc=UTC"
+	want := "user:secret@tcp(db.example:3306)/openpsirt?parseTime=true&loc=UTC&sql_mode=%27ANSI_QUOTES%27"
 	if got.DSN != want {
 		t.Errorf("DSN\n got %q\nwant %q", got.DSN, want)
 	}
 }
 
-func TestMySQLDSNAlwaysAsksForUTCTimes(t *testing.T) {
-	// Without these the driver returns timestamps as bytes in the server's
-	// timezone, so every time comparison depends on how the server is set up.
+func TestMySQLDSNAlwaysAsksForUTCTimesAndStandardQuoting(t *testing.T) {
+	// Without the first two the driver returns timestamps as bytes in the
+	// server's timezone, so every time comparison depends on how the server is
+	// set up.
+	//
+	// The third is about identifiers. These engines quote with backticks by
+	// default where the other two use the standard double quote, so without it
+	// portable data definition means quoting nothing — and quoting nothing is
+	// what a reserved word catches, on whichever engine happens to reserve it.
 	got, err := ParseURL("mysql://u@h/db?charset=utf8mb4")
 	if err != nil {
 		t.Fatalf("ParseURL: %v", err)
 	}
-	for _, want := range []string{"charset=utf8mb4", "parseTime=true", "loc=UTC"} {
+	for _, want := range []string{"charset=utf8mb4", "parseTime=true", "loc=UTC", "ANSI_QUOTES"} {
 		if !contains(got.DSN, want) {
 			t.Errorf("DSN %q is missing %q", got.DSN, want)
 		}

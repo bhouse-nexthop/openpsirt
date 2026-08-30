@@ -28,26 +28,26 @@ func upJob(ctx context.Context, tx *sql.Tx) error {
 	}
 
 	statements := []string{
-		`CREATE TABLE job (
-			id           ` + t.id + `,
-			kind         ` + t.name + ` NOT NULL,
-			reference    ` + t.name + ` NOT NULL,
-			state        ` + t.kind + ` NOT NULL,
+		`CREATE TABLE "job" (
+			"id"           ` + t.id + `,
+			"kind"         ` + t.name + ` NOT NULL,
+			"reference"    ` + t.name + ` NOT NULL,
+			"state"        ` + t.kind + ` NOT NULL,
 			attempts     INTEGER NOT NULL,
 			max_attempts INTEGER NOT NULL,
-			run_after    ` + t.timestamp + ` NOT NULL,
-			claimed_by   ` + t.name + ` NULL,
-			claimed_at   ` + t.timestamp + ` NULL,
-			last_error   ` + t.text + ` NULL,
-			created_at   ` + t.timestamp + ` NOT NULL,
-			updated_at   ` + t.timestamp + ` NOT NULL
+			"run_after"    ` + t.timestamp + ` NOT NULL,
+			"claimed_by"   ` + t.name + ` NULL,
+			"claimed_at"   ` + t.timestamp + ` NULL,
+			"last_error"   ` + t.text + ` NULL,
+			"created_at"   ` + t.timestamp + ` NOT NULL,
+			"updated_at"   ` + t.timestamp + ` NOT NULL
 		)` + t.suffix,
 
 		// Claiming asks for the oldest runnable job of one kind, which is the
 		// query on the path of every worker poll. Kind leads, because workers
 		// of different sorts share this table and a worker that scanned rows
 		// belonging to another would lock and skip them on every poll.
-		`CREATE INDEX job_runnable_idx ON job (kind, state, run_after, id)`,
+		`CREATE INDEX "job_runnable_idx" ON "job" ("kind", "state", "run_after", "id")`,
 	}
 
 	for _, stmt := range statements {
@@ -59,6 +59,6 @@ func upJob(ctx context.Context, tx *sql.Tx) error {
 }
 
 func downJob(ctx context.Context, tx *sql.Tx) error {
-	_, err := tx.ExecContext(ctx, `DROP TABLE job`)
+	_, err := tx.ExecContext(ctx, `DROP TABLE "job"`)
 	return err
 }

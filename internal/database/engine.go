@@ -125,7 +125,22 @@ func driverDSN(engine Engine, u *url.URL, raw string) (string, error) {
 		query := u.RawQuery
 		// Times must come back as time.Time rather than []byte, and in UTC,
 		// or every timestamp comparison depends on the server's timezone.
-		settings := "parseTime=true&loc=UTC"
+		//
+		// ANSI_QUOTES is the other half, and it is about identifiers. These
+		// two engines quote with backticks by default, where the other two use
+		// the standard double quote — so without this, writing portable data
+		// definition means either quoting nothing or writing it twice.
+		//
+		// Quoting nothing is what a reserved word catches: a column named for
+		// something that later becomes a function is refused outright, and the
+		// engines do not agree on which words those are. Turning this on lets
+		// every identifier be quoted the same way everywhere, which makes the
+		// question stop arising.
+		//
+		// It is additive. Backticks keep working, so anything generating them
+		// is unaffected, and string literals are untouched — this changes what
+		// a double quote means, not what a quote means.
+		settings := "parseTime=true&loc=UTC&sql_mode=%27ANSI_QUOTES%27"
 		if query != "" {
 			query += "&" + settings
 		} else {

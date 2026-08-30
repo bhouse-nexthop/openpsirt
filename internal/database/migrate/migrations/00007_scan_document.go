@@ -41,25 +41,25 @@ func upScanDocument(ctx context.Context, tx *sql.Tx) error {
 	}
 
 	statements := []string{
-		`CREATE TABLE scan_document (
-			id           ` + t.id + `,
-			scan_id      ` + t.ref + ` NOT NULL,
-			kind         ` + t.kind + ` NOT NULL,
+		`CREATE TABLE "scan_document" (
+			"id"           ` + t.id + `,
+			"scan_id"      ` + t.ref + ` NOT NULL,
+			"kind"         ` + t.kind + ` NOT NULL,
 			ordinal      INTEGER NOT NULL,
-			content_hash ` + t.hash + ` NOT NULL,
+			"content_hash" ` + t.hash + ` NOT NULL,
 			size_bytes   BIGINT NOT NULL,
-			created_at   ` + t.timestamp + ` NOT NULL,
-			CONSTRAINT scan_document_place_unique UNIQUE (scan_id, kind, ordinal),
-			CONSTRAINT scan_document_scan_id_fk FOREIGN KEY (scan_id) REFERENCES scan(id)
+			"created_at"   ` + t.timestamp + ` NOT NULL,
+			CONSTRAINT "scan_document_place_unique" UNIQUE ("scan_id", "kind", "ordinal"),
+			CONSTRAINT "scan_document_scan_id_fk" FOREIGN KEY ("scan_id") REFERENCES "scan"("id")
 		)` + t.suffix,
 
-		`CREATE TABLE scan_document_chunk (
-			id          ` + t.id + `,
-			document_id ` + t.ref + ` NOT NULL,
+		`CREATE TABLE "scan_document_chunk" (
+			"id"          ` + t.id + `,
+			"document_id" ` + t.ref + ` NOT NULL,
 			seq         INTEGER NOT NULL,
-			body        ` + t.blob + ` NOT NULL,
-			CONSTRAINT scan_document_chunk_seq_unique UNIQUE (document_id, seq),
-			CONSTRAINT scan_document_chunk_document_id_fk FOREIGN KEY (document_id) REFERENCES scan_document(id)
+			"body"        ` + t.blob + ` NOT NULL,
+			CONSTRAINT "scan_document_chunk_seq_unique" UNIQUE ("document_id", "seq"),
+			CONSTRAINT "scan_document_chunk_document_id_fk" FOREIGN KEY ("document_id") REFERENCES "scan_document"("id")
 		)` + t.suffix,
 	}
 
@@ -73,8 +73,8 @@ func upScanDocument(ctx context.Context, tx *sql.Tx) error {
 
 func downScanDocument(ctx context.Context, tx *sql.Tx) error {
 	for _, stmt := range []string{
-		`DROP TABLE scan_document_chunk`,
-		`DROP TABLE scan_document`,
+		`DROP TABLE "scan_document_chunk"`,
+		`DROP TABLE "scan_document"`,
 	} {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return fmt.Errorf("%s: %w", firstLine(stmt), err)

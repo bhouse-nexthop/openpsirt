@@ -32,28 +32,28 @@ func upCatalog(ctx context.Context, tx *sql.Tx) error {
 	}
 
 	statements := []string{
-		`CREATE TABLE product (
-			id           ` + t.id + `,
-			name         ` + t.name + ` NOT NULL,
-			display_name ` + t.text + ` NOT NULL,
-			eol_on       ` + t.date + ` NULL,
-			created_at   ` + t.timestamp + ` NOT NULL,
-			CONSTRAINT product_name_unique UNIQUE (name)
+		`CREATE TABLE "product" (
+			"id"           ` + t.id + `,
+			"name"         ` + t.name + ` NOT NULL,
+			"display_name" ` + t.text + ` NOT NULL,
+			"eol_on"       ` + t.date + ` NULL,
+			"created_at"   ` + t.timestamp + ` NOT NULL,
+			CONSTRAINT "product_name_unique" UNIQUE ("name")
 		)` + t.suffix,
 
 		// kind is 'branch' or 'tag'. parent_id is the branch a tag was cut
 		// from, when that is known.
-		`CREATE TABLE stream (
-			id         ` + t.id + `,
-			product_id ` + t.ref + ` NOT NULL,
-			name       ` + t.name + ` NOT NULL,
-			kind       ` + t.kind + ` NOT NULL,
-			parent_id  ` + t.refNull + ` NULL,
-			eol_on     ` + t.date + ` NULL,
-			created_at ` + t.timestamp + ` NOT NULL,
-			CONSTRAINT stream_name_unique UNIQUE (product_id, name),
-			CONSTRAINT stream_product_fk FOREIGN KEY (product_id) REFERENCES product (id),
-			CONSTRAINT stream_parent_fk  FOREIGN KEY (parent_id)  REFERENCES stream (id)
+		`CREATE TABLE "stream" (
+			"id"         ` + t.id + `,
+			"product_id" ` + t.ref + ` NOT NULL,
+			"name"       ` + t.name + ` NOT NULL,
+			"kind"       ` + t.kind + ` NOT NULL,
+			"parent_id"  ` + t.refNull + ` NULL,
+			"eol_on"     ` + t.date + ` NULL,
+			"created_at" ` + t.timestamp + ` NOT NULL,
+			CONSTRAINT "stream_name_unique" UNIQUE ("product_id", "name"),
+			CONSTRAINT "stream_product_fk" FOREIGN KEY ("product_id") REFERENCES "product"("id"),
+			CONSTRAINT "stream_parent_fk" FOREIGN KEY ("parent_id") REFERENCES "stream"("id")
 		)` + t.suffix,
 
 		// A variant is a way the product is built — a chip, an architecture,
@@ -65,14 +65,14 @@ func upCatalog(ctx context.Context, tx *sql.Tx) error {
 		//
 		// customer_facing feeds ranking, and defaults true because an
 		// unclassified artifact should rank as though it ships (ING-09).
-		`CREATE TABLE variant (
-			id              ` + t.id + `,
-			product_id      ` + t.ref + ` NOT NULL,
-			name            ` + t.name + ` NOT NULL,
-			customer_facing ` + t.boolean + ` NOT NULL,
-			created_at      ` + t.timestamp + ` NOT NULL,
-			CONSTRAINT variant_name_unique UNIQUE (product_id, name),
-			CONSTRAINT variant_product_fk FOREIGN KEY (product_id) REFERENCES product (id)
+		`CREATE TABLE "variant" (
+			"id"              ` + t.id + `,
+			"product_id"      ` + t.ref + ` NOT NULL,
+			"name"            ` + t.name + ` NOT NULL,
+			"customer_facing" ` + t.boolean + ` NOT NULL,
+			"created_at"      ` + t.timestamp + ` NOT NULL,
+			CONSTRAINT "variant_name_unique" UNIQUE ("product_id", "name"),
+			CONSTRAINT "variant_product_fk" FOREIGN KEY ("product_id") REFERENCES "product"("id")
 		)` + t.suffix,
 
 		// Which of the product's variants a release was actually built as.
@@ -85,25 +85,25 @@ func upCatalog(ctx context.Context, tx *sql.Tx) error {
 		// creating something a typo could invent. It is also what keeps a
 		// variant introduced later out of earlier releases: they simply have
 		// no row for it.
-		`CREATE TABLE target (
-			id         ` + t.id + `,
-			stream_id  ` + t.ref + ` NOT NULL,
-			variant_id ` + t.ref + ` NOT NULL,
-			created_at ` + t.timestamp + ` NOT NULL,
+		`CREATE TABLE "target" (
+			"id"         ` + t.id + `,
+			"stream_id"  ` + t.ref + ` NOT NULL,
+			"variant_id" ` + t.ref + ` NOT NULL,
+			"created_at" ` + t.timestamp + ` NOT NULL,
 			-- Which scan last wrote here. Two workers applying two scans of
 			-- one target at the same time would each read the open rows, each
 			-- compute the same difference, and each write it — leaving two
 			-- open rows where the whole shape assumes one. Updating this row
 			-- first takes a lock every engine honors, so the second waits.
-			last_scan_id ` + t.refNull + ` NULL,
-			CONSTRAINT target_unique UNIQUE (stream_id, variant_id),
-			CONSTRAINT target_stream_fk  FOREIGN KEY (stream_id)  REFERENCES stream (id),
-			CONSTRAINT target_variant_fk FOREIGN KEY (variant_id) REFERENCES variant (id)
+			"last_scan_id" ` + t.refNull + ` NULL,
+			CONSTRAINT "target_unique" UNIQUE ("stream_id", "variant_id"),
+			CONSTRAINT "target_stream_fk" FOREIGN KEY ("stream_id") REFERENCES "stream"("id"),
+			CONSTRAINT "target_variant_fk" FOREIGN KEY ("variant_id") REFERENCES "variant"("id")
 		)` + t.suffix,
 
-		`CREATE INDEX stream_product_idx ON stream (product_id)`,
-		`CREATE INDEX variant_product_idx ON variant (product_id)`,
-		`CREATE INDEX target_variant_idx ON target (variant_id)`,
+		`CREATE INDEX "stream_product_idx" ON "stream" ("product_id")`,
+		`CREATE INDEX "variant_product_idx" ON "variant" ("product_id")`,
+		`CREATE INDEX "target_variant_idx" ON "target" ("variant_id")`,
 	}
 
 	for _, stmt := range statements {

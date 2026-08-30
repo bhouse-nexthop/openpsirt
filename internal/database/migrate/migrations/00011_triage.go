@@ -50,37 +50,37 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 		// consumer_upstream_version is absent where the thing above is the
 		// product itself, which is excluded from identity and from expiry
 		// because its version changes on every build (MDL-07).
-		`CREATE TABLE decision (
-			id                         ` + t.id + `,
-			product_id                 ` + t.ref + ` NOT NULL,
-			vulnerability_id           ` + t.ref + ` NOT NULL,
-			place_identity             ` + t.hash + ` NOT NULL,
+		`CREATE TABLE "decision" (
+			"id"                         ` + t.id + `,
+			"product_id"                 ` + t.ref + ` NOT NULL,
+			"vulnerability_id"           ` + t.ref + ` NOT NULL,
+			"place_identity"             ` + t.hash + ` NOT NULL,
 			-- The finding's, carried here so that who may reach a decision is
 			-- answered by the row rather than by whoever built the query. A
 			-- finding nobody has disclosed is one only a private triager may
 			-- argue about, and that has to hold for a report and an export as
 			-- much as for reading one.
-			visibility                 ` + t.kind + ` NOT NULL,
-			component_upstream_version ` + t.name + ` NULL,
-			consumer_upstream_version  ` + t.name + ` NULL,
-			outcome                    ` + t.kind + ` NOT NULL,
+			"visibility"                 ` + t.kind + ` NOT NULL,
+			"component_upstream_version" ` + t.name + ` NULL,
+			"consumer_upstream_version"  ` + t.name + ` NULL,
+			"outcome"                    ` + t.kind + ` NOT NULL,
 			-- Only "not applicable" carries one, and it is required there:
 			-- the claim is that something does not affect us, and which of the
 			-- recognized reasons it is *is* the claim.
-			justification              ` + t.free + ` NULL,
+			"justification"              ` + t.free + ` NULL,
 			-- Set only for a deferral, which is the one outcome that expires
 			-- on a date rather than on the code changing.
-			deferred_until             ` + t.date + ` NULL,
-			state                      ` + t.kind + ` NOT NULL,
-			proposed_by                ` + t.ref + ` NOT NULL,
-			proposed_at                ` + t.timestamp + ` NOT NULL,
+			"deferred_until"             ` + t.date + ` NULL,
+			"state"                      ` + t.kind + ` NOT NULL,
+			"proposed_by"                ` + t.ref + ` NOT NULL,
+			"proposed_at"                ` + t.timestamp + ` NOT NULL,
 			-- What the current reasoning is. An approval points at one
 			-- revision rather than at the decision, so this moving is exactly
 			-- what withdraws an approval.
-			revision_id                ` + t.refNull + ` NULL,
-			CONSTRAINT decision_product_fk FOREIGN KEY (product_id) REFERENCES product(id),
-			CONSTRAINT decision_vulnerability_fk FOREIGN KEY (vulnerability_id) REFERENCES vulnerability(id),
-			CONSTRAINT decision_proposer_fk FOREIGN KEY (proposed_by) REFERENCES person(id)
+			"revision_id"                ` + t.refNull + ` NULL,
+			CONSTRAINT "decision_product_fk" FOREIGN KEY ("product_id") REFERENCES "product"("id"),
+			CONSTRAINT "decision_vulnerability_fk" FOREIGN KEY ("vulnerability_id") REFERENCES "vulnerability"("id"),
+			CONSTRAINT "decision_proposer_fk" FOREIGN KEY ("proposed_by") REFERENCES "person"("id")
 		)` + t.suffix,
 
 		// Found two ways, and both are hot.
@@ -91,11 +91,8 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 		// decision about this place" — which is what surfaces the reasoning
 		// behind one that has lapsed, so somebody re-making it is not starting
 		// from a blank page.
-		`CREATE INDEX decision_applies_idx ON decision
-			(product_id, vulnerability_id, place_identity,
-			 component_upstream_version, consumer_upstream_version)`,
-		`CREATE INDEX decision_place_idx ON decision
-			(product_id, vulnerability_id, place_identity)`,
+		`CREATE INDEX "decision_applies_idx" ON "decision" ("product_id", "vulnerability_id", "place_identity", "component_upstream_version", "consumer_upstream_version")`,
+		`CREATE INDEX "decision_place_idx" ON "decision" ("product_id", "vulnerability_id", "place_identity")`,
 
 		// The reasoning, revised and never overwritten.
 		//
@@ -103,48 +100,48 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 		// afterwards, the second pair of eyes reviewed something that is no
 		// longer what stands — which is the whole control gone, silently. So
 		// every revision is kept and readable, and an approval names one.
-		`CREATE TABLE decision_revision (
-			id          ` + t.id + `,
-			decision_id ` + t.ref + ` NOT NULL,
-			ordinal     ` + t.ref + ` NOT NULL,
+		`CREATE TABLE "decision_revision" (
+			"id"          ` + t.id + `,
+			"decision_id" ` + t.ref + ` NOT NULL,
+			"ordinal"     ` + t.ref + ` NOT NULL,
 			-- The text as somebody wrote it. Stored as source and never as
 			-- rendered output: what is safe to render is a decision made when
 			-- it is rendered, and text stored years ago predates rules written
 			-- since.
-			body        ` + t.text + ` NOT NULL,
-			written_by  ` + t.ref + ` NOT NULL,
-			written_at  ` + t.timestamp + ` NOT NULL,
-			CONSTRAINT decision_revision_decision_fk FOREIGN KEY (decision_id) REFERENCES decision(id),
-			CONSTRAINT decision_revision_author_fk FOREIGN KEY (written_by) REFERENCES person(id),
-			CONSTRAINT decision_revision_unique UNIQUE (decision_id, ordinal)
+			"body"        ` + t.text + ` NOT NULL,
+			"written_by"  ` + t.ref + ` NOT NULL,
+			"written_at"  ` + t.timestamp + ` NOT NULL,
+			CONSTRAINT "decision_revision_decision_fk" FOREIGN KEY ("decision_id") REFERENCES "decision"("id"),
+			CONSTRAINT "decision_revision_author_fk" FOREIGN KEY ("written_by") REFERENCES "person"("id"),
+			CONSTRAINT "decision_revision_unique" UNIQUE ("decision_id", "ordinal")
 		)` + t.suffix,
 
-		`CREATE INDEX decision_revision_decision_idx ON decision_revision (decision_id)`,
+		`CREATE INDEX "decision_revision_decision_idx" ON "decision_revision" ("decision_id")`,
 
 		// Who agreed, and to what exactly.
 		//
 		// Kept rather than reduced to a flag on the decision, because an
 		// approval that was later withdrawn is part of the record: it says a
 		// second person did once agree, and to which words.
-		`CREATE TABLE decision_approval (
-			id           ` + t.id + `,
-			decision_id  ` + t.ref + ` NOT NULL,
-			revision_id  ` + t.ref + ` NOT NULL,
-			approved_by  ` + t.ref + ` NOT NULL,
-			approved_at  ` + t.timestamp + ` NOT NULL,
+		`CREATE TABLE "decision_approval" (
+			"id"           ` + t.id + `,
+			"decision_id"  ` + t.ref + ` NOT NULL,
+			"revision_id"  ` + t.ref + ` NOT NULL,
+			"approved_by"  ` + t.ref + ` NOT NULL,
+			"approved_at"  ` + t.timestamp + ` NOT NULL,
 			-- Set when the reasoning was revised under it, or when somebody
 			-- took the decision back.
-			withdrawn_at ` + t.timestamp + ` NULL,
+			"withdrawn_at" ` + t.timestamp + ` NULL,
 			-- What a bulk approval was, so undoing one is undoing a batch
 			-- rather than hunting for what it touched.
-			batch        ` + t.hash + ` NULL,
-			CONSTRAINT decision_approval_decision_fk FOREIGN KEY (decision_id) REFERENCES decision(id),
-			CONSTRAINT decision_approval_revision_fk FOREIGN KEY (revision_id) REFERENCES decision_revision(id),
-			CONSTRAINT decision_approval_approver_fk FOREIGN KEY (approved_by) REFERENCES person(id)
+			"batch"        ` + t.hash + ` NULL,
+			CONSTRAINT "decision_approval_decision_fk" FOREIGN KEY ("decision_id") REFERENCES "decision"("id"),
+			CONSTRAINT "decision_approval_revision_fk" FOREIGN KEY ("revision_id") REFERENCES "decision_revision"("id"),
+			CONSTRAINT "decision_approval_approver_fk" FOREIGN KEY ("approved_by") REFERENCES "person"("id")
 		)` + t.suffix,
 
-		`CREATE INDEX decision_approval_decision_idx ON decision_approval (decision_id)`,
-		`CREATE INDEX decision_approval_batch_idx ON decision_approval (batch)`,
+		`CREATE INDEX "decision_approval_decision_idx" ON "decision_approval" ("decision_id")`,
+		`CREATE INDEX "decision_approval_batch_idx" ON "decision_approval" ("batch")`,
 	}
 
 	for _, stmt := range statements {
@@ -157,9 +154,9 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 
 func downTriage(ctx context.Context, tx *sql.Tx) error {
 	for _, stmt := range []string{
-		`DROP TABLE decision_approval`,
-		`DROP TABLE decision_revision`,
-		`DROP TABLE decision`,
+		`DROP TABLE "decision_approval"`,
+		`DROP TABLE "decision_revision"`,
+		`DROP TABLE "decision"`,
 	} {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return fmt.Errorf("%s: %w", firstLine(stmt), err)

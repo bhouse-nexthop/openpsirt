@@ -36,19 +36,19 @@ func upGraph(ctx context.Context, tx *sql.Tx) error {
 		// identifier, or its name and version where it has none. Never from an
 		// identifier the scan file supplied, which nothing guarantees is
 		// stable between builds.
-		`CREATE TABLE component (
-			id               ` + t.id + `,
-			identity         ` + t.hash + ` NOT NULL,
-			purl             ` + t.text + ` NULL,
+		`CREATE TABLE "component" (
+			"id"               ` + t.id + `,
+			"identity"         ` + t.hash + ` NOT NULL,
+			"purl"             ` + t.text + ` NULL,
 			-- Everything below comes from a scan file, and nothing bounds
 			-- what a producer puts in it. A bounded column here means a
 			-- legitimate but long value fails the whole scan that carried it.
-			name             ` + t.free + ` NOT NULL,
-			version          ` + t.free + ` NOT NULL,
-			upstream_name    ` + t.free + ` NULL,
-			upstream_version ` + t.free + ` NULL,
-			first_seen_at    ` + t.timestamp + ` NOT NULL,
-			CONSTRAINT component_identity_unique UNIQUE (identity)
+			"name"             ` + t.free + ` NOT NULL,
+			"version"          ` + t.free + ` NOT NULL,
+			"upstream_name"    ` + t.free + ` NULL,
+			"upstream_version" ` + t.free + ` NULL,
+			"first_seen_at"    ` + t.timestamp + ` NOT NULL,
+			CONSTRAINT "component_identity_unique" UNIQUE ("identity")
 		)` + t.suffix,
 
 		// A node is one component's presence in one variant. The graph is a
@@ -59,38 +59,38 @@ func upGraph(ctx context.Context, tx *sql.Tx) error {
 		//
 		// opened_scan_id and closed_scan_id are the interval. A NULL close
 		// means the node is present now.
-		`CREATE TABLE graph_node (
-			id             ` + t.id + `,
-			target_id      ` + t.ref + ` NOT NULL,
-			component_id   ` + t.ref + ` NOT NULL,
-			is_root        ` + t.boolean + ` NOT NULL,
-			opened_scan_id ` + t.ref + ` NOT NULL,
-			closed_scan_id ` + t.refNull + ` NULL,
-			CONSTRAINT graph_node_target_fk    FOREIGN KEY (target_id)    REFERENCES target (id),
-			CONSTRAINT graph_node_component_fk FOREIGN KEY (component_id) REFERENCES component (id),
-			CONSTRAINT graph_node_opened_fk    FOREIGN KEY (opened_scan_id) REFERENCES scan (id),
-			CONSTRAINT graph_node_closed_fk    FOREIGN KEY (closed_scan_id) REFERENCES scan (id)
+		`CREATE TABLE "graph_node" (
+			"id"             ` + t.id + `,
+			"target_id"      ` + t.ref + ` NOT NULL,
+			"component_id"   ` + t.ref + ` NOT NULL,
+			"is_root"        ` + t.boolean + ` NOT NULL,
+			"opened_scan_id" ` + t.ref + ` NOT NULL,
+			"closed_scan_id" ` + t.refNull + ` NULL,
+			CONSTRAINT "graph_node_target_fk" FOREIGN KEY ("target_id") REFERENCES "target"("id"),
+			CONSTRAINT "graph_node_component_fk" FOREIGN KEY ("component_id") REFERENCES "component"("id"),
+			CONSTRAINT "graph_node_opened_fk" FOREIGN KEY ("opened_scan_id") REFERENCES "scan"("id"),
+			CONSTRAINT "graph_node_closed_fk" FOREIGN KEY ("closed_scan_id") REFERENCES "scan"("id")
 		)` + t.suffix,
 
-		`CREATE TABLE graph_edge (
-			id             ` + t.id + `,
-			target_id      ` + t.ref + ` NOT NULL,
-			parent_id      ` + t.ref + ` NOT NULL,
-			child_id       ` + t.ref + ` NOT NULL,
-			opened_scan_id ` + t.ref + ` NOT NULL,
-			closed_scan_id ` + t.refNull + ` NULL,
-			CONSTRAINT graph_edge_target_fk FOREIGN KEY (target_id) REFERENCES target (id),
-			CONSTRAINT graph_edge_parent_fk  FOREIGN KEY (parent_id)  REFERENCES graph_node (id),
-			CONSTRAINT graph_edge_child_fk   FOREIGN KEY (child_id)   REFERENCES graph_node (id),
-			CONSTRAINT graph_edge_opened_fk  FOREIGN KEY (opened_scan_id) REFERENCES scan (id),
-			CONSTRAINT graph_edge_closed_fk  FOREIGN KEY (closed_scan_id) REFERENCES scan (id)
+		`CREATE TABLE "graph_edge" (
+			"id"             ` + t.id + `,
+			"target_id"      ` + t.ref + ` NOT NULL,
+			"parent_id"      ` + t.ref + ` NOT NULL,
+			"child_id"       ` + t.ref + ` NOT NULL,
+			"opened_scan_id" ` + t.ref + ` NOT NULL,
+			"closed_scan_id" ` + t.refNull + ` NULL,
+			CONSTRAINT "graph_edge_target_fk" FOREIGN KEY ("target_id") REFERENCES "target"("id"),
+			CONSTRAINT "graph_edge_parent_fk" FOREIGN KEY ("parent_id") REFERENCES "graph_node"("id"),
+			CONSTRAINT "graph_edge_child_fk" FOREIGN KEY ("child_id") REFERENCES "graph_node"("id"),
+			CONSTRAINT "graph_edge_opened_fk" FOREIGN KEY ("opened_scan_id") REFERENCES "scan"("id"),
+			CONSTRAINT "graph_edge_closed_fk" FOREIGN KEY ("closed_scan_id") REFERENCES "scan"("id")
 		)` + t.suffix,
 
 		// "What is present now" is the question asked on every ingest and by
 		// every view, so it gets an index rather than a filter over history.
-		`CREATE INDEX graph_node_current_idx ON graph_node (target_id, closed_scan_id, component_id)`,
-		`CREATE INDEX graph_edge_current_idx ON graph_edge (target_id, closed_scan_id, parent_id, child_id)`,
-		`CREATE INDEX graph_edge_child_idx ON graph_edge (child_id, closed_scan_id)`,
+		`CREATE INDEX "graph_node_current_idx" ON "graph_node" ("target_id", "closed_scan_id", "component_id")`,
+		`CREATE INDEX "graph_edge_current_idx" ON "graph_edge" ("target_id", "closed_scan_id", "parent_id", "child_id")`,
+		`CREATE INDEX "graph_edge_child_idx" ON "graph_edge" ("child_id", "closed_scan_id")`,
 	}
 
 	for _, stmt := range statements {
