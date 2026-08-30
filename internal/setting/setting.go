@@ -42,6 +42,10 @@ const (
 	// MaxTokenLifetime is the longest a person's own credential may last.
 	// Expiry is mandatory; this is how far out it may be set.
 	MaxTokenLifetime = "token.max-lifetime"
+	// DeferralThreshold is how long something may be put off before a second
+	// person has to agree. It ships with a starting point rather than a fixed
+	// rule, because how long is too long is a judgment about a product.
+	DeferralThreshold = "triage.deferral-threshold"
 )
 
 // Store reads and writes settings.

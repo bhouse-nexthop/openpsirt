@@ -60,7 +60,7 @@ func (s *Store) Reaffirm(ctx context.Context, subject access.Subject, r Reaffirm
 	previous := new(Decision)
 	if err := s.db.NewSelect().Model(previous).
 		Where("id = ?", r.PreviousID).Scan(ctx); err != nil {
-		return nil, fmt.Errorf("no decision to re-affirm: %w", err)
+		return nil, ErrNotTheirs
 	}
 	// The claim being re-made has to be about the same thing. Otherwise a
 	// re-affirmation is a way to attach one place's agreement to another's.

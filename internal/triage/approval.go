@@ -39,7 +39,9 @@ func (s *Store) approve(ctx context.Context, subject access.Subject, decisionID 
 	decision := new(Decision)
 	if err := s.db.NewSelect().Model(decision).
 		Where("id = ?", decisionID).Scan(ctx); err != nil {
-		return fmt.Errorf("no decision to approve: %w", err)
+		// The same answer a decision somebody may not reach gets, so that
+		// guessing identifiers says nothing about what exists.
+		return ErrNotTheirs
 	}
 	// Read from the row rather than from what the caller said about it. A
 	// caller that could name the product would be deciding what it may reach.
@@ -120,7 +122,7 @@ func (s *Store) revise(ctx context.Context, subject access.Subject, decisionID i
 		return nil, fmt.Errorf("read what has been said already: %w", err)
 	}
 	if latest == 0 {
-		return nil, fmt.Errorf("no decision to revise")
+		return nil, ErrNotTheirs
 	}
 
 	now := s.now().Truncate(time.Microsecond)

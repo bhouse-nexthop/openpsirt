@@ -238,6 +238,7 @@ func TestWhoMayReachWhat(t *testing.T) {
 			people     = "/v1/people"
 			keys       = "/v1/keys"
 			tokens     = "/v1/tokens"
+			queue      = "/v1/review-queue"
 		)
 
 		for _, c := range []struct {
@@ -335,6 +336,13 @@ func TestWhoMayReachWhat(t *testing.T) {
 			{"reader", http.MethodDelete, "/v1/people/admin/roles/mine/public-read", http.StatusForbidden},
 			{"", http.MethodGet, people, http.StatusUnauthorized},
 			{"nothing", http.MethodGet, keys, http.StatusUnauthorized},
+
+			// Deciding is its own right. Somebody who may read a product
+			// reaches its findings and may argue about none of them.
+			{"reader", http.MethodGet, queue, http.StatusOK},
+			{"triager", http.MethodGet, queue, http.StatusOK},
+			{"", http.MethodGet, queue, http.StatusUnauthorized},
+			{"nothing", http.MethodGet, queue, http.StatusUnauthorized},
 			{"admin", http.MethodGet, people, http.StatusOK},
 			{"admin", http.MethodGet, keys, http.StatusOK},
 
@@ -426,6 +434,8 @@ func TestAPipelineCanReachNothingButSending(t *testing.T) {
 			"/v1/keys",
 			// A pipeline has no owner for a token to be a live reference to.
 			"/v1/tokens",
+			// Nor anything to argue about: a build server has no judgment.
+			"/v1/review-queue",
 			"/v1/roles/mode",
 			"/v1/roles/bindings",
 		} {

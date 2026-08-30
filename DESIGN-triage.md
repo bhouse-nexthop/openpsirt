@@ -253,6 +253,24 @@ they are stored — so stored text is known to have passed what was in force whe
 it arrived. What that policy is, and why it runs twice, is in
 `DESIGN-text.md`.
 
+## What a person actually does
+
+The names in a request are resolved against what was scanned, never taken as
+given. A caller who could name a place freely would be choosing which decisions
+apply where — and the versions a decision is keyed on come from the rows for
+the same reason, since they are what expiry compares.
+
+An issue is named by any identifier it is known under. Somebody who read a
+national identifier in an advisory and somebody looking at a report that used a
+database's own identifier are asking about the same thing.
+
+A decision that does not exist and one somebody may not reach give the same
+answer, so guessing identifiers says nothing.
+
+Whether a claim is waiting for a second person is answered when it is made, not
+discovered later. A short deferral takes effect at once, and somebody who has
+just written one should be told that rather than left watching a queue.
+
 ## Choices the decisions did not cover
 
 - **A version nobody stated and a version that is empty are different.** Both
