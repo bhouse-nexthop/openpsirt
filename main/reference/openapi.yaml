@@ -111,6 +111,9 @@ components:
         body:
           description: The comment text, in markdown
           type: string
+        body_html:
+          description: The same text as sanitized HTML. Only when html=true
+          type: string
         edited_at:
           description: When the author last changed it, if they did
           type: string
@@ -205,6 +208,9 @@ components:
           type: string
         reasoning:
           description: The justification as it currently stands, in markdown
+          type: string
+        reasoning_html:
+          description: The same text as sanitized HTML. Only when html=true
           type: string
       required:
         - decision
@@ -1018,6 +1024,9 @@ components:
         body:
           description: The justification text, in markdown
           type: string
+        body_html:
+          description: The same text as sanitized HTML. Only when html=true
+          type: string
         id:
           description: What an approval names when it says which words were agreed to
           format: int64
@@ -1350,6 +1359,13 @@ paths:
           schema:
             description: Only deferrals whose date has passed
             type: boolean
+        - description: Also return each justification as sanitized HTML
+          explode: false
+          in: query
+          name: html
+          schema:
+            description: Also return each justification as sanitized HTML
+            type: boolean
         - explode: false
           in: query
           name: limit
@@ -1418,6 +1434,13 @@ paths:
           schema:
             format: int64
             type: integer
+        - description: Also return the justification as sanitized HTML
+          explode: false
+          in: query
+          name: html
+          schema:
+            description: Also return the justification as sanitized HTML
+            type: boolean
       responses:
         "200":
           content:
@@ -1512,6 +1535,13 @@ paths:
           schema:
             format: int64
             type: integer
+        - description: Also return each comment as sanitized HTML
+          explode: false
+          in: query
+          name: html
+          schema:
+            description: Also return each comment as sanitized HTML
+            type: boolean
       responses:
         "200":
           content:
@@ -1611,6 +1641,13 @@ paths:
           schema:
             format: int64
             type: integer
+        - description: Also return each justification as sanitized HTML
+          explode: false
+          in: query
+          name: html
+          schema:
+            description: Also return each justification as sanitized HTML
+            type: boolean
       responses:
         "200":
           content:
