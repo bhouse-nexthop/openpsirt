@@ -160,6 +160,31 @@ Upstream name and version are carried alongside (MDL-04). A shipped fork often
 has a version string of its own while the vulnerability lives on the upstream
 one.
 
+Producers state that two ways and mean the same thing: the format has a place
+for it, and several hang it off the package identifier instead. Both are read.
+In a measured image the two did not overlap at all — 30 components stated it
+one way and 535 the other — so reading a single place captured a twentieth of
+what was there. It is also the name a build's own suppressions use, because a
+patch is written against a source tree rather than against the binaries cut
+from it.
+
+A bare upstream name with no version is not a lesser answer. For a binary cut
+from a differently named source package it is the whole of what is knowable,
+and it is the half that matching a claim needs.
+
+### Two descriptions of one component are combined
+
+A document that describes the same package twice is describing one component,
+and the two descriptions are not always the same description. Keeping whichever
+arrived first discards whatever only the other one knew — which, in the
+measured image, was the vulnerability-database identifier for 204 of them,
+depending only on which half the producer happened to emit first.
+
+So they are combined. The first statement of anything stands, and anything it
+did not state is taken from the next description that does. Nothing is
+overwritten: two producers disagreeing is not something a reader can settle,
+and the first answer is the one everything downstream has already been given.
+
 The other identifier scheme in circulation — the platform enumeration the
 national vulnerability database keys on — is kept beside the package
 identifier and **excluded from identity**. A scanner given one matches things a

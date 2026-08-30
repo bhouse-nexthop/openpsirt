@@ -130,6 +130,51 @@ func canonicalPurl(purl string) string {
 	return strings.ToLower(scheme) + ":" + strings.ToLower(kind) + "/" + decoded(path)
 }
 
+// UpstreamFromPurl reads what a package identifier says it was built from.
+//
+// Producers state this two ways and mean the same thing. The format has a
+// place for it — a pedigree naming what a component descends from — and
+// several producers instead hang it off the identifier as a qualifier, which
+// is where a distribution's source package ends up. Measured on a public
+// switch operating-system image: 30 components state it the first way and 535
+// the second, with no overlap at all. Reading only the first captures a
+// twentieth of it.
+//
+// It matters more than its size suggests. A shipped package usually carries a
+// version of its own while the vulnerability lives on what it was built from
+// (MDL-04), so this is what a finding is explained by and what expiry
+// compares. It is also the name a build's own suppressions use, because a
+// patch is written against a source tree rather than against the binaries cut
+// from it.
+//
+// The qualifier comes as a bare name or as name and version, and both occur —
+// 459 and 76 in that image. A bare name is not a lesser answer: for a binary
+// cut from a differently named source package it is the whole of what is
+// knowable, and it is the half that matching a claim needs.
+func UpstreamFromPurl(purl string) (name, version string) {
+	_, qs, found := strings.Cut(strings.TrimSpace(purl), "?")
+	if !found || qs == "" {
+		return "", ""
+	}
+	// The subpath, if any, follows the qualifiers and is not one of them.
+	qs, _, _ = strings.Cut(qs, "#")
+
+	for _, pair := range strings.Split(qs, "&") {
+		key, value, found := strings.Cut(pair, "=")
+		if !found || !strings.EqualFold(key, "upstream") {
+			continue
+		}
+		stated := decoded(value)
+		// A version, where one is stated. Cut from the right: a name may
+		// contain no "@", but a version can, and the separator is the last.
+		if at := strings.LastIndex(stated, "@"); at > 0 {
+			return stated[:at], stated[at+1:]
+		}
+		return stated, ""
+	}
+	return "", ""
+}
+
 // decoded resolves percent-escapes, leaving the text alone where they are
 // malformed — a producer's identifier is not ours to reject over spelling.
 func decoded(s string) string {
@@ -258,4 +303,25 @@ func (c *Components) byIdentities(ctx context.Context, identities []string) (map
 		}
 	}
 	return found, nil
+}
+
+// FillFrom takes into a description anything it does not state and another
+// description of the same component does.
+//
+// Nothing already stated is overwritten. Two producers describing one package
+// differently is not something this can adjudicate, and the first answer is
+// the one everything downstream has already been given — so the later one
+// fills gaps and nothing else.
+func (d *Described) FillFrom(other Described) {
+	if d.CPE == "" {
+		d.CPE = other.CPE
+	}
+	if d.Version == "" {
+		d.Version = other.Version
+	}
+	if d.UpstreamName == "" {
+		d.UpstreamName, d.UpstreamVersion = other.UpstreamName, other.UpstreamVersion
+	} else if d.UpstreamVersion == "" && d.UpstreamName == other.UpstreamName {
+		d.UpstreamVersion = other.UpstreamVersion
+	}
 }

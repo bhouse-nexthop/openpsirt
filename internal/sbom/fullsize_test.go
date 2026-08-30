@@ -212,3 +212,53 @@ func TestAComponentWithNoIdentifierIsStillIdentified(t *testing.T) {
 		t.Error("one identifier read as two components because the names differed")
 	}
 }
+
+func TestWhatAPackageWasBuiltFromIsReadHoweverItIsStated(t *testing.T) {
+	// A shipped package usually carries a version of its own while the
+	// vulnerability lives on what it was built from, so this is what explains
+	// a finding and what expiry compares. It is also the name a build's own
+	// suppressions use, because a patch is written against a source tree and
+	// not against the binaries cut from it.
+	//
+	// Producers state it two ways. The format has a place for it, and several
+	// producers hang it off the identifier instead. In this image the two do
+	// not overlap at all: 30 state it the first way, 535 the second, and
+	// reading only the first captures a twentieth of what is there.
+	f := openFullSize(t)
+	snapshot, err := sbom.Read(f, sbom.Limits{})
+	if err != nil {
+		t.Fatalf("read the fixture: %v", err)
+	}
+
+	var named, versioned, identified int
+	for _, component := range snapshot.Components {
+		if component.UpstreamName != "" {
+			named++
+		}
+		if component.UpstreamVersion != "" {
+			versioned++
+		}
+		if component.CPE != "" {
+			identified++
+		}
+	}
+
+	const (
+		upstreams = 565  // every component that states one, either way
+		versions  = 106  // those stating a version with it
+		cpes      = 6565 // every component the document gives one
+	)
+	if named != upstreams {
+		t.Errorf("%d components say what they were built from, expected %d", named, upstreams)
+	}
+	if versioned != versions {
+		t.Errorf("%d say which version they were built from, expected %d", versioned, versions)
+	}
+	// The identifier a scanner matches on is carried by one half of each
+	// duplicated pair. Keeping whichever description arrived first would drop
+	// it for every pair that arrived the other way round.
+	if identified != cpes {
+		t.Errorf("%d components kept a vulnerability-database identifier, expected %d",
+			identified, cpes)
+	}
+}

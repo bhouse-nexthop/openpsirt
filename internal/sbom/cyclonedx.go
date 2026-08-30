@@ -72,7 +72,7 @@ type reader struct {
 	// above are only what survived.
 	stated  int
 	charged int
-	seen    map[string]bool
+	seen    map[string]int
 	edges   []refEdge
 	// contained is the structure a producer declared by nesting one component
 	// inside another. It resolves without the document's identifiers, since a
@@ -87,7 +87,7 @@ func newReader(r io.Reader, lim Limits, headerOnly bool) *reader {
 		lim:        lim,
 		headerOnly: headerOnly,
 		byRef:      map[string]graph.Described{},
-		seen:       map[string]bool{},
+		seen:       map[string]int{},
 	}
 }
 
@@ -298,6 +298,14 @@ func (c *reader) component() (graph.Described, string, []graph.Described, error)
 	if err := described.Valid(); err != nil {
 		return graph.Described{}, "", nil, fmt.Errorf("%w, so it cannot be tracked", err)
 	}
+
+	// Where a pedigree said what this was built from, it stands: it is the
+	// format's own way of saying so, and it carries more than a name. Where
+	// there was none, the identifier is asked — which is where most producers
+	// actually put it.
+	if described.UpstreamName == "" {
+		described.UpstreamName, described.UpstreamVersion = graph.UpstreamFromPurl(described.Purl)
+	}
 	if strings.TrimSpace(described.Version) == "" {
 		c.doc.Unversioned++
 	}
@@ -483,11 +491,24 @@ func (c *reader) add(described graph.Described) error {
 	if c.stated > c.lim.MaxComponents {
 		return fmt.Errorf("scan file describes more than the %d component limit", c.lim.MaxComponents)
 	}
+	// One package described twice is one package, and the two descriptions are
+	// not always the same description. A build that merges two sources emits
+	// one with a vulnerability-database identifier and what it was built from,
+	// and one with neither — so keeping whichever arrived first throws away
+	// whatever only the other one knew, which is the identifier a scanner
+	// matches on about half the time.
+	//
+	// So they are combined rather than deduplicated: the first statement of
+	// something stands, and anything it did not state is taken from the next
+	// description that does. Nothing is overwritten, because two producers
+	// disagreeing is not something this can settle, and the first answer is at
+	// least the one everything downstream already saw.
 	identity := described.Identity()
-	if c.seen[identity] {
+	if at, seen := c.seen[identity]; seen {
+		c.described[at].FillFrom(described)
 		return nil
 	}
-	c.seen[identity] = true
+	c.seen[identity] = len(c.described)
 	c.described = append(c.described, described)
 	return nil
 }
