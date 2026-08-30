@@ -1,6 +1,7 @@
 package setting_test
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"testing"
@@ -102,6 +103,39 @@ func TestAValueNobodyCanParseReadsAsTheDefault(t *testing.T) {
 			if got != 12*time.Hour {
 				t.Errorf("%q read as %v, want the default", bad, got)
 			}
+		}
+	})
+}
+
+func TestASettingThatCannotBeReadIsNotReportedAsUnset(t *testing.T) {
+	// Every caller falls back to a default when a setting is unset, so a
+	// database that cannot answer would silently swap a deployment's
+	// configuration for the shipped one — including the threshold deciding
+	// which deferrals need a second person. A policy that quietly becomes a
+	// different policy under load is the failure nobody finds, because nothing
+	// reports it.
+	eachSetting(t, func(t *testing.T, s *setting.Store) {
+		// Never set: the ordinary case, and not a fault.
+		if _, set, err := s.Get(t.Context(), setting.DeferralThreshold); err != nil || set {
+			t.Errorf("an untouched setting read as set=%v err=%v", set, err)
+		}
+
+		// A read that cannot complete. Whatever the cause — a database in
+		// trouble, a client giving up — it is not an answer, and must not read
+		// as one.
+		stopped, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		if _, _, err := s.Get(stopped, setting.DeferralThreshold); err == nil {
+			t.Error("a setting that could not be read reported as one nobody had set")
+		}
+		// And a caller asking for a duration is told, rather than being handed
+		// the shipped default as though the deployment had never been tuned.
+		if _, err := s.Duration(stopped, setting.DeferralThreshold, time.Hour); err == nil {
+			t.Error("a reader was handed a default in place of a failure")
+		}
+		if _, err := s.Bool(stopped, setting.DeferralThreshold, true); err == nil {
+			t.Error("a reader was handed a default in place of a failure")
 		}
 	})
 }

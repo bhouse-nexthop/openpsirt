@@ -326,7 +326,11 @@ func registerProposing(api huma.API, in Ingest) {
 		// Asked before the claim is recorded, so the answer can say whether it
 		// is waiting for anybody. A short deferral is ordinary triage and
 		// takes effect at once.
-		needs, err := store.NeedsApproval(ctx, proposal, deferralThreshold(ctx, in))
+		threshold, err := deferralThreshold(ctx, in)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "cannot tell whether that needs agreement", err)
+		}
+		needs, err := store.NeedsApproval(ctx, proposal, threshold)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "cannot tell whether that needs agreement", err)
 		}
@@ -487,14 +491,17 @@ func decisionBody(d triage.Decision) DecisionBody {
 
 // deferralThreshold is how long a deferral may run before a second person has
 // to agree, as this deployment has it set.
-func deferralThreshold(ctx context.Context, in Ingest) time.Duration {
+//
+// A failure to read it is reported rather than answered with the shipped
+// default. This decides which deferrals need a second person, so quietly
+// substituting a different threshold substitutes a different control — and a
+// deployment that had tightened it would find it loosened at exactly the
+// moment its database was in trouble, with nothing saying so. A setting nobody
+// has changed is a different matter, and answers with the default.
+func deferralThreshold(ctx context.Context, in Ingest) (time.Duration, error) {
 	const shipped = 30 * 24 * time.Hour
 	if in.DB == nil {
-		return shipped
+		return shipped, nil
 	}
-	threshold, err := setting.NewStore(in.DB.DB).Duration(ctx, setting.DeferralThreshold, shipped)
-	if err != nil {
-		return shipped
-	}
-	return threshold
+	return setting.NewStore(in.DB.DB).Duration(ctx, setting.DeferralThreshold, shipped)
 }

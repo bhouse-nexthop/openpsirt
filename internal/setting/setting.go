@@ -60,12 +60,24 @@ func NewStore(db bun.IDB) *Store {
 }
 
 // Get reads a setting, returning whether it has been set at all.
+//
+// Unset is not an error. Every setting has a default, and a deployment that
+// has never been tuned is the ordinary case rather than a fault.
+//
+// **A failure to read is not "unset", though**, and treating the two as one
+// was worse than it looks. Every caller falls back to a default when a setting
+// is unset, so a database that could not answer would silently swap the
+// deployment's configuration for the shipped one — including the threshold
+// deciding which deferrals need a second person. A policy that quietly becomes
+// a different policy under load is the kind of failure nobody finds, because
+// nothing anywhere reports it.
 func (s *Store) Get(ctx context.Context, name string) (string, bool, error) {
 	row := new(Setting)
-	if err := s.db.NewSelect().Model(row).Where("name = ?", name).Scan(ctx); err != nil {
-		// Unset is not an error. Every setting has a default, and a deployment
-		// that has never been tuned is the ordinary case rather than a fault.
+	switch err := s.db.NewSelect().Model(row).Where("name = ?", name).Scan(ctx); {
+	case database.IsNoRows(err):
 		return "", false, nil
+	case err != nil:
+		return "", false, fmt.Errorf("read the %q setting: %w", name, err)
 	}
 	return row.Value, true, nil
 }

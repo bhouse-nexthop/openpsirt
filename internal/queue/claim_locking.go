@@ -57,23 +57,10 @@ func claimableID(ctx context.Context, tx bun.Tx, engine database.Engine, kind st
 	var id int64
 	err := tx.NewRaw(query, kind, Pending, now, Running, staleBefore).Scan(ctx, &id)
 	if err != nil {
-		if isNoRows(err) {
+		if database.IsNoRows(err) {
 			return 0, nil
 		}
 		return 0, fmt.Errorf("find claimable job: %w", err)
 	}
 	return id, nil
-}
-
-func isNoRows(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	for i := 0; i+7 <= len(msg); i++ {
-		if msg[i:i+7] == "no rows" {
-			return true
-		}
-	}
-	return false
 }

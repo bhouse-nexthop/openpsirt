@@ -18,6 +18,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
 )
 
 // Kind distinguishes a moving line of development from a frozen point.
@@ -136,7 +137,7 @@ func (s *Store) ProductByName(ctx context.Context, name string) (*Product, error
 	p := new(Product)
 	err := s.db.NewSelect().Model(p).Where("name = ?", name).Scan(ctx)
 	if err != nil {
-		if isNoRows(err) {
+		if database.IsNoRows(err) {
 			return nil, fmt.Errorf("product %q: %w", name, ErrNotFound)
 		}
 		return nil, err
@@ -171,7 +172,7 @@ func (s *Store) StreamByName(ctx context.Context, productID int64, name string) 
 	err := s.db.NewSelect().Model(st).
 		Where("product_id = ?", productID).Where("name = ?", name).Scan(ctx)
 	if err != nil {
-		if isNoRows(err) {
+		if database.IsNoRows(err) {
 			return nil, fmt.Errorf("stream %q: %w", name, ErrNotFound)
 		}
 		return nil, err
@@ -210,7 +211,7 @@ func (s *Store) VariantByName(ctx context.Context, productID int64, name string)
 	err := s.db.NewSelect().Model(v).
 		Where("product_id = ?", productID).Where("name = ?", name).Scan(ctx)
 	if err != nil {
-		if isNoRows(err) {
+		if database.IsNoRows(err) {
 			return nil, fmt.Errorf("variant %q: %w", name, ErrNotFound)
 		}
 		return nil, err
@@ -294,7 +295,7 @@ func (s *Store) TargetFor(ctx context.Context, streamID, variantID int64) (*Targ
 	if err == nil {
 		return target, nil
 	}
-	if !isNoRows(err) {
+	if !database.IsNoRows(err) {
 		return nil, fmt.Errorf("look up what a scan is filed against: %w", err)
 	}
 
@@ -306,10 +307,6 @@ func (s *Store) TargetFor(ctx context.Context, streamID, variantID int64) (*Targ
 }
 
 func now() time.Time { return time.Now().UTC().Truncate(time.Microsecond) }
-
-func isNoRows(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "no rows")
-}
 
 // Target is one release built as one variant. It is what a scan is filed
 // against, and what everything downstream points at, so a single identifier

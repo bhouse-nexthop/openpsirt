@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -124,4 +125,19 @@ func backoff(attempt int) time.Duration {
 	step := time.Duration(attempt) * 10 * time.Millisecond
 	//nolint:gosec // G404: this spreads retries apart; nothing is kept secret by it.
 	return step + time.Duration(rand.N(int64(step)+1))
+}
+
+// IsNoRows reports whether a query found nothing.
+//
+// One place, because there were three, and all three matched on the words "no
+// rows" appearing somewhere in the message. That is wrong in both directions:
+// an unrelated failure whose message happens to contain the phrase reads as an
+// empty result, and a driver wording it differently reads as a failure. Both
+// mistakes are silent, and "not found" is a control-flow answer in enough
+// places here that getting it wrong changes behavior rather than logging.
+//
+// The comparison is against the standard sentinel, through the wrapping, which
+// is what every driver here actually returns.
+func IsNoRows(err error) bool {
+	return errors.Is(err, sql.ErrNoRows)
 }
