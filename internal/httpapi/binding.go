@@ -159,7 +159,7 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 		}
 		product, err := names.ProductByName(ctx, in.Body.Product)
 		if err != nil {
-			return nil, huma.Error404NotFound("no product is declared by that name")
+			return nil, noSuchProduct()
 		}
 		if err := rights.Bind(ctx, in.Body.Group, product.ID, role); err != nil {
 			return nil, wentWrong(a.Logger, "cannot bind a group", err)
@@ -201,7 +201,7 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 
 		product, err := names.ProductByName(ctx, in.Product)
 		if err != nil {
-			return nil, huma.Error404NotFound("no product is declared by that name")
+			return nil, noSuchProduct()
 		}
 		if err := rights.Unbind(ctx, in.Group, product.ID, access.Role(in.Role)); err != nil {
 			return nil, wentWrong(a.Logger, "cannot unbind a group", err)
@@ -306,7 +306,7 @@ func registerRevocation(api huma.API, a Administering) {
 		}
 		person, err := rights.ByIdentity(ctx, in.Identity)
 		if err != nil {
-			return nil, huma.Error404NotFound("nobody here is called that")
+			return nil, noSuchPerson()
 		}
 		token, err := rights.TokenByName(ctx, person.ID, in.Name)
 		if err != nil {
@@ -334,7 +334,7 @@ func registerRevocation(api huma.API, a Administering) {
 		}
 		person, err := rights.ByIdentity(ctx, in.Identity)
 		if err != nil {
-			return nil, huma.Error404NotFound("nobody here is called that")
+			return nil, noSuchPerson()
 		}
 		if err := rights.EndSessionsFor(ctx, person.ID); err != nil {
 			return nil, wentWrong(a.Logger, "cannot end the sessions", err)

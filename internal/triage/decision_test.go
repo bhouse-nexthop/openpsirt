@@ -596,3 +596,59 @@ func TestAPlaceThatStatesNoVisibilityIsTreatedAsUndisclosed(t *testing.T) {
 		}
 	})
 }
+
+func TestAVersionIsReadTheSameWayItIsWritten(t *testing.T) {
+	// Surrounding space is not part of a version, and the two halves used to
+	// disagree about that: storing treated a whitespace-only version as absent
+	// while matching treated it as a version that happened to be spaces. A
+	// decision written against nothing then looked for something, and could
+	// never apply to the place it was made about — silently, since nothing
+	// about it looks wrong from either side.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		spaced := f.at()
+		spaced.ComponentUpstream = "  1.2.3  "
+		spaced.ConsumerUpstream = "   "
+
+		claimed, err := f.store.Propose(ctx, f.triager, triage.Proposal{
+			Place: spaced, Outcome: triage.WontFix,
+			Reasoning: "Not worth it.", By: f.proposer, NeedsApproval: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.store.Approve(ctx, f.reviewer, claimed.ID, ""); err != nil {
+			t.Fatal(err)
+		}
+
+		// The same place, written the ordinary way.
+		plain := f.at()
+		plain.ComponentUpstream = "1.2.3"
+		plain.ConsumerUpstream = ""
+		standing, err := f.store.Applying(ctx, plain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if standing == nil || standing.ID != claimed.ID {
+			t.Fatalf("a decision written with spaces around its version does not apply: %+v", standing)
+		}
+
+		// And the other direction: a place whose versions arrive with space
+		// around them finds the decision stored without it. Both halves have
+		// to trim, or one of them decides what the other cannot find.
+		alsoSpaced := f.at()
+		alsoSpaced.ComponentUpstream = " 1.2.3 "
+		alsoSpaced.ConsumerUpstream = "  "
+		if standing, _ := f.store.Applying(ctx, alsoSpaced); standing == nil {
+			t.Error("a place stated with spaces did not find the decision made about it")
+		}
+
+		// And it still expires: trimming must not turn every version into a
+		// match.
+		moved := plain
+		moved.ComponentUpstream = "1.2.4"
+		if standing, _ := f.store.Applying(ctx, moved); standing != nil {
+			t.Error("the decision stood at a version it was not made about")
+		}
+	})
+}

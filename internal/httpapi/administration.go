@@ -220,7 +220,7 @@ func registerAdministration(api huma.API, a Administering) {
 		}
 		person, err := store.ByIdentity(ctx, in.Identity)
 		if err != nil {
-			return nil, huma.Error404NotFound("not declared")
+			return nil, noSuchPerson()
 		}
 		product, err := names.ProductByName(ctx, in.Product)
 		if err != nil {
@@ -335,7 +335,7 @@ func registerAdministration(api huma.API, a Administering) {
 			}
 			return nil, nil
 		}
-		return nil, huma.Error404NotFound("not declared")
+		return nil, noSuchKey()
 	})
 }
 

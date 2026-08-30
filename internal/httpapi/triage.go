@@ -147,7 +147,7 @@ func registerTriage(api huma.API, in Ingest) {
 			return nil, huma.Error409Conflict(
 				"the person who proposed a decision may not be the one who agrees to it")
 		case errors.Is(err, triage.ErrNotTheirs):
-			return nil, huma.Error404NotFound("no decision is recorded there")
+			return nil, noSuchDecision()
 		case err != nil:
 			return nil, huma.Error422UnprocessableEntity(err.Error())
 		}
@@ -364,17 +364,17 @@ func decidingAbout(ctx context.Context, in Ingest, subject access.Subject,
 	}
 	target, err := names.ExistingTarget(ctx, named.StreamID, named.VariantID)
 	if err != nil {
-		return nil, huma.Error404NotFound("nothing has been scanned there")
+		return nil, nothingScannedThere()
 	}
 
 	issue, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, vulnerability)
 	if err != nil {
-		return nil, huma.Error404NotFound("no issue is known by that name")
+		return nil, noSuchIssue()
 	}
 
 	at, err := finding.NewStore(in.DB.DB).PlaceFor(ctx, subject, target.ID, issue, place)
 	if err != nil {
-		return nil, huma.Error404NotFound("no open finding is recorded there")
+		return nil, noSuchFinding()
 	}
 	return at, nil
 }
@@ -425,7 +425,7 @@ func registerElsewhere(api huma.API, in Ingest) {
 		}
 		here, err := names.ExistingTarget(ctx, named.StreamID, named.VariantID)
 		if err != nil {
-			return nil, huma.Error404NotFound("nothing has been scanned there")
+			return nil, nothingScannedThere()
 		}
 
 		matches, err := finding.NewStore(in.DB.DB).Elsewhere(ctx, subject, *at, here.ID)
@@ -465,7 +465,7 @@ func triaging(ctx context.Context, in Ingest) (access.Subject, *triage.Store, er
 func refusedDecision(err error) error {
 	switch {
 	case errors.Is(err, triage.ErrNotTheirs):
-		return huma.Error404NotFound("no decision is recorded there")
+		return noSuchDecision()
 	case errors.Is(err, triage.ErrSamePerson):
 		return huma.Error409Conflict("the person who proposed a decision may not agree to it")
 	}

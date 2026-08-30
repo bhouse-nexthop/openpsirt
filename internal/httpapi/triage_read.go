@@ -93,7 +93,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 		if input.Product != "" {
 			product, err := catalog.NewStore(in.DB.DB).ProductByName(ctx, input.Product)
 			if err != nil {
-				return nil, huma.Error404NotFound("no product is declared under that name")
+				return nil, noSuchProduct()
 			}
 			filter.ProductID = product.ID
 		}

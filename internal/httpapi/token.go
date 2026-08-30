@@ -77,7 +77,7 @@ func registerTokens(api huma.API, in Ingest) {
 			// than telling them it exists.
 			product, err := names.VisibleProduct(ctx, subject, input.Body.Product)
 			if err != nil {
-				return nil, huma.Error404NotFound("no product is declared by that name")
+				return nil, noSuchProduct()
 			}
 			productID = &product.ID
 		}

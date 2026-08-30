@@ -115,10 +115,13 @@ func (s *Store) PreviouslyAt(ctx context.Context, subject access.Subject, at Pla
 // no known version stand over one whose version is simply blank. Two absences
 // match each other and nothing else.
 func matchVersion(query *bun.SelectQuery, column, stated string) *bun.SelectQuery {
-	if stated == "" {
+	// Read the same way it was written, or the two disagree about what counts
+	// as stating nothing.
+	trimmed := version(stated)
+	if trimmed == "" {
 		return query.Where(column + " IS NULL")
 	}
-	return query.Where(column+" = ?", stated)
+	return query.Where(column+" = ?", trimmed)
 }
 
 // Revisions returns the reasoning behind a decision, oldest first.

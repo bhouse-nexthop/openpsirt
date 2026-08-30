@@ -302,16 +302,26 @@ func (p Proposal) valid() error {
 	return nil
 }
 
+// version is how a version string is read, everywhere it is read.
+//
+// Surrounding space is not part of a version. It has to be taken off in one
+// place because the two halves disagreed otherwise: storing treated a
+// whitespace-only version as absent, and matching treated it as a version
+// that happened to be spaces — so a decision was written against nothing and
+// looked for something, and could never apply to the place it was made about.
+func version(s string) string { return strings.TrimSpace(s) }
+
 // text keeps an absent version absent rather than storing it as an empty one.
 //
 // The difference matters: a version nobody stated and a version that is the
 // empty string would otherwise compare equal, and expiry is exactly a
 // comparison of versions.
 func text(s string) *string {
-	if strings.TrimSpace(s) == "" {
+	trimmed := version(s)
+	if trimmed == "" {
 		return nil
 	}
-	return &s
+	return &trimmed
 }
 
 // visibilityOf reads a place's visibility, treating anything unset as not
