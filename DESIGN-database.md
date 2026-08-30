@@ -2,7 +2,7 @@
 
 How OpenPSIRT talks to a database, and why the awkward parts are awkward.
 
-Satisfies SCP-15, DAT-01 to DAT-17, DAT-30 to DAT-35, and the portability
+Satisfies SCP-15, DAT-01 to DAT-24, DAT-30 to DAT-35, and the portability
 constraints in Section 6 of `DECISIONS.md`.
 
 ## Four engines, one set of queries

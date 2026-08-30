@@ -2,7 +2,8 @@
 
 How a change gets from an editor to `main`, and what stops it if it should not.
 
-Satisfies CIG-01 to CIG-08, SCP-06, SCP-07, API-04, API-10, API-11.
+Satisfies CIG-01 to CIG-08, SCP-06, SCP-07, API-04, API-10, API-11, API-13,
+API-15.
 
 ## Layout
 

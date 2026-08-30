@@ -2,7 +2,7 @@
 
 Durable background work, held in the application's own database.
 
-Satisfies DAT-17, ING-03, ING-19, SEC-06.
+Satisfies DAT-17, DAT-25 to DAT-28, ING-03, ING-19, SEC-06.
 
 ## Why not a library
 

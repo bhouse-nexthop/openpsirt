@@ -230,7 +230,11 @@ thing rather than a gap somebody rediscovers by auditing.
 | MDL-12, MDL-13 | End-of-life dates | Whole feature, scheduled with lifecycle |
 | MDL-16 | The tree views | Interface |
 | TRI-04, TRI-09, TRI-19 | Export, the bulk list, and reporting | Each belongs to a stage of its own |
-| REL-08 | Seeding a new line from a prior release | Needs release management, which is not built. The pieces it rests on — matching by place, carrying reasoning rather than conclusions — are |
+| REL-08, ING-13 | Seeding a new line from a prior release | Needs release management, which is not built. The pieces it rests on — matching by place, carrying reasoning rather than conclusions — are |
+| REL-01, REL-03, REL-04, REL-07, SCP-05 | The interface | All are about how findings and exceptions are presented and acted on together. Deciding them against a real screen rather than in the abstract is the point |
+| ACC-46 to ACC-49 | Private findings | Whole feature, with disclosure dates and the escalation around them |
+| ING-24 to ING-27, SCP-11 | Analyzer findings | Intended scope, not built. The finding model carries a kind from the start so a second kind needs no rewrite, which is the part that had to be got right early |
+| MDL-10 | Nothing — it is a limitation | The same version built with different feature flags can use its dependencies differently. Recorded so nobody assumes the graph says more than it does |
 
 ## Not planned yet
 

@@ -2,8 +2,8 @@
 
 What happens to a scan when it arrives.
 
-Satisfies ING-01, ING-02, ING-04, ING-05, ING-07, ING-11, ING-14 to ING-23,
-ING-28 to ING-35, MDL-19, ACC-12, ACC-50, SEC-05, SEC-06.
+Satisfies ING-01, ING-02, ING-04 to ING-08, ING-11, ING-12, ING-14 to ING-23,
+ING-28 to ING-35, MDL-19, ACC-12, ACC-50, ACC-53, SEC-05, SEC-06.
 
 ## Deciding before parsing
 

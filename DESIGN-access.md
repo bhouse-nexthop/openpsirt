@@ -2,8 +2,8 @@
 
 Who is asking, and what they may reach.
 
-Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-50 to ACC-52, SEC-03,
-SEC-07.
+Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-50 to ACC-53, SEC-03,
+SEC-07, SEC-09.
 
 ## Authenticating is not being authorized
 

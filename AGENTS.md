@@ -3,7 +3,8 @@
 OpenPSIRT takes in the inventory a build produced, scans it for known
 vulnerabilities here rather than in the build, tracks what changes release to
 release, and gives people somewhere to triage findings and follow them through
-to a fix.
+to a fix. It is Apache 2.0, installed and run by other people (SCP-01, SCP-03,
+SCP-04).
 
 **Read `DECISIONS.md` before proposing anything.** Most questions have already
 been answered there, with the reasoning. If you think a decision is wrong, say
@@ -185,7 +186,7 @@ already have.
 
 ## Security review checklist
 
-Worked through on every review. Each line says what to look for **in this
+Worked through on every review (SEC-10). Each line says what to look for **in this
 codebase**, not in general — a checklist that restates the category is one that
 gets ticked without being read.
 
