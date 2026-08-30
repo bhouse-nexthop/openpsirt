@@ -1010,7 +1010,7 @@ func TestNamingAPageOfFindingsDoesNotCostAQueryPerRow(t *testing.T) {
 		}
 
 		counted := &counter{}
-		f.db.DB.AddQueryHook(counted)
+		f.db.AddQueryHook(counted)
 		groups, total, err := f.store.Groups(t.Context(), f.holding(t, access.PublicRead),
 			f.target, 50, 0)
 		if err != nil {
