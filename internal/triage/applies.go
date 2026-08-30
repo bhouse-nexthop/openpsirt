@@ -2,6 +2,8 @@ package triage
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -34,13 +36,32 @@ func (s *Store) Applying(ctx context.Context, at Place) (*Decision, error) {
 		Where("product_id = ?", at.ProductID).
 		Where("vulnerability_id = ?", at.VulnerabilityID).
 		Where("place_identity = ?", at.PlaceIdentity).
-		Where("state IN (?, ?)", Proposed, Approved)
+		// Approved, or proposed and never needing agreement. A claim that
+		// hides risk and is waiting for a second person does not suppress
+		// anything in the meantime — otherwise the queue is decorative and one
+		// person can dismiss a finding on their own, which is the whole thing
+		// the second pair of eyes exists to prevent.
+		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.WhereOr("state = ?", Approved).
+				WhereOr("state = ? AND needs_approval = ?", Proposed, false)
+		})
 
 	query = matchVersion(query, "component_upstream_version", at.ComponentUpstream)
 	query = matchVersion(query, "consumer_upstream_version", at.ConsumerUpstream)
 
-	if err := query.Order("id DESC").Limit(1).Scan(ctx); err != nil {
-		return nil, nil //nolint:nilerr // no decision standing is an answer, not a fault
+	// An agreed claim outranks a waiting one. Ordering by identifier alone let
+	// a newer unapproved claim shadow an approved one, which is a way for one
+	// person to overturn a decision two people made.
+	if err := query.OrderExpr("CASE WHEN state = ? THEN 0 ELSE 1 END, id DESC", Approved).
+		Limit(1).Scan(ctx); err != nil {
+		// No decision standing is an answer. Anything else is a fault, and
+		// reporting it as "nothing stands" would turn a lost race or a lock
+		// timeout into a suppressed finding reappearing — or, in an export,
+		// into an agreed dismissal silently dropped.
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read what stands here: %w", err)
 	}
 
 	// A deferral says "not now, ask again on this date". Once the date has

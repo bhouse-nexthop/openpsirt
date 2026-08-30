@@ -87,7 +87,7 @@ type KeyBody struct {
 func registerAdministration(api huma.API, a Administering) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-people", Method: http.MethodGet, Path: "/v1/people",
-		Summary: "List who has been granted access",
+		Summary: "List users",
 		Description: "Everybody who may sign in, and what each of them holds. Nobody is here " +
 			"because they authenticated: access is granted in advance or not at all.",
 		Tags: []string{"Administration"},
@@ -138,7 +138,7 @@ func registerAdministration(api huma.API, a Administering) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "record-person", Method: http.MethodPost, Path: "/v1/people",
-		Summary: "Grant somebody access",
+		Summary: "Create a user and grant roles",
 		Description: "Records somebody so that they may sign in, and optionally what they hold. " +
 			"Recording the same person again confirms them and adds any roles named.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusCreated,
@@ -204,7 +204,7 @@ func registerAdministration(api huma.API, a Administering) {
 	huma.Register(api, huma.Operation{
 		OperationID: "withdraw-role", Method: http.MethodDelete,
 		Path:    "/v1/people/{identity}/roles/{product}/{role}",
-		Summary: "Take a role away",
+		Summary: "Revoke a user's role on a product",
 		Description: "A grant is a statement about now. Withdrawing one removes it rather than " +
 			"marking it, because what somebody used to hold is answered by the record of what " +
 			"they did.",
@@ -234,7 +234,7 @@ func registerAdministration(api huma.API, a Administering) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "list-keys", Method: http.MethodGet, Path: "/v1/keys",
-		Summary: "List the pipeline credentials",
+		Summary: "List API keys",
 		Description: "Which credentials exist, what each may send, when it was last used and " +
 			"whether it still works. The secrets are not here and cannot be: what is stored is a digest.",
 		Tags: []string{"Administration"},
@@ -265,7 +265,7 @@ func registerAdministration(api huma.API, a Administering) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "create-key", Method: http.MethodPost, Path: "/v1/keys",
-		Summary: "Issue a pipeline credential",
+		Summary: "Create an API key",
 		Description: "Creates a credential a build may send scans with, and returns its secret. " +
 			"The secret is shown once and stored hashed: a credential store that can hand back " +
 			"what it holds gives up every pipeline's key with a copy of the database.",
@@ -311,7 +311,7 @@ func registerAdministration(api huma.API, a Administering) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "revoke-key", Method: http.MethodDelete, Path: "/v1/keys/{name}",
-		Summary: "Withdraw a pipeline credential",
+		Summary: "Revoke an API key",
 		Description: "Stops it working, without removing the record of what it sent. Revoking one " +
 			"credential leaves every other pipeline running.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusNoContent,

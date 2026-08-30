@@ -127,10 +127,14 @@ func registerScans(api huma.API, in Ingest) {
 		OperationID: "upload-scan",
 		Method:      http.MethodPost,
 		Path:        "/v1/products/{product}/streams/{stream}/variants/{variant}/scans",
-		Summary:     "Send what a build shipped",
-		Description: "Takes a build's inventory and the suppressions it carries, against a product, " +
-			"stream and variant that have already been declared. The documents are read after the " +
-			"response, so a successful reply means they were accepted rather than that they parsed.",
+		Summary:     "Upload an SBOM and its VEX documents",
+		Description: "Accepts a CycloneDX SBOM and any number of OpenVEX documents as multipart " +
+			"form fields named `inventory` and `suppressions`.\n\n" +
+			"The product, branch and variant must already exist; an upload naming something " +
+			"undeclared is rejected and the error says which part is missing.\n\n" +
+			"**Returns 202 before the documents are parsed.** A success here means they were " +
+			"accepted for processing, not that they were valid. Poll `GET .../scans` to find out " +
+			"whether they parsed and what the scan found.",
 		Tags: []string{"Ingest"},
 		// A scan file is somebody else's output arriving over a link we do not
 		// control, and this is the first place it can be stopped.
@@ -379,10 +383,12 @@ func registerReceipts(api huma.API, in Ingest) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-scans", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/scans",
-		Summary: "What has been filed against a build",
-		Description: "Newest first. An upload is answered before its documents are read, so this " +
-			"is where a producer finds out whether they parsed. A key may read the uploads it " +
-			"sent itself and nothing else.",
+		Summary: "List uploaded scans and their status",
+		Description: "Returns uploads newest first, each with its state: `reading` (accepted, not " +
+			"yet parsed), `scanning` (parsed, vulnerability scan pending), `scanned` (complete), " +
+			"or `failed` with the reason.\n\n" +
+			"Because uploads return 202 before parsing, this is how a build pipeline finds out " +
+			"whether its SBOM was usable. An API key sees only the uploads it sent itself.",
 		Tags: []string{"Ingest"},
 	}, func(ctx context.Context, input *struct {
 		Product string `path:"product"`

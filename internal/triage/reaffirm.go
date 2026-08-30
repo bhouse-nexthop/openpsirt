@@ -62,6 +62,14 @@ func (s *Store) Reaffirm(ctx context.Context, subject access.Subject, r Reaffirm
 		Where("id = ?", r.PreviousID).Scan(ctx); err != nil {
 		return nil, ErrNotTheirs
 	}
+	// Authorized against the row, not against what the caller said about it.
+	// Checking the stated visibility would let somebody trusted only with what
+	// has been disclosed re-affirm an undisclosed claim — and, because the new
+	// decision is written with the visibility it was authorized under, publish
+	// it in the act of re-making it.
+	if !mayDecide(subject, previous.ProductID, previous.Visibility) {
+		return nil, ErrNotTheirs
+	}
 	// The claim being re-made has to be about the same thing. Otherwise a
 	// re-affirmation is a way to attach one place's agreement to another's.
 	if previous.ProductID != r.Place.ProductID ||
@@ -69,6 +77,19 @@ func (s *Store) Reaffirm(ctx context.Context, subject access.Subject, r Reaffirm
 		previous.PlaceIdentity != r.Place.PlaceIdentity {
 		return nil, fmt.Errorf("that decision was about a different place")
 	}
+	// Re-affirming is a right the person who made the claim has, and nobody
+	// else. Without this the approver could re-affirm — becoming proposer of
+	// the new claim while their own earlier agreement is carried onto it, so
+	// one person ends up on both sides of a control that says they may not be.
+	if previous.ProposedBy != subject.ID {
+		return nil, fmt.Errorf(
+			"only the person who made a decision may re-affirm it; anybody else proposes it afresh")
+	}
+
+	// And it keeps the visibility it had. A re-affirmation says the same claim
+	// still holds; it is not an occasion to change who may see it.
+	place := r.Place
+	place.Visibility = previous.Visibility
 
 	justification := ""
 	if previous.Justification != nil {
@@ -76,7 +97,7 @@ func (s *Store) Reaffirm(ctx context.Context, subject access.Subject, r Reaffirm
 	}
 
 	made, err := s.Propose(ctx, subject, Proposal{
-		Place: r.Place, Outcome: previous.Outcome,
+		Place: place, Outcome: previous.Outcome,
 		Justification: Justification(justification),
 		DeferredUntil: previous.DeferredUntil,
 		Reasoning:     r.Reasoning, By: r.By,
@@ -129,10 +150,19 @@ func (d Decision) SeverityAtApproval() int {
 // carryApproval records that a re-affirmed claim stands on the agreement its
 // predecessor had.
 func (s *Store) carryApproval(ctx context.Context, made *Decision, previous Decision) error {
+	// Only an agreement that still stands may be carried, and only one given
+	// by somebody other than whoever is re-affirming.
+	//
+	// A withdrawn agreement is kept because who agreed and to what is part of
+	// the record — but carrying it forward would resurrect it against words
+	// nobody read. The path is concrete: propose, have it agreed to, revise
+	// (which withdraws the agreement), let a version bump lapse it, re-affirm.
 	var earlier []Approval
 	if err := s.db.NewSelect().Model(&earlier).
 		Where("decision_id = ?", previous.ID).
-		Order("id ASC").Limit(1).Scan(ctx); err != nil || len(earlier) == 0 {
+		Where("withdrawn_at IS NULL").
+		Where("approved_by <> ?", made.ProposedBy).
+		Order("id DESC").Limit(1).Scan(ctx); err != nil || len(earlier) == 0 {
 		// Nothing to carry. Not a fault: a decision may have lapsed before
 		// anybody agreed to it, and the claim simply waits like any other.
 		return nil //nolint:nilerr // an absent approval is an answer, not a failure

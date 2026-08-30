@@ -44,12 +44,14 @@ func registerFindings(api huma.API, in Ingest) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-findings", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings",
-		Summary: "What is open against a build",
-		Description: "One row per issue in a component, with the number of places it occupies. " +
-			"Not one row per place: a real image produced 335,021 findings and 305,487 of them " +
-			"were one kernel across the modules built against it, which is thousands of screens " +
-			"of rows differing in a column nobody reads. The places are what a decision gets " +
-			"recorded against.",
+		Summary: "List vulnerability findings",
+		Description: "Returns one row per vulnerability-and-component pair, not one row per " +
+			"place the component appears. Each row gives the number of places it occupies and " +
+			"how many of those the build's VEX documents already answer.\n\n" +
+			"Grouping matters at real scale: one switch image produced 335,021 individual " +
+			"findings, which collapse to 7,906 rows here.\n\n" +
+			"Ordered by urgency — known-exploited first, then whether the build ships to " +
+			"customers, then likelihood, then severity. Supports limit and offset.",
 		Tags: []string{"Findings"},
 	}, func(ctx context.Context, input *struct {
 		Product string `path:"product"`

@@ -48,7 +48,16 @@ func (s *Store) approve(ctx context.Context, subject access.Subject, decisionID 
 	if !mayDecide(subject, decision.ProductID, decision.Visibility) {
 		return ErrNotTheirs
 	}
-	if decision.ProposedBy == subject.ID {
+	// Compared against whoever wrote the words being agreed to, not against
+	// whoever first proposed the claim. An approval names one revision, so the
+	// control is about the text — and anybody who may triage can revise, which
+	// made "did you propose this" the wrong question: revise somebody else's
+	// claim in your own words and you could then approve your own words.
+	author, err := s.authorOf(ctx, *decision)
+	if err != nil {
+		return err
+	}
+	if author == subject.ID || decision.ProposedBy == subject.ID {
 		return ErrSamePerson
 	}
 	if decision.RevisionID == nil {
@@ -214,4 +223,17 @@ func (s *Store) UndoBatch(ctx context.Context, subject access.Subject, batch str
 		return 0, fmt.Errorf("undo an approval: %w", err)
 	}
 	return int64(len(decisions)), nil
+}
+
+// authorOf returns who wrote the reasoning a decision currently rests on.
+func (s *Store) authorOf(ctx context.Context, decision Decision) (int64, error) {
+	if decision.RevisionID == nil {
+		return 0, ErrNothingToApprove
+	}
+	revision := new(Revision)
+	if err := s.db.NewSelect().Model(revision).
+		Where("id = ?", *decision.RevisionID).Scan(ctx); err != nil {
+		return 0, fmt.Errorf("read who wrote this: %w", err)
+	}
+	return revision.WrittenBy, nil
 }

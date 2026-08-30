@@ -36,7 +36,12 @@ type Decision struct {
 	// later, because what a re-affirmation asks is whether severity has risen
 	// *since* — and an issue's severity is rewritten in place as reports
 	// revise it, so reading it now would compare a number against itself.
-	SeverityCenti *int      `bun:"severity_centi"`
+	SeverityCenti *int `bun:"severity_centi"`
+	// NeedsApproval says a second person has to agree before this takes
+	// effect. A short deferral does not, so it is a property of the claim
+	// rather than of its outcome alone — and it has to be recorded, or a claim
+	// that is waiting and one that is in force are indistinguishable.
+	NeedsApproval bool      `bun:"needs_approval,notnull"`
 	State         State     `bun:"state,notnull"`
 	ProposedBy    int64     `bun:"proposed_by,notnull"`
 	ProposedAt    time.Time `bun:"proposed_at,notnull"`
@@ -146,6 +151,11 @@ type Proposal struct {
 	// Recorded with the claim so that a later re-affirmation can ask whether
 	// it has risen since.
 	SeverityCenti int
+	// NeedsApproval says a second person must agree before this takes effect.
+	// Worked out by the caller through NeedsApproval, and recorded, because a
+	// claim that is waiting and one that is in force must be distinguishable
+	// afterwards.
+	NeedsApproval bool
 }
 
 // Propose records a claim and the reasoning behind it.
@@ -197,6 +207,7 @@ func (s *Store) propose(ctx context.Context, p Proposal) (*Decision, error) {
 		Outcome:                  p.Outcome,
 		DeferredUntil:            p.DeferredUntil,
 		State:                    Proposed,
+		NeedsApproval:            p.NeedsApproval,
 		ProposedBy:               p.By, ProposedAt: now,
 	}
 	if p.Outcome == NotApplicable {

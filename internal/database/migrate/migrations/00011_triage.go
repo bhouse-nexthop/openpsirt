@@ -78,6 +78,12 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 			-- rewritten in place as reports revise it, so reading it now would
 			-- always compare a number against itself.
 			"severity_centi"             ` + t.ref + ` NULL,
+			-- Whether a second person has to agree before this takes effect.
+			-- Recorded rather than worked out on each read: most outcomes need
+			-- agreement and a short deferral does not, and without somewhere
+			-- to keep that, "proposed" would have to mean "in force" for
+			-- everything — which makes the review queue decorative.
+			"needs_approval"             ` + t.boolean + ` NOT NULL,
 			"state"                      ` + t.kind + ` NOT NULL,
 			"proposed_by"                ` + t.ref + ` NOT NULL,
 			"proposed_at"                ` + t.timestamp + ` NOT NULL,

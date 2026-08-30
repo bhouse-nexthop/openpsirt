@@ -104,7 +104,7 @@ type listBody[T any] struct {
 func registerCatalog(api huma.API, d Declaring) {
 	huma.Register(api, huma.Operation{
 		OperationID: "declare-product", Method: http.MethodPost, Path: "/v1/products",
-		Summary: "Declare a product",
+		Summary: "Create a product",
 		Description: "Records a product so scans may be filed against it. Declaring one that " +
 			"already exists succeeds without changing anything, so this can run on every build.",
 		Tags: []string{"Catalog"}, DefaultStatus: http.StatusCreated,
@@ -127,7 +127,7 @@ func registerCatalog(api huma.API, d Declaring) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "declare-stream", Method: http.MethodPost, Path: "/v1/products/{product}/streams",
-		Summary: "Declare a branch or a tag",
+		Summary: "Create a branch or tag",
 		Description: "Records a line of a product. A branch moves and is rebuilt; a tag never " +
 			"changes and is what somebody received.",
 		Tags: []string{"Catalog"}, DefaultStatus: http.StatusCreated,
@@ -169,7 +169,7 @@ func registerCatalog(api huma.API, d Declaring) {
 	huma.Register(api, huma.Operation{
 		OperationID: "declare-variant", Method: http.MethodPost,
 		Path:    "/v1/products/{product}/variants",
-		Summary: "Declare a way the product is built",
+		Summary: "Create a build variant",
 		Description: "Records one of the parallel builds of a product — a chip variant, an " +
 			"architecture, an operating system. Declared once for the product, not once per " +
 			"release: a release is filed against it the first time a scan arrives, so nobody " +
@@ -204,7 +204,7 @@ func registerCatalog(api huma.API, d Declaring) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "list-products", Method: http.MethodGet, Path: "/v1/products",
-		Summary:     "List declared products",
+		Summary:     "List products",
 		Description: "What a scan may be filed against. The first question after an upload is refused.",
 		Tags:        []string{"Catalog"},
 	}, func(ctx context.Context, _ *struct{}) (*listOutput[ProductBody], error) {
@@ -263,7 +263,7 @@ func registerCatalog(api huma.API, d Declaring) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-variants", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/variants",
-		Summary: "List the ways a product is built", Tags: []string{"Catalog"},
+		Summary: "List a product's build variants", Tags: []string{"Catalog"},
 	}, func(ctx context.Context, in *struct {
 		Product string `path:"product"`
 	}) (*listOutput[VariantBody], error) {
@@ -289,7 +289,7 @@ func registerCatalog(api huma.API, d Declaring) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-release-variants", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/streams/{stream}/variants",
-		Summary: "List what a release has been built as",
+		Summary: "List the variants a release was built as",
 		Description: "A subset of what the product builds. A release predating a variant has " +
 			"never been filed against it, which is what keeps something introduced later from " +
 			"appearing to have shipped years ago.",

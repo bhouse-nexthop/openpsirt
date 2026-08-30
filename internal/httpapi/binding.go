@@ -27,7 +27,7 @@ type BindingBody struct {
 func registerBindings(api huma.API, a Administering, settings func() *setting.Store) {
 	huma.Register(api, huma.Operation{
 		OperationID: "get-role-mode", Method: http.MethodGet, Path: "/v1/roles/mode",
-		Summary: "Where roles come from",
+		Summary: "Get the role assignment mode",
 		Description: "One mode for the whole deployment. A hybrid would need a precedence rule " +
 			"for somebody holding one role from a team and another directly, which is how a stale " +
 			"assignment outlives somebody's removal from the team it was shadowing.",
@@ -49,7 +49,7 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 
 	huma.Register(api, huma.Operation{
 		OperationID: "set-role-mode", Method: http.MethodPut, Path: "/v1/roles/mode",
-		Summary: "Change where roles come from",
+		Summary: "Set the role assignment mode",
 		Description: "Turning group binding on sets assignments aside rather than deleting them, " +
 			"and turning it off restores them — so trying it is not a one-way door. Refused if it " +
 			"would leave nobody able to administer this deployment.",
@@ -94,7 +94,7 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 
 	huma.Register(api, huma.Operation{
 		OperationID: "list-bindings", Method: http.MethodGet, Path: "/v1/roles/bindings",
-		Summary:     "What each group grants",
+		Summary:     "List group-to-role bindings",
 		Description: "The mappings that admit people in group-bound mode. In that mode a mapping is the advance authorization: somebody arriving for the first time in a mapped group is admitted, and somebody in none is refused.",
 		Tags:        []string{"Administration"},
 	}, func(ctx context.Context, _ *struct{}) (*listOutput[BindingBody], error) {
@@ -132,7 +132,7 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 
 	huma.Register(api, huma.Operation{
 		OperationID: "bind-group", Method: http.MethodPost, Path: "/v1/roles/bindings",
-		Summary: "Bind a group to a role",
+		Summary: "Bind an identity-provider group to a role",
 		Description: "Administration is bound without a product, because it is global rather than " +
 			"held against one. Everything else names the product it applies to.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusCreated,
@@ -169,7 +169,7 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 
 	huma.Register(api, huma.Operation{
 		OperationID: "unbind-group", Method: http.MethodDelete, Path: "/v1/roles/bindings",
-		Summary: "Stop a group granting something",
+		Summary: "Remove a group-to-role binding",
 		Description: "Takes effect at each member's next sign-in, because membership is read then " +
 			"and never again. To cut somebody off now, end their sessions.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusNoContent,
@@ -267,7 +267,7 @@ func productNames(ctx context.Context, a Administering) (map[int64]string, error
 func registerRevocation(api huma.API, a Administering) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-all-tokens", Method: http.MethodGet, Path: "/v1/people/tokens",
-		Summary:     "List everybody's personal credentials",
+		Summary:     "List all users' API tokens",
 		Description: "Stale tokens are otherwise found only when somebody leaves and nobody knows what breaks if they are turned off.",
 		Tags:        []string{"Administration"},
 	}, func(ctx context.Context, _ *struct{}) (*listOutput[TokenBody], error) {
@@ -293,7 +293,7 @@ func registerRevocation(api huma.API, a Administering) {
 	huma.Register(api, huma.Operation{
 		OperationID: "revoke-anyones-token", Method: http.MethodDelete,
 		Path:        "/v1/people/{identity}/tokens/{name}",
-		Summary:     "Withdraw somebody's personal credential",
+		Summary:     "Revoke another user's API token",
 		Description: "An owner withdraws their own through the access paths. This is for the ones whose owner is no longer here to do it.",
 		Tags:        []string{"Administration"}, DefaultStatus: http.StatusNoContent,
 	}, func(ctx context.Context, in *struct {
@@ -320,7 +320,7 @@ func registerRevocation(api huma.API, a Administering) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "end-sessions", Method: http.MethodDelete, Path: "/v1/people/{identity}/sessions",
-		Summary: "Sign somebody out everywhere",
+		Summary: "End all of a user's sessions",
 		Description: "Takes effect at once, whichever copy of the application answers next. Roles " +
 			"and group mappings are re-read at sign-in, so withdrawing one takes effect then; this " +
 			"is what makes somebody leaving immediate instead.",

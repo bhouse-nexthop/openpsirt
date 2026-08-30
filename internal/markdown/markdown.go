@@ -67,6 +67,9 @@ func (f Faults) Error() string {
 	return strings.Join(reasons, "; ")
 }
 
+// maxFaults bounds how many problems one refusal reports.
+const maxFaults = 20
+
 // ErrTooLong is returned for text past the bound.
 var ErrTooLong = errors.New("that is longer than a justification may be")
 
@@ -83,12 +86,18 @@ func Check(source string) error {
 		return Faults{{Reason: "that is not text this can read"}}
 	}
 
-	var faults Faults
-	for number, line := range strings.Split(source, "\n") {
-		faults = append(faults, faultsIn(number+1, line)...)
+	found := inspect(source)
+	if len(found) == 0 {
+		return nil
 	}
-	if len(faults) > 0 {
-		return faults
+	// Capped. A field of nothing but refused links produces one fault per line
+	// and an answer many times the size of what was sent, which is a way to
+	// make a refusal expensive. Somebody with sixty problems does not need
+	// sixty told to them at once either.
+	if len(found) > maxFaults {
+		found = append(found[:maxFaults:maxFaults], Fault{
+			Reason: fmt.Sprintf("and more besides — fix these %d first", maxFaults),
+		})
 	}
-	return nil
+	return Faults(found)
 }

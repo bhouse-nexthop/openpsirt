@@ -69,10 +69,12 @@ type QueueOutput struct {
 func registerTriage(api huma.API, in Ingest) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-review-queue", Method: http.MethodGet, Path: "/v1/review-queue",
-		Summary: "What is waiting to be agreed to",
-		Description: "Claims somebody has made that need a second person. Each row carries what " +
-			"an approver needs to judge it without opening it, because a list that has to be " +
-			"opened row by row is a list that gets approved unread.",
+		Summary: "List decisions awaiting approval",
+		Description: "Returns triage decisions proposed but not yet approved, limited to products " +
+			"you hold a triage role on.\n\n" +
+			"Each row includes the full justification text, whether the decision was previously " +
+			"approved and came back, how long the finding has been deferred in total, and how " +
+			"old the claim is — enough to judge it without a second request.",
 		Tags: []string{"Triage"},
 	}, func(ctx context.Context, input *struct {
 		Limit  int `query:"limit" default:"50" minimum:"1" maximum:"200"`
@@ -105,11 +107,14 @@ func registerTriage(api huma.API, in Ingest) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "approve-decision", Method: http.MethodPost, Path: "/v1/decisions/{id}/approval",
-		Summary: "Agree to a claim",
-		Description: "The person who made a claim may never be the one who agrees to it, with no " +
-			"override — so a deployment with one person cannot approve anything, which is the " +
-			"control working rather than a gap in it. An agreement names one revision of the " +
-			"reasoning, so revising afterwards takes it back.",
+		Summary: "Approve a triage decision",
+		Description: "Approves a proposed decision. Returns 409 if you proposed it yourself — the " +
+			"proposer and approver must always be different people, and there is no override.\n\n" +
+			"An approval is recorded against the specific revision of the justification that " +
+			"exists now. Editing the justification afterwards withdraws the approval and returns " +
+			"the decision to this queue.\n\n" +
+			"Pass `batch` to approve many decisions under one name, so they can be undone " +
+			"together with `DELETE /v1/approval-batches/{batch}`.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusNoContent,
 	}, func(ctx context.Context, input *struct {
 		ID   int64 `path:"id"`
@@ -135,11 +140,13 @@ func registerTriage(api huma.API, in Ingest) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "revise-decision", Method: http.MethodPut, Path: "/v1/decisions/{id}/reasoning",
-		Summary: "State the reasoning again",
-		Description: "Keeps every revision and takes back any agreement standing on what it said " +
-			"before — a second person agreed to particular words, and different words are a claim " +
-			"nobody has agreed to. Needs no approval of its own: this puts risk back on the table " +
-			"rather than taking it off.",
+		Summary: "Update a decision's justification",
+		Description: "Replaces the justification text with a new revision. Earlier revisions are " +
+			"kept and remain readable.\n\n" +
+			"**This withdraws any existing approval** and returns the decision to the review " +
+			"queue, marked as previously approved. Requires no approval of its own.\n\n" +
+			"The text is markdown and is validated before it is stored; a 422 names the line and " +
+			"the offending text.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusNoContent,
 	}, func(ctx context.Context, input *struct {
 		ID   int64 `path:"id"`
@@ -159,8 +166,10 @@ func registerTriage(api huma.API, in Ingest) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "withdraw-decision", Method: http.MethodDelete, Path: "/v1/decisions/{id}",
-		Summary:       "Take a claim back",
-		Description:   "Needs no approval. Putting risk back on the table never does.",
+		Summary: "Withdraw a triage decision",
+		Description: "Withdraws the decision so it no longer applies to any finding. The record " +
+			"is kept — a withdrawn decision reads as proposed, approved, then withdrawn. " +
+			"Requires no approval.",
 		Tags:          []string{"Triage"},
 		DefaultStatus: http.StatusNoContent,
 	}, func(ctx context.Context, input *struct {
@@ -178,9 +187,11 @@ func registerTriage(api huma.API, in Ingest) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "undo-batch", Method: http.MethodDelete, Path: "/v1/approval-batches/{batch}",
-		Summary: "Undo everything one agreement covered",
-		Description: "A reviewer may agree to a long selection in one action, so undoing has to be " +
-			"available at the same size. The claims stand; it is the agreement that is taken back.",
+		Summary: "Undo a bulk approval",
+		Description: "Withdraws every approval recorded under this batch name, returning those " +
+			"decisions to the review queue. The decisions themselves stand — only the approvals " +
+			"are undone. Returns how many were affected.\n\n" +
+			"Only decisions on products you may triage are touched.",
 		Tags: []string{"Triage"},
 	}, func(ctx context.Context, input *struct {
 		Batch string `path:"batch"`
@@ -208,9 +219,12 @@ func registerTriage(api huma.API, in Ingest) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "comment-on-decision", Method: http.MethodPost, Path: "/v1/decisions/{id}/comments",
-		Summary: "Say something about a decision",
-		Description: "A comment is not the reasoning and never disturbs an agreement. Annotating an " +
-			"approved decision months later is ordinary.",
+		Summary: "Add a comment to a decision",
+		Description: "Adds a markdown comment to a decision. Comments are separate from the " +
+			"justification and never affect an approval, so an approved decision can be annotated " +
+			"at any time.\n\n" +
+			"A comment may later be edited by its author only, and editing overwrites it rather " +
+			"than keeping revisions.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, input *struct {
 		ID   int64 `path:"id"`
@@ -244,11 +258,16 @@ func registerProposing(api huma.API, in Ingest) {
 	huma.Register(api, huma.Operation{
 		OperationID: "decide", Method: http.MethodPost,
 		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision",
-		Summary: "Decide about a finding",
-		Description: "One judgment about one issue in one component, at one place. It applies " +
-			"wherever the same code combination appears — including in later releases, which pick " +
-			"it up by looking it up rather than by copying it — and it stops applying when the " +
-			"code it was a claim about changes.",
+		Summary: "Record a triage decision for a finding",
+		Description: "Records how a finding was triaged: `affected`, `not-applicable`, `deferred` " +
+			"or `wont-fix`.\n\n" +
+			"`not-applicable` requires a `justification` from the standard VEX vocabulary. " +
+			"`deferred` requires `deferred_until` as a date.\n\n" +
+			"The decision applies to every build running the same component and consumer upstream " +
+			"versions, including future releases — it is matched by code, not copied between " +
+			"releases. It stops applying automatically when either upstream version changes.\n\n" +
+			"The response says whether a second person must approve it. Most outcomes require " +
+			"approval; a deferral shorter than the configured threshold does not.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
@@ -350,13 +369,12 @@ func registerElsewhere(api huma.API, in Ingest) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-same-issue-elsewhere", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/elsewhere",
-		Summary: "The same issue in other builds, where a decision here would not reach it",
-		Description: "A decision is a claim about a combination of code rather than about a " +
-			"release, so a build running the same versions picks it up by looking it up — nothing " +
-			"is copied and nobody is asked. What this lists is the remainder: builds where the " +
-			"versions differ, so the same reasoning has to be stated again or not at all. " +
-			"One entry per build rather than one answer for all of them, because a component may " +
-			"be used in a later release and not an earlier one.",
+		Summary: "List the same vulnerability in other builds",
+		Description: "Lists other builds of this product with the same vulnerability at the same " +
+			"place, **excluding** builds a decision made here would already cover.\n\n" +
+			"A decision automatically applies to any build running the same upstream versions. " +
+			"This returns the builds where versions differ, so a separate decision is needed — " +
+			"each with the version it has, so you can judge them one at a time.",
 		Tags: []string{"Triage"},
 	}, func(ctx context.Context, input *struct {
 		Product       string `path:"product"`

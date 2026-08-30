@@ -226,7 +226,7 @@ func registerVersion(api huma.API) {
 		OperationID: "get-version",
 		Method:      http.MethodGet,
 		Path:        "/v1/version",
-		Summary:     "Report the running build",
+		Summary:     "Get the server version",
 		Description: "Identifies the build that is answering, so an operator can tell which version they are looking at.",
 		Tags:        []string{"Meta"},
 	}, func(ctx context.Context, _ *struct{}) (*VersionOutput, error) {

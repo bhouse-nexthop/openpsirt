@@ -98,14 +98,25 @@ That is not hypothetical. A column named `rank` was accepted by three engines
 and refused outright by the fourth, where it had become a window function.
 
 So every identifier in the data definition is quoted. Two of the engines quote
-with backticks by default, so their connections are asked for standard quoting
-— which is additive rather than a mode change: backticks keep working, so
-anything generating them is unaffected, and string literals are untouched. It
-changes what a double quote means, not what a quote means.
+with backticks by default, so their connections are asked for standard quoting.
+Backticks keep working, so anything generating them is unaffected, and string
+literals are untouched — this changes what a double quote means, not what a
+quote means.
 
-There is a test that creates a table whose columns are named for reserved
-words, on all four engines. It fails if the setting is ever dropped, which was
-checked by dropping it.
+**It is appended to the mode already in force, never assigned**, and that
+distinction is the whole of it. Setting the mode replaces it, and what it
+replaces includes the strictness that makes an oversized value an error rather
+than a quiet truncation. The first version assigned, and a nine-character
+string stored in a four-character column came back four characters long, with
+no error, on these two engines and on neither of the others.
+
+Silent truncation is the worst shape a portability difference can take:
+nothing fails and the data is wrong. Two tests hold it — one that a value is
+never accepted and silently changed, one that reserved words still work as
+identifiers — and both were checked by reverting the fix and watching them
+fail. One engine does not constrain a text column's width at all, which is
+documented behavior and loses nothing, so what is asserted is that the data
+never changes rather than that the write is refused.
 
 ## Any number of replicas, coordinated only through the database
 

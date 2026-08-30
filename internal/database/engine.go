@@ -137,10 +137,15 @@ func driverDSN(engine Engine, u *url.URL, raw string) (string, error) {
 		// every identifier be quoted the same way everywhere, which makes the
 		// question stop arising.
 		//
-		// It is additive. Backticks keep working, so anything generating them
-		// is unaffected, and string literals are untouched — this changes what
-		// a double quote means, not what a quote means.
-		settings := "parseTime=true&loc=UTC&sql_mode=%27ANSI_QUOTES%27"
+		// **Appended, not assigned.** Setting the mode outright replaces it,
+		// and what it replaces includes the strictness that makes an oversized
+		// value an error rather than a silent truncation. Assigning it cost a
+		// nine-character string stored in a four-character column its last
+		// five characters, with no error, on both of these engines and on
+		// neither of the other two — which is the shape of portability trap
+		// that only shows up in production.
+		settings := "parseTime=true&loc=UTC&sql_mode=" +
+			url.QueryEscape("CONCAT(@@sql_mode,',ANSI_QUOTES')")
 		if query != "" {
 			query += "&" + settings
 		} else {

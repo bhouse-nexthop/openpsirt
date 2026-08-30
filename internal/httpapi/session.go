@@ -26,7 +26,7 @@ type SignOutOutput struct {
 func registerSession(api huma.API, in Ingest) {
 	huma.Register(api, huma.Operation{
 		OperationID: "sign-out", Method: http.MethodDelete, Path: "/v1/session",
-		Summary: "End this session",
+		Summary: "Sign out",
 		Description: "Ends the session the request arrived on, everywhere rather than in this " +
 			"browser alone — the session is stored, so it stops working whichever copy of the " +
 			"application answers next.",

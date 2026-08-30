@@ -147,6 +147,21 @@ the tracker and the pull request.
 
 **Comment density matches the surrounding code.** Explain why, not what.
 
+**API descriptions are reference documentation, not prose.** A summary is an
+imperative verb and the thing it acts on, in the words the domain actually uses
+— "Upload an SBOM", "List vulnerability findings", "Approve a triage decision".
+Not "Send what a build shipped", "What is open against a build", "Agree to a
+claim": somebody scanning thirty operations has to find theirs in a second, and
+paraphrase that avoids naming the thing reads as a riddle.
+
+A description says what the operation does, what it takes, what comes back, and
+what a caller must know that is not obvious — a 202 that returns before
+parsing, a field required only for one outcome, an approval that a later edit
+withdraws. **The reasoning belongs in `DECISIONS.md` and the design documents,
+not here.** Somebody reading the API reference is trying to make a request
+work, and an explanation of why the design is what it is stands between them
+and that.
+
 **American spelling, everywhere.** License, not license. Catalog, normalize,
 behavior, color, authorize. It applies to prose, comments and identifiers
 alike — a codebase that spells one word two ways makes both unsearchable, and
