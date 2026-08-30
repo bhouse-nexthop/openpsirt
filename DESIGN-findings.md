@@ -4,7 +4,7 @@ What a scan run found, and where.
 
 Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, ING-02, ING-21,
 ING-29, ING-30, ING-39, ING-40, STA-03, STA-04, STA-05, STA-08, STA-17,
-RNK-01 to RNK-06.
+RNK-01 to RNK-06, MDL-09, STA-14.
 
 ## A scanner reports a package; we work out the places
 
@@ -334,6 +334,43 @@ so a finding rated in words does not sort below everything rated at all.
 
 A group is one decision about one issue in one component, so it takes the
 urgency of the worst place it covers.
+
+## A finding carries what it takes to act on it
+
+There may be thousands of findings and very few people, so the difference
+between a finding that carries its own evidence and one that sends somebody to
+a search engine is the difference between a queue that gets worked and one that
+does not.
+
+One request returns everything held about an issue in a component: the
+write-up, the advisory, every reference the data carries, the score and the
+statement of what that score assumes, whether it is known to be exploited and
+how likely exploitation is, what kind of flaw it is, what upstream has done
+about it, and every place the component sits at here.
+
+**References list patches first.** Somebody deciding whether to backport rather
+than upgrade needs the change itself, and hunting for it among the write-ups is
+the step that does not happen with a thousand findings waiting. What is a patch
+is guessed from the shape of the address, erring toward saying less.
+
+**The weakness classification is kept** where the data carries it. It groups
+findings by the shape of the mistake rather than by the package it landed in —
+eleven use-after-frees in eleven libraries are one conversation, and eleven
+unrelated issues in one library are not. A report usually names the same
+weakness from several sources, so what is stored is deduplicated and ordered;
+otherwise a re-scan would rewrite the row having learned nothing.
+
+## Several disappearances at once are one fault
+
+A finding that closes with its component still present and unchanged is flagged
+on its own. Several of them in one scan additionally raise a scan-level
+warning, which says nothing the individual flags do not — only that the likely
+fault is one broken scan rather than a dozen independent oddities, so nobody
+spends the morning chasing them separately.
+
+A count rather than a proportion. On a large image a handful of genuine
+disappearances is ordinary and a handful of unexplained ones is not, and
+dividing by the size of the image would hide exactly that.
 
 ## Scanning is separate work from reading
 

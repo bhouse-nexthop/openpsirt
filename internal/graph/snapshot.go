@@ -213,3 +213,33 @@ func (s *Store) CurrentComponents(ctx context.Context, targetID int64) ([]Descri
 	}
 	return described, nil
 }
+
+// ComponentAt resolves a component by name within one build.
+//
+// By name, because that is what a findings list gives out and what somebody
+// composing a request has. Scoped to the build so the name means what it means
+// there: two products can ship different things under one name, and a lookup
+// across everything would answer with whichever was interned first.
+func (s *Store) ComponentAt(ctx context.Context, targetID int64, name string) (int64, error) {
+	var ids []int64
+	err := s.db.NewSelect().
+		TableExpr("graph_node AS n").
+		Join("JOIN component AS c ON c.id = n.component_id").
+		ColumnExpr("c.id").
+		Where("n.target_id = ?", targetID).
+		Where("n.closed_scan_id IS NULL").
+		Where("c.name = ?", name).
+		OrderExpr("c.id").
+		Scan(ctx, &ids)
+	if err != nil {
+		return 0, fmt.Errorf("look up component %q: %w", name, err)
+	}
+	if len(ids) == 0 {
+		return 0, fmt.Errorf("this build contains no component called %q", name)
+	}
+	// A build shipping the same name at two versions is unusual and possible.
+	// The lowest identifier is the one interned first, which is stable across
+	// requests — an arbitrary answer that changes between two identical
+	// requests would be worse than an arbitrary answer that does not.
+	return ids[0], nil
+}

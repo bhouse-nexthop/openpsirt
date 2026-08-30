@@ -218,6 +218,20 @@ Work that has to happen once, at the end, and would be wrong to do earlier.
 - **Start keeping schema and API compatibility** from that point (DAT-29,
   API-20). Until then a schema change is an edit and a database is recreated.
 
+## Decided, and waiting for the stage that carries it
+
+Recorded here so a decision that exists and is not implemented is a scheduled
+thing rather than a gap somebody rediscovers by auditing.
+
+| Decision | Waits for | Why not now |
+|---|---|---|
+| ACC-43, ACC-45 | Assignment, which does not exist | Both are about work assigned to somebody who has gone. Neither can be built before there is such a thing as assigned work, and assignment is an interface concern rather than a data one |
+| ACC-44 | Nothing — it is a statement | That we cannot detect somebody has left is recorded so nobody assumes a cleanup happens that never does |
+| MDL-12, MDL-13 | End-of-life dates | Whole feature, scheduled with lifecycle |
+| MDL-16 | The tree views | Interface |
+| TRI-04, TRI-09, TRI-19 | Export, the bulk list, and reporting | Each belongs to a stage of its own |
+| REL-08 | Seeding a new line from a prior release | Needs release management, which is not built. The pieces it rests on — matching by place, carrying reasoning rather than conclusions — are |
+
 ## Not planned yet
 
 | | |

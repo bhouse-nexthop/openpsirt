@@ -69,6 +69,14 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			-- where that shows.
 			"score_centi"     ` + t.ref + ` NULL,
 			"vector"          ` + t.free + ` NULL,
+			-- What kind of flaw this is, by the classification the data
+			-- carries. Comma-separated rather than a table of its own,
+			-- because nothing joins on it: it is read with the issue and shown
+			-- with it, and a table would buy a join for a value never queried
+			-- on its own. A report usually names the same weakness from
+			-- several sources, so what is stored is deduplicated and ordered
+			-- — otherwise a re-scan would rewrite the row for no change.
+			"weaknesses"      ` + t.free + ` NULL,
 			"first_seen_at" ` + t.timestamp + ` NOT NULL,
 			CONSTRAINT "vulnerability_identity_unique" UNIQUE ("identity")
 		)` + t.suffix,

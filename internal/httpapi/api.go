@@ -147,6 +147,7 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	registerReceipts(api, in)
 	registerSession(api, in)
 	registerTokens(api, in)
+	registerFindingDetail(api, in)
 	registerTriage(api, in)
 	registerTriageReading(api, in)
 	registerProposing(api, in)

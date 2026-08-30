@@ -8,6 +8,7 @@ import (
 	"io"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -100,6 +101,13 @@ type grypeDocument struct {
 					BaseScore float64 `json:"baseScore"`
 				} `json:"metrics"`
 			} `json:"cvss"`
+			// What kind of weakness this is. Several entries usually say the
+			// same thing from different sources, and the interesting part is
+			// the identifier rather than who said it.
+			CWEs []struct {
+				CWE  string `json:"cwe"`
+				Type string `json:"type"`
+			} `json:"cwes"`
 			Fix struct {
 				State     string   `json:"state"`
 				Versions  []string `json:"versions"`
@@ -174,6 +182,7 @@ func ParseGrype(r io.Reader) (Result, error) {
 				Likelihood:  firstEPSS(match.Vulnerability.EPSS),
 				Score:       score,
 				Vector:      vector,
+				Weaknesses:  weaknesses(match.Vulnerability.CWEs),
 			},
 			Component: graph.Described{
 				Name: match.Artifact.Name, Version: match.Artifact.Version,
@@ -185,6 +194,32 @@ func ParseGrype(r io.Reader) (Result, error) {
 		})
 	}
 	return result, nil
+}
+
+// weaknesses reads what kind of flaw this is, deduplicated and in a stable
+// order.
+//
+// A report usually names the same weakness two or three times from different
+// sources, and which source said it is not something anybody triaging acts on
+// — what they act on is that this is a use-after-free and so are eleven other
+// findings. Ordering it makes the stored value the same for the same report,
+// which is what keeps a re-scan from writing.
+func weaknesses(cwes []struct {
+	CWE  string `json:"cwe"`
+	Type string `json:"type"`
+}) []string {
+	seen := map[string]bool{}
+	var named []string
+	for _, entry := range cwes {
+		name := strings.ToUpper(strings.TrimSpace(entry.CWE))
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		named = append(named, name)
+	}
+	sort.Strings(named)
+	return named
 }
 
 // databaseVersion says which vulnerability data a run matched against.

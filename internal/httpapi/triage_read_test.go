@@ -71,6 +71,77 @@ func (r *reach) scanned(t *testing.T) (place string) {
 	return finding.PlaceIdentity("libnl-3-200", "")
 }
 
+// scannedWithEvidence is a build whose one finding carries everything a report
+// can carry, so a test can ask whether any of it survives the trip.
+func (r *reach) scannedWithEvidence(t *testing.T) {
+	t.Helper()
+	ctx := t.Context()
+
+	names := catalog.NewStore(r.db.DB)
+	located, err := names.Locate(ctx, "mine", "master", "broadcom")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := names.TargetFor(ctx, located.StreamID, located.VariantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scan, outcome, err := ingest.NewStore(r.db.DB).Record(ctx, ingest.Arriving{
+		TargetID: target.ID, ContentHash: "evidence-test", BuiltAt: time.Now().UTC(),
+		ParserVersion: "test",
+	})
+	if err != nil || outcome != ingest.Accept {
+		t.Fatalf("record scan: %v %v", outcome, err)
+	}
+
+	product := graph.Described{Purl: "pkg:deb/debian/mine@1.0", Name: "mine", Version: "1.0"}
+	consumer := graph.Described{
+		Purl: "pkg:deb/debian/libswsscommon@1.0.0", Name: "libswsscommon", Version: "1.0.0",
+	}
+	library := graph.Described{
+		Purl: "pkg:deb/debian/libnl-3-200@3.7.0", Name: "libnl-3-200", Version: "3.7.0",
+	}
+	if _, err := graph.NewStore(r.db.DB).Apply(ctx, target.ID, scan.ID, graph.Snapshot{
+		Root:       product,
+		Components: []graph.Described{consumer, library},
+		Dependencies: []graph.Dependency{
+			{Parent: product, Child: consumer}, {Parent: consumer, Child: library},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	findings := finding.NewStore(r.db.DB)
+	run, err := findings.Begin(ctx, finding.Run{
+		TargetID: target.ID, Scanner: "grype", ScannerVersion: "0.112.0",
+		DatabaseVersion: "2026-08-28", RanHere: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := findings.Apply(ctx, target.ID, run.ID, []finding.Reported{{
+		Issue: finding.Named{
+			Identifier:  "CVE-2026-9999",
+			Severity:    "high",
+			Description: "A crafted attribute length causes a read past the end of the buffer.",
+			Advisory:    "https://nvd.nist.gov/vuln/detail/CVE-2026-9999",
+			References: []finding.Reference{
+				{URL: "https://github.com/thom311/libnl/commit/abc123", Kind: finding.Patch},
+				{URL: "https://example.org/write-up", Kind: finding.AdvisoryRef},
+			},
+			Exploited:  true,
+			Likelihood: 0.86,
+			Score:      8.1,
+			Vector:     "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:H",
+			Weaknesses: []string{"CWE-125"},
+		},
+		Component: library,
+		FixState:  finding.FixedUpstream, FixedIn: "3.9.0",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // decided proposes a claim through the API and returns its identifier.
 func (r *reach) decided(t *testing.T, place string) int64 {
 	t.Helper()
@@ -380,6 +451,76 @@ func TestMarkupComesBackSanitizedHoweverItWasStored(t *testing.T) {
 			if strings.Contains(rendered.ReasoningHTML, forbidden) {
 				t.Errorf("markup carries %q: %s", forbidden, rendered.ReasoningHTML)
 			}
+		}
+	})
+}
+
+func TestAFindingCarriesEverythingNeededToActOnIt(t *testing.T) {
+	// The measure this is built against: nothing here should send somebody to
+	// a search engine. There may be thousands of findings and very few people,
+	// so a finding that carries its own evidence and one that does not are the
+	// difference between a queue that gets worked and one that does not.
+	eachReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+
+		var detail struct {
+			Vulnerability string   `json:"vulnerability"`
+			Severity      string   `json:"severity"`
+			Score         float64  `json:"score"`
+			Vector        string   `json:"vector"`
+			Exploited     bool     `json:"exploited"`
+			Likelihood    float64  `json:"likelihood"`
+			Weaknesses    []string `json:"weaknesses"`
+			Description   string   `json:"description"`
+			Advisory      string   `json:"advisory"`
+			References    []struct {
+				URL  string `json:"url"`
+				Kind string `json:"kind"`
+			} `json:"references"`
+			Component string `json:"component"`
+			FixState  string `json:"fix_state"`
+			FixedIn   string `json:"fixed_in"`
+			Places    []struct {
+				Place    string `json:"place"`
+				Consumer string `json:"consumer"`
+			} `json:"places"`
+		}
+		read(t, r, "reader", "/v1/products/mine/streams/master/variants/broadcom"+
+			"/findings/CVE-2026-9999/components/libnl-3-200", &detail)
+
+		for what, got := range map[string]string{
+			"the issue":     detail.Vulnerability,
+			"the component": detail.Component,
+			"the write-up":  detail.Description,
+			"the advisory":  detail.Advisory,
+			"the vector":    detail.Vector,
+			"the fix state": detail.FixState,
+			"the fix":       detail.FixedIn,
+		} {
+			if got == "" {
+				t.Errorf("%s is missing, so somebody has to go and look it up", what)
+			}
+		}
+		if detail.Score == 0 || detail.Likelihood == 0 || !detail.Exploited {
+			t.Errorf("what makes this urgent is missing: score=%v likelihood=%v exploited=%v",
+				detail.Score, detail.Likelihood, detail.Exploited)
+		}
+		if len(detail.Weaknesses) == 0 {
+			t.Error("what kind of flaw this is was not kept")
+		}
+		if len(detail.Places) == 0 || detail.Places[0].Place == "" {
+			t.Fatalf("the answer does not say where it sits: %+v", detail.Places)
+		}
+
+		// The patch comes first. Somebody deciding whether to backport rather
+		// than upgrade needs the change itself, and hunting for it among the
+		// write-ups is the step that does not happen with a thousand waiting.
+		if len(detail.References) < 2 {
+			t.Fatalf("the references were not kept: %+v", detail.References)
+		}
+		if detail.References[0].Kind != "patch" {
+			t.Errorf("the first reference is %q, not the change that fixes it",
+				detail.References[0].Kind)
 		}
 	})
 }

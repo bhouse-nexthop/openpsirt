@@ -3,11 +3,13 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 )
 
 // FindingBody is one issue in one component, with the places it occupies.
@@ -103,4 +105,122 @@ func registerFindings(api huma.API, in Ingest) {
 		}
 		return out, nil
 	})
+}
+
+// ReferenceBody is somewhere an issue is written up, or fixed.
+type ReferenceBody struct {
+	URL  string `json:"url"`
+	Kind string `json:"kind" enum:"patch,advisory,report,other" doc:"What it appears to be. A patch is the change itself"`
+}
+
+// SittingBody is one place a component occupies in this build.
+type SittingBody struct {
+	Place      string `json:"place" doc:"Name this when recording a decision about it"`
+	Consumer   string `json:"consumer,omitempty" doc:"What pulls the component in here. Absent under the product itself"`
+	Suppressed bool   `json:"suppressed,omitempty" doc:"The build has already argued this place away"`
+}
+
+// EvidenceBody is everything held about one issue in one component.
+type EvidenceBody struct {
+	Vulnerability string   `json:"vulnerability"`
+	Aliases       []string `json:"aliases,omitempty" doc:"Other names the same issue is known by"`
+	Severity      string   `json:"severity,omitempty" doc:"As the data rates it. A word"`
+	Score         float64  `json:"score,omitempty" doc:"The same judgment as a number, where one is published"`
+	Vector        string   `json:"vector,omitempty" doc:"What the score assumes — reachability, privilege, interaction"`
+	Exploited     bool     `json:"exploited,omitempty" doc:"Somebody is known to be exploiting this"`
+	Likelihood    float64  `json:"likelihood,omitempty" doc:"Published probability of exploitation, 0 to 1"`
+	Weaknesses    []string `json:"weaknesses,omitempty" doc:"What kind of flaw this is, as CWE identifiers"`
+	Description   string   `json:"description,omitempty"`
+	Advisory      string   `json:"advisory,omitempty" doc:"Where the issue is written up"`
+	// References carries patches first, because for somebody deciding whether
+	// to backport rather than upgrade, the change itself is the answer.
+	References []ReferenceBody `json:"references,omitempty"`
+
+	Component string `json:"component"`
+	Version   string `json:"version"`
+	Upstream  string `json:"upstream,omitempty" doc:"What a fork was made from, where it is one"`
+	FixState  string `json:"fix_state,omitempty" enum:"fixed,none,wont-fix"`
+	FixedIn   string `json:"fixed_in,omitempty" doc:"The version that resolves it"`
+	FixedAt   string `json:"fixed_at,omitempty" doc:"When that version became available"`
+
+	Places []SittingBody `json:"places"`
+}
+
+func registerFindingDetail(api huma.API, in Ingest) {
+	huma.Register(api, huma.Operation{
+		OperationID: "get-finding", Method: http.MethodGet,
+		Path: "/v1/products/{product}/streams/{stream}/variants/{variant}" +
+			"/findings/{vulnerability}/components/{component}",
+		Summary: "Get everything known about one finding",
+		Description: "Returns the full record for one issue in one component of a build: the " +
+			"description, the advisory, every reference the data carries with patches listed " +
+			"first, the score and what it assumes, whether it is known to be exploited and how " +
+			"likely exploitation is, the weakness classification, what upstream has done about " +
+			"it, and every place the component sits at here.\n\n" +
+			"This is what a triage decision is made from, so it is gathered into one request. " +
+			"Each entry in `places` carries the `place` identity to name when recording a " +
+			"decision about it.",
+		Tags: []string{"Findings"},
+	}, func(ctx context.Context, input *struct {
+		Product       string `path:"product"`
+		Stream        string `path:"stream"`
+		Variant       string `path:"variant"`
+		Vulnerability string `path:"vulnerability" doc:"The issue, by any name it is known under"`
+		Component     string `path:"component" doc:"The component's name, as the findings list gives it"`
+	}) (*struct{ Body EvidenceBody }, error) {
+		subject, err := reading(ctx)
+		if err != nil {
+			return nil, err
+		}
+		names := catalog.NewStore(in.DB.DB)
+		named, err := names.LocateVisible(ctx, subject, input.Product, input.Stream, input.Variant)
+		if err != nil {
+			return nil, noSuchProduct()
+		}
+		target, err := names.ExistingTarget(ctx, named.StreamID, named.VariantID)
+		if err != nil {
+			return nil, nothingScannedThere()
+		}
+
+		issue, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, input.Vulnerability)
+		if err != nil {
+			return nil, noSuchIssue()
+		}
+		component, err := graph.NewStore(in.DB.DB).ComponentAt(ctx, target.ID, input.Component)
+		if err != nil {
+			return nil, noSuchFinding()
+		}
+
+		evidence, err := finding.NewStore(in.DB.DB).Detail(ctx, subject, target.ID, issue, component)
+		if err != nil {
+			return nil, noSuchFinding()
+		}
+		return &struct{ Body EvidenceBody }{Body: evidenceBody(*evidence)}, nil
+	})
+}
+
+func evidenceBody(e finding.Evidence) EvidenceBody {
+	body := EvidenceBody{
+		Vulnerability: e.Vulnerability, Aliases: e.Aliases, Severity: e.Severity,
+		Score: float64(e.ScoreCenti) / 100, Vector: e.Vector,
+		Exploited: e.Exploited, Likelihood: float64(e.LikelihoodPPM) / 1_000_000,
+		Weaknesses: e.Weaknesses, Description: e.Description, Advisory: e.Advisory,
+		Component: e.Component, Version: e.Version, Upstream: e.Upstream,
+		FixState: string(e.FixState), FixedIn: e.FixedIn,
+		Places: make([]SittingBody, 0, len(e.Places)),
+	}
+	if e.FixedAt != nil {
+		body.FixedAt = e.FixedAt.Format(time.DateOnly)
+	}
+	for _, reference := range e.References {
+		body.References = append(body.References, ReferenceBody{
+			URL: reference.URL, Kind: string(reference.Kind),
+		})
+	}
+	for _, place := range e.Places {
+		body.Places = append(body.Places, SittingBody{
+			Place: place.PlaceIdentity, Consumer: place.Consumer, Suppressed: place.Suppressed,
+		})
+	}
+	return body
 }

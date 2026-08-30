@@ -3,6 +3,8 @@ package finding
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/uptrace/bun"
 
@@ -296,4 +298,161 @@ func componentsNamed(ctx context.Context, db *bun.DB, ids []int64) (map[int64]gr
 		held[component.ID] = component
 	}
 	return held, nil
+}
+
+// Evidence is everything held about one issue in one component here.
+//
+// Assembled for somebody who has to decide about it and has a thousand more
+// waiting. The measure it is built against: nothing here should send them to a
+// search engine. If we hold the write-up, the score, the patch, or the version
+// that fixes it, it is in this answer.
+type Evidence struct {
+	Vulnerability string
+	Aliases       []string
+	Severity      string
+	// ScoreCenti and Vector are the severity as a number and the statement of
+	// what that number assumes. Network-reachable and unauthenticated is a
+	// different judgment from local-and-privileged at the same score.
+	ScoreCenti int
+	Vector     string
+	// Exploited and LikelihoodPPM are what separate the handful that matter
+	// from the thousands that can wait.
+	Exploited     bool
+	LikelihoodPPM int
+	Weaknesses    []string
+	Description   string
+	Advisory      string
+	// References are everything the data points at, with patches told apart —
+	// somebody deciding whether to backport rather than upgrade needs the
+	// change itself, and hunting for it by hand is the step that does not
+	// happen when a thousand findings are waiting.
+	References []Reference
+
+	Component string
+	Version   string
+	Upstream  string
+	// FixState, FixedIn and FixedAt are what upstream has done about it, which
+	// is the difference between "decide whether this matters" and "take the
+	// next version".
+	FixState FixState
+	FixedIn  string
+	FixedAt  *time.Time
+	// Places is where it sits here — the consumer that pulls the component in,
+	// and whether the build has already argued that place away.
+	Places []Sitting
+}
+
+// Sitting is one place a component occupies, as a finding presents it.
+type Sitting struct {
+	// PlaceIdentity is what a decision is made against, and what a request
+	// names when making one.
+	PlaceIdentity string
+	Consumer      string
+	Suppressed    bool
+	Urgency       int64
+}
+
+// Detail reads everything held about one issue in one component of a build.
+func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vulnerabilityID,
+	componentID int64) (*Evidence, error) {
+
+	productID, err := productOf(ctx, s.db, targetID)
+	if err != nil {
+		return nil, err
+	}
+	visible := visibleTo(subject, productID)
+	if !subject.Sees(productID) || len(visible) == 0 {
+		return nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
+	}
+
+	var rows []struct {
+		PlaceIdentity string     `bun:"place_identity"`
+		Consumer      string     `bun:"consumer"`
+		Suppressed    bool       `bun:"suppressed"`
+		Urgency       int64      `bun:"urgency"`
+		FixState      string     `bun:"fix_state"`
+		FixedIn       string     `bun:"fixed_in"`
+		FixedAt       *time.Time `bun:"fixed_at"`
+	}
+	err = s.db.NewSelect().
+		TableExpr("finding AS f").
+		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
+		ColumnExpr("f.place_identity AS place_identity").
+		ColumnExpr("COALESCE(uc.name, '') AS consumer").
+		ColumnExpr("CASE WHEN f.suppressed_by IS NULL THEN ? ELSE ? END AS suppressed", false, true).
+		ColumnExpr("f.urgency AS urgency").
+		ColumnExpr("f.fix_state AS fix_state").
+		ColumnExpr("f.fixed_in AS fixed_in").
+		ColumnExpr("f.fixed_at AS fixed_at").
+		Where("f.target_id = ?", targetID).
+		Where("f.vulnerability_id = ?", vulnerabilityID).
+		Where("f.component_id = ?", componentID).
+		Where("f.closed_run_id IS NULL").
+		Where("f.visibility IN (?)", bun.List(visible)).
+		OrderExpr("f.urgency DESC, consumer").
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("read where this sits: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("no open finding is recorded there")
+	}
+
+	var issue Vulnerability
+	if err := s.db.NewSelect().Model(&issue).Where("id = ?", vulnerabilityID).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read what this issue is: %w", err)
+	}
+	var component graph.Component
+	if err := s.db.NewSelect().Model(&component).Where("id = ?", componentID).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read what this component is: %w", err)
+	}
+
+	var aliases []Alias
+	if err := s.db.NewSelect().Model(&aliases).
+		Where("vulnerability_id = ?", vulnerabilityID).
+		Order("identifier").Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read what else this issue is called: %w", err)
+	}
+	var references []Reference
+	if err := s.db.NewSelect().Model(&references).
+		Where("vulnerability_id = ?", vulnerabilityID).
+		// Patches first: for somebody deciding whether to backport, the change
+		// itself is the answer and everything else is background.
+		OrderExpr("CASE WHEN kind = ? THEN 0 ELSE 1 END, url", Patch).
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read where this is written up: %w", err)
+	}
+
+	evidence := &Evidence{
+		Vulnerability: issue.Identifier, Severity: issue.Severity,
+		Vector: issue.Vector, Exploited: issue.Exploited,
+		Description: issue.Description, Advisory: issue.Advisory,
+		References: references,
+		Component:  component.Name, Version: component.Version,
+		FixState: FixState(rows[0].FixState), FixedIn: rows[0].FixedIn, FixedAt: rows[0].FixedAt,
+	}
+	if issue.ScoreCenti != nil {
+		evidence.ScoreCenti = *issue.ScoreCenti
+	}
+	if issue.LikelihoodPPM != nil {
+		evidence.LikelihoodPPM = *issue.LikelihoodPPM
+	}
+	if issue.Weaknesses != "" {
+		evidence.Weaknesses = strings.Split(issue.Weaknesses, ",")
+	}
+	if component.UpstreamVersion != "" {
+		evidence.Upstream = component.UpstreamName + " " + component.UpstreamVersion
+	}
+	for _, alias := range aliases {
+		if alias.Identifier != issue.Identifier {
+			evidence.Aliases = append(evidence.Aliases, alias.Identifier)
+		}
+	}
+	for _, row := range rows {
+		evidence.Places = append(evidence.Places, Sitting{
+			PlaceIdentity: row.PlaceIdentity, Consumer: row.Consumer,
+			Suppressed: row.Suppressed, Urgency: row.Urgency,
+		})
+	}
+	return evidence, nil
 }
