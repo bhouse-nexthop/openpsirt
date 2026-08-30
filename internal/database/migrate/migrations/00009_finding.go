@@ -186,6 +186,21 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			-- What is true of a finding now, alongside when it became true.
 			-- A finding open for years outlives whatever record of the change
 			-- was kept elsewhere, so it carries its own.
+			-- How urgent this is, as one number that sorts. Written when a scan
+			-- is applied rather than worked out while reading: sorting tens of
+			-- thousands of rows has to hit an index, and a number computed on
+			-- read cannot be one.
+			--
+			-- What it was made of is kept beside it, so a position can be
+			-- explained. Reading the signals back out of the packed number
+			-- would work and would break silently the first time the weighting
+			-- changed.
+			-- Named urgency rather than rank because rank is a reserved word
+			-- on one of the four engines, which accepted it everywhere else
+			-- and refused the table outright there.
+			urgency           ` + t.ref + ` NOT NULL,
+			urgency_exploited ` + t.boolean + ` NOT NULL,
+			urgency_shipped   ` + t.boolean + ` NOT NULL,
 			last_changed_at  ` + t.timestamp + ` NOT NULL,
 			opened_run_id    ` + t.ref + ` NOT NULL,
 			closed_run_id    ` + t.refNull + ` NULL,

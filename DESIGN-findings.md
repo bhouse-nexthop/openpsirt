@@ -248,6 +248,50 @@ Known-exploited is the exception, and moves forward only. It is a claim about
 the world rather than a description of an issue: a later report not mentioning
 it is a gap in that report, not the exploitation having stopped.
 
+## What somebody with an hour sees first
+
+A findings list has to open on what matters. Ordering by how many places
+something occupies puts whatever is most widespread at the top, which on a real
+image is the kernel — everywhere, and not therefore the thing to look at first.
+
+So each finding carries an urgency, worked out when a scan is applied and read
+back as it was. It is one number because sorting tens of thousands of rows has
+to hit an index, and a number computed while reading cannot be one.
+
+Four signals, in this order:
+
+| | |
+|---|---|
+| **Known to be exploited** | The difference between a risk and an incident |
+| **Reaches customers** | A critical in something only the build system runs matters less than a medium in what people install |
+| **Likelihood of exploitation** | Whether it is going to happen |
+| **Severity** | How bad it would be if it did |
+
+The number is **packed rather than weighted**: each signal owns a range of
+digits, so a signal never trades against a lower one. That is a first cut and
+the reason is explainability — somebody has to read a position and see why, and
+"it scored 0.4 higher on a weighted sum of four things" is not something anyone
+trusts or argues with. Packing gives a rule statable in a sentence.
+
+The trade is that a small difference in a higher signal beats any difference in
+a lower one. Clearly right for exploitation, arguably strong for where
+something ships, and exactly the judgment to make against a real queue rather
+than in the abstract — which is why it is one function.
+
+A signal reported out of range is clamped. A source sending something
+impossible would otherwise carry into the band above and rank as though it were
+being exploited, which is the one thing this must never invent.
+
+**Why something ranks where it does travels with it.** A ranking nobody can
+explain is one people stop trusting, and then they sort by something else and
+lose the point of the order entirely.
+
+Where a report rates an issue only in words, the word stands in for a number,
+so a finding rated in words does not sort below everything rated at all.
+
+A group is one decision about one issue in one component, so it takes the
+urgency of the worst place it covers.
+
 ## Scanning is separate work from reading
 
 An inventory is read once, when it arrives. It is scanned again and again, as

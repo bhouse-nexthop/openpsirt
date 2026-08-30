@@ -101,6 +101,12 @@ type Finding struct {
 	// that simply stopped appearing is indistinguishable from a scanner fault,
 	// and that is the bucket nothing is allowed to explain away.
 	SuppressedBy *int64 `bun:"suppressed_by"`
+	// Rank is how urgent this is, as one sortable number, and the two flags
+	// are what it was made of that is not already on the row. The rest — the
+	// likelihood and the score — belong to the issue and are read from there.
+	Urgency       int64 `bun:"urgency,notnull"`
+	RankExploited bool  `bun:"urgency_exploited,notnull"`
+	RankShipped   bool  `bun:"urgency_shipped,notnull"`
 	// LastChangedAt is when anything about this finding last moved — a fix
 	// appearing, or the build answering it. A finding open for years outlives
 	// any record of the change kept elsewhere, so it carries its own.

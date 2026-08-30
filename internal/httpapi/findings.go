@@ -23,6 +23,10 @@ type FindingBody struct {
 	// how many of those the build has already argued about.
 	Places   int `json:"places" doc:"How many places this component sits at here"`
 	Answered int `json:"answered,omitempty" doc:"How many of those the build has already argued do not apply"`
+	// Exploited is why something is at the top when it is. A position nobody
+	// can explain is one people stop trusting, and then they sort by something
+	// else and lose the point of the order entirely.
+	Exploited bool `json:"exploited,omitempty" doc:"Somebody is known to be exploiting this"`
 }
 
 // FindingsOutput is a page of what is open.
@@ -92,6 +96,7 @@ func registerFindings(api huma.API, in Ingest) {
 				Component: group.Component, Version: group.Version, Upstream: group.Upstream,
 				FixState: string(group.FixState), FixedIn: group.FixedIn,
 				Places: group.Places, Answered: group.Answered,
+				Exploited: group.Exploited,
 			})
 		}
 		return out, nil

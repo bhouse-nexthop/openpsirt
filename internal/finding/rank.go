@@ -1,0 +1,132 @@
+package finding
+
+// Rank is how urgent a finding is, as one number that sorts.
+//
+// One number because sorting tens of thousands of rows has to hit an index,
+// and a rank computed while reading cannot be indexed. It is written when a
+// scan is applied and read back as it was.
+//
+// The number is **packed rather than weighted**: each signal owns a range of
+// digits, so a signal never trades against a lower one. That is a deliberate
+// first cut, and the reason is explainability — somebody has to be able to
+// read a position and see why, and "it scored 0.4 higher on a weighted sum of
+// four things" is not something anybody trusts or argues with. Packing gives a
+// rule that can be stated in a sentence: exploited first, then what reaches
+// customers, then how likely, then how bad.
+//
+// The trade is that a small difference in a higher signal always beats any
+// difference in a lower one. That is clearly right for exploitation and
+// arguably strong for where something ships, and it is the kind of judgment
+// that should be made against a real queue rather than in the abstract — which
+// is why the weighting lives in this one function.
+type Rank int64
+
+// The place value each signal owns.
+//
+// Chosen so the ranges cannot overlap: a likelihood is at most a million
+// parts, and a score at most a thousand hundredths, so neither can carry into
+// the band above it.
+const (
+	exploitedBand  = 1_000_000_000_000
+	shippedBand    = 100_000_000_000
+	likelihoodStep = 10_000
+	maxLikelihood  = 1_000_000
+	maxScore       = 1_000
+)
+
+// Ranked is what a rank was made of, so a position can be explained.
+//
+// Kept alongside the number rather than derived from it. Reading the digits
+// back out would work and would be exactly the sort of cleverness that breaks
+// silently the first time the weighting changes.
+type Ranked struct {
+	// Exploited says somebody is known to be using it. It outranks everything
+	// else, because it is the difference between a risk and an incident.
+	Exploited bool
+	// Shipped says this reaches customers. A critical in something only the
+	// build system runs matters less than a medium in what people install.
+	Shipped bool
+	// LikelihoodPPM is the published estimate that it will be exploited, in
+	// parts per million.
+	LikelihoodPPM int
+	// ScoreCenti is the severity in hundredths.
+	ScoreCenti int
+}
+
+// Rank packs the signals into one sortable number, highest first.
+func (r Ranked) Rank() Rank {
+	rank := int64(0)
+	if r.Exploited {
+		rank += exploitedBand
+	}
+	if r.Shipped {
+		rank += shippedBand
+	}
+	rank += int64(bounded(r.LikelihoodPPM, maxLikelihood)) * likelihoodStep
+	rank += int64(bounded(r.ScoreCenti, maxScore))
+	return Rank(rank)
+}
+
+// Because says why something ranks where it does, in the order the signals
+// were applied.
+//
+// A ranking nobody can explain is one people stop trusting and then work
+// around, usually by sorting on something else and losing the point entirely.
+func (r Ranked) Because() []string {
+	var reasons []string
+	if r.Exploited {
+		reasons = append(reasons, "known to be exploited")
+	}
+	if r.Shipped {
+		reasons = append(reasons, "ships to customers")
+	} else {
+		reasons = append(reasons, "does not reach customers")
+	}
+	if r.LikelihoodPPM > 0 {
+		reasons = append(reasons, "estimated likelihood of exploitation")
+	}
+	if r.ScoreCenti > 0 {
+		reasons = append(reasons, "severity")
+	}
+	return reasons
+}
+
+// bounded keeps a signal inside the range its place value allows.
+//
+// A source that reports something out of range would otherwise carry into the
+// band above it and rank as though it were exploited, which is the one thing
+// this must never invent.
+func bounded(value, limit int) int {
+	switch {
+	case value < 0:
+		return 0
+	case value > limit:
+		return limit
+	default:
+		return value
+	}
+}
+
+// SeverityScore turns a severity word into a score, for the reports that give
+// a word and no number.
+//
+// Most findings carry a number and this is what stands in for the rest, so
+// that a finding rated only in words does not sort below everything rated at
+// all. The values are the midpoints of the bands the scoring standard defines,
+// which is the least arbitrary reading available.
+func SeverityScore(word string) int {
+	switch word {
+	case "critical":
+		return 950
+	case "high":
+		return 800
+	case "medium":
+		return 550
+	case "low":
+		return 300
+	case "negligible":
+		return 100
+	default:
+		return 0
+	}
+}

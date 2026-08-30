@@ -131,6 +131,12 @@ type Group struct {
 	Places int
 	// Answered counts the places the build has already argued about.
 	Answered int
+	// Urgency is how far up the list this belongs, and Exploited says whether
+	// it is there because somebody is using it. The flag is carried rather
+	// than left to be inferred from the number: a position nobody can explain
+	// is one people stop trusting and then work around.
+	Urgency   int64
+	Exploited bool
 }
 
 // Groups returns what is open against a target, as the things somebody decides
@@ -160,6 +166,8 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		ComponentID     int64  `bun:"component_id"`
 		Places          int    `bun:"places"`
 		Answered        int    `bun:"answered"`
+		Urgency         int64  `bun:"urgency"`
+		Exploited       bool   `bun:"exploited"`
 		FixState        string `bun:"fix_state"`
 		FixedIn         string `bun:"fixed_in"`
 	}
@@ -168,6 +176,14 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("f.component_id AS component_id").
 		ColumnExpr("COUNT(*) AS places").
+		// The most urgent place this issue sits at. A group is one decision
+		// about one issue in one component, so what should decide where that
+		// decision appears is the worst of what it covers.
+		ColumnExpr("MAX(f.urgency) AS urgency").
+		// Folded in Go from the same maximum rather than aggregated: no
+		// portable spelling reduces a boolean across rows, and one engine
+		// rejects the obvious one outright.
+		ColumnExpr("MAX(CASE WHEN f.urgency_exploited THEN 1 ELSE 0 END) AS exploited").
 		ColumnExpr("SUM(CASE WHEN f.suppressed_by IS NULL THEN 0 ELSE 1 END) AS answered").
 		ColumnExpr("MIN(f.fix_state) AS fix_state").
 		ColumnExpr("MIN(f.fixed_in) AS fixed_in").
@@ -178,7 +194,12 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		// Most places first, because that is the most decisions one judgment
 		// covers. Ranking by how much an issue matters needs scores that are
 		// not gathered yet.
-		OrderExpr("places DESC, f.vulnerability_id, f.component_id").
+		// Ordered by urgency rather than by how widespread something is.
+		// Sorting by place count puts whatever ships in the most places at the
+		// top, which on a real image is the kernel — everywhere, and not
+		// therefore the thing to look at first. What somebody with an hour
+		// needs at the top is what is being exploited.
+		OrderExpr("urgency DESC, places DESC, f.vulnerability_id, f.component_id").
 		Limit(limit).Offset(offset).
 		Scan(ctx, &rows)
 	if err != nil {
@@ -202,6 +223,7 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 	for _, row := range rows {
 		group := Group{
 			Places: row.Places, Answered: row.Answered,
+			Urgency: row.Urgency, Exploited: row.Exploited,
 			FixState: FixState(row.FixState), FixedIn: row.FixedIn,
 		}
 		var issue Vulnerability

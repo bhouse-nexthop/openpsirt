@@ -48,6 +48,15 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 			return err
 		}
 
+		// Whether this build reaches customers, read once. A critical in
+		// something only the build system runs matters less than a medium in
+		// what people install, and that is a property of the build rather than
+		// of any finding in it.
+		shipped, err := shippedToCustomers(ctx, tx, targetID)
+		if err != nil {
+			return err
+		}
+
 		present, err := openComponents(ctx, tx, targetID)
 		if err != nil {
 			return err
@@ -104,6 +113,15 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 					SuppressedBy: covering,
 					OpenedRunID:  runID,
 				}
+				ranked := Ranked{
+					Exploited: r.Issue.Exploited, Shipped: shipped,
+					LikelihoodPPM: int(r.Issue.Likelihood * 1_000_000),
+					ScoreCenti:    scoreOf(r.Issue),
+				}
+				entry := wanted[key{vulnerabilityID, at}]
+				entry.Urgency = int64(ranked.Rank())
+				entry.RankExploited, entry.RankShipped = ranked.Exploited, ranked.Shipped
+				wanted[key{vulnerabilityID, at}] = entry
 			}
 		}
 
@@ -204,6 +222,7 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 func same(held, found Finding) bool {
 	return held.FixState == found.FixState &&
 		held.FixedIn == found.FixedIn &&
+		held.Urgency == found.Urgency &&
 		sameDate(held.FixedAt, found.FixedAt) &&
 		equalRef(held.SuppressedBy, found.SuppressedBy)
 }
@@ -476,4 +495,35 @@ func sameDate(a, b *time.Time) bool {
 	default:
 		return a.Equal(*b)
 	}
+}
+
+// shippedToCustomers reports whether the build a scan is for reaches
+// customers.
+//
+// Read from the variant, because that is where it is recorded: what a product
+// is built as is what decides whether anybody outside runs it.
+func shippedToCustomers(ctx context.Context, tx bun.Tx, targetID int64) (bool, error) {
+	var shipped bool
+	err := tx.NewSelect().
+		TableExpr("target AS t").
+		Join("JOIN variant AS v ON v.id = t.variant_id").
+		Column("v.customer_facing").
+		Where("t.id = ?", targetID).
+		Scan(ctx, &shipped)
+	if err != nil {
+		return false, fmt.Errorf("read whether this build reaches customers: %w", err)
+	}
+	return shipped, nil
+}
+
+// scoreOf reads the severity of an issue as a number.
+//
+// The number where a report gives one, and the word standing in where it does
+// not — so a finding rated only in words does not sort below everything rated
+// at all.
+func scoreOf(issue Named) int {
+	if issue.Score > 0 {
+		return int(issue.Score * 100)
+	}
+	return SeverityScore(issue.Severity)
 }
