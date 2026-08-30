@@ -481,7 +481,6 @@ inputs.
 | UIX-33 | **Preview returns warnings as well as rendered output**, so anything that will be refused says so before the person presses submit | The preview already goes through the real renderer (UIX-22), so the checks are there for nothing extra — a dropped remote image shows as a warning next to a preview that visibly lacks the image. Turns a rejection after the fact into a note while writing, without a second implementation of the rules |
 | UIX-34 | **A grouped row says how many places it covers and lets them be opened**, and the count is part of what is read rather than a detail | Sixty-two places and one place are different situations to somebody deciding, and a group that hides its size invites a judgment made about one place being applied to sixty-one others unseen. It is also the fastest way to spot the case worth breaking out |
 
-
 ### 3.16 Application security — `SEC`
 
 Cross-cutting rules that belong to no single area. Enumerated rather than left
@@ -507,6 +506,7 @@ to "follow good practice", so a reviewer has something to check against.
 | SEC-16 | **Markdown rendering applies only to text a person typed into this tool.** Anything a scan file supplied is displayed escaped and is never rendered, whatever it looks like | The rule SEC-04 implies and never said. Once a renderer exists, pointing it at a component description is the obvious next step and it hands an SBOM author a formatting language aimed at the browsers of the people with the most access |
 | SEC-17 | **Every markdown field is length-bounded** (64 KB), and rendering is bounded in time | Rendering is work someone else asks us to do, and it is stored forever under an append-only rule. A bound also means a pathological input fails one request rather than a replica |
 | SEC-18 | **The fenced-block language tag is user input.** Allowlisted before it reaches a class attribute; an unknown language renders as a plain code block rather than an error | ```` ```<script> ```` is attacker-chosen text landing in markup. Small, and the only highlighting-related hole left once UIX-27 puts the highlighter after the sanitizer instead of before it — running over already-sanitized DOM, its output never passes through the sanitizer at all |
+| SEC-19 | **The pair is goldmark for parsing and bluemonday for sanitizing**, both permissively licensed. Raw markup is refused at the parser and the sanitizer runs over the output regardless | Recorded now rather than left open, because it is settled by writing the code and the requirements were already fixed (SEC-11 to SEC-18). goldmark refuses raw markup by default, which is the behavior SEC-12 asks for rather than something configured on top of it — it drops a raw block outright and escapes an inline one, and both are safe. The sanitizer running as well is not redundancy for its own sake: stored text predates rules written since, so a control that ran only when text arrived protects nothing written before it existed. **Links are permitted and their schemes restricted**, which is easy to lose: a policy that strips every link is safe and useless, and an advisory link is the most common thing in a justification. That was found by breaking the scheme restriction and watching nothing fail — the element had never been allowed, so every link had been silently becoming plain text |
 
 ### 3.17 Attachments — `ATT`
 
@@ -529,9 +529,7 @@ fetch one.
 | ATT-11 | **Uploads that were never attached to anything saved are reaped** | Someone drags in a file and closes the tab. Without a sweep those accumulate as bytes nothing references and nobody knows to remove |
 | ATT-12 | **Uploads are not scanned for malware.** Stated, not solved | We would be relying on a scanner we do not run and cannot keep current. Better named as a limitation than implied by silence — an operator who needs it can put scanning in front of the bucket |
 
-
 ---
-
 
 ## 4. Still open
 
@@ -637,7 +635,7 @@ Engineering choices we'll make and record. Listed so nothing is invisible.
 |---|---|
 | Component library | shadcn/ui is the candidate — you own the source rather than tracking a dependency — but the tree and grid work may want more. Better decided against a real screen than in the abstract |
 | Partitioning detail | Which column, what granularity, and how to handle retiring a whole product — which partitioning by time does not solve |
-| Markdown parser and sanitizer | A CommonMark parser with GitHub extensions and raw HTML off, plus the sanitizer that runs after it (SEC-11 to SEC-18). The requirements are settled; the pair is not. Both must be permissively licensed under SCP-06 |
+
 | Client-side highlighter | Loaded only by a view that contains a code block, not with the findings table (UIX-27). Grammar coverage and bundle cost are the trade-off to weigh against a real screen |
 
 ---
