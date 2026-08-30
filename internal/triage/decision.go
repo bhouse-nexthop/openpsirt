@@ -30,10 +30,16 @@ type Decision struct {
 	Outcome                  Outcome    `bun:"outcome,notnull"`
 	Justification            *string    `bun:"justification"`
 	DeferredUntil            *time.Time `bun:"deferred_until"`
-	State                    State      `bun:"state,notnull"`
-	ProposedBy               int64      `bun:"proposed_by,notnull"`
-	ProposedAt               time.Time  `bun:"proposed_at,notnull"`
-	RevisionID               *int64     `bun:"revision_id"`
+	// SeverityCenti is how bad this was judged to be when the claim was made,
+	// in hundredths. Kept with the decision rather than read from the issue
+	// later, because what a re-affirmation asks is whether severity has risen
+	// *since* — and an issue's severity is rewritten in place as reports
+	// revise it, so reading it now would compare a number against itself.
+	SeverityCenti *int      `bun:"severity_centi"`
+	State         State     `bun:"state,notnull"`
+	ProposedBy    int64     `bun:"proposed_by,notnull"`
+	ProposedAt    time.Time `bun:"proposed_at,notnull"`
+	RevisionID    *int64    `bun:"revision_id"`
 }
 
 // Revision is one statement of the reasoning behind a decision.
@@ -135,6 +141,10 @@ type Proposal struct {
 	DeferredUntil *time.Time
 	Reasoning     string
 	By            int64
+	// SeverityCenti is how bad this is judged to be right now, in hundredths.
+	// Recorded with the claim so that a later re-affirmation can ask whether
+	// it has risen since.
+	SeverityCenti int
 }
 
 // Propose records a claim and the reasoning behind it.
@@ -191,6 +201,10 @@ func (s *Store) propose(ctx context.Context, p Proposal) (*Decision, error) {
 	if p.Outcome == NotApplicable {
 		stated := string(p.Justification)
 		decision.Justification = &stated
+	}
+	if p.SeverityCenti > 0 {
+		judged := p.SeverityCenti
+		decision.SeverityCenti = &judged
 	}
 	if _, err := s.db.NewInsert().Model(decision).Exec(ctx); err != nil {
 		return nil, fmt.Errorf("record a decision: %w", err)

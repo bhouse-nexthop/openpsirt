@@ -51,7 +51,7 @@ func (s *Store) approve(ctx context.Context, subject access.Subject, decisionID 
 	if decision.RevisionID == nil {
 		return ErrNothingToApprove
 	}
-	if decision.State == Withdrawn || decision.State == Lapsed {
+	if decision.State == Withdrawn || decision.State == LapsedState {
 		return fmt.Errorf("that decision is %s, so there is nothing standing to agree to", decision.State)
 	}
 

@@ -71,6 +71,13 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 			-- Set only for a deferral, which is the one outcome that expires
 			-- on a date rather than on the code changing.
 			"deferred_until"             ` + t.date + ` NULL,
+			-- How bad this was judged to be when the claim was made, in
+			-- hundredths. Kept with the decision rather than read from the
+			-- issue later, because the question a re-affirmation asks is
+			-- whether severity has risen *since* — and an issue's severity is
+			-- rewritten in place as reports revise it, so reading it now would
+			-- always compare a number against itself.
+			"severity_centi"             ` + t.ref + ` NULL,
 			"state"                      ` + t.kind + ` NOT NULL,
 			"proposed_by"                ` + t.ref + ` NOT NULL,
 			"proposed_at"                ` + t.timestamp + ` NOT NULL,

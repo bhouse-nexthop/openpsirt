@@ -155,6 +155,73 @@ Undoing a bulk approval narrows to what the person undoing it may reach. A
 batch is one reviewer's afternoon and may span products, so taking it back
 wholesale would let somebody act on products they hold nothing on.
 
+## The queue carries what an approver needs
+
+A reviewer works down a list. A list where judging each row means opening it is
+a list that gets approved without being read — which is the failure the queue
+exists to prevent, arriving by a different route. So each row carries the
+reasoning as it currently stands, whether this was agreed to before, and how
+long the finding has already been put off.
+
+It shows only work the reader can actually do, narrowed in the query. A work
+list containing work somebody cannot do teaches them to skip rows.
+
+## Hiding risk needs a second person; a quick postponement does not
+
+A deferral shorter than a configured threshold stands on its own. A quick "not
+this sprint" is ordinary triage, and putting every routine act through a queue
+is how a queue stops being read.
+
+**Short is measured against everything the finding has already been put off
+for**, not against the deferral being asked for. Otherwise the exception
+swallows the rule one twenty-nine-day deferral at a time: four of them in a row
+are a year nobody approved.
+
+The time counted is what each deferral *asked for*, not what it has spent. The
+question is how long something has been put off, not how far into that it
+currently is.
+
+## Re-affirming after the code moves
+
+Two people already agreed to the claim. A version bump is a prompt to re-check
+rather than a new claim, so the person who made it may re-make it with a fresh
+reason and no second approver. Requiring full approval on every bump produces
+rubber-stamping, which costs the control its meaning everywhere rather than
+only here.
+
+Two things send it back for full approval, and both fire on something having
+actually changed:
+
+- **A different justification** is a different claim, which nobody has
+  reviewed. Letting it inherit an approval granted for other reasons is the
+  same failure as an approval surviving a rewrite.
+- **A severity that has risen since** means the original judgment was made
+  about a smaller thing. What was agreed to was that this did not matter much;
+  that is not an agreement about what it has become.
+
+How bad it was judged to be is kept with the decision rather than read from the
+issue later. An issue's severity is rewritten in place as reports revise it, so
+reading it now would compare a number against itself.
+
+**A count of re-affirmations deliberately does not trigger it.** That would
+fire on nothing having changed, which every other rule here refuses to do.
+
+What may be carried is read from the row rather than from what a caller
+supplied. A caller holding a stale copy would carry an agreement since
+withdrawn; a caller inventing one would carry an agreement that never existed.
+A withdrawn decision keeps its approval rows — who agreed, and to what, is part
+of the record — so without that check a version bump would undo a withdrawal.
+
+## What the code moved out from under is marked
+
+Reading finds a lapsed decision by its key not matching, which is enough to
+stop it applying. Marking it is for the queue: somebody has to be shown that a
+judgment they made no longer covers anything, or it simply disappears and the
+finding returns looking new with the reasoning stranded behind it.
+
+A decision lapses when **either** version moves, not when both do. A component
+bumped under an unchanged consumer is the ordinary case.
+
 ## Choices the decisions did not cover
 
 - **A version nobody stated and a version that is empty are different.** Both

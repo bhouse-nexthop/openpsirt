@@ -131,6 +131,8 @@ const (
 	Approved State = "approved"
 	// Withdrawn means it no longer applies because somebody took it back.
 	Withdrawn State = "withdrawn"
-	// Lapsed means the code it was a claim about changed.
-	Lapsed State = "lapsed"
+	// LapsedState means the code it was a claim about changed. Named for what
+	// it is rather than for the word alone, because "lapsed" reads as a verb
+	// everywhere else in this package.
+	LapsedState State = "lapsed"
 )
