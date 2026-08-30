@@ -253,6 +253,28 @@ they are stored — so stored text is known to have passed what was in force whe
 it arrived. What that policy is, and why it runs twice, is in
 `DESIGN-text.md`.
 
+## The same issue in other builds
+
+A decision is a claim about a combination of code rather than about a release,
+so a build running the same versions picks it up by looking it up. Nothing is
+copied, nothing synchronizes, and nobody is asked — that is inheritance done as
+a lookup, and it is why a release nobody has thought about since is not
+carrying a stale copy of anything.
+
+What remains is the builds where the versions differ. The decision does not
+reach them, because it was a claim about code they are not running, so somebody
+has to say whether the same reasoning holds there.
+
+Those are offered **one at a time rather than as one answer**. A component may
+be used in a later release and not an earlier one, and the reasoning that made
+something harmless in one build is not automatically true in another. All-or-
+nothing would be a single click that made a claim about builds nobody looked
+at.
+
+Builds already covered are left out entirely. Offering them would ask somebody
+to agree to something that has already happened, which teaches people that
+these lists are noise.
+
 ## What a person actually does
 
 The names in a request are resolved against what was scanned, never taken as

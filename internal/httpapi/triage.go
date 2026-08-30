@@ -335,6 +335,73 @@ func decidingAbout(ctx context.Context, in Ingest, subject access.Subject,
 	return at, nil
 }
 
+// MatchBody is the same issue at the same place in another build.
+type MatchBody struct {
+	Stream  string `json:"stream"`
+	Variant string `json:"variant"`
+	// Version is what that build has, and why this is a separate question.
+	// Where it matched, the decision already reaches there and nobody is
+	// asked.
+	Version string `json:"version,omitempty" doc:"The upstream version that build has, which differs from this one"`
+	Places  int    `json:"places" doc:"How many places it sits at there"`
+}
+
+func registerElsewhere(api huma.API, in Ingest) {
+	huma.Register(api, huma.Operation{
+		OperationID: "list-same-issue-elsewhere", Method: http.MethodGet,
+		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/elsewhere",
+		Summary: "The same issue in other builds, where a decision here would not reach it",
+		Description: "A decision is a claim about a combination of code rather than about a " +
+			"release, so a build running the same versions picks it up by looking it up — nothing " +
+			"is copied and nobody is asked. What this lists is the remainder: builds where the " +
+			"versions differ, so the same reasoning has to be stated again or not at all. " +
+			"One entry per build rather than one answer for all of them, because a component may " +
+			"be used in a later release and not an earlier one.",
+		Tags: []string{"Triage"},
+	}, func(ctx context.Context, input *struct {
+		Product       string `path:"product"`
+		Stream        string `path:"stream"`
+		Variant       string `path:"variant"`
+		Vulnerability string `path:"vulnerability"`
+		Place         string `path:"place"`
+	}) (*listOutput[MatchBody], error) {
+		subject, _, err := triaging(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		at, err := decidingAbout(ctx, in, subject, input.Product, input.Stream, input.Variant,
+			input.Vulnerability, input.Place)
+		if err != nil {
+			return nil, err
+		}
+
+		names := catalog.NewStore(in.DB.DB)
+		named, err := names.LocateVisible(ctx, subject, input.Product, input.Stream, input.Variant)
+		if err != nil {
+			return nil, huma.Error404NotFound(err.Error())
+		}
+		here, err := names.ExistingTarget(ctx, named.StreamID, named.VariantID)
+		if err != nil {
+			return nil, huma.Error404NotFound("nothing has been scanned there")
+		}
+
+		matches, err := finding.NewStore(in.DB.DB).Elsewhere(ctx, subject, *at, here.ID)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "cannot look for the same issue elsewhere", err)
+		}
+
+		out := &listOutput[MatchBody]{}
+		out.Body.Items = make([]MatchBody, 0, len(matches))
+		for _, match := range matches {
+			out.Body.Items = append(out.Body.Items, MatchBody{
+				Stream: match.Stream, Variant: match.Variant,
+				Version: match.ComponentUpstream, Places: match.Places,
+			})
+		}
+		return out, nil
+	})
+}
+
 // triaging resolves who is asking and the store they act through.
 func triaging(ctx context.Context, in Ingest) (access.Subject, *triage.Store, error) {
 	subject, err := reading(ctx)
