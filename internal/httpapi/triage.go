@@ -31,6 +31,13 @@ type DecisionBody struct {
 	// NeedsApproval says whether this is waiting for a second person. A short
 	// deferral is not.
 	NeedsApproval bool `json:"needs_approval,omitempty" doc:"Whether a second person has to agree before it takes effect"`
+	// Places is how many findings this one judgment covers. A kernel issue
+	// reaches dozens of modules and the answer is usually the same for all of
+	// them, so whoever is deciding is told the size of what they are deciding.
+	Places int `json:"places,omitempty" doc:"How many findings this decision covers"`
+	// Versions is how many distinct versions sit at this place. More than one
+	// means a single decision cannot honestly cover all of them.
+	Versions int `json:"versions,omitempty" doc:"How many versions of the component sit here. More than one needs care"`
 }
 
 // PlaceBody names what a decision is about.
@@ -283,7 +290,10 @@ func registerProposing(api huma.API, in Ingest) {
 			"versions, including future releases — it is matched by code, not copied between " +
 			"releases. It stops applying automatically when either upstream version changes.\n\n" +
 			"The response says whether a second person must approve it. Most outcomes require " +
-			"approval; a deferral shorter than the configured threshold does not.",
+			"approval; a deferral shorter than the configured threshold does not.\n\n" +
+			"It also says how many findings this one judgment covers, and how many distinct " +
+			"versions of the component sit at this place — more than one means a single " +
+			"decision cannot honestly cover all of them.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
@@ -349,6 +359,10 @@ func registerProposing(api huma.API, in Ingest) {
 		body := decisionBody(*decision)
 		body.Reasoning = input.Body.Reasoning
 		body.NeedsApproval = needs
+		// How much this one judgment covers, so nobody discovers afterwards
+		// that they answered for sixty-two modules or for two versions of the
+		// same package.
+		body.Places, body.Versions = at.Places, at.Versions()
 		return &struct{ Body DecisionBody }{Body: body}, nil
 	})
 }

@@ -2,7 +2,8 @@
 
 What a scan is filed against, and why the shape is what it is.
 
-Satisfies MDL-01 to MDL-08, MDL-11, MDL-17, MDL-18, ING-09, ING-11, STA-08.
+Satisfies MDL-01 to MDL-08, MDL-11, MDL-17, MDL-18, ING-09, ING-11, ING-36 to
+ING-38, STA-08.
 
 ## The tracked unit
 

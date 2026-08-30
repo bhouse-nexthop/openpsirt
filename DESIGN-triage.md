@@ -2,9 +2,9 @@
 
 What people decide about findings, and when a decision stops applying.
 
-Satisfies TRI-01 to TRI-03, TRI-05 to TRI-08, TRI-10 to TRI-18, TRI-20,
-TRI-21, TRI-24 to TRI-28, REL-05, REL-06, REL-09, MDL-08, MDL-19. The text
-rules themselves are in `DESIGN-text.md`.
+Satisfies TRI-01 to TRI-03, TRI-05 to TRI-08, TRI-10 to TRI-18, TRI-20 to
+TRI-29, REL-05, REL-06, REL-09, MDL-08, MDL-19, ACC-09. The text rules
+themselves are in `DESIGN-text.md`.
 
 ## A decision is a claim about code, not about a release
 
@@ -254,6 +254,41 @@ approver is shown describe time that did not happen. And a deferral asking for
 a date **already past** asks for nothing — allowing it to count as a negative
 would let a back-dated request subtract from what a finding has already been
 put off for and slip the total back under the threshold.
+
+## A judgment says how much it covers
+
+A decision is about a component at a place, and one place can hold a great deal
+— a kernel issue reaches dozens of modules, and the answer is almost always the
+same for all of them. So the answer to making a decision says how many findings
+it covers, rather than letting somebody discover afterwards that they answered
+for sixty-two things.
+
+It also says how many distinct versions sit there. One is the ordinary answer.
+More than one means the build ships the same package twice at different
+versions under the same consumer, and a single decision cannot honestly cover
+both — so whoever is deciding is told, instead of being given a judgment about
+one version silently applied to another.
+
+Choosing a narrower set than "all of them" is an interface question and is not
+built. What exists is the count, which is what makes the choice an informed one
+when it arrives.
+
+## A carried patch does not lapse a decision
+
+Expiry compares upstream versions. A producer that fixes things by carrying a
+patch rather than by taking a new upstream release therefore moves no version
+this can see, and the decision stands until somebody revisits it or the finding
+closes on its own.
+
+This is accepted deliberately rather than worked around. A patch is our own
+change to our own build, and a reachability claim usually rests on structure a
+patch is unlikely to alter. But the consequence is worth stating plainly: for a
+producer that patches heavily, a decision made once may never be automatically
+re-examined however much the code moves.
+
+The compensating control is that a decision's age travels with it everywhere it
+appears. An eight-year-old judgment should look like one rather than reading
+the same as yesterday's.
 
 ## A lapse is marked when the scan that caused it runs
 

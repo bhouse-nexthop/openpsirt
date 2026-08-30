@@ -3,7 +3,7 @@
 Justifications, deferral reasons and comments, and the one place typed text
 becomes markup.
 
-Satisfies TRI-28, SEC-04, SEC-11 to SEC-19, API-16.
+Satisfies TRI-28, SEC-04, SEC-11 to SEC-19, API-16 to API-18.
 
 ## Two halves, kept apart
 

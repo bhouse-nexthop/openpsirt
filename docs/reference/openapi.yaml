@@ -167,6 +167,10 @@ components:
             - deferred
             - wont-fix
           type: string
+        places:
+          description: How many findings this decision covers
+          format: int64
+          type: integer
         reasoning:
           description: Why, in markdown. Somebody else has to agree with this
           minLength: 1
@@ -179,6 +183,10 @@ components:
             - withdrawn
             - lapsed
           type: string
+        versions:
+          description: How many versions of the component sit here. More than one needs care
+          format: int64
+          type: integer
       required:
         - outcome
         - reasoning
@@ -2134,6 +2142,8 @@ paths:
         The decision applies to every build running the same component and consumer upstream versions, including future releases — it is matched by code, not copied between releases. It stops applying automatically when either upstream version changes.
 
         The response says whether a second person must approve it. Most outcomes require approval; a deferral shorter than the configured threshold does not.
+
+        It also says how many findings this one judgment covers, and how many distinct versions of the component sit at this place — more than one means a single decision cannot honestly cover all of them.
       operationId: decide
       parameters:
         - in: path

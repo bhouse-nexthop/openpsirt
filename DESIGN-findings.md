@@ -2,8 +2,9 @@
 
 What a scan run found, and where.
 
-Satisfies MDL-05, MDL-06, MDL-14, MDL-19, MDL-20, ING-02, ING-21, ING-29,
-ING-30, STA-03, STA-04, STA-05, STA-08, STA-17, RNK-04.
+Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, ING-02, ING-21,
+ING-29, ING-30, ING-39, ING-40, STA-03, STA-04, STA-05, STA-08, STA-17,
+RNK-01 to RNK-06.
 
 ## A scanner reports a package; we work out the places
 
