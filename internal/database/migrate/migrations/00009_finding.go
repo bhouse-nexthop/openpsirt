@@ -187,9 +187,9 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			-- A finding open for years outlives whatever record of the change
 			-- was kept elsewhere, so it carries its own.
 			-- How urgent this is, as one number that sorts. Written when a scan
-			-- is applied rather than worked out while reading: sorting tens of
-			-- thousands of rows has to hit an index, and a number computed on
-			-- read cannot be one.
+			-- is applied rather than worked out while reading. A number
+			-- computed on read would mean joining every signal it is made of
+			-- for every row, on every page of every list.
 			--
 			-- What it was made of is kept beside it, so a position can be
 			-- explained. Reading the signals back out of the packed number
@@ -221,6 +221,13 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 		`CREATE INDEX "finding_vulnerability_idx" ON "finding" ("vulnerability_id", "closed_run_id")`,
 		// Carrying a decision forward to the same place elsewhere.
 		`CREATE INDEX "finding_place_idx" ON "finding" ("place_identity")`,
+		// Everything the findings list reads, in one index: the rows it wants
+		// and the number it ranks them by. The list groups a target's open
+		// findings and orders by the worst urgency in each group, so the sort
+		// itself is over groups and cannot be served by an index however it is
+		// built — what this removes is the row lookup per finding behind the
+		// aggregate, which is the part that scales with the image.
+		`CREATE INDEX "finding_urgency_idx" ON "finding" ("target_id", "closed_run_id", "urgency")`,
 	}
 
 	for _, stmt := range statements {

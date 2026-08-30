@@ -191,9 +191,6 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		Where("f.closed_run_id IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		GroupExpr("f.vulnerability_id, f.component_id").
-		// Most places first, because that is the most decisions one judgment
-		// covers. Ranking by how much an issue matters needs scores that are
-		// not gathered yet.
 		// Ordered by urgency rather than by how widespread something is.
 		// Sorting by place count puts whatever ships in the most places at the
 		// top, which on a real image is the kernel — everywhere, and not

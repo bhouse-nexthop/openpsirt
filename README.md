@@ -9,12 +9,21 @@ OpenPSIRT takes in the inventory a build produced, scans it for known
 vulnerabilities, works out what changed release to release, and gives people a
 place to triage what it finds and track it through to a fix.
 
-> **Status: early development.** Not usable yet, and **there is no
-> authentication** — do not expose it to a network you do not control. What
-> exists so far is the build and validation pipeline, the database layer across
-> all four supported engines, the catalog and dependency graph, and the
-> reader that turns a build's inventory into one. Nothing accepts an upload
-> yet. The design record is in [DECISIONS.md](DECISIONS.md).
+> **Status: early development.** Not released, and nothing is compatible with
+> anything yet — a schema change edits the migration that created it, and a
+> development database is recreated rather than migrated.
+>
+> What exists: the build and validation pipeline; the database layer across all
+> four supported engines; the catalog and dependency graph; inventory upload
+> and the reader behind it; scanning, run here, with findings tracked over
+> intervals; sign-in through OIDC, GitHub or a trusted header, with sessions,
+> API keys and personal tokens; roles and visibility enforced in the data
+> layer; and triage — decisions, approval, revision history, comments and the
+> review queue.
+>
+> What does not: the web interface, remediation tracking, reports,
+> notifications, private findings and attachments. The design record is in
+> [DECISIONS.md](DECISIONS.md).
 
 ## What it does
 

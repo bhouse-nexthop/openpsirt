@@ -262,9 +262,25 @@ Reports disagree and arrive in an order nobody controls. So a later one fills
 in what an earlier one did not know and overwrites nothing — otherwise what is
 stored would depend on which scan happened to run last.
 
-Known-exploited is the exception, and moves forward only. It is a claim about
-the world rather than a description of an issue: a later report not mentioning
-it is a gap in that report, not the exploitation having stopped.
+Two things are not descriptions and do not work that way.
+
+**Known-exploited moves forward only.** It is a claim about the world rather
+than a description of an issue: a later report not mentioning it is a gap in
+that report, not the exploitation having stopped.
+
+**A score or a likelihood keeps the worst anybody claimed.** These were
+overwritten outright, which is exactly the dependence on scan order the rest of
+this exists to avoid. Filling only the gap would have been no better — just
+dependent on which report arrived first instead of last. A maximum is the only
+answer that comes out the same whatever the order, and it errs in the safe
+direction: a report saying something is worse is news, and one saying it is
+milder is a gap in that report. There is a test that puts the same two reports
+through in both orders and asserts they agree, and it fails on the overwriting
+it replaced.
+
+It is written out rather than using the engines' greatest-of function, which is
+not agreed on when one side is absent: two of the four answer "unknown" where
+the useful answer is the number that is known.
 
 ## What somebody with an hour sees first
 
@@ -273,8 +289,16 @@ something occupies puts whatever is most widespread at the top, which on a real
 image is the kernel — everywhere, and not therefore the thing to look at first.
 
 So each finding carries an urgency, worked out when a scan is applied and read
-back as it was. It is one number because sorting tens of thousands of rows has
-to hit an index, and a number computed while reading cannot be one.
+back as it was. Computing it while reading would mean joining every signal it
+is made of, for every row, on every page of every list.
+
+**What storing it buys, stated exactly.** The list groups a target's open
+findings and orders by the worst urgency in each group, so the sort is over
+groups and no index can serve it however it is built. What an index does remove
+is the row lookup behind the aggregate, which is the part that scales with the
+size of the image — so there is one covering the target, whether the finding is
+open, and the number. An earlier version of this claimed the index served the
+sort, and no such index existed.
 
 Four signals, in this order:
 

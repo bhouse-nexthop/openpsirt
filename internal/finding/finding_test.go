@@ -924,3 +924,57 @@ func TestTwoRunsAgainstOneTargetDoNotBothOpenTheSameFinding(t *testing.T) {
 		}
 	})
 }
+
+func TestWhatIsStoredAboutAnIssueDoesNotDependOnWhichScanRanLast(t *testing.T) {
+	// Reports disagree and arrive in an order nobody controls. Overwriting
+	// makes what is stored a fact about scheduling; filling only the gap makes
+	// it a fact about which report arrived first. Neither is a fact about the
+	// vulnerability.
+	//
+	// So the worst claim anybody made wins, whichever order it arrived in —
+	// and this puts the same two reports through in both orders and asserts
+	// they agree.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+
+		graded := func(id string, score, likelihood float64) finding.Reported {
+			r := found(id, libnl)
+			r.Issue.Score, r.Issue.Likelihood = score, likelihood
+			return r
+		}
+		// One issue hears the mild report first, the other the severe one.
+		for _, order := range [][]finding.Reported{
+			{graded("CVE-2026-A", 4.2, 0.01), graded("CVE-2026-A", 9.1, 0.86)},
+			{graded("CVE-2026-B", 9.1, 0.86), graded("CVE-2026-B", 4.2, 0.01)},
+		} {
+			for _, report := range order {
+				if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+					[]finding.Reported{report}); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+
+		rising, falling := f.issueScore(t, "CVE-2026-A"), f.issueScore(t, "CVE-2026-B")
+		if rising != falling {
+			t.Errorf("the stored score is %d one way round and %d the other", rising, falling)
+		}
+		if rising != 910 {
+			t.Errorf("kept %d, want 910 — the worst claim anybody made", rising)
+		}
+	})
+}
+
+// issueScore reads what is stored about an issue, in hundredths.
+func (f *fixture) issueScore(t *testing.T, name string) int {
+	t.Helper()
+	var score int
+	if err := f.db.DB.NewSelect().
+		TableExpr("vulnerability AS v").
+		ColumnExpr("COALESCE(v.score_centi, 0)").
+		Where("v.identifier = ?", name).
+		Scan(t.Context(), &score); err != nil {
+		t.Fatal(err)
+	}
+	return score
+}

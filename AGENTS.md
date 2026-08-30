@@ -1,8 +1,9 @@
 # Agent instructions for OpenPSIRT
 
-OpenPSIRT ingests SBOMs that already carry vulnerability data, tracks what
-changes release to release, and gives people somewhere to triage findings and
-follow them through to a fix.
+OpenPSIRT takes in the inventory a build produced, scans it for known
+vulnerabilities here rather than in the build, tracks what changes release to
+release, and gives people somewhere to triage findings and follow them through
+to a fix.
 
 **Read `DECISIONS.md` before proposing anything.** Most questions have already
 been answered there, with the reasoning. If you think a decision is wrong, say
