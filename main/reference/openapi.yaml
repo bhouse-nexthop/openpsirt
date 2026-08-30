@@ -192,6 +192,9 @@ components:
         component:
           description: What carries it
           type: string
+        exploited:
+          description: Somebody is known to be exploiting this
+          type: boolean
         fix_state:
           description: What upstream has done about it
           enum:
