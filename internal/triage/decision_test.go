@@ -24,6 +24,9 @@ type fixture struct {
 	issue   int64
 	proposer,
 	approver int64
+	// The subjects those two act as. Triage is a right held per product and
+	// per visibility, so every call carries one.
+	triager, reviewer, onlooker access.Subject
 }
 
 // at is a place to decide about, defaulting to versions that make the
@@ -32,6 +35,7 @@ func (f *fixture) at() triage.Place {
 	return triage.Place{
 		ProductID: f.product, VulnerabilityID: f.issue,
 		PlaceIdentity:     "place-of-libfoo-under-libbar",
+		Visibility:        access.Public,
 		ComponentUpstream: "1.2.3", ConsumerUpstream: "4.5.6",
 	}
 }
@@ -39,7 +43,7 @@ func (f *fixture) at() triage.Place {
 // claims a not-applicable decision, which is the shape everything else builds on.
 func (f *fixture) claims(t *testing.T, at triage.Place) *triage.Decision {
 	t.Helper()
-	decision, err := f.store.Propose(t.Context(), triage.Proposal{
+	decision, err := f.store.Propose(t.Context(), f.triager, triage.Proposal{
 		Place: at, Outcome: triage.NotApplicable,
 		Justification: triage.CodeNotInExecutePath,
 		Reasoning:     "The parser is never reached: we only call the encoder.",
@@ -73,18 +77,41 @@ func each(t *testing.T, fn func(t *testing.T, f *fixture)) {
 		}
 		issue := interned["CVE-2026-1"]
 		rights := access.NewStore(db.DB)
-		one, err := rights.Ensure(ctx, "proposer", "", true)
+		one, err := rights.Ensure(ctx, "proposer", "", false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		two, err := rights.Ensure(ctx, "approver", "", true)
+		two, err := rights.Ensure(ctx, "approver", "", false)
 		if err != nil {
 			t.Fatal(err)
+		}
+		none, err := rights.Ensure(ctx, "onlooker", "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, who := range []int64{one.ID, two.ID} {
+			if err := rights.GrantRole(ctx, who, product.ID, access.PublicTriage); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// Reading is not deciding: this one may see the product and may argue
+		// about nothing on it.
+		if err := rights.GrantRole(ctx, none.ID, product.ID, access.PublicRead); err != nil {
+			t.Fatal(err)
+		}
+
+		subject := func(identity string) access.Subject {
+			resolved, err := rights.Resolve(ctx, identity)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return resolved
 		}
 
 		fn(t, &fixture{
 			store: triage.NewStore(db.DB), product: product.ID, issue: issue,
 			proposer: one.ID, approver: two.ID,
+			triager: subject("proposer"), reviewer: subject("approver"), onlooker: subject("onlooker"),
 		})
 	})
 }
@@ -204,10 +231,10 @@ func TestNobodyApprovesTheirOwnClaim(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		claimed := f.claims(t, f.at())
 
-		if err := f.store.Approve(t.Context(), claimed.ID, f.proposer, ""); !errors.Is(err, triage.ErrSamePerson) {
+		if err := f.store.Approve(t.Context(), f.triager, claimed.ID, ""); !errors.Is(err, triage.ErrSamePerson) {
 			t.Errorf("somebody approved their own claim: %v", err)
 		}
-		if err := f.store.Approve(t.Context(), claimed.ID, f.approver, ""); err != nil {
+		if err := f.store.Approve(t.Context(), f.reviewer, claimed.ID, ""); err != nil {
 			t.Errorf("a second person could not approve: %v", err)
 		}
 	})
@@ -221,11 +248,11 @@ func TestRevisingTheReasoningTakesBackTheApproval(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		ctx := t.Context()
 		claimed := f.claims(t, f.at())
-		if err := f.store.Approve(ctx, claimed.ID, f.approver, ""); err != nil {
+		if err := f.store.Approve(ctx, f.reviewer, claimed.ID, ""); err != nil {
 			t.Fatal(err)
 		}
 
-		if _, err := f.store.Revise(ctx, claimed.ID, f.proposer,
+		if _, err := f.store.Revise(ctx, f.triager, claimed.ID,
 			"Actually the parser is reached, but only from a path we control."); err != nil {
 			t.Fatal(err)
 		}
@@ -268,7 +295,7 @@ func TestADeferralStopsStandingOnItsDate(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		ctx := t.Context()
 		soon := time.Now().UTC().Add(24 * time.Hour)
-		if _, err := f.store.Propose(ctx, triage.Proposal{
+		if _, err := f.store.Propose(ctx, f.triager, triage.Proposal{
 			Place: f.at(), Outcome: triage.Deferred, DeferredUntil: &soon,
 			Reasoning: "Not this sprint.", By: f.proposer,
 		}); err != nil {
@@ -281,7 +308,7 @@ func TestADeferralStopsStandingOnItsDate(t *testing.T) {
 		past := time.Now().UTC().Add(-time.Hour)
 		lapsedPlace := f.at()
 		lapsedPlace.PlaceIdentity = "another-place"
-		if _, err := f.store.Propose(ctx, triage.Proposal{
+		if _, err := f.store.Propose(ctx, f.triager, triage.Proposal{
 			Place: lapsedPlace, Outcome: triage.Deferred, DeferredUntil: &past,
 			Reasoning: "Was not that sprint either.", By: f.proposer,
 		}); err != nil {
@@ -313,7 +340,7 @@ func TestAClaimHasToSayEnoughToBeAgreedWith(t *testing.T) {
 				Place: f.at(), Outcome: triage.WontFix, Justification: triage.CodeNotPresent,
 				Reasoning: "x", By: f.proposer}},
 		} {
-			if _, err := f.store.Propose(t.Context(), c.p); err == nil {
+			if _, err := f.store.Propose(t.Context(), f.triager, c.p); err == nil {
 				t.Errorf("a claim with %s was recorded", c.what)
 			}
 		}
@@ -333,12 +360,12 @@ func TestABulkApprovalIsUndoneAsABatch(t *testing.T) {
 			at.PlaceIdentity = place
 			decision := f.claims(t, at)
 			made = append(made, decision.ID)
-			if err := f.store.Approve(ctx, decision.ID, f.approver, batch); err != nil {
+			if err := f.store.Approve(ctx, f.reviewer, decision.ID, batch); err != nil {
 				t.Fatal(err)
 			}
 		}
 
-		undone, err := f.store.UndoBatch(ctx, batch)
+		undone, err := f.store.UndoBatch(ctx, f.reviewer, batch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -359,6 +386,123 @@ func TestABulkApprovalIsUndoneAsABatch(t *testing.T) {
 		at.PlaceIdentity = "a"
 		if standing, _ := f.store.Applying(ctx, at); standing == nil || standing.State != triage.Proposed {
 			t.Error("undoing an approval withdrew the claim as well")
+		}
+	})
+}
+
+func TestDecidingIsItsOwnRight(t *testing.T) {
+	// Reading a finding is not judging it. Somebody who may see a product and
+	// holds no triage on it reaches every decision about it and may make none
+	// — which is the difference between an approver, a reporter and a triager.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		if _, err := f.store.Propose(ctx, f.onlooker, triage.Proposal{
+			Place: f.at(), Outcome: triage.WontFix,
+			Reasoning: "I should not be able to say this.", By: f.onlooker.ID,
+		}); !errors.Is(err, triage.ErrNotTheirs) {
+			t.Errorf("somebody holding only a read role made a decision: %v", err)
+		}
+
+		claimed := f.claims(t, f.at())
+		if err := f.store.Approve(ctx, f.onlooker, claimed.ID, ""); !errors.Is(err, triage.ErrNotTheirs) {
+			t.Errorf("somebody holding only a read role approved one: %v", err)
+		}
+		if _, err := f.store.Revise(ctx, f.onlooker, claimed.ID, "words"); !errors.Is(err, triage.ErrNotTheirs) {
+			t.Errorf("somebody holding only a read role revised one: %v", err)
+		}
+		if err := f.store.Withdraw(ctx, f.onlooker, claimed.ID); !errors.Is(err, triage.ErrNotTheirs) {
+			t.Errorf("somebody holding only a read role withdrew one: %v", err)
+		}
+	})
+}
+
+func TestTriagingOneProductIsNotTriagingAnother(t *testing.T) {
+	// Every right here is held against a product. A claim about a product
+	// somebody holds nothing on is refused, and refused the same way a claim
+	// about one that does not exist is — so guessing identifiers says nothing.
+	each(t, func(t *testing.T, f *fixture) {
+		elsewhere := f.at()
+		elsewhere.ProductID = f.product + 1000
+		if _, err := f.store.Propose(t.Context(), f.triager, triage.Proposal{
+			Place: elsewhere, Outcome: triage.WontFix,
+			Reasoning: "About a product I hold nothing on.", By: f.proposer,
+		}); !errors.Is(err, triage.ErrNotTheirs) {
+			t.Errorf("a triager reached another product: %v", err)
+		}
+	})
+}
+
+func TestArguingAboutSomethingUndisclosedNeedsThatRight(t *testing.T) {
+	// The two triage roles are not one. Somebody trusted with what has been
+	// disclosed is not thereby trusted with what has not.
+	each(t, func(t *testing.T, f *fixture) {
+		undisclosed := f.at()
+		undisclosed.Visibility = access.Private
+
+		if _, err := f.store.Propose(t.Context(), f.triager, triage.Proposal{
+			Place: undisclosed, Outcome: triage.WontFix,
+			Reasoning: "About something not yet disclosed.", By: f.proposer,
+		}); !errors.Is(err, triage.ErrNotTheirs) {
+			t.Errorf("a public triager argued about an undisclosed finding: %v", err)
+		}
+	})
+}
+
+func TestAClaimIsRecordedAsMadeByWhoeverMadeIt(t *testing.T) {
+	// Otherwise the second-person rule means nothing: anybody could propose
+	// under another name and then agree with themselves.
+	each(t, func(t *testing.T, f *fixture) {
+		if _, err := f.store.Propose(t.Context(), f.triager, triage.Proposal{
+			Place: f.at(), Outcome: triage.WontFix,
+			Reasoning: "Recorded as somebody else.", By: f.approver,
+		}); err == nil {
+			t.Error("a decision was recorded as made by somebody who did not make it")
+		}
+	})
+}
+
+func TestUndoingABatchTouchesOnlyWhatTheUndoerMayReach(t *testing.T) {
+	// A batch is one reviewer's afternoon and may span products. Undoing it
+	// wholesale would let somebody act on products they hold nothing on.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		const batch = "one-afternoon"
+		claimed := f.claims(t, f.at())
+		if err := f.store.Approve(ctx, f.reviewer, claimed.ID, batch); err != nil {
+			t.Fatal(err)
+		}
+
+		undone, err := f.store.UndoBatch(ctx, f.onlooker, batch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if undone != 0 {
+			t.Errorf("somebody holding only a read role undid %d approvals", undone)
+		}
+		approvals, err := f.store.Approvals(ctx, claimed.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if approvals[0].WithdrawnAt != nil {
+			t.Error("the approval was taken back by somebody who may not triage")
+		}
+	})
+}
+
+func TestAPlaceThatStatesNoVisibilityIsTreatedAsUndisclosed(t *testing.T) {
+	// A place is assembled by whatever asked, and something that forgot to
+	// state this would otherwise make an undisclosed finding argueable by
+	// anybody who can triage the disclosed ones. Unset has to read as the
+	// careful answer, not the convenient one.
+	each(t, func(t *testing.T, f *fixture) {
+		unstated := f.at()
+		unstated.Visibility = ""
+
+		if _, err := f.store.Propose(t.Context(), f.triager, triage.Proposal{
+			Place: unstated, Outcome: triage.WontFix,
+			Reasoning: "About something whose visibility nobody stated.", By: f.proposer,
+		}); !errors.Is(err, triage.ErrNotTheirs) {
+			t.Errorf("a public triager decided about a place stating no visibility: %v", err)
 		}
 	})
 }

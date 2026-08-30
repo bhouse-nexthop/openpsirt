@@ -9,6 +9,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 )
 
@@ -23,23 +24,28 @@ import (
 // deployment therefore cannot approve anything, which is the control working
 // rather than a gap in it — and it is better said plainly than quietly
 // relaxed.
-func (s *Store) Approve(ctx context.Context, decisionID, by int64, batch string) error {
+func (s *Store) Approve(ctx context.Context, subject access.Subject, decisionID int64, batch string) error {
 	db, ok := s.db.(*bun.DB)
 	if !ok {
 		return fmt.Errorf("this store is already inside a transaction")
 	}
 	return database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
-		return (&Store{db: tx, now: s.now}).approve(ctx, decisionID, by, batch)
+		return (&Store{db: tx, now: s.now}).approve(ctx, subject, decisionID, batch)
 	})
 }
 
-func (s *Store) approve(ctx context.Context, decisionID, by int64, batch string) error {
+func (s *Store) approve(ctx context.Context, subject access.Subject, decisionID int64, batch string) error {
 	decision := new(Decision)
 	if err := s.db.NewSelect().Model(decision).
 		Where("id = ?", decisionID).Scan(ctx); err != nil {
 		return fmt.Errorf("no decision to approve: %w", err)
 	}
-	if decision.ProposedBy == by {
+	// Read from the row rather than from what the caller said about it. A
+	// caller that could name the product would be deciding what it may reach.
+	if !mayDecide(subject, decision.ProductID, decision.Visibility) {
+		return ErrNotTheirs
+	}
+	if decision.ProposedBy == subject.ID {
 		return ErrSamePerson
 	}
 	if decision.RevisionID == nil {
@@ -52,7 +58,7 @@ func (s *Store) approve(ctx context.Context, decisionID, by int64, batch string)
 	now := s.now().Truncate(time.Microsecond)
 	approval := &Approval{
 		DecisionID: decisionID, RevisionID: *decision.RevisionID,
-		ApprovedBy: by, ApprovedAt: now,
+		ApprovedBy: subject.ID, ApprovedAt: now,
 	}
 	if strings.TrimSpace(batch) != "" {
 		approval.Batch = &batch
@@ -79,7 +85,7 @@ func (s *Store) approve(ctx context.Context, decisionID, by int64, batch string)
 // It needs no approval of its own. Returning something to the queue re-exposes
 // risk rather than hiding it, and the queue exists to stop risk being hidden
 // unseen.
-func (s *Store) Revise(ctx context.Context, decisionID, by int64, reasoning string) (*Revision, error) {
+func (s *Store) Revise(ctx context.Context, subject access.Subject, decisionID int64, reasoning string) (*Revision, error) {
 	if strings.TrimSpace(reasoning) == "" {
 		return nil, errors.New("a revision has to say something")
 	}
@@ -92,13 +98,17 @@ func (s *Store) Revise(ctx context.Context, decisionID, by int64, reasoning stri
 	err := database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
 		within := &Store{db: tx, now: s.now}
 		var err error
-		written, err = within.revise(ctx, decisionID, by, reasoning)
+		written, err = within.revise(ctx, subject, decisionID, reasoning)
 		return err
 	})
 	return written, err
 }
 
-func (s *Store) revise(ctx context.Context, decisionID, by int64, reasoning string) (*Revision, error) {
+func (s *Store) revise(ctx context.Context, subject access.Subject, decisionID int64, reasoning string) (*Revision, error) {
+	if err := s.reachable(ctx, subject, decisionID); err != nil {
+		return nil, err
+	}
+
 	var latest int64
 	if err := s.db.NewSelect().Model((*Revision)(nil)).
 		ColumnExpr("COALESCE(MAX(ordinal), 0)").
@@ -112,7 +122,7 @@ func (s *Store) revise(ctx context.Context, decisionID, by int64, reasoning stri
 	now := s.now().Truncate(time.Microsecond)
 	revision := &Revision{
 		DecisionID: decisionID, Ordinal: latest + 1,
-		Body: reasoning, WrittenBy: by, WrittenAt: now,
+		Body: reasoning, WrittenBy: subject.ID, WrittenAt: now,
 	}
 	if _, err := s.db.NewInsert().Model(revision).Exec(ctx); err != nil {
 		return nil, fmt.Errorf("record a revision: %w", err)
@@ -142,7 +152,10 @@ func (s *Store) revise(ctx context.Context, decisionID, by int64, reasoning stri
 //
 // No approval needed, for the same reason revising needs none: it puts risk
 // back on the table rather than taking it off.
-func (s *Store) Withdraw(ctx context.Context, decisionID int64) error {
+func (s *Store) Withdraw(ctx context.Context, subject access.Subject, decisionID int64) error {
+	if err := s.reachable(ctx, subject, decisionID); err != nil {
+		return err
+	}
 	now := s.now().Truncate(time.Microsecond)
 	if _, err := s.db.NewUpdate().Model((*Approval)(nil)).
 		Set("withdrawn_at = ?", now).
@@ -162,14 +175,19 @@ func (s *Store) Withdraw(ctx context.Context, decisionID int64) error {
 // A reviewer may approve a long selection in one action, so undoing has to be
 // available at the same size. Hunting for what a bulk approval touched, one
 // row at a time, is not an undo anybody will actually use.
-func (s *Store) UndoBatch(ctx context.Context, batch string) (int64, error) {
+func (s *Store) UndoBatch(ctx context.Context, subject access.Subject, batch string) (int64, error) {
 	now := s.now().Truncate(time.Microsecond)
 
+	// Narrowed to what this person may reach before anything is undone. A
+	// batch is one reviewer's afternoon and may span products, so undoing it
+	// wholesale would let somebody act on products they hold nothing on.
 	var decisions []int64
-	if err := s.db.NewSelect().Model((*Approval)(nil)).
-		Column("decision_id").
-		Where("batch = ?", batch).Where("withdrawn_at IS NULL").
-		Scan(ctx, &decisions); err != nil {
+	covered := s.db.NewSelect().Model((*Approval)(nil)).
+		ColumnExpr("da.decision_id").
+		Join("JOIN decision AS d ON d.id = da.decision_id").
+		Where("da.batch = ?", batch).Where("da.withdrawn_at IS NULL")
+	covered = reachableBy(covered, subject, "d")
+	if err := covered.Scan(ctx, &decisions); err != nil {
 		return 0, fmt.Errorf("read what that approval covered: %w", err)
 	}
 	if len(decisions) == 0 {
@@ -178,7 +196,8 @@ func (s *Store) UndoBatch(ctx context.Context, batch string) (int64, error) {
 
 	if _, err := s.db.NewUpdate().Model((*Approval)(nil)).
 		Set("withdrawn_at = ?", now).
-		Where("batch = ?", batch).Where("withdrawn_at IS NULL").Exec(ctx); err != nil {
+		Where("batch = ?", batch).Where("withdrawn_at IS NULL").
+		Where("decision_id IN (?)", bun.List(decisions)).Exec(ctx); err != nil {
 		return 0, fmt.Errorf("undo an approval: %w", err)
 	}
 	// Back to proposed rather than withdrawn: the claims still stand, it is

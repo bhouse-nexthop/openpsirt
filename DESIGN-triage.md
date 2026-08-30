@@ -127,6 +127,34 @@ Approvals are kept rather than reduced to a flag. A withdrawn one says a second
 person did once agree, and to which words — which is what somebody
 reconstructing how a decision came to stand needs to read.
 
+## Deciding is its own right, held per product and per visibility
+
+Reading a finding is not judging it. An approver reaches plenty they may not
+propose about, and a reporter reaches more still — so the question asked here
+is whether somebody holds triage on this product, not whether they can see it.
+
+The two triage rights are not one. Somebody trusted with what has been
+disclosed is not thereby trusted with what has not, so arguing about an
+undisclosed finding needs that right specifically.
+
+**Every check reads the product and the visibility from the row**, never from
+what a caller stated about it. A caller that could name the product would be
+deciding what it may reach. And a place that states no visibility is treated as
+undisclosed: something that forgot to state it would otherwise make an
+undisclosed finding argueable by anybody who can triage the disclosed ones.
+
+That normalization happens before the check and not only before the write. The
+first version did it only on the way to storage, which let a place stating
+nothing pass the check for disclosed findings and then be recorded as
+undisclosed — authorized as one thing and kept as another.
+
+A decision somebody may not reach and one that does not exist give the same
+answer, so guessing identifiers says nothing.
+
+Undoing a bulk approval narrows to what the person undoing it may reach. A
+batch is one reviewer's afternoon and may span products, so taking it back
+wholesale would let somebody act on products they hold nothing on.
+
 ## Choices the decisions did not cover
 
 - **A version nobody stated and a version that is empty are different.** Both

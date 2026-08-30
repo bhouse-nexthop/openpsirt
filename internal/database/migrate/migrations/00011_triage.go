@@ -55,6 +55,12 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 			product_id                 ` + t.ref + ` NOT NULL,
 			vulnerability_id           ` + t.ref + ` NOT NULL,
 			place_identity             ` + t.hash + ` NOT NULL,
+			-- The finding's, carried here so that who may reach a decision is
+			-- answered by the row rather than by whoever built the query. A
+			-- finding nobody has disclosed is one only a private triager may
+			-- argue about, and that has to hold for a report and an export as
+			-- much as for reading one.
+			visibility                 ` + t.kind + ` NOT NULL,
 			component_upstream_version ` + t.name + ` NULL,
 			consumer_upstream_version  ` + t.name + ` NULL,
 			outcome                    ` + t.kind + ` NOT NULL,

@@ -9,6 +9,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 )
 
@@ -16,10 +17,11 @@ import (
 type Decision struct {
 	bun.BaseModel `bun:"table:decision,alias:de"`
 
-	ID              int64  `bun:"id,pk,autoincrement"`
-	ProductID       int64  `bun:"product_id,notnull"`
-	VulnerabilityID int64  `bun:"vulnerability_id,notnull"`
-	PlaceIdentity   string `bun:"place_identity,notnull"`
+	ID              int64             `bun:"id,pk,autoincrement"`
+	ProductID       int64             `bun:"product_id,notnull"`
+	VulnerabilityID int64             `bun:"vulnerability_id,notnull"`
+	PlaceIdentity   string            `bun:"place_identity,notnull"`
+	Visibility      access.Visibility `bun:"visibility,notnull"`
 	// The versions the claim was made against. Absent where nothing states
 	// one, and absent for the consumer where the thing above is the product
 	// itself — whose version changes every build and is excluded from expiry.
@@ -68,12 +70,43 @@ type Place struct {
 	ProductID       int64
 	VulnerabilityID int64
 	PlaceIdentity   string
+	// Visibility is the finding's, carried here so that what somebody may
+	// decide about is answered where the query is rather than by whichever
+	// handler happened to build this. A finding nobody has disclosed is one
+	// only a private triager may argue about.
+	Visibility access.Visibility
 	// ComponentUpstream and ConsumerUpstream are the versions expiry compares.
 	// They are the *upstream* versions: a shipped package carries a version of
 	// its own that moves whenever it is rebuilt, and rebuilding is not a
 	// reason to ask somebody the same question again.
 	ComponentUpstream string
 	ConsumerUpstream  string
+}
+
+// ErrNotTheirs is returned when somebody reaches for a decision about a
+// product they may not triage.
+//
+// The same answer whether the product is one they cannot see or one they can
+// only read: telling those apart would say which products exist to somebody
+// who was told they may not ask.
+var ErrNotTheirs = errors.New("not authorized")
+
+// mayDecide reports whether a subject may argue about findings of this
+// visibility on this product.
+//
+// Triage is its own right, held per product and per visibility. Reading a
+// finding is not deciding about it — an approver or a reporter reaches plenty
+// they may not judge — so this asks for the triage role rather than for
+// whether they can see it.
+func mayDecide(subject access.Subject, productID int64, visibility access.Visibility) bool {
+	if subject.Kind != access.Person {
+		return false
+	}
+	if visibility == access.Private {
+		return subject.Holds(access.PrivateTriage, productID)
+	}
+	return subject.Holds(access.PublicTriage, productID) ||
+		subject.Holds(access.PrivateTriage, productID)
 }
 
 // ErrSamePerson is returned when somebody tries to approve their own claim.
@@ -109,9 +142,22 @@ type Proposal struct {
 // The two are written together. A claim with no reasoning is not something a
 // second person can agree to, and leaving the reasoning to a later write is
 // how a decision ends up in the queue with nothing in it to review.
-func (s *Store) Propose(ctx context.Context, p Proposal) (*Decision, error) {
+func (s *Store) Propose(ctx context.Context, subject access.Subject, p Proposal) (*Decision, error) {
+	// Normalized before it is checked, not only before it is stored. Checking
+	// the stated value and storing the careful one would let a place that
+	// states nothing pass the check for disclosed findings and then be
+	// recorded as undisclosed — authorized as one thing and kept as another.
+	if !mayDecide(subject, p.Place.ProductID, visibilityOf(p.Place)) {
+		return nil, ErrNotTheirs
+	}
 	if err := p.valid(); err != nil {
 		return nil, err
+	}
+	if p.By != subject.ID {
+		// A claim is somebody's, and recording it under another name would
+		// make the second-person rule meaningless: anybody could propose as
+		// somebody else and then agree with themselves.
+		return nil, fmt.Errorf("a decision is recorded as made by whoever made it")
 	}
 
 	db, ok := s.db.(*bun.DB)
@@ -134,6 +180,7 @@ func (s *Store) propose(ctx context.Context, p Proposal) (*Decision, error) {
 	decision := &Decision{
 		ProductID: p.Place.ProductID, VulnerabilityID: p.Place.VulnerabilityID,
 		PlaceIdentity:            p.Place.PlaceIdentity,
+		Visibility:               visibilityOf(p.Place),
 		ComponentUpstreamVersion: text(p.Place.ComponentUpstream),
 		ConsumerUpstreamVersion:  text(p.Place.ConsumerUpstream),
 		Outcome:                  p.Outcome,
@@ -210,4 +257,81 @@ func text(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// visibilityOf reads a place's visibility, treating anything unset as not
+// disclosed.
+//
+// Unset has to read as private, or a place assembled by something that forgot
+// to state it would make a private finding argueable by anybody who can triage
+// the public ones.
+func visibilityOf(at Place) access.Visibility {
+	if at.Visibility == access.Public {
+		return access.Public
+	}
+	return access.Private
+}
+
+// reachable reports whether a subject may act on a decision, reading which
+// product and visibility it belongs to from the row rather than from anything
+// the caller stated.
+func (s *Store) reachable(ctx context.Context, subject access.Subject, decisionID int64) error {
+	decision := new(Decision)
+	if err := s.db.NewSelect().Model(decision).
+		Where("id = ?", decisionID).Scan(ctx); err != nil {
+		// A decision somebody may not reach and one that does not exist get
+		// the same answer, so that guessing identifiers says nothing.
+		return ErrNotTheirs
+	}
+	if !mayDecide(subject, decision.ProductID, decision.Visibility) {
+		return ErrNotTheirs
+	}
+	return nil
+}
+
+// reachableBy narrows a query to the decisions a subject may act on.
+//
+// Applied as a condition rather than by filtering afterwards, because a count,
+// an export or a report is exactly where filtering afterwards gets forgotten —
+// and where the number is the leak even when no row is shown.
+//
+// The products are bound as values. They come from the subject's own grants
+// rather than from anything typed, so writing them into the statement would be
+// safe today and would be the shape somebody copies later when the list does
+// come from outside.
+func reachableBy(query *bun.SelectQuery, subject access.Subject, column string) *bun.SelectQuery {
+	if subject.Kind != access.Person {
+		return query.Where("1 = 0")
+	}
+	products, all := subject.Products()
+	if all {
+		return query
+	}
+
+	// Kept apart because they permit different things: triage on undisclosed
+	// findings implies triage on disclosed ones, and the reverse is exactly
+	// what must not happen.
+	var private, public []int64
+	for _, id := range products {
+		switch {
+		case subject.Holds(access.PrivateTriage, id):
+			private = append(private, id)
+		case subject.Holds(access.PublicTriage, id):
+			public = append(public, id)
+		}
+	}
+	if len(private) == 0 && len(public) == 0 {
+		return query.Where("1 = 0")
+	}
+
+	return query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+		if len(private) > 0 {
+			q = q.WhereOr(column+".product_id IN (?)", bun.List(private))
+		}
+		if len(public) > 0 {
+			q = q.WhereOr(column+".product_id IN (?) AND "+column+".visibility = ?",
+				bun.List(public), access.Public)
+		}
+		return q
+	})
 }
