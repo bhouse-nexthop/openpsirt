@@ -285,7 +285,7 @@ func TestADecisionIsFoundAgainAfterItLapses(t *testing.T) {
 			t.Fatal("the decision should not stand at the moved version")
 		}
 
-		previous, err := f.store.PreviouslyAt(t.Context(), moved)
+		previous, err := f.store.PreviouslyAt(t.Context(), f.reviewer, moved)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -345,7 +345,7 @@ func TestRevisingTheReasoningTakesBackTheApproval(t *testing.T) {
 			t.Errorf("the revised claim is waiting for nobody: %+v", waiting)
 		}
 
-		approvals, err := f.store.Approvals(ctx, claimed.ID)
+		approvals, err := f.store.Approvals(ctx, f.reviewer, claimed.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -355,7 +355,7 @@ func TestRevisingTheReasoningTakesBackTheApproval(t *testing.T) {
 
 		// And what was agreed to is still readable, which is the point of
 		// keeping revisions rather than overwriting them.
-		revisions, err := f.store.Revisions(ctx, claimed.ID)
+		revisions, err := f.store.Revisions(ctx, f.reviewer, claimed.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -453,7 +453,7 @@ func TestABulkApprovalIsUndoneAsABatch(t *testing.T) {
 			t.Errorf("undid %d of %d", undone, len(made))
 		}
 		for _, id := range made {
-			approvals, err := f.store.Approvals(ctx, id)
+			approvals, err := f.store.Approvals(ctx, f.reviewer, id)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -569,7 +569,7 @@ func TestUndoingABatchTouchesOnlyWhatTheUndoerMayReach(t *testing.T) {
 		if undone != 0 {
 			t.Errorf("somebody holding only a read role undid %d approvals", undone)
 		}
-		approvals, err := f.store.Approvals(ctx, claimed.ID)
+		approvals, err := f.store.Approvals(ctx, f.reviewer, claimed.ID)
 		if err != nil {
 			t.Fatal(err)
 		}

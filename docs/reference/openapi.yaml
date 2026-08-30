@@ -1,5 +1,31 @@
 components:
   schemas:
+    ApprovalBody:
+      additionalProperties: false
+      properties:
+        approved_at:
+          type: string
+        approved_by:
+          type: string
+        batch:
+          description: The batch it was approved under, if it was a bulk approval
+          type: string
+        id:
+          format: int64
+          type: integer
+        revision_id:
+          description: Which revision of the justification was agreed to
+          format: int64
+          type: integer
+        withdrawn_at:
+          description: When this approval was taken back, if it was
+          type: string
+      required:
+        - id
+        - revision_id
+        - approved_by
+        - approved_at
+      type: object
     Approve-decisionRequest:
       additionalProperties: false
       properties:
@@ -79,6 +105,28 @@ components:
       required:
         - id
       type: object
+    CommentBody:
+      additionalProperties: false
+      properties:
+        body:
+          description: The comment text, in markdown
+          type: string
+        edited_at:
+          description: When the author last changed it, if they did
+          type: string
+        id:
+          format: int64
+          type: integer
+        written_at:
+          type: string
+        written_by:
+          type: string
+      required:
+        - id
+        - body
+        - written_by
+        - written_at
+      type: object
     DecisionBody:
       additionalProperties: false
       properties:
@@ -131,6 +179,63 @@ components:
       required:
         - outcome
         - reasoning
+      type: object
+    DecisionDetail:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DecisionDetail.json
+          format: uri
+          readOnly: true
+          type: string
+        age_days:
+          description: How long the claim has stood. An old judgment should look like one
+          format: int64
+          type: integer
+        decision:
+          $ref: "#/components/schemas/DecisionBody"
+        place:
+          $ref: "#/components/schemas/PlaceBody"
+        proposed_at:
+          description: When the claim was made, as a date and time
+          type: string
+        proposed_by:
+          type: string
+        reasoning:
+          description: The justification as it currently stands, in markdown
+          type: string
+      required:
+        - decision
+        - place
+        - reasoning
+        - proposed_by
+        - proposed_at
+        - age_days
+      type: object
+    DecisionsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DecisionsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/DecisionDetail"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
       type: object
     DeclaredKeyBody:
       additionalProperties: false
@@ -221,6 +326,22 @@ components:
       required:
         - created
         - item
+      type: object
+    Edit-commentRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Edit-commentRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        body:
+          minLength: 1
+          type: string
+      required:
+        - body
       type: object
     ErrorDetail:
       additionalProperties: false
@@ -446,6 +567,25 @@ components:
         - name
         - product
       type: object
+    ListBodyApprovalBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyApprovalBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/ApprovalBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
     ListBodyBindingBody:
       additionalProperties: false
       properties:
@@ -459,6 +599,25 @@ components:
         items:
           items:
             $ref: "#/components/schemas/BindingBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyCommentBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyCommentBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/CommentBody"
           type:
             - array
             - "null"
@@ -535,6 +694,25 @@ components:
         items:
           items:
             $ref: "#/components/schemas/ProductBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyRevisionBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyRevisionBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/RevisionBody"
           type:
             - array
             - "null"
@@ -741,6 +919,28 @@ components:
         - items
         - total
       type: object
+    Reaffirm-decisionRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Reaffirm-decisionRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        previous:
+          description: The decision being re-made
+          format: int64
+          type: integer
+        reasoning:
+          description: Why it still holds, in markdown
+          minLength: 1
+          type: string
+      required:
+        - previous
+        - reasoning
+      type: object
     ReceiptBody:
       additionalProperties: false
       properties:
@@ -812,6 +1012,31 @@ components:
       required:
         - reasoning
       type: object
+    RevisionBody:
+      additionalProperties: false
+      properties:
+        body:
+          description: The justification text, in markdown
+          type: string
+        id:
+          description: What an approval names when it says which words were agreed to
+          format: int64
+          type: integer
+        ordinal:
+          description: Which revision this is, counting from one
+          format: int64
+          type: integer
+        written_at:
+          type: string
+        written_by:
+          type: string
+      required:
+        - id
+        - ordinal
+        - body
+        - written_by
+        - written_at
+      type: object
     SignInBody:
       additionalProperties: false
       properties:
@@ -825,6 +1050,27 @@ components:
         - provider
         - username
         - pinned
+      type: object
+    StandingBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/StandingBody.json
+          format: uri
+          readOnly: true
+          type: string
+        previously:
+          items:
+            $ref: "#/components/schemas/DecisionDetail"
+          type:
+            - array
+            - "null"
+        standing:
+          $ref: "#/components/schemas/DecisionDetail"
+      required:
+        - previously
       type: object
     StreamBody:
       additionalProperties: false
@@ -1024,6 +1270,118 @@ paths:
       summary: Undo a bulk approval
       tags:
         - Triage
+  /v1/comments/{id}:
+    put:
+      description: |-
+        Replaces the text of a comment. Only its author may do this, and the new text overwrites the old rather than being kept as a revision — a comment is a remark, not a justification.
+
+        The text is markdown and is validated before it is stored; a 422 names the line and the offending text.
+      operationId: edit-comment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Edit-commentRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Edit a comment
+      tags:
+        - Triage
+  /v1/decisions:
+    get:
+      description: |-
+        Returns triage decisions on products you may triage, newest first, with the justification text for each.
+
+        Filter by `outcome` to list dismissals (`not-applicable`, `wont-fix`) or postponements (`deferred`), by `state` to separate what is approved from what is still waiting or has been withdrawn, and by `product` to limit to one product.
+
+        Set `expired=true` to list deferrals whose date has passed — the findings that have come back and need judging again.
+      operationId: list-decisions
+      parameters:
+        - description: Limit to one product, by name
+          explode: false
+          in: query
+          name: product
+          schema:
+            description: Limit to one product, by name
+            type: string
+        - description: Limit to one outcome
+          explode: false
+          in: query
+          name: outcome
+          schema:
+            description: Limit to one outcome
+            enum:
+              - affected
+              - not-applicable
+              - deferred
+              - wont-fix
+            type: string
+        - description: Limit to one state
+          explode: false
+          in: query
+          name: state
+          schema:
+            description: Limit to one state
+            enum:
+              - proposed
+              - approved
+              - withdrawn
+              - lapsed
+            type: string
+        - description: Only deferrals whose date has passed
+          explode: false
+          in: query
+          name: expired
+          schema:
+            description: Only deferrals whose date has passed
+            type: boolean
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: offset
+          schema:
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List triage decisions
+      tags:
+        - Triage
   /v1/decisions/{id}:
     delete:
       description: Withdraws the decision so it no longer applies to any finding. The record is kept — a withdrawn decision reads as proposed, approved, then withdrawn. Requires no approval.
@@ -1045,6 +1403,35 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Withdraw a triage decision
+      tags:
+        - Triage
+    get:
+      description: |-
+        Returns one decision with the justification as it currently stands, where it applies, who proposed it and how long it has stood.
+
+        For the earlier justifications see `GET /v1/decisions/{id}/revisions`, and for who agreed to which of them see `GET /v1/decisions/{id}/approvals`.
+      operationId: get-decision
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionDetail"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get a triage decision
       tags:
         - Triage
   /v1/decisions/{id}/approval:
@@ -1081,7 +1468,66 @@ paths:
       summary: Approve a triage decision
       tags:
         - Triage
+  /v1/decisions/{id}/approvals:
+    get:
+      description: |-
+        Returns every approval recorded against this decision, including ones later withdrawn, each naming the revision of the justification it was given for.
+
+        A withdrawn approval is kept rather than deleted: who agreed to what, and when it stopped counting, is part of the record.
+      operationId: list-decision-approvals
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyApprovalBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List who approved a decision
+      tags:
+        - Triage
   /v1/decisions/{id}/comments:
+    get:
+      description: |-
+        Returns the comments on a decision, oldest first, with who wrote each and when. A comment that has been edited also carries when it was last changed.
+
+        Comments are separate from the justification and never affect an approval.
+      operationId: list-decision-comments
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyCommentBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List comments on a decision
+      tags:
+        - Triage
     post:
       description: |-
         Adds a markdown comment to a decision. Comments are separate from the justification and never affect an approval, so an approved decision can be annotated at any time.
@@ -1149,6 +1595,36 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Update a decision's justification
+      tags:
+        - Triage
+  /v1/decisions/{id}/revisions:
+    get:
+      description: |-
+        Returns every revision of the justification, oldest first, with who wrote each and when.
+
+        An approval names the specific revision that was agreed to, so this is how to read what an approver actually saw rather than what the text says now.
+      operationId: list-decision-revisions
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyRevisionBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List a decision's justification history
       tags:
         - Triage
   /v1/keys:
@@ -1558,6 +2034,60 @@ paths:
       tags:
         - Findings
   /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision:
+    get:
+      description: |-
+        Returns the decision currently suppressing this finding, if any, together with everything decided here before — withdrawn claims, and claims that stopped applying when an upstream version changed.
+
+        `standing` is absent when nothing has been decided, or when a claim is still waiting for approval: a claim nobody has agreed to suppresses nothing.
+
+        Read `previously` before deciding again. A claim that lapsed on a version bump is usually still the right answer, and re-affirming it is a different request from making a new one.
+      operationId: get-finding-decision
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - description: The issue, by any name it is known under
+          in: path
+          name: vulnerability
+          required: true
+          schema:
+            description: The issue, by any name it is known under
+            type: string
+        - description: Which place, as the findings list gives it
+          in: path
+          name: place
+          required: true
+          schema:
+            description: Which place, as the findings list gives it
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandingBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get what has been decided about a finding
+      tags:
+        - Triage
     post:
       description: |-
         Records how a finding was triaged: `affected`, `not-applicable`, `deferred` or `wont-fix`.
@@ -1618,6 +2148,65 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Record a triage decision for a finding
+      tags:
+        - Triage
+  /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision/reaffirmation:
+    post:
+      description: |-
+        Re-makes a decision that stopped applying because an upstream version moved, at the versions this finding has now. `previous` is the decision being re-made, from `previously` in `GET .../decision`.
+
+        Only the person who made the original may do this, and it normally needs no second approver: two people already agreed to the claim, and a version bump is a prompt to re-check rather than a new claim.
+
+        It does need approval again if the justification differs from the original, or if the vulnerability's severity has risen since — both mean this is not the claim that was agreed to. The response says which happened.
+
+        `reasoning` is required. "Still true" with nothing behind it is what a re-affirmation becomes when it is made too easy.
+      operationId: reaffirm-decision
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: vulnerability
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: place
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reaffirm-decisionRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Re-affirm a decision after an upstream version changed
       tags:
         - Triage
   /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/elsewhere:

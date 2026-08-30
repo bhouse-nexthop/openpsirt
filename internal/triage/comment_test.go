@@ -25,7 +25,7 @@ func TestACommentNeverDisturbsAnApproval(t *testing.T) {
 		if standing == nil || standing.State != triage.Approved {
 			t.Errorf("a comment disturbed the approval: %+v", standing)
 		}
-		approvals, err := f.store.Approvals(ctx, claimed.ID)
+		approvals, err := f.store.Approvals(ctx, f.reviewer, claimed.ID)
 		if err != nil {
 			t.Fatal(err)
 		}

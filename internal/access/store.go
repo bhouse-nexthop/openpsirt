@@ -350,3 +350,30 @@ func (s *Store) Keys(ctx context.Context) ([]Key, error) {
 	}
 	return keys, nil
 }
+
+// Names resolves people to what to call them, for showing who did something.
+//
+// A display name where one is known, and the identity they signed in with
+// otherwise. Batched because the alternative is a query per row, and the
+// places this is needed — a review queue, a list of what was dismissed — are
+// exactly the ones that are long.
+func (s *Store) Names(ctx context.Context, ids []int64) (map[int64]string, error) {
+	names := map[int64]string{}
+	if len(ids) == 0 {
+		return names, nil
+	}
+	var people []Account
+	if err := s.db.NewSelect().Model(&people).
+		Column("id", "identity", "display_name").
+		Where("id IN (?)", bun.List(ids)).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read who these people are: %w", err)
+	}
+	for _, person := range people {
+		if person.DisplayName != "" {
+			names[person.ID] = person.DisplayName
+			continue
+		}
+		names[person.ID] = person.Identity
+	}
+	return names, nil
+}

@@ -90,14 +90,29 @@ func registerTriage(api huma.API, in Ingest) {
 			return nil, wentWrong(in.Logger, "the review queue could not be read", err)
 		}
 
+		// Which finding each row is about, and who made the claim, resolved
+		// here rather than left as identifiers. A queue row saying product 4,
+		// issue 91 is a row an approver has to make two more requests to
+		// understand, fifty times a page.
+		decisions := make([]triage.Decision, 0, len(waiting))
+		for _, row := range waiting {
+			decisions = append(decisions, row.Decision)
+		}
+		named, err := describeDecisions(ctx, in, store, decisions, nil)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "the review queue could not be read", err)
+		}
+
 		out := &QueueOutput{}
 		out.Body.Items = make([]WaitingBody, 0, len(waiting))
-		for _, row := range waiting {
+		for i, row := range waiting {
 			out.Body.Items = append(out.Body.Items, WaitingBody{
 				Decision:           decisionBody(row.Decision),
+				Place:              named[i].Place,
 				Reasoning:          row.Reasoning,
 				PreviouslyApproved: row.PreviouslyApproved,
 				DeferredDays:       int(row.DeferredSoFar.Hours() / 24),
+				ProposedBy:         named[i].ProposedBy,
 				AgeDays:            int(store.Age(&row.Decision).Hours() / 24),
 			})
 		}
@@ -315,6 +330,11 @@ func registerProposing(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, wentWrong(in.Logger, "cannot tell whether that needs agreement", err)
 		}
+		// Recorded on the claim, not merely reported back. A claim that says
+		// it is waiting for somebody and is stored as needing nobody takes
+		// effect the moment it is made, and the answer telling the caller it
+		// was waiting is the only trace of a control that did not run.
+		proposal.NeedsApproval = needs
 
 		decision, err := store.Propose(ctx, subject, proposal)
 		if err != nil {

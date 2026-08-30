@@ -1,0 +1,321 @@
+package httpapi_test
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"testing"
+	"time"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
+	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
+)
+
+// scanned puts a build behind the handler: one component under the product,
+// with one issue reported against it. Reading what has been decided is only
+// testable against something that was found.
+func (r *reach) scanned(t *testing.T) (place string) {
+	t.Helper()
+	ctx := t.Context()
+
+	names := catalog.NewStore(r.db.DB)
+	located, err := names.Locate(ctx, "mine", "master", "broadcom")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := names.TargetFor(ctx, located.StreamID, located.VariantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	scan, outcome, err := ingest.NewStore(r.db.DB).Record(ctx, ingest.Arriving{
+		TargetID: target.ID, ContentHash: "read-test", BuiltAt: time.Now().UTC(),
+		ParserVersion: "test",
+	})
+	if err != nil || outcome != ingest.Accept {
+		t.Fatalf("record scan: %v %v", outcome, err)
+	}
+
+	product := graph.Described{Purl: "pkg:deb/debian/mine@1.0", Name: "mine", Version: "1.0"}
+	library := graph.Described{
+		Purl: "pkg:deb/debian/libnl-3-200@3.7.0", Name: "libnl-3-200", Version: "3.7.0",
+	}
+	if _, err := graph.NewStore(r.db.DB).Apply(ctx, target.ID, scan.ID, graph.Snapshot{
+		Root:         product,
+		Components:   []graph.Described{library},
+		Dependencies: []graph.Dependency{{Parent: product, Child: library}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	findings := finding.NewStore(r.db.DB)
+	run, err := findings.Begin(ctx, finding.Run{
+		TargetID: target.ID, Scanner: "grype", ScannerVersion: "0.112.0",
+		DatabaseVersion: "2026-08-28", RanHere: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := findings.Apply(ctx, target.ID, run.ID, []finding.Reported{{
+		Issue:     finding.Named{Identifier: "CVE-2026-9999", Severity: "high"},
+		Component: library,
+		FixState:  finding.FixedUpstream, FixedIn: "3.9.0",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Under the product itself, the component stands alone.
+	return finding.PlaceIdentity("libnl-3-200", "")
+}
+
+// decided proposes a claim through the API and returns its identifier.
+func (r *reach) decided(t *testing.T, place string) int64 {
+	t.Helper()
+	path := fmt.Sprintf("/v1/products/mine/streams/master/variants/broadcom"+
+		"/findings/CVE-2026-9999/places/%s/decision", place)
+	got := asPerson(t, r, "triager", http.MethodPost, path,
+		`{"outcome":"not-applicable","justification":"vulnerable_code_not_in_execute_path",`+
+			`"reasoning":"The parser is never reached: we only call the encoder."}`)
+	if got.Code != http.StatusCreated {
+		t.Fatalf("proposing answered %d: %s", got.Code, got.Body.String())
+	}
+	var out struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(got.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v (%s)", err, got.Body.String())
+	}
+	return out.ID
+}
+
+func TestEverythingWrittenAboutADecisionCanBeReadBack(t *testing.T) {
+	// The gap this closes. A tool that lets somebody argue, agree and annotate
+	// and then offers no way to see what any of it produced sends every reader
+	// to the review queue — which by definition no longer holds what was
+	// agreed to.
+	eachReach(t, func(t *testing.T, r *reach) {
+		place := r.scanned(t)
+		id := r.decided(t, place)
+
+		if got := asPerson(t, r, "triager", http.MethodPost,
+			fmt.Sprintf("/v1/decisions/%d/comments", id),
+			`{"body":"Re-checked against 3.7.0; still true."}`); got.Code != http.StatusCreated {
+			t.Fatalf("commenting answered %d: %s", got.Code, got.Body.String())
+		}
+		if got := asPerson(t, r, "reviewer", http.MethodPost,
+			fmt.Sprintf("/v1/decisions/%d/approval", id), `{}`); got.Code != http.StatusNoContent {
+			t.Fatalf("approving answered %d: %s", got.Code, got.Body.String())
+		}
+
+		// The decision itself, saying what it is about rather than by number.
+		var detail struct {
+			Decision struct {
+				Outcome string `json:"outcome"`
+				State   string `json:"state"`
+			} `json:"decision"`
+			Place struct {
+				Product       string `json:"product"`
+				Vulnerability string `json:"vulnerability"`
+				Place         string `json:"place"`
+			} `json:"place"`
+			Reasoning  string `json:"reasoning"`
+			ProposedBy string `json:"proposed_by"`
+		}
+		read(t, r, "triager", fmt.Sprintf("/v1/decisions/%d", id), &detail)
+		if detail.Decision.State != "approved" {
+			t.Errorf("the decision reads as %q after being approved", detail.Decision.State)
+		}
+		if detail.Place.Product != "mine" || detail.Place.Vulnerability != "CVE-2026-9999" {
+			t.Errorf("the decision does not say what it is about: %+v", detail.Place)
+		}
+		if detail.Reasoning == "" {
+			t.Error("the decision came back with no reasoning to read")
+		}
+		if detail.ProposedBy != "triager" {
+			t.Errorf("proposed by %q, want the person who made the claim", detail.ProposedBy)
+		}
+
+		// The reasoning, the agreement, and the discussion, each on its own.
+		var revisions struct {
+			Items []struct {
+				ID        int64  `json:"id"`
+				Body      string `json:"body"`
+				WrittenBy string `json:"written_by"`
+			} `json:"items"`
+		}
+		read(t, r, "triager", fmt.Sprintf("/v1/decisions/%d/revisions", id), &revisions)
+		if len(revisions.Items) != 1 || revisions.Items[0].WrittenBy != "triager" {
+			t.Errorf("the reasoning history reads as %+v", revisions.Items)
+		}
+
+		var approvals struct {
+			Items []struct {
+				RevisionID int64  `json:"revision_id"`
+				ApprovedBy string `json:"approved_by"`
+			} `json:"items"`
+		}
+		read(t, r, "triager", fmt.Sprintf("/v1/decisions/%d/approvals", id), &approvals)
+		if len(approvals.Items) != 1 || approvals.Items[0].ApprovedBy != "reviewer" {
+			t.Fatalf("who agreed reads as %+v", approvals.Items)
+		}
+		// The agreement names the words that were agreed to, which is the
+		// whole point of keeping revisions.
+		if approvals.Items[0].RevisionID != revisions.Items[0].ID {
+			t.Error("the approval does not name a revision anybody can read")
+		}
+
+		var comments struct {
+			Items []struct {
+				Body      string `json:"body"`
+				WrittenBy string `json:"written_by"`
+			} `json:"items"`
+		}
+		read(t, r, "triager", fmt.Sprintf("/v1/decisions/%d/comments", id), &comments)
+		if len(comments.Items) != 1 || comments.Items[0].WrittenBy != "triager" {
+			t.Errorf("the discussion reads as %+v", comments.Items)
+		}
+	})
+}
+
+func TestWhatWasDismissedCanBeListed(t *testing.T) {
+	// The question somebody auditing asks: what have we decided not to fix,
+	// and on what grounds. Without it the only list of decisions is the review
+	// queue, which holds exactly the ones nobody has agreed to yet.
+	eachReach(t, func(t *testing.T, r *reach) {
+		place := r.scanned(t)
+		r.decided(t, place)
+
+		var listed struct {
+			Items []struct {
+				Decision struct {
+					Outcome string `json:"outcome"`
+				} `json:"decision"`
+				Reasoning string `json:"reasoning"`
+			} `json:"items"`
+			Total int `json:"total"`
+		}
+		read(t, r, "triager", "/v1/decisions?outcome=not-applicable", &listed)
+		if listed.Total != 1 || len(listed.Items) != 1 {
+			t.Fatalf("%d dismissals listed, want 1", listed.Total)
+		}
+		if listed.Items[0].Reasoning == "" {
+			t.Error("a dismissal listed without the reason it was dismissed for")
+		}
+
+		// A filter that matches nothing says so rather than falling back to
+		// everything, which is how a filtered list becomes dangerous.
+		var none struct {
+			Total int `json:"total"`
+		}
+		read(t, r, "triager", "/v1/decisions?outcome=wont-fix", &none)
+		if none.Total != 0 {
+			t.Errorf("filtering by an outcome nothing has returned %d", none.Total)
+		}
+	})
+}
+
+func TestReadingADecisionNeedsTheRightToTakePartInIt(t *testing.T) {
+	// Every read is narrowed the same way the writes are. A decision somebody
+	// may not reach answers as one that is not there, so guessing identifiers
+	// says nothing.
+	eachReach(t, func(t *testing.T, r *reach) {
+		place := r.scanned(t)
+		id := r.decided(t, place)
+
+		// Holding the approver capability and nothing to read it against
+		// reaches nothing, which is what makes a capability a capability.
+		if got := asPerson(t, r, "approver", http.MethodPost,
+			fmt.Sprintf("/v1/decisions/%d/approval", id), `{}`); got.Code != http.StatusNotFound {
+			t.Errorf("an approver with no visibility approved: %d", got.Code)
+		}
+
+		for _, path := range []string{
+			fmt.Sprintf("/v1/decisions/%d", id),
+			fmt.Sprintf("/v1/decisions/%d/revisions", id),
+			fmt.Sprintf("/v1/decisions/%d/approvals", id),
+			fmt.Sprintf("/v1/decisions/%d/comments", id),
+		} {
+			got := asPerson(t, r, "reader", http.MethodGet, path, "")
+			if got.Code != http.StatusNotFound {
+				t.Errorf("%s answered %d to somebody who may only read the product, want 404",
+					path, got.Code)
+			}
+		}
+
+		// And the list is empty rather than refused: they may ask, and the
+		// answer is that they can reach none of it.
+		var listed struct {
+			Total int `json:"total"`
+		}
+		read(t, r, "reader", "/v1/decisions", &listed)
+		if listed.Total != 0 {
+			t.Errorf("somebody who may only read was told %d decisions exist", listed.Total)
+		}
+	})
+}
+
+func TestWhatAppliesToAFindingIsReadableWithItsHistory(t *testing.T) {
+	// Somebody deciding needs to know what was decided here before. Making
+	// them start from a blank page, having thrown away what was written last
+	// time, is how a tool teaches people to stop writing reasoning at all.
+	eachReach(t, func(t *testing.T, r *reach) {
+		place := r.scanned(t)
+		id := r.decided(t, place)
+		path := fmt.Sprintf("/v1/products/mine/streams/master/variants/broadcom"+
+			"/findings/CVE-2026-9999/places/%s/decision", place)
+
+		var before struct {
+			Standing   *struct{} `json:"standing"`
+			Previously []struct {
+				Decision struct {
+					State string `json:"state"`
+				} `json:"decision"`
+			} `json:"previously"`
+		}
+		read(t, r, "triager", path, &before)
+		// Nobody has agreed to it yet, so it suppresses nothing — but it is
+		// there to be read.
+		if before.Standing != nil {
+			t.Error("a claim nobody agreed to reads as standing")
+		}
+		if len(before.Previously) != 1 {
+			t.Fatalf("the history reads as %+v", before.Previously)
+		}
+
+		if got := asPerson(t, r, "reviewer", http.MethodPost,
+			fmt.Sprintf("/v1/decisions/%d/approval", id), `{}`); got.Code != http.StatusNoContent {
+			t.Fatalf("approving answered %d: %s", got.Code, got.Body.String())
+		}
+
+		var after struct {
+			Standing *struct {
+				Decision struct {
+					Outcome string `json:"outcome"`
+					State   string `json:"state"`
+				} `json:"decision"`
+				Reasoning string `json:"reasoning"`
+			} `json:"standing"`
+		}
+		read(t, r, "triager", path, &after)
+		if after.Standing == nil {
+			t.Fatal("an agreed decision does not read as standing where it was made")
+		}
+		if after.Standing.Decision.Outcome != "not-applicable" || after.Standing.Reasoning == "" {
+			t.Errorf("what stands here reads as %+v", after.Standing)
+		}
+	})
+}
+
+// read makes a GET as somebody and decodes what came back.
+func read(t *testing.T, r *reach, who, path string, into any) {
+	t.Helper()
+	got := asPerson(t, r, who, http.MethodGet, path, "")
+	if got.Code != http.StatusOK {
+		t.Fatalf("GET %s answered %d: %s", path, got.Code, got.Body.String())
+	}
+	if err := json.Unmarshal(got.Body.Bytes(), into); err != nil {
+		t.Fatalf("decode %s: %v (%s)", path, err, got.Body.String())
+	}
+}

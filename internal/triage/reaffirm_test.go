@@ -147,7 +147,7 @@ func TestWhatTheCodeMovedOutFromUnderIsMarked(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		previous, err := f.store.PreviouslyAt(ctx, moved)
+		previous, err := f.store.PreviouslyAt(ctx, f.reviewer, moved)
 		if err != nil {
 			t.Fatal(err)
 		}

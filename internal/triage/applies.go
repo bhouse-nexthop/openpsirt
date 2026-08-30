@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/uptrace/bun"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 )
 
 // Applying returns the decision standing against a place, if one is.
@@ -30,6 +32,12 @@ import (
 // re-ask every question every night in order to catch the few that a patch
 // made stale. What compensates is that a decision's age is shown wherever it
 // appears, so an old judgment looks like one.
+// It takes no subject, unlike everything else read here, because the question
+// is not a person's: it is whether this finding is suppressed, asked while
+// recording what a scan found and while listing findings for anybody at all.
+// The answer does not vary by who is asking. Every path that reaches a place
+// resolved it through a lookup that carried a subject, so nothing gets here
+// without the finding itself having been authorized.
 func (s *Store) Applying(ctx context.Context, at Place) (*Decision, error) {
 	decision := new(Decision)
 	query := s.db.NewSelect().Model(decision).
@@ -88,9 +96,9 @@ func (s *Store) Applying(ctx context.Context, at Place) (*Decision, error) {
 // So what comes back is history rather than an answer: the claim that used to
 // stand, and the versions it was about. Whether it still holds is the
 // question being put, not something this decides.
-func (s *Store) PreviouslyAt(ctx context.Context, at Place) ([]Decision, error) {
+func (s *Store) PreviouslyAt(ctx context.Context, subject access.Subject, at Place) ([]Decision, error) {
 	var previous []Decision
-	if err := s.db.NewSelect().Model(&previous).
+	if err := readableBy(s.db.NewSelect().Model(&previous), subject, "de").
 		Where("product_id = ?", at.ProductID).
 		Where("vulnerability_id = ?", at.VulnerabilityID).
 		Where("place_identity = ?", at.PlaceIdentity).
@@ -117,7 +125,10 @@ func matchVersion(query *bun.SelectQuery, column, stated string) *bun.SelectQuer
 //
 // All of it. An approval names one revision, so reading only the current one
 // leaves somebody unable to see what was actually agreed to.
-func (s *Store) Revisions(ctx context.Context, decisionID int64) ([]Revision, error) {
+func (s *Store) Revisions(ctx context.Context, subject access.Subject, decisionID int64) ([]Revision, error) {
+	if _, err := s.reaching(ctx, subject, decisionID, readable); err != nil {
+		return nil, err
+	}
 	var revisions []Revision
 	if err := s.db.NewSelect().Model(&revisions).
 		Where("decision_id = ?", decisionID).
@@ -129,7 +140,10 @@ func (s *Store) Revisions(ctx context.Context, decisionID int64) ([]Revision, er
 
 // Approvals returns who agreed to a decision and to which words, including
 // agreements later taken back.
-func (s *Store) Approvals(ctx context.Context, decisionID int64) ([]Approval, error) {
+func (s *Store) Approvals(ctx context.Context, subject access.Subject, decisionID int64) ([]Approval, error) {
+	if _, err := s.reaching(ctx, subject, decisionID, readable); err != nil {
+		return nil, err
+	}
 	var approvals []Approval
 	if err := s.db.NewSelect().Model(&approvals).
 		Where("decision_id = ?", decisionID).
@@ -147,4 +161,86 @@ func (s *Store) Approvals(ctx context.Context, decisionID int64) ([]Approval, er
 // yesterday's.
 func (s *Store) Age(decision *Decision) time.Duration {
 	return s.now().Sub(decision.ProposedAt)
+}
+
+// Read returns one decision with the reasoning it currently rests on.
+//
+// Everything a decision endpoint accepts has a matching way to read the
+// result. A tool that lets somebody argue, agree and annotate, and then offers
+// no way to see what any of it produced, sends every reader to the review
+// queue — which by definition no longer holds what was agreed to.
+func (s *Store) Read(ctx context.Context, subject access.Subject, decisionID int64) (*Decision, string, error) {
+	decision, err := s.reaching(ctx, subject, decisionID, readable)
+	if err != nil {
+		return nil, "", err
+	}
+	reasoning, err := s.currentReasoning(ctx, []Decision{*decision})
+	if err != nil {
+		return nil, "", err
+	}
+	return decision, reasoning[decision.ID], nil
+}
+
+// Filter narrows a list of decisions to what somebody is looking for.
+//
+// An empty field is not a filter. Nobody asking about deferrals wants to be
+// told which states exist first.
+type Filter struct {
+	// ProductID limits to one product. Zero is every product the reader may
+	// reach, which is the ordinary case: somebody auditing dismissals is
+	// asking across a release, not about one package.
+	ProductID int64
+	Outcome   Outcome
+	State     State
+	// Expired limits deferrals to those whose date has passed. It is the
+	// question a deferral list is usually being asked — what did we put off
+	// that has come back — rather than a state anything records.
+	Expired bool
+}
+
+// List returns decisions matching a filter, newest first, with how many there
+// are behind the page.
+//
+// Newest first because the question this answers is almost always about recent
+// judgment: what have we dismissed, what did we defer, what is coming back.
+// Oldest-first would put the page nobody wants at the front of every request.
+func (s *Store) List(ctx context.Context, subject access.Subject, f Filter,
+	limit, offset int) ([]Decision, map[int64]string, int, error) {
+
+	narrow := func(q *bun.SelectQuery) *bun.SelectQuery {
+		q = readableBy(q, subject, "de")
+		if f.ProductID != 0 {
+			q = q.Where("product_id = ?", f.ProductID)
+		}
+		if f.Outcome != "" {
+			q = q.Where("outcome = ?", f.Outcome)
+		}
+		if f.State != "" {
+			q = q.Where("state = ?", f.State)
+		}
+		if f.Expired {
+			q = q.Where("deferred_until IS NOT NULL").Where("deferred_until <= ?", s.now())
+		}
+		return q
+	}
+
+	total, err := narrow(s.db.NewSelect().Model((*Decision)(nil))).Count(ctx)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("count what was decided: %w", err)
+	}
+
+	var decisions []Decision
+	if err := narrow(s.db.NewSelect().Model(&decisions)).
+		Order("id DESC").Limit(limit).Offset(offset).Scan(ctx); err != nil {
+		return nil, nil, 0, fmt.Errorf("read what was decided: %w", err)
+	}
+
+	// The reasoning comes with the row, for the same reason the review queue
+	// carries it: a list where seeing why means opening each entry is a list
+	// nobody reads before acting on.
+	reasoning, err := s.currentReasoning(ctx, decisions)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	return decisions, reasoning, total, nil
 }

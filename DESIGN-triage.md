@@ -152,6 +152,54 @@ undisclosed — authorized as one thing and kept as another.
 A decision somebody may not reach and one that does not exist give the same
 answer, so guessing identifiers says nothing.
 
+### Three rights, not one
+
+Arguing, agreeing and reading are separate questions, and asking one of them
+for all three was wrong in both directions.
+
+| Act | Needs |
+|---|---|
+| Propose, revise, withdraw | Triage on the product, at the finding's visibility |
+| Approve, undo an approval | The approver capability **or** triage, plus being able to read the finding |
+| Read what was decided | Either of the above |
+
+Approving asked for the triage role, which made the approver capability
+decorative: somebody granted exactly the right to approve could not approve
+anything, and the only people who could were the ones who could also have
+proposed it. A capability grants no visibility, so it is asked alongside
+whether they may read the finding — otherwise handing somebody the ability to
+approve hands them everything there is to approve.
+
+A triager may still approve, on somebody else's claim. Two triagers agreeing to
+each other's work is the ordinary shape of a small team, and the control that
+matters is that the two are different people, which is checked separately and
+has no override.
+
+Reading follows whichever act produced the thing being read. An approver has to
+read a claim to judge it, and somebody who took part in a discussion has to be
+able to read it back — but a reader who holds neither right sees a decision as
+one that is not there, the same answer everything else here gives.
+
+## Everything written down can be read back
+
+Each way of adding to a decision has a matching way of reading the result: the
+decision itself with the reasoning it currently rests on, the earlier
+justifications, who agreed to which of them, and the discussion. Decisions can
+also be listed across products and filtered — by outcome, to answer what has
+been dismissed; by state, to separate what is agreed from what is waiting; and
+by whether a deferral's date has passed.
+
+Without these the only list of decisions is the review queue, which by
+definition holds the ones nobody has agreed to yet. Somebody auditing what was
+dismissed, or re-reading what an approver actually saw, had nowhere to look —
+and a control nobody can inspect after the fact is not much of a control.
+
+Each list carries the reasoning with the row, for the same reason the queue
+does: a list where seeing why means opening every entry is a list nobody reads
+before acting on. Names come with it too — the product, the issue, the person —
+because a row saying product 4, issue 91 is a row somebody has to make two more
+requests to understand, fifty times a page.
+
 Undoing a bulk approval narrows to what the person undoing it may reach. A
 batch is one reviewer's afternoon and may span products, so taking it back
 wholesale would let somebody act on products they hold nothing on.

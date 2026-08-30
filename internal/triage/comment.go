@@ -39,7 +39,7 @@ type Comment struct {
 // Allowed at any point, including long after an approval, and it disturbs
 // nothing.
 func (s *Store) Say(ctx context.Context, subject access.Subject, decisionID int64, body string) (*Comment, error) {
-	if err := s.reachable(ctx, subject, decisionID); err != nil {
+	if _, err := s.reaching(ctx, subject, decisionID, readable); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(body) == "" {
@@ -73,7 +73,7 @@ func (s *Store) Reword(ctx context.Context, subject access.Subject, commentID in
 	if comment.WrittenBy != subject.ID {
 		return fmt.Errorf("only the person who wrote a comment may change it")
 	}
-	if err := s.reachable(ctx, subject, comment.DecisionID); err != nil {
+	if _, err := s.reaching(ctx, subject, comment.DecisionID, readable); err != nil {
 		return err
 	}
 	if strings.TrimSpace(body) == "" {
@@ -94,7 +94,7 @@ func (s *Store) Reword(ctx context.Context, subject access.Subject, commentID in
 
 // Discussion returns what has been said about a decision, oldest first.
 func (s *Store) Discussion(ctx context.Context, subject access.Subject, decisionID int64) ([]Comment, error) {
-	if err := s.reachable(ctx, subject, decisionID); err != nil {
+	if _, err := s.reaching(ctx, subject, decisionID, readable); err != nil {
 		return nil, err
 	}
 	var comments []Comment

@@ -45,7 +45,11 @@ func (s *Store) approve(ctx context.Context, subject access.Subject, decisionID 
 	}
 	// Read from the row rather than from what the caller said about it. A
 	// caller that could name the product would be deciding what it may reach.
-	if !mayDecide(subject, decision.ProductID, decision.Visibility) {
+	//
+	// Agreeing is its own right, not the right to argue: somebody granted
+	// exactly the approver capability may do this, and asking for the triage
+	// role instead made that grant do nothing at all.
+	if !mayApprove(subject, decision.ProductID, decision.Visibility) {
 		return ErrNotTheirs
 	}
 	// Compared against whoever wrote the words being agreed to, not against
@@ -240,7 +244,7 @@ func (s *Store) undoBatch(ctx context.Context, subject access.Subject, batch str
 		ColumnExpr("da.decision_id").
 		Join("JOIN decision AS d ON d.id = da.decision_id").
 		Where("da.batch = ?", batch).Where("da.withdrawn_at IS NULL")
-	covered = reachableBy(covered, subject, "d")
+	covered = approvableBy(covered, subject, "d")
 	if err := covered.Scan(ctx, &decisions); err != nil {
 		return 0, fmt.Errorf("read what that approval covered: %w", err)
 	}

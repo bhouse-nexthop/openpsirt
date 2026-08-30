@@ -121,6 +121,29 @@ func mayDecide(subject access.Subject, productID int64, visibility access.Visibi
 		subject.Holds(access.PrivateTriage, productID)
 }
 
+// mayApprove reports whether a subject may agree to somebody else's claim.
+//
+// Approving is not deciding, and requiring the triage role for it made the
+// approver capability decorative: somebody granted exactly the right to
+// approve could not approve anything. It is a capability rather than a grant
+// of visibility, so it is asked alongside whether they may read the finding —
+// otherwise handing somebody the ability to approve hands them everything
+// there is to approve.
+//
+// A triager may also approve, on somebody else's claim. Two triagers agreeing
+// to each other's work is the ordinary shape of a small team, and the control
+// that matters is that the two are different people — which is checked
+// separately and has no override.
+func mayApprove(subject access.Subject, productID int64, visibility access.Visibility) bool {
+	if subject.Kind != access.Person {
+		return false
+	}
+	if !subject.Reads(visibility, productID) {
+		return false
+	}
+	return subject.Holds(access.Approver, productID) || mayDecide(subject, productID, visibility)
+}
+
 // ErrSamePerson is returned when somebody tries to approve their own claim.
 var ErrSamePerson = errors.New("the person who proposed a decision may not approve it")
 
@@ -308,30 +331,72 @@ func visibilityOf(at Place) access.Visibility {
 // product and visibility it belongs to from the row rather than from anything
 // the caller stated.
 func (s *Store) reachable(ctx context.Context, subject access.Subject, decisionID int64) error {
+	_, err := s.reaching(ctx, subject, decisionID, mayDecide)
+	return err
+}
+
+// reaching finds a decision a subject may act on, under a given rule.
+//
+// The rule differs by act: arguing about a finding needs the triage role,
+// while agreeing to somebody else's claim is the approver capability alongside
+// being able to read it. Reading what was decided follows whichever act
+// produced it — anybody who could have taken part can see what came of it.
+func (s *Store) reaching(ctx context.Context, subject access.Subject, decisionID int64,
+	allowed func(access.Subject, int64, access.Visibility) bool) (*Decision, error) {
+
 	decision := new(Decision)
 	if err := s.db.NewSelect().Model(decision).
 		Where("id = ?", decisionID).Scan(ctx); err != nil {
 		// A decision somebody may not reach and one that does not exist get
 		// the same answer, so that guessing identifiers says nothing.
-		return ErrNotTheirs
+		return nil, ErrNotTheirs
 	}
-	if !mayDecide(subject, decision.ProductID, decision.Visibility) {
-		return ErrNotTheirs
+	if !allowed(subject, decision.ProductID, decision.Visibility) {
+		return nil, ErrNotTheirs
 	}
-	return nil
+	return decision, nil
 }
 
-// reachableBy narrows a query to the decisions a subject may act on.
+// readable reports whether a subject may see what was decided.
 //
-// Applied as a condition rather than by filtering afterwards, because a count,
+// Wider than deciding and wider than approving, and deliberately so: an
+// approver has to read a claim to judge it, and somebody who took part in a
+// discussion has to be able to read it back. It is still bounded by what they
+// may read, so a finding nobody has disclosed stays where it was.
+func readable(subject access.Subject, productID int64, visibility access.Visibility) bool {
+	return mayApprove(subject, productID, visibility) || mayDecide(subject, productID, visibility)
+}
+
+// approvableBy narrows a query to the decisions a subject may agree to, which
+// is a wider set than the ones they may argue about.
+func approvableBy(query *bun.SelectQuery, subject access.Subject, column string) *bun.SelectQuery {
+	return narrowedBy(query, subject, column, mayApprove)
+}
+
+// readableBy narrows a query to the decisions a subject may see.
+func readableBy(query *bun.SelectQuery, subject access.Subject, column string) *bun.SelectQuery {
+	return narrowedBy(query, subject, column, readable)
+}
+
+// narrowedBy applies one of those rules as a condition on the query.
+//
+// Written as a condition rather than as filtering afterwards, because a count,
 // an export or a report is exactly where filtering afterwards gets forgotten —
 // and where the number is the leak even when no row is shown.
+//
+// Public and private are kept apart because they permit different things:
+// reaching undisclosed findings implies reaching disclosed ones, and the
+// reverse is exactly what must not happen. The rule is asked separately for
+// each, per product, so a new right cannot widen one by being written into the
+// other.
 //
 // The products are bound as values. They come from the subject's own grants
 // rather than from anything typed, so writing them into the statement would be
 // safe today and would be the shape somebody copies later when the list does
 // come from outside.
-func reachableBy(query *bun.SelectQuery, subject access.Subject, column string) *bun.SelectQuery {
+func narrowedBy(query *bun.SelectQuery, subject access.Subject, column string,
+	allowed func(access.Subject, int64, access.Visibility) bool) *bun.SelectQuery {
+
 	if subject.Kind != access.Person {
 		return query.Where("1 = 0")
 	}
@@ -340,15 +405,12 @@ func reachableBy(query *bun.SelectQuery, subject access.Subject, column string) 
 		return query
 	}
 
-	// Kept apart because they permit different things: triage on undisclosed
-	// findings implies triage on disclosed ones, and the reverse is exactly
-	// what must not happen.
 	var private, public []int64
 	for _, id := range products {
 		switch {
-		case subject.Holds(access.PrivateTriage, id):
+		case allowed(subject, id, access.Private):
 			private = append(private, id)
-		case subject.Holds(access.PublicTriage, id):
+		case allowed(subject, id, access.Public):
 			public = append(public, id)
 		}
 	}

@@ -42,14 +42,14 @@ func (s *Store) Queue(ctx context.Context, subject access.Subject, limit, offset
 		limit = 50
 	}
 
-	counting := reachableBy(waiting(s.db.NewSelect().Model((*Decision)(nil)), s.now()), subject, "de")
+	counting := approvableBy(waiting(s.db.NewSelect().Model((*Decision)(nil)), s.now()), subject, "de")
 	total, err := counting.Count(ctx)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count what is waiting: %w", err)
 	}
 
 	var proposed []Decision
-	listing := reachableBy(waiting(s.db.NewSelect().Model(&proposed), s.now()), subject, "de")
+	listing := approvableBy(waiting(s.db.NewSelect().Model(&proposed), s.now()), subject, "de")
 	if err := listing.Order("id DESC").Limit(limit).Offset(offset).Scan(ctx); err != nil {
 		return nil, 0, fmt.Errorf("read what is waiting: %w", err)
 	}
@@ -86,6 +86,12 @@ func (s *Store) Queue(ctx context.Context, subject access.Subject, limit, offset
 }
 
 // currentReasoning reads the words each claim currently rests on.
+// ReasoningFor returns the reasoning each decision currently rests on, keyed
+// by decision.
+func (s *Store) ReasoningFor(ctx context.Context, decisions []Decision) (map[int64]string, error) {
+	return s.currentReasoning(ctx, decisions)
+}
+
 func (s *Store) currentReasoning(ctx context.Context, decisions []Decision) (map[int64]string, error) {
 	wanted := make([]int64, 0, len(decisions))
 	for _, decision := range decisions {

@@ -60,6 +60,10 @@ type reach struct {
 	// rights is the store behind the handler, so a test can sign somebody in
 	// without a provider to sign in through.
 	rights *access.Store
+	// db is the same database the handler reads, so a test can put a scanned
+	// build behind it. Reading what has been decided is only testable against
+	// something that was found.
+	db *database.DB
 }
 
 // response is what came back, for the tests that compare answers rather than
@@ -181,6 +185,23 @@ func eachReach(t *testing.T, fn func(t *testing.T, r *reach)) {
 				t.Fatal(err)
 			}
 		}
+		// A capability plus the visibility it acts on, which is what an
+		// approver is actually granted in a deployment. The approver above
+		// holds the capability alone, and reaches nothing — that is the rule
+		// being pinned, not an oversight.
+		reviewer, err := rights.Ensure(ctx, "reviewer", "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := rights.Claim(ctx, reviewer.ID, access.ProxyProvider, "reviewer"); err != nil {
+			t.Fatal(err)
+		}
+		for _, role := range []access.Role{access.PublicRead, access.Approver} {
+			if err := rights.GrantRole(ctx, reviewer.ID, mine.ID, role); err != nil {
+				t.Fatal(err)
+			}
+		}
+
 		// Somebody who exists and was granted nothing at all.
 		ungranted, err := rights.Ensure(ctx, "nothing", "", false)
 		if err != nil {
@@ -209,7 +230,7 @@ func eachReach(t *testing.T, fn func(t *testing.T, r *reach)) {
 			DB: db, Queue: queue.New(db, queue.DefaultOptions()),
 			Access: access.NewResolver(rights, access.Trust{Header: testHeader, From: sources}),
 		})
-		fn(t, &reach{handler: handler, key: secret, revoked: revokedSecret, rights: rights})
+		fn(t, &reach{handler: handler, key: secret, revoked: revokedSecret, rights: rights, db: db})
 	})
 }
 

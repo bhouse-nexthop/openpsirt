@@ -44,6 +44,13 @@ eventually grant one and wonder why nothing worked.
 is bounded by what they may read — otherwise handing somebody the ability to
 approve would quietly hand them everything there is to approve.
 
+The other half of that has to be honored too: a capability has to actually
+grant something. Approving a triage decision asked for the triage role, which
+made the approver capability do nothing at all — somebody granted exactly the
+right to approve could approve nothing, and the only people who could were the
+ones who could also have proposed it. So an act asks for the right it is named
+for, alongside the visibility it acts on.
+
 **A product somebody holds nothing on is invisible**, not merely unreadable.
 Not listed, not counted, and — this is the part that is easy to get wrong —
 **reported as not declared**, which is the same answer a name nobody ever

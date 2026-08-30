@@ -394,3 +394,25 @@ func (s *Store) ExistingTarget(ctx context.Context, streamID, variantID int64) (
 	}
 	return target, nil
 }
+
+// ProductNames resolves products to their names, for showing which product a
+// row is about.
+//
+// Batched for the same reason people are: the lists that need it are long, and
+// a query per row is how a page of fifty becomes fifty-one round trips.
+func (s *Store) ProductNames(ctx context.Context, ids []int64) (map[int64]string, error) {
+	names := map[int64]string{}
+	if len(ids) == 0 {
+		return names, nil
+	}
+	var products []Product
+	if err := s.db.NewSelect().Model(&products).
+		Column("id", "name").
+		Where("id IN (?)", bun.List(ids)).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read which products these are: %w", err)
+	}
+	for _, product := range products {
+		names[product.ID] = product.Name
+	}
+	return names, nil
+}
