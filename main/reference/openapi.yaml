@@ -484,6 +484,25 @@ components:
       required:
         - items
       type: object
+    ListBodyMatchBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyMatchBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/MatchBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
     ListBodyPersonBody:
       additionalProperties: false
       properties:
@@ -578,6 +597,25 @@ components:
             - "null"
       required:
         - items
+      type: object
+    MatchBody:
+      additionalProperties: false
+      properties:
+        places:
+          description: How many places it sits at there
+          format: int64
+          type: integer
+        stream:
+          type: string
+        variant:
+          type: string
+        version:
+          description: The upstream version that build has, which differs from this one
+          type: string
+      required:
+        - stream
+        - variant
+        - places
       type: object
     ModeBody:
       additionalProperties: false
@@ -1552,6 +1590,52 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Decide about a finding
+      tags:
+        - Triage
+  /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/elsewhere:
+    get:
+      description: "A decision is a claim about a combination of code rather than about a release, so a build running the same versions picks it up by looking it up — nothing is copied and nobody is asked. What this lists is the remainder: builds where the versions differ, so the same reasoning has to be stated again or not at all. One entry per build rather than one answer for all of them, because a component may be used in a later release and not an earlier one."
+      operationId: list-same-issue-elsewhere
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: vulnerability
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: place
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyMatchBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: The same issue in other builds, where a decision here would not reach it
       tags:
         - Triage
   /v1/products/{product}/streams/{stream}/variants/{variant}/scans:
