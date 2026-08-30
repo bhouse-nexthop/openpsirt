@@ -97,8 +97,36 @@ Setting both, or neither, **fails at render time with a sentence naming the
 problem**. Rendering manifests that cannot work would move the failure to a
 crash-looping pod and a message nobody reads.
 
+### Who may sign in
+
+The chart carries the sign-in configuration, and **refuses to render an install
+that could not be signed into**. Four ways to get that wrong, each failing at
+render time with a sentence naming the problem:
+
+| | |
+|---|---|
+| No bootstrap admin | Nobody can administer the deployment |
+| No provider | Naming a bootstrap admin grants a role; it does not let anybody in |
+| A provider with no base URL | A provider returns somebody to an address and compares it against what it was registered with |
+| A trusted header with no sources | A header named with nothing to trust it from is a header anybody can set |
+
+This is the same reasoning as the database URL, applied to the other thing that
+makes an install unusable. Without it the chart rendered happily, the process
+started, failed its own administration check, and crash-looped with the reason
+in a log nobody is watching during an install.
+
+The refusals are tested by asserting each one fires, not by asserting a good
+install renders. A guard nobody has watched refuse is not a guard.
+
+Naming bootstrap admins is also the **recovery path**, which is why they are
+applied at every startup rather than once: lose administrative access, add
+yourself, upgrade. The notes printed after an install say so, because that is
+the moment somebody will need it and the last moment they will be reading.
+
 ## What is not here yet
 
 Publishing. The image builds and is verified in CI but is not pushed anywhere,
 and the chart is not published to a repository. Both belong with a release
-process, which does not exist yet.
+process, which does not exist yet — so the chart's default image reference
+points at something that does not exist, and the values file says so rather
+than leaving an operator to discover it as a pod that cannot pull.

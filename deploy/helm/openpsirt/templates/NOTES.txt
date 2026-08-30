@@ -19,5 +19,26 @@ No ingress is configured. To look at it locally:
   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "openpsirt.fullname" . }} 8080:{{ .Values.service.port }}
 {{- end }}
 
-There is no sign-in yet — this release has no authentication at all. Do not
-expose it to a network you do not control.
+Sign in as one of the bootstrap admins:
+{{- range .Values.auth.bootstrapAdmins }}
+  {{ . }}
+{{- end }}
+
+They are granted administration at every startup, not just the first, so this
+is also the way back if administrative access is ever lost: add yourself to
+auth.bootstrapAdmins and upgrade. Naming somebody grants them a role — they
+still sign in{{ if .Values.auth.oidc.issuer }} through {{ .Values.auth.oidc.name }}{{ else if .Values.auth.github.clientID }} through GitHub{{ else }} through the proxy in front of this{{ end }} like anybody else.
+
+From there, create people and grant roles per product:
+
+  POST /v1/people
+  POST /v1/roles
+
+The API document is served at /docs.
+{{- if and .Values.auth.trustedHeader.name (not .Values.ingress.enabled) }}
+
+NOTE: sign-in is asserted by the {{ .Values.auth.trustedHeader.name }} header, believed
+only from {{ join ", " .Values.auth.trustedHeader.sources }}. Reaching this service directly —
+by port-forward, or from a pod inside the cluster — bypasses whatever sets that
+header, so make sure nothing but the proxy can route to it.
+{{- end }}

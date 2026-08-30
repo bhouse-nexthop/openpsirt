@@ -208,16 +208,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
-      - run: helm lint deploy/helm/openpsirt --set database.url=postgres://u:p@h:5432/d
+      - run: |
+          helm lint deploy/helm/openpsirt --set database.url=postgres://u:p@h:5432/d \
+            --set auth.bootstrapAdmins='{admin}' \
+            --set auth.trustedHeader.name=X-Forwarded-User \
+            --set auth.trustedHeader.sources='{10.0.0.0/8}'
       - name: It must render valid manifests
-        run: helm template t deploy/helm/openpsirt --set database.existingSecret=s --set ingress.enabled=true > /dev/null
-      - name: It must refuse to render without a database
-        # Rendering something unusable would be worse than failing here.
         run: |
-          if helm template t deploy/helm/openpsirt >/dev/null 2>&1; then
-            echo "::error::chart rendered with no database configured"; exit 1
-          fi
-          echo "refused as intended"
+          helm template t deploy/helm/openpsirt --set database.existingSecret=s \
+            --set ingress.enabled=true --set auth.bootstrapAdmins='{admin}' \
+            --set auth.baseURL=https://psirt.example.com \
+            --set auth.oidc.issuer=https://id.example.com \
+            --set auth.oidc.clientID=abc --set auth.oidc.clientSecret=shh > /dev/null
+      - name: It must refuse to render anything that could not be used
+        # Rendering something unusable would be worse than failing here. An
+        # install nobody can sign into is unusable in exactly the same way as
+        # one with no database — it starts, fails its own administration
+        # check, and crash-loops with the reason in a log nobody is watching
+        # yet.
+        run: |
+          refuses() {
+            local what="$1"; shift
+            if helm template t deploy/helm/openpsirt "$@" >/dev/null 2>&1; then
+              echo "::error::chart rendered an install with $what"; exit 1
+            fi
+            echo "refused: $what"
+          }
+          refuses "no database" 
+          refuses "nobody who can administer it" --set database.existingSecret=s
+          refuses "no way to sign in" --set database.existingSecret=s \
+            --set auth.bootstrapAdmins='{admin}'
+          refuses "no address for a provider to return to" --set database.existingSecret=s \
+            --set auth.bootstrapAdmins='{admin}' --set auth.oidc.issuer=https://id.example.com
+          refuses "a trusted header anybody could set" --set database.existingSecret=s \
+            --set auth.bootstrapAdmins='{admin}' --set auth.trustedHeader.name=X-User
 
   docs:
     name: Documentation builds

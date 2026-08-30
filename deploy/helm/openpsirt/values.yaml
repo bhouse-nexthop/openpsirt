@@ -1,6 +1,10 @@
 replicaCount: 2
 
 image:
+  # **No image is published yet.** This is where one will live; until there is
+  # a release, build it from the repository and push it somewhere your cluster
+  # can pull from, then point this there. Leaving it as it stands gives you a
+  # pod that cannot pull.
   repository: ghcr.io/bhouse-nexthop/openpsirt
   pullPolicy: IfNotPresent
   # Defaults to the chart's appVersion.
@@ -21,6 +25,67 @@ database:
   url: ""
   existingSecret: ""
   existingSecretKey: "database-url"
+
+# Who may sign in, and how. **The process refuses to start until somebody can
+# administer it**, because a deployment nobody can administer has one route
+# back in — editing the database by hand — and nobody discovers that at a good
+# moment.
+#
+# The minimum for a working install is bootstrapAdmins plus one provider.
+auth:
+  # Identities granted administration at every startup, not just the first.
+  # That makes this the recovery path as well as the bootstrap: lose access,
+  # add yourself here, and restart.
+  #
+  # An identity is what the provider calls the person — the OIDC subject or
+  # username claim, the GitHub login, or whatever the trusted header carries.
+  # Naming somebody grants them a role; it does not let them in without
+  # signing in.
+  bootstrapAdmins: []
+  # Where this deployment answers, as people reach it. A provider sends
+  # somebody back to an address and compares it against what it was registered
+  # with, so it is stated rather than taken from whatever a request claims its
+  # host is. Required once any provider is configured.
+  baseURL: ""
+
+  # Sign-in through an OpenID Connect provider. Leave issuer empty to skip.
+  oidc:
+    name: oidc
+    issuer: ""
+    clientID: ""
+    # Set clientSecret here and the chart puts it in a Secret, or name one you
+    # manage yourself. A secret in values.yaml ends up in your release history
+    # and probably in version control.
+    clientSecret: ""
+    existingSecret: ""
+    existingSecretKey: "oidc-client-secret"
+    # Which claim carries the username, and which carries group membership.
+    # Empty means the provider's usual one.
+    usernameClaim: ""
+    groupsClaim: ""
+
+  # Sign-in through GitHub. Leave clientID empty to skip.
+  github:
+    clientID: ""
+    clientSecret: ""
+    existingSecret: ""
+    existingSecretKey: "github-client-secret"
+    # Restrict to members of one organization. Empty means anybody with a
+    # GitHub account, which is rarely what you want.
+    org: ""
+
+  # Sign-in asserted by something in front of this — an identity-aware proxy.
+  # **Both parts are required together**: a header named with nothing to trust
+  # it from is either a mistake or the first half of one, and the process stops
+  # rather than accepting a header anybody can set.
+  trustedHeader:
+    name: ""
+    # Addresses or CIDR ranges the header is believed from. Anything else
+    # presenting it is ignored.
+    sources: []
+    # Where group membership arrives, if the proxy asserts it.
+    groupsHeader: ""
+    groupsDelimiter: ","
 
 # Schema changes are applied at startup by default, which makes an upgrade
 # just a deployment. Turn this off to run "openpsirt migrate up" yourself,
