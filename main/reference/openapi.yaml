@@ -416,6 +416,91 @@ components:
           format: uri
           type: string
       type: object
+    EvidenceBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/EvidenceBody.json
+          format: uri
+          readOnly: true
+          type: string
+        advisory:
+          description: Where the issue is written up
+          type: string
+        aliases:
+          description: Other names the same issue is known by
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        component:
+          type: string
+        description:
+          type: string
+        exploited:
+          description: Somebody is known to be exploiting this
+          type: boolean
+        fix_state:
+          enum:
+            - fixed
+            - none
+            - wont-fix
+          type: string
+        fixed_at:
+          description: When that version became available
+          type: string
+        fixed_in:
+          description: The version that resolves it
+          type: string
+        likelihood:
+          description: Published probability of exploitation, 0 to 1
+          format: double
+          type: number
+        places:
+          items:
+            $ref: "#/components/schemas/SittingBody"
+          type:
+            - array
+            - "null"
+        references:
+          items:
+            $ref: "#/components/schemas/ReferenceBody"
+          type:
+            - array
+            - "null"
+        score:
+          description: The same judgment as a number, where one is published
+          format: double
+          type: number
+        severity:
+          description: As the data rates it. A word
+          type: string
+        upstream:
+          description: What a fork was made from, where it is one
+          type: string
+        vector:
+          description: What the score assumes — reachability, privilege, interaction
+          type: string
+        version:
+          type: string
+        vulnerability:
+          type: string
+        weaknesses:
+          description: What kind of flaw this is, as CWE identifiers
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+      required:
+        - vulnerability
+        - component
+        - version
+        - places
+      type: object
     FindingBody:
       additionalProperties: false
       properties:
@@ -1010,6 +1095,23 @@ components:
         - items
         - total
       type: object
+    ReferenceBody:
+      additionalProperties: false
+      properties:
+        kind:
+          description: What it appears to be. A patch is the change itself
+          enum:
+            - patch
+            - advisory
+            - report
+            - other
+          type: string
+        url:
+          type: string
+      required:
+        - url
+        - kind
+      type: object
     Revise-decisionRequest:
       additionalProperties: false
       properties:
@@ -1067,6 +1169,21 @@ components:
         - provider
         - username
         - pinned
+      type: object
+    SittingBody:
+      additionalProperties: false
+      properties:
+        consumer:
+          description: What pulls the component in here. Absent under the product itself
+          type: string
+        place:
+          description: Name this when recording a decision about it
+          type: string
+        suppressed:
+          description: The build has already argued this place away
+          type: boolean
+      required:
+        - place
       type: object
     StandingBody:
       additionalProperties: false
@@ -2076,6 +2193,59 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: List vulnerability findings
+      tags:
+        - Findings
+  /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}:
+    get:
+      description: |-
+        Returns the full record for one issue in one component of a build: the description, the advisory, every reference the data carries with patches listed first, the score and what it assumes, whether it is known to be exploited and how likely exploitation is, the weakness classification, what upstream has done about it, and every place the component sits at here.
+
+        This is what a triage decision is made from, so it is gathered into one request. Each entry in `places` carries the `place` identity to name when recording a decision about it.
+      operationId: get-finding
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - description: The issue, by any name it is known under
+          in: path
+          name: vulnerability
+          required: true
+          schema:
+            description: The issue, by any name it is known under
+            type: string
+        - description: The component's name, as the findings list gives it
+          in: path
+          name: component
+          required: true
+          schema:
+            description: The component's name, as the findings list gives it
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get everything known about one finding
       tags:
         - Findings
   /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision:
