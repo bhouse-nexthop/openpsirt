@@ -552,11 +552,36 @@ and `opencomputeproject/onie#1133`.
 > Do not use these as typical values or as a multiplier. SONiC is by far the
 > largest producer. ONIE and the others are far smaller.
 
+Measured on a public upstream build of the largest image, rather than estimated:
+
 | Metric | SONiC (upper bound) |
 |---|---|
-| Components per file | ~56,600 |
-| CycloneDX file size | ~46 MB |
-| SPDX file size | ~27 MB |
+| Components described | 8,374 |
+| Packages they name | 7,858 |
+| Dependency edges | 25,123 |
+| CycloneDX file size | 20 MB |
+| SPDX file size | 5.2 MB |
+
+Earlier figures here read ~56,600 components and ~46 MB, taken from a build
+whose inventory listed **files** as well as packages. That build no longer
+exists: the producer stopped emitting the file inventory, and what a component
+means in these documents changed with it. The two sets of numbers are not a
+before and after of the same thing.
+
+Two properties of the real document matter more than its size, and neither
+would be guessed from one:
+
+- **The same package is described twice, 516 times over**, because the build
+  merges two sources without reconciling them. Identity is derived from what an
+  identifier says rather than from its bytes for exactly this reason (ING-36).
+- **The dependency graph is eleven deep**, and 1,357 components have more than
+  one direct consumer. It is a graph and not a tree, which is what makes "why
+  is this here" a question with more than one answer (MDL-06).
+
+The SPDX figure is small because that output currently carries no dependency
+information at all — 8,374 packages and zero relationships, an artifact of how
+it is converted. It is not a smaller expression of the same content, and it
+would grow substantially if the graph were included.
 
 **Volume** (ING-08): 10–50 files per night across a few product lines, heavily
 skewed toward SONiC. Realistic daily total is likely under 1 GB, not the 2.5 GB

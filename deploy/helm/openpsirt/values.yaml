@@ -101,3 +101,18 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 podAnnotations: {}
+
+# The vulnerability scanner ships in the image. This deployment runs the scan
+# rather than trusting whatever a producer's pipeline installed, so that counts
+# are comparable between products rather than being a property of somebody's
+# build image.
+scanner:
+  # Where it keeps its vulnerability data. The image sets the same path, and
+  # changing it here without changing it there leaves the data on the
+  # read-only root filesystem, where it cannot be written.
+  cacheDir: /var/cache/openpsirt/grype
+  persistence:
+    # Empty means scratch space that lives as long as the pod: correct, and it
+    # re-downloads the database on every start. Name a claim to keep it.
+    existingClaim: ""
+    sizeLimit: 5Gi

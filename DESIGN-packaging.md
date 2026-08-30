@@ -20,11 +20,37 @@ surface. It is one line to change if that trade ever stops being worth it.
 |---|---|
 | Size | ~40 MB |
 | User | Non-root, no login shell, no home directory |
-| Extras | Root certificates, for outbound TLS to the ranking feeds. Timezone data |
+| Extras | The vulnerability scanner. Root certificates, for outbound TLS to the ranking feeds and to the scanner's data. Timezone data |
 | Healthcheck | Liveness only — readiness needs the database and belongs to the orchestrator, which can act on it |
 
-CI builds the image, runs it, and **checks it is not running as root**. That is
-the only place the claim is tested rather than asserted.
+CI builds the image, runs it, **checks it is not running as root**, and
+**checks the scanner in it actually runs**. Those are the only places those
+claims are tested rather than asserted.
+
+### The scanner ships with it
+
+This deployment runs the scan rather than trusting whatever a producer's
+pipeline happened to install, so an image without a scanner takes in
+inventories it can never answer a question about. It is pinned to a version and
+its download is checksummed: which build of a scanner answered is part of what
+a finding means, because counts are only comparable between products measured
+the same way.
+
+Its **vulnerability data is fetched at runtime, not built in**. A database
+baked into an image is stale the day after that image is published, and the
+whole reason the scan happens here is that this data moves under an inventory
+that does not.
+
+That data needs somewhere writable, and the root filesystem is read-only — so
+the chart mounts a volume for it. The default is scratch space that lives as
+long as the pod, which is correct and re-downloads on every start. A deployment
+that restarts often, or would rather not fetch that much each time, points it
+at a claim instead.
+
+The image and the chart name the same directory. Changing it in one and not the
+other puts the data back on the read-only filesystem, where it cannot be
+written — so both read from one value in the chart, and the image sets a
+default that matches.
 
 ## The chart
 

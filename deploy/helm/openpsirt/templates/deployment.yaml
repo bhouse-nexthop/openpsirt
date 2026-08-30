@@ -88,9 +88,28 @@ spec:
             # path needs somewhere to put it.
             - name: tmp
               mountPath: /tmp
+            # The scanner's vulnerability data. It is fetched rather than built
+            # into the image, because data baked in is stale the day after it
+            # is published — and the reason the scan runs here at all is that
+            # this data moves under an inventory that does not.
+            #
+            # A volume claim keeps it across restarts. The default is scratch
+            # space, which works and re-downloads on every start; a deployment
+            # that restarts often, or that would rather not fetch hundreds of
+            # megabytes each time, points this at a claim instead.
+            - name: scanner-cache
+              mountPath: {{ .Values.scanner.cacheDir }}
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: scanner-cache
+          {{- if .Values.scanner.persistence.existingClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.scanner.persistence.existingClaim }}
+          {{- else }}
+          emptyDir:
+            sizeLimit: {{ .Values.scanner.persistence.sizeLimit }}
+          {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector: {{- toYaml . | nindent 8 }}
       {{- end }}

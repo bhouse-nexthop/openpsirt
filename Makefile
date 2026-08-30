@@ -98,6 +98,8 @@ check-packaging:
 	docker run --rm openpsirt:check -version
 	@test "$$(docker run --rm --entrypoint id openpsirt:check -u)" != "0" \
 	  || { echo "image runs as root"; exit 1; }
+	@docker run --rm --entrypoint /usr/local/bin/grype openpsirt:check version >/dev/null \
+	  || { echo "image carries no working scanner, so it could ingest and never scan"; exit 1; }
 	helm lint deploy/helm/openpsirt --set database.url=postgres://u:p@h:5432/d
 	helm template t deploy/helm/openpsirt --set database.existingSecret=s >/dev/null
 
