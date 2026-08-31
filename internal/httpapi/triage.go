@@ -542,3 +542,35 @@ func deferralThreshold(ctx context.Context, in Ingest) (time.Duration, error) {
 	}
 	return setting.NewStore(in.DB.DB).Duration(ctx, setting.DeferralThreshold, shipped)
 }
+
+func registerSendBack(api huma.API, in Ingest) {
+	huma.Register(api, huma.Operation{
+		OperationID: "send-decision-back", Method: http.MethodPost,
+		Path:    "/v1/decisions/{id}/send-back",
+		Summary: "Send a decision back for more",
+		Description: "Asks the author for more before agreeing. The claim leaves the review " +
+			"queue and comes back when they revise it.\n\n" +
+			"`because` is required and is recorded as a comment, because that is what it is — " +
+			"the author needs the words, and a reason kept anywhere else is one nobody reads. " +
+			"Sending something back without saying what is missing is a round trip nobody learns " +
+			"from.\n\n" +
+			"Needs no approval of its own: it puts risk back on the table rather than taking it " +
+			"off. You cannot send back a claim whose current words are your own — that is yours " +
+			"to revise.",
+		Tags: []string{"Triage"}, DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, input *struct {
+		ID   int64 `path:"id"`
+		Body struct {
+			Because string `json:"because" minLength:"1" doc:"What needs to change, in markdown"`
+		}
+	}) (*struct{}, error) {
+		subject, store, err := triaging(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		if err := store.SendBack(ctx, subject, input.ID, input.Body.Because); err != nil {
+			return nil, refusedDecision(err)
+		}
+		return &struct{}{}, nil
+	})
+}

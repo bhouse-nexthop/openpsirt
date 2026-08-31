@@ -85,6 +85,12 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 			-- everything — which makes the review queue decorative.
 			"needs_approval"             ` + t.boolean + ` NOT NULL,
 			"state"                      ` + t.kind + ` NOT NULL,
+			-- Set when an approver sends a claim back for more, and cleared
+			-- when the author revises it. Not a state of its own: the claim is
+			-- still proposed and still applies to nothing, and what changed is
+			-- whose turn it is. A fifth state would have to be reasoned about
+			-- everywhere the other four are.
+			"sent_back_at"               ` + t.timestamp + ` NULL,
 			"proposed_by"                ` + t.ref + ` NOT NULL,
 			"proposed_at"                ` + t.timestamp + ` NOT NULL,
 			-- What the current reasoning is. An approval points at one

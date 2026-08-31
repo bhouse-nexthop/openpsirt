@@ -173,6 +173,10 @@ func (s *Store) revise(ctx context.Context, subject access.Subject, decisionID i
 	if _, err := s.db.NewUpdate().Model((*Decision)(nil)).
 		Set("revision_id = ?", revision.ID).
 		Set("state = ?", Proposed).
+		// Whatever was asked for has been answered, or at least responded to.
+		// Leaving the mark would keep the claim out of the approval queue
+		// forever, which is the failure that makes sending back unusable.
+		Set("sent_back_at = ?", nil).
 		Where("id = ?", decisionID).Exec(ctx); err != nil {
 		return nil, fmt.Errorf("record a revision: %w", err)
 	}
@@ -291,4 +295,65 @@ func (s *Store) authorOf(ctx context.Context, decision Decision) (int64, error) 
 		return 0, fmt.Errorf("read who wrote this: %w", err)
 	}
 	return revision.WrittenBy, nil
+}
+
+// SendBack asks the author for more before agreeing.
+//
+// The third thing an approver needs. Approving and withdrawing were the only
+// two, and withdrawing throws away somebody's work over a missing sentence —
+// so what actually happened was a comment, and the claim sat in the queue
+// looking untouched.
+//
+// The words are required. A claim sent back with no reason is a round trip
+// nobody learns from, and it is the whole of what the author needs.
+//
+// It needs no approval of its own, for the same reason revising and
+// withdrawing do not: it puts risk back on the table rather than taking it
+// off.
+func (s *Store) SendBack(ctx context.Context, subject access.Subject, decisionID int64,
+	because string) error {
+
+	if strings.TrimSpace(because) == "" {
+		return fmt.Errorf("say what needs to change: sending something back without a reason " +
+			"is a round trip nobody learns from")
+	}
+	if err := markdown.Check(because); err != nil {
+		return err
+	}
+
+	db, ok := s.db.(*bun.DB)
+	if !ok {
+		return fmt.Errorf("this store is already inside a transaction")
+	}
+	return database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+		within := &Store{db: tx, now: s.now}
+		decision, err := within.reaching(ctx, subject, decisionID, mayApprove)
+		if err != nil {
+			return err
+		}
+		if decision.State != Proposed {
+			return fmt.Errorf("that decision is %s, so there is nothing waiting on anybody",
+				decision.State)
+		}
+		author, err := within.authorOf(ctx, *decision)
+		if err != nil {
+			return err
+		}
+		if author == subject.ID {
+			return fmt.Errorf("that is your own claim to revise, not one to send back")
+		}
+
+		// The reason travels as a comment, because that is what it is: the
+		// author needs the words, and a reason recorded anywhere else is one
+		// nobody reads.
+		if _, err := within.Say(ctx, subject, decisionID, because); err != nil {
+			return err
+		}
+		if _, err := tx.NewUpdate().Model((*Decision)(nil)).
+			Set("sent_back_at = ?", s.now().Truncate(time.Microsecond)).
+			Where("id = ?", decisionID).Exec(ctx); err != nil {
+			return fmt.Errorf("record that this was sent back: %w", err)
+		}
+		return nil
+	})
 }

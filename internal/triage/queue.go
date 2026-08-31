@@ -227,7 +227,7 @@ func (s *Store) NeedsApproval(ctx context.Context, p Proposal, threshold time.Du
 func waiting(query *bun.SelectQuery, now time.Time) *bun.SelectQuery {
 	return query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 		return q.
-			WhereOr("state = ? AND needs_approval = ?", Proposed, true).
+			WhereOr("state = ? AND needs_approval = ? AND sent_back_at IS NULL", Proposed, true).
 			WhereOr("state = ?", LapsedState).
 			WhereOr("state IN (?, ?) AND outcome = ? AND deferred_until IS NOT NULL AND deferred_until <= ?",
 				Proposed, Approved, Deferred, now)

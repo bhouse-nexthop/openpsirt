@@ -774,3 +774,79 @@ func TestTwoPeopleProposingAtOnceProduceOneClaim(t *testing.T) {
 		}
 	})
 }
+
+func TestSendingAClaimBackTakesItOutOfTheQueueUntilItIsAnswered(t *testing.T) {
+	// The third thing an approver needs. Approve and withdraw were the only
+	// two, and withdrawing throws away somebody's work over a missing
+	// sentence — so what actually happened was a comment, and the claim sat in
+	// the queue looking untouched.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		claimed := f.claims(t, f.at())
+
+		if waiting, _, _ := f.store.Queue(ctx, f.reviewer, 10, 0); len(waiting) != 1 {
+			t.Fatalf("%d claims are waiting before it is sent back", len(waiting))
+		}
+
+		// A reason is the whole point of the action.
+		if err := f.store.SendBack(ctx, f.reviewer, claimed.ID, "   "); err == nil {
+			t.Error("a claim was sent back with no reason")
+		}
+		if err := f.store.SendBack(ctx, f.reviewer, claimed.ID,
+			"This does not say how the config was checked after the bump."); err != nil {
+			t.Fatal(err)
+		}
+
+		if waiting, _, _ := f.store.Queue(ctx, f.reviewer, 10, 0); len(waiting) != 0 {
+			t.Errorf("%d claims still wait on an approver after being sent back", len(waiting))
+		}
+		// The reason is where the author will read it.
+		said, err := f.store.Discussion(ctx, f.triager, claimed.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(said) != 1 || !strings.Contains(said[0].Body, "how the config was checked") {
+			t.Errorf("the reason is not in the discussion: %+v", said)
+		}
+		// And it still suppresses nothing, which it never did.
+		if standing, _ := f.store.Applying(ctx, f.at()); standing != nil {
+			t.Error("a claim sent back is suppressing the finding")
+		}
+	})
+}
+
+func TestAnsweringWhatWasAskedPutsItBackInTheQueue(t *testing.T) {
+	// Otherwise sending something back is a way of losing it, and nobody would
+	// use it twice.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		claimed := f.claims(t, f.at())
+		if err := f.store.SendBack(ctx, f.reviewer, claimed.ID, "Say how you checked."); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := f.store.Revise(ctx, f.triager, claimed.ID,
+			"Checked against the build script at line 40, which pins the ciphers."); err != nil {
+			t.Fatal(err)
+		}
+		waiting, _, err := f.store.Queue(ctx, f.reviewer, 10, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(waiting) != 1 {
+			t.Errorf("%d claims wait on an approver after being answered, want 1", len(waiting))
+		}
+	})
+}
+
+func TestNobodySendsTheirOwnWordsBack(t *testing.T) {
+	// That is theirs to revise. Sending your own claim back is a way of
+	// putting it out of everybody's sight, including your own.
+	each(t, func(t *testing.T, f *fixture) {
+		claimed := f.claims(t, f.at())
+		if err := f.store.SendBack(t.Context(), f.triager, claimed.ID,
+			"Actually let me think again."); err == nil {
+			t.Error("somebody sent their own claim back")
+		}
+	})
+}

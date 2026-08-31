@@ -46,6 +46,18 @@ const (
 	// person has to agree. It ships with a starting point rather than a fixed
 	// rule, because how long is too long is a judgment about a product.
 	DeferralThreshold = "triage.deferral-threshold"
+	// How long a finding may stay open before it is late, by how urgent it is.
+	//
+	// Being exploited has its own, and it is the shortest: severity is how bad
+	// the flaw is, and being exploited is a fact about the world. Without a
+	// separate one the deadline contradicts the ranking, which puts an
+	// exploited medium above an unexploited critical — the list would say look
+	// at this first while the clock said ninety days.
+	DueExploited = "remediation.due.exploited"
+	DueCritical  = "remediation.due.critical"
+	DueHigh      = "remediation.due.high"
+	DueMedium    = "remediation.due.medium"
+	DueLow       = "remediation.due.low"
 )
 
 // Store reads and writes settings.

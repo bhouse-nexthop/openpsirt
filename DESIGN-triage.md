@@ -3,7 +3,7 @@
 What people decide about findings, and when a decision stops applying.
 
 Satisfies TRI-01 to TRI-03, TRI-05 to TRI-08, TRI-10 to TRI-18, TRI-20 to
-TRI-33, REL-05, REL-06, REL-09, MDL-08, MDL-19, ACC-09. The text rules
+TRI-33, REM-25, UIX-35, REL-05, REL-06, REL-09, MDL-08, MDL-19, ACC-09. The text rules
 themselves are in `DESIGN-text.md`.
 
 ## A decision is a claim about code, not about a release
@@ -394,6 +394,50 @@ The alternative, letting people hide these from the counts instead, is refused
 (REJ-10): a total that depends on who is looking is not a total. A filter
 narrows what somebody is looking at, is carried in the URL, and states what it
 excluded — it never subtracts from a number anybody else is reported.
+
+## An approver has a third option
+
+Approve and withdraw were the only two, and withdrawing throws away somebody's
+work over a missing sentence. So what actually happened was a comment, and the
+claim sat in the review queue looking untouched — which is worse than either,
+because the queue then contains rows nobody is going to act on.
+
+Sending a claim back takes it out of the approval queue and returns it when the
+author revises. **A reason is required**, and travels as a comment: the words
+are what the author needs, and a reason recorded anywhere else is one nobody
+reads.
+
+**Not a state of its own.** The claim is still proposed and still suppresses
+nothing; what changed is whose turn it is. A fifth state would have to be
+reasoned about everywhere the other four are, for a distinction that is about
+attention rather than about standing.
+
+It needs no approval, for the same reason revising and withdrawing do not — it
+puts risk back on the table rather than taking it off. And nobody sends back a
+claim whose current words are their own: that is theirs to revise, and doing it
+would put their own work out of everybody's sight.
+
+## How long something may stay open
+
+A finding gets a deadline from how urgent it is, counted from when it was first
+seen. **Being known-exploited has its own, and it is the shortest**, whatever
+the severity says — severity is how bad the flaw is, being exploited is a fact
+about the world, and without separating them the deadline contradicts the order
+the findings list is in.
+
+**The clock runs on what nobody has answered.** A dismissal takes a finding off
+it, because the claim is that it will not be fixed. A deferral replaces the
+deadline with its own date, because that is what a deferral is. What is left is
+time passing with nothing said, and that is the only part worth interrupting
+anybody about.
+
+Being late is reported and never acted on. The failure to design against is a
+deadline nobody agreed to, applied to everything, so that the whole estate is
+permanently overdue and the signal is ignored inside a month.
+
+The windows are settings, and the shipped numbers are a starting point rather
+than a recommendation: what a deployment can hold to is a question about that
+deployment.
 
 ## A lapse is marked when the scan that caused it runs
 

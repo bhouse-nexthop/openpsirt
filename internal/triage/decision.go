@@ -44,11 +44,16 @@ type Decision struct {
 	// effect. A short deferral does not, so it is a property of the claim
 	// rather than of its outcome alone — and it has to be recorded, or a claim
 	// that is waiting and one that is in force are indistinguishable.
-	NeedsApproval bool      `bun:"needs_approval,notnull"`
-	State         State     `bun:"state,notnull"`
-	ProposedBy    int64     `bun:"proposed_by,notnull"`
-	ProposedAt    time.Time `bun:"proposed_at,notnull"`
-	RevisionID    *int64    `bun:"revision_id"`
+	NeedsApproval bool  `bun:"needs_approval,notnull"`
+	State         State `bun:"state,notnull"`
+	// SentBackAt marks that an approver asked for more before they would
+	// agree, and is cleared when the author revises. Deliberately not a state:
+	// the claim is still proposed and still suppresses nothing, and what
+	// changed is whose turn it is.
+	SentBackAt *time.Time `bun:"sent_back_at"`
+	ProposedBy int64      `bun:"proposed_by,notnull"`
+	ProposedAt time.Time  `bun:"proposed_at,notnull"`
+	RevisionID *int64     `bun:"revision_id"`
 	// LiveKey is what this decision is a claim about, while it is still a live
 	// claim. Null once it is withdrawn or has lapsed, which is what lets a
 	// fresh claim be made at a place a dead one used to cover.
