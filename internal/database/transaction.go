@@ -141,3 +141,36 @@ func backoff(attempt int) time.Duration {
 func IsNoRows(err error) bool {
 	return errors.Is(err, sql.ErrNoRows)
 }
+
+// IsDuplicate reports whether a write was refused by a unique constraint.
+//
+// Here rather than at a call site for the same reason WorthRetrying is: what
+// each engine calls "that already exists" is a different code in a different
+// error type, and spreading that around would make DAT-02 meaningless one
+// helper at a time.
+//
+// It exists so a rule the database enforces can be *explained* by the code. A
+// unique index is the right place to enforce "only one of these", because two
+// writers arriving together both walk through any check made before the write
+// — but "duplicate key value violates constraint decision_live_unique" is not
+// a sentence anybody should be shown.
+func IsDuplicate(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// 1062 is a duplicate entry; 1586 is the same thing reported against a
+	// partitioned table.
+	var my *mysql.MySQLError
+	if errors.As(err, &my) {
+		return my.Number == 1062 || my.Number == 1586
+	}
+
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) {
+		return pg.Code == "23505"
+	}
+
+	// SQLite reports it as text, the same way it reports a busy database.
+	return strings.Contains(err.Error(), "UNIQUE constraint failed")
+}

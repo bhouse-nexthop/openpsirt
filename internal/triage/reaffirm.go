@@ -228,6 +228,10 @@ func (s *Store) Lapse(ctx context.Context, targetID int64) (int64, error) {
 	// decision recorded against no version matches a component stating none.
 	result, err := s.db.NewUpdate().Model((*Decision)(nil)).
 		Set("state = ?", LapsedState).
+		// Released for the same reason a withdrawal is: the code moved out
+		// from under this, so it covers nothing, and somebody has to be able
+		// to decide about what is there now.
+		Set("live_key = ?", nil).
 		Where("state IN (?, ?)", Proposed, Approved).
 		Where("EXISTS (?)", openHere()).
 		Where("NOT EXISTS (?)", openHere().

@@ -2,8 +2,11 @@ package triage
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,6 +49,10 @@ type Decision struct {
 	ProposedBy    int64     `bun:"proposed_by,notnull"`
 	ProposedAt    time.Time `bun:"proposed_at,notnull"`
 	RevisionID    *int64    `bun:"revision_id"`
+	// LiveKey is what this decision is a claim about, while it is still a live
+	// claim. Null once it is withdrawn or has lapsed, which is what lets a
+	// fresh claim be made at a place a dead one used to cover.
+	LiveKey *string `bun:"live_key"`
 }
 
 // Revision is one statement of the reasoning behind a decision.
@@ -216,11 +223,23 @@ func (s *Store) Propose(ctx context.Context, subject access.Subject, p Proposal)
 		recorded, err = within.propose(ctx, p)
 		return err
 	})
+	if errors.Is(err, ErrAlreadyDecided) {
+		// Read now the transaction has unwound, so the refusal can say which
+		// claim to go and read rather than which constraint was violated.
+		if standing, found := s.liveAt(ctx, liveKeyFor(p.Place)); found {
+			return nil, fmt.Errorf(
+				"%w: decision %d is already %s here — revise that one rather than recording a "+
+					"second claim about the same code",
+				ErrAlreadyDecided, standing.ID, standing.State)
+		}
+	}
 	return recorded, err
 }
 
 func (s *Store) propose(ctx context.Context, p Proposal) (*Decision, error) {
 	now := s.now().Truncate(time.Microsecond)
+	key := liveKeyFor(p.Place)
+	liveKey := &key
 	decision := &Decision{
 		ProductID: p.Place.ProductID, VulnerabilityID: p.Place.VulnerabilityID,
 		PlaceIdentity:            p.Place.PlaceIdentity,
@@ -231,6 +250,7 @@ func (s *Store) propose(ctx context.Context, p Proposal) (*Decision, error) {
 		DeferredUntil:            p.DeferredUntil,
 		State:                    Proposed,
 		NeedsApproval:            p.NeedsApproval,
+		LiveKey:                  liveKey,
 		ProposedBy:               p.By, ProposedAt: now,
 	}
 	if p.Outcome == NotApplicable {
@@ -242,6 +262,14 @@ func (s *Store) propose(ctx context.Context, p Proposal) (*Decision, error) {
 		decision.SeverityCenti = &judged
 	}
 	if _, err := s.db.NewInsert().Model(decision).Exec(ctx); err != nil {
+		if database.IsDuplicate(err) {
+			// The unique index over the live key refused it, which is the only
+			// thing that could: two proposals arriving together both walk
+			// through any check made before the write. Naming the claim that
+			// is already there happens outside this transaction — a failed
+			// write leaves nothing else in it able to read.
+			return nil, ErrAlreadyDecided
+		}
 		return nil, fmt.Errorf("record a decision: %w", err)
 	}
 
@@ -324,6 +352,34 @@ func text(s string) *string {
 	return &trimmed
 }
 
+// liveKeyFor is what a decision is a claim about: the place, and both upstream
+// versions it was made against.
+//
+// Hashed rather than stored as its parts, because it exists to be compared for
+// equality under a unique index and nothing ever reads it back. The versions
+// are normalized the same way they are everywhere else, so a claim written with
+// spaces around a version collides with one written without — which is the
+// whole point of a uniqueness rule.
+func liveKeyFor(at Place) string {
+	basis := strings.Join([]string{
+		strconv.FormatInt(at.ProductID, 10),
+		strconv.FormatInt(at.VulnerabilityID, 10),
+		at.PlaceIdentity,
+		version(at.ComponentUpstream),
+		version(at.ConsumerUpstream),
+	}, "\x00")
+	sum := sha256.Sum256([]byte(basis))
+	return hex.EncodeToString(sum[:])
+}
+
+// ErrAlreadyDecided is returned when a live claim already covers this exact
+// combination of code.
+//
+// The answer is to revise that claim rather than to make a second one beside
+// it: two claims about one finding are a disagreement, and a disagreement
+// belongs in one place where both sides are readable.
+var ErrAlreadyDecided = errors.New("a decision already stands here")
+
 // visibilityOf reads a place's visibility, treating anything unset as not
 // disclosed.
 //
@@ -335,6 +391,17 @@ func visibilityOf(at Place) access.Visibility {
 		return access.Public
 	}
 	return access.Private
+}
+
+// liveAt reads the claim currently standing over a combination of code, if
+// there is one. Used to explain a refusal rather than to prevent one.
+func (s *Store) liveAt(ctx context.Context, key string) (*Decision, bool) {
+	standing := new(Decision)
+	if err := s.db.NewSelect().Model(standing).
+		Where("live_key = ?", key).Scan(ctx); err != nil {
+		return nil, false
+	}
+	return standing, true
 }
 
 // reachable reports whether a subject may act on a decision, reading which

@@ -247,6 +247,7 @@ inputs.
 | TRI-30 | **A judgment's reach is stated in three parts before it is recorded**: the places it covers in this build, the other builds it reaches automatically because their upstream versions and chains already match, and the builds holding the same issue at the same place at a *different* version — those listed one per row with the version each has, unchecked. The first two are consequences of the matching rules and are not offered as choices; only the third is | TRI-29 says all-places-by-default and REL-07 says one-unchecked-box-per-match, which read as contradictory and are not: the first is places running identical code, the second is builds running different code. Nothing distinguished them, so an interface built from both collapses into a single apply-everywhere control — the shape that produces reflex dismissal, which is the specific failure worth engineering against. It also fixes a quieter problem: a decision already reaches builds nobody mentioned, and the person making it has no way to learn how far it went |
 | TRI-31 | **An approval records the reach it was granted for**, alongside the revision it names, and the review queue shows those counts before anybody acts | An approval binds to particular words and says nothing about how far those words travel — the same sentence covers one finding or four hundred, and a second person agreeing to reasoning they have read is not the same as agreeing to a blast radius they have not seen. Recording the counts also makes a later question answerable: reach **can** grow after approval, when a build appears whose versions match. That is the matching rule working as intended rather than a defect, but "approved covering 6, now covers 61" is something somebody should be able to ask |
 | TRI-32 | **One action may record the same judgment against many issues at a single component** — one outcome, one justification, one reasoning, one approval — writing a separate decision per issue, each keyed and expiring independently like any other. Anything offered to narrow the set is a starting point, never a selection the tool asserts is correct | Grouping runs one way today: one issue across many places (TRI-29). A kernel is the transpose — one component, thousands of issues, most in drivers never built — and there is no way to answer it once. Without this the options are triaging two thousand findings individually, which nobody does, or hiding them, which REJ-10 refuses. The claim itself is ordinary and honest, and needs a reasoning and a second person like any other dismissal. **No SBOM reveals whether a driver was compiled in** (MDL-10), so it is a human claim that has to be recorded as one rather than inferred |
+| TRI-33 | **At most one live decision per code combination.** Proposing where one already stands is refused and points at it: the answer is to revise that claim, not to make a second one beside it. Live means proposed or approved — a withdrawn or lapsed decision is history and does not block a fresh claim — and the combination includes both upstream versions, so a claim about one version and a claim about the next are different claims and both stand | Nothing prevented two people making contradictory claims about one finding, and nothing marked them as contradictory. Both sat in the review queue looking ordinary, and since what applies is chosen by agreed-beats-waiting and then newest-wins, approving both left one silently governing while the other stayed on the record as approved. Neither approver had any sign the other existed. **Revising is the right shape for a disagreement**: it keeps the old words readable, takes back the approval given for them, returns the claim to the queue and records who wrote the new version — so two people disagreeing produces one legible argument rather than two rows nobody can see at once. Approving your own rewrite is already refused, because approval compares against whoever wrote the current revision. **Enforced by the database rather than by a check.** A key held while a decision is live and set to null once it is not, under a unique index: null values do not collide in a unique index on any of the four engines, so the rule survives two proposals arriving at once — where a read-then-write check is exactly the shape both of them walk through |
 
 ### 3.7 Carrying decisions between releases — `REL`
 
@@ -542,19 +543,6 @@ fetch one.
 ---
 
 ## 4. Still open
-
-**Two people proposing about the same place at once.** Nothing stops two
-competing claims being made about one finding, and nothing marks them as
-competing: both sit in the review queue as ordinary proposals, and an approver
-reading either has no sign the other exists. Approving both leaves one silently
-standing over the other.
-
-Not dangerous — neither suppresses anything until somebody agrees to it, so the
-finding stays exposed throughout — which is why this is recorded rather than
-fixed in a hurry. What is undecided is which answer is right: refuse the second
-proposal, allow it and show both together as one thing to settle, or let the
-later one supersede the earlier the way a revision does. The third is the least
-work and the most surprising, which is usually the wrong trade.
 
 **A year of nightly scans has never been measured.** Scan files are deleted
 once read, and the interval storage was shaped so that a rebuild changing

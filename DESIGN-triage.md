@@ -3,7 +3,7 @@
 What people decide about findings, and when a decision stops applying.
 
 Satisfies TRI-01 to TRI-03, TRI-05 to TRI-08, TRI-10 to TRI-18, TRI-20 to
-TRI-32, REL-05, REL-06, REL-09, MDL-08, MDL-19, ACC-09. The text rules
+TRI-33, REL-05, REL-06, REL-09, MDL-08, MDL-19, ACC-09. The text rules
 themselves are in `DESIGN-text.md`.
 
 ## A decision is a claim about code, not about a release
@@ -254,6 +254,43 @@ approver is shown describe time that did not happen. And a deferral asking for
 a date **already past** asks for nothing — allowing it to count as a negative
 would let a back-dated request subtract from what a finding has already been
 put off for and slip the total back under the threshold.
+
+## One live claim per combination of code
+
+A decision is a claim about a combination of code, so there is at most one of
+them: propose where one already stands and the answer is to revise that claim
+rather than to record a second one beside it.
+
+**Live, not ever.** A withdrawn or lapsed decision covers nothing and is
+history, so it stops holding the place the moment it stops applying. Otherwise
+one lapse would wall a place off permanently.
+
+**Per combination, not per place.** The versions are part of what a decision is
+about, so a claim about one version and a claim about the next are different
+claims and both stand. That is not an exception to the rule — it is the rule,
+since carrying a judgment forward is exactly the case where the code differs.
+
+**Why revising is the right answer to a disagreement.** It keeps the old words
+readable, takes back the approval given for them, returns the claim to the
+queue and records who wrote the new version. Two people disagreeing then
+produces one legible argument rather than two rows neither of them can see at
+once. Approving your own rewrite is already refused, because an approval is
+compared against whoever wrote the current revision.
+
+**What it replaced.** Nothing prevented two contradictory claims about one
+finding, and nothing marked them as contradictory: both sat in the review queue
+looking ordinary, and since what applies is chosen by agreed-beats-waiting and
+then newest-wins, approving both left one silently governing while the other
+stayed on the record as agreed. Neither approver had any sign the other
+existed.
+
+**Enforced by the database, not by a check.** A key is held while a decision is
+live and set to null once it is not, under a unique index — null values do not
+collide in a unique index on any of the four engines, which is what makes a
+rule that applies to only some rows portable. A read-then-write check is
+exactly the shape two proposals arriving together both walk through, and the
+test drives that case directly: two people proposing at once produce one claim,
+and removing the index lets both through.
 
 ## A judgment says how much it covers
 

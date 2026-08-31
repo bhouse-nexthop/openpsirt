@@ -91,6 +91,20 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 			-- revision rather than at the decision, so this moving is exactly
 			-- what withdraws an approval.
 			"revision_id"                ` + t.refNull + ` NULL,
+			-- What this decision is a claim about, while it is still a live
+			-- claim: the place and both upstream versions, hashed. Set to null
+			-- the moment it is withdrawn or lapses, because a decision that no
+			-- longer applies is history and must not block a fresh one.
+			--
+			-- The unique index over it is how "one live decision per code
+			-- combination" is enforced by the database rather than by a check
+			-- somebody remembers to write. Null values do not collide in a
+			-- unique index on any of the four engines, which is what makes a
+			-- rule that only applies to *some* rows portable at all — and a
+			-- read-then-write check is exactly the shape two proposals
+			-- arriving at once both walk through.
+			"live_key"                   ` + t.hash + ` NULL,
+			CONSTRAINT "decision_live_unique" UNIQUE ("live_key"),
 			CONSTRAINT "decision_product_fk" FOREIGN KEY ("product_id") REFERENCES "product"("id"),
 			CONSTRAINT "decision_vulnerability_fk" FOREIGN KEY ("vulnerability_id") REFERENCES "vulnerability"("id"),
 			CONSTRAINT "decision_proposer_fk" FOREIGN KEY ("proposed_by") REFERENCES "person"("id")

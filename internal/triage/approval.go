@@ -204,7 +204,11 @@ func (s *Store) Withdraw(ctx context.Context, subject access.Subject, decisionID
 			return fmt.Errorf("withdraw a decision: %w", err)
 		}
 		if _, err := tx.NewUpdate().Model((*Decision)(nil)).
-			Set("state = ?", Withdrawn).Where("id = ?", decisionID).Exec(ctx); err != nil {
+			Set("state = ?", Withdrawn).
+			// Released, so the place is open to a fresh claim. A withdrawn
+			// decision is history, and history must not stop anybody deciding.
+			Set("live_key = ?", nil).
+			Where("id = ?", decisionID).Exec(ctx); err != nil {
 			return fmt.Errorf("withdraw a decision: %w", err)
 		}
 		return nil

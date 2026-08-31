@@ -1,9 +1,13 @@
 package triage_test
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,6 +23,7 @@ import (
 // fixture is a product, an issue and two people, which is the least a decision
 // needs: one to make a claim and one to agree with it.
 type fixture struct {
+	db      *database.DB
 	store   *triage.Store
 	product int64
 	issue   int64
@@ -125,7 +130,7 @@ func each(t *testing.T, fn func(t *testing.T, f *fixture)) {
 		}
 
 		fn(t, &fixture{
-			store: triage.NewStore(db.DB), product: product.ID, issue: issue,
+			db: db, store: triage.NewStore(db.DB), product: product.ID, issue: issue,
 			proposer: one.ID, approver: two.ID,
 			triager: subject("proposer"), reviewer: subject("approver"), onlooker: subject("onlooker"),
 		})
@@ -179,29 +184,35 @@ func TestAClaimThatNeedsNobodyTakesEffectAtOnce(t *testing.T) {
 	})
 }
 
-func TestAWaitingClaimDoesNotShadowAnAgreedOne(t *testing.T) {
-	// Otherwise one person overturns a decision two people made, simply by
-	// proposing something newer at the same place.
+func TestAnAgreedClaimCannotBeShadowedByALaterOne(t *testing.T) {
+	// This used to check that a claim nobody had agreed to did not shadow an
+	// agreed one, because both could exist and what applied was chosen by
+	// agreed-beats-waiting and then newest-wins. The second claim can no
+	// longer be made at all, so the shadowing has nowhere to come from — and
+	// the refusal names the decision to go and revise instead.
 	each(t, func(t *testing.T, f *fixture) {
 		ctx := t.Context()
 		agreed := f.agreed(t, f.at())
 
-		later, err := f.store.Propose(ctx, f.triager, triage.Proposal{
+		_, err := f.store.Propose(ctx, f.triager, triage.Proposal{
 			Place: f.at(), Outcome: triage.WontFix,
 			Reasoning: "Actually we are never fixing this.", By: f.proposer,
 			NeedsApproval: true,
 		})
-		if err != nil {
-			t.Fatal(err)
+		if !errors.Is(err, triage.ErrAlreadyDecided) {
+			t.Fatalf("a claim was recorded beside an agreed one: %v", err)
+		}
+		if !strings.Contains(err.Error(), fmt.Sprint(agreed.ID)) {
+			t.Errorf("the refusal does not name the agreed decision: %v", err)
 		}
 
+		// And what stands is still the agreed claim, untouched.
 		standing, err := f.store.Applying(ctx, f.at())
 		if err != nil {
 			t.Fatal(err)
 		}
 		if standing == nil || standing.ID != agreed.ID {
-			t.Errorf("a claim nobody agreed to (%d) shadowed the agreed one (%d): %+v",
-				later.ID, agreed.ID, standing)
+			t.Errorf("the agreed decision no longer stands: %+v", standing)
 		}
 	})
 }
@@ -649,6 +660,117 @@ func TestAVersionIsReadTheSameWayItIsWritten(t *testing.T) {
 		moved.ComponentUpstream = "1.2.4"
 		if standing, _ := f.store.Applying(ctx, moved); standing != nil {
 			t.Error("the decision stood at a version it was not made about")
+		}
+	})
+}
+
+func TestOnlyOneLiveDecisionCoversOneCombinationOfCode(t *testing.T) {
+	// Two people making contradictory claims about one finding is a
+	// disagreement, and a disagreement belongs in one place where both sides
+	// are readable. Before this, both claims sat in the queue looking
+	// ordinary, and approving both left one silently governing while the other
+	// stayed on the record as agreed — with neither approver aware of the
+	// other.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		first := f.claims(t, f.at())
+
+		_, err := f.store.Propose(ctx, f.reviewer, triage.Proposal{
+			Place: f.at(), Outcome: triage.WontFix,
+			Reasoning: "Actually we are never fixing this.", By: f.approver,
+			NeedsApproval: true,
+		})
+		if !errors.Is(err, triage.ErrAlreadyDecided) {
+			t.Fatalf("a second claim about the same code was accepted: %v", err)
+		}
+		// And the refusal says which one to go and read.
+		if !strings.Contains(err.Error(), fmt.Sprint(first.ID)) {
+			t.Errorf("the refusal does not name the decision already standing: %v", err)
+		}
+	})
+}
+
+func TestADeadDecisionDoesNotBlockThePlaceForever(t *testing.T) {
+	// History must not stop anybody deciding. A withdrawn claim covers
+	// nothing, and a lapsed one covers nothing either — so the place has to be
+	// open to a fresh claim, or one lapse would wall it off permanently.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		claimed := f.claims(t, f.at())
+		if err := f.store.Withdraw(ctx, f.triager, claimed.ID); err != nil {
+			t.Fatal(err)
+		}
+
+		again, err := f.store.Propose(ctx, f.triager, triage.Proposal{
+			Place: f.at(), Outcome: triage.WontFix,
+			Reasoning: "Different answer, now that the first was taken back.",
+			By:        f.proposer, NeedsApproval: true,
+		})
+		if err != nil {
+			t.Fatalf("a withdrawn claim blocked the place: %v", err)
+		}
+		if again.ID == claimed.ID {
+			t.Error("the withdrawn decision was reused rather than a new one recorded")
+		}
+	})
+}
+
+func TestTheSamePlaceAtAnotherVersionIsItsOwnClaim(t *testing.T) {
+	// The uniqueness is per combination of code, not per place. A claim about
+	// one version and a claim about the next are different claims, and both
+	// standing is how carrying a judgment forward works at all.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		f.claims(t, f.at())
+
+		moved := f.at()
+		moved.ComponentUpstream = "1.2.4"
+		if _, err := f.store.Propose(ctx, f.triager, triage.Proposal{
+			Place: moved, Outcome: triage.NotApplicable,
+			Justification: triage.CodeNotInExecutePath,
+			Reasoning:     "Still not reached at the new version.",
+			By:            f.proposer, NeedsApproval: true,
+		}); err != nil {
+			t.Fatalf("a claim about another version was refused: %v", err)
+		}
+	})
+}
+
+func TestTwoPeopleProposingAtOnceProduceOneClaim(t *testing.T) {
+	// The reason this is a unique index rather than a check. Two proposals
+	// arriving together both pass anything read before the write, so the rule
+	// has to be enforced where the write happens.
+	each(t, func(t *testing.T, f *fixture) {
+		var wg sync.WaitGroup
+		errs := make([]error, 2)
+		for i, who := range []access.Subject{f.triager, f.reviewer} {
+			by := []int64{f.proposer, f.approver}[i]
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, errs[i] = f.store.Propose(context.WithoutCancel(t.Context()), who,
+					triage.Proposal{
+						Place: f.at(), Outcome: triage.WontFix,
+						Reasoning: "Racing.", By: by, NeedsApproval: true,
+					})
+			}()
+		}
+		wg.Wait()
+
+		won := 0
+		for _, err := range errs {
+			if err == nil {
+				won++
+			}
+		}
+		if won != 1 {
+			t.Fatalf("%d of two simultaneous proposals were recorded, want exactly one", won)
+		}
+
+		var live int
+		if err := f.db.NewSelect().Model((*triage.Decision)(nil)).
+			Where("live_key IS NOT NULL").Scan(t.Context(), &live); err == nil && live > 1 {
+			t.Errorf("%d live claims cover one combination of code", live)
 		}
 	})
 }
