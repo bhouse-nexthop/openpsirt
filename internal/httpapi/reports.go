@@ -27,6 +27,7 @@ type ChangedBody struct {
 	Component     string `json:"component"`
 	Severity      string `json:"severity,omitempty"`
 	Because       string `json:"because,omitempty" enum:"removed,upgraded,revised,superseded,unexplained" doc:"Why it went. Only on fixed entries"`
+	ArrivedFrom   string `json:"arrived_from,omitempty" doc:"The version this was bumped from since the earlier build. Only on still-present entries, where it means the bump did not reach the fix"`
 }
 
 func registerReports(api huma.API, in Ingest) {
@@ -80,16 +81,19 @@ func registerReports(api huma.API, in Ingest) {
 			"carried patch\" are different sentences to a reader. `superseded` is the one to " +
 			"read carefully — it means the version moved and the issue came with it, so it was " +
 			"not fixed at all.\n\n" +
+			"A still-present entry carrying `arrived_from` is the same failure seen from the " +
+			"other side: somebody moved that version since the earlier build and the issue came " +
+			"with it, so the bump did not reach the fix.\n\n" +
 			"**Public findings only unless you ask otherwise.** Its destination is usually a " +
 			"public document, so including something undisclosed should be deliberate rather " +
 			"than something pasted in without noticing.",
 		Tags: []string{"Findings"},
 	}, func(ctx context.Context, input *struct {
 		Product        string `path:"product"`
-		From           string `query:"from" required:"true" doc:"The earlier build, as stream/variant"`
-		FromVariant    string `query:"from_variant" required:"true"`
+		From           string `query:"from" required:"true" doc:"The earlier build's stream — a branch or a tag"`
+		FromVariant    string `query:"from_variant" required:"true" doc:"The earlier build's variant"`
 		To             string `query:"to" required:"true" doc:"The later build's stream"`
-		ToVariant      string `query:"to_variant" required:"true"`
+		ToVariant      string `query:"to_variant" required:"true" doc:"The later build's variant"`
 		IncludePrivate bool   `query:"include_undisclosed" doc:"Include findings nobody has disclosed"`
 	}) (*struct {
 		Body struct {
@@ -136,14 +140,17 @@ func registerReports(api huma.API, in Ingest) {
 				Still []ChangedBody `json:"still_present"`
 			}
 		}{}
-		out.Body.Fixed = changed(comparison.Fixed, true)
-		out.Body.Newly = changed(comparison.Newly, false)
-		out.Body.Still = changed(comparison.Still, false)
+		out.Body.Fixed = changed(comparison.Fixed, true, false)
+		out.Body.Newly = changed(comparison.Newly, false, false)
+		// Only the still-present column says what a place was bumped from. On
+		// a fixed entry the closure already says what happened, and on a new
+		// one there was nothing to bump.
+		out.Body.Still = changed(comparison.Still, false, true)
 		return out, nil
 	})
 }
 
-func changed(rows []finding.Changed, why bool) []ChangedBody {
+func changed(rows []finding.Changed, why, bumped bool) []ChangedBody {
 	out := make([]ChangedBody, 0, len(rows))
 	for _, row := range rows {
 		body := ChangedBody{
@@ -151,6 +158,9 @@ func changed(rows []finding.Changed, why bool) []ChangedBody {
 		}
 		if why {
 			body.Because = string(row.Because)
+		}
+		if bumped {
+			body.ArrivedFrom = row.ArrivedFrom
 		}
 		out = append(out, body)
 	}
@@ -166,6 +176,7 @@ type InheritedBody struct {
 	Was           string `json:"was" doc:"The version the claim was made against"`
 	Now           string `json:"now" doc:"What the new line has"`
 	Reasoning     string `json:"reasoning" doc:"The old words, to start from rather than start without"`
+	DeferredDays  int    `json:"deferred_days,omitempty" doc:"How long this has already been put off, across every line it has been carried through"`
 }
 
 // CarriedBody is what a new line would inherit.
@@ -193,25 +204,27 @@ func registerCarry(api huma.API, in Ingest) {
 			"Making somebody start from a blank page, having thrown away what was written last " +
 			"time, is how a tool teaches people to stop writing reasoning at all.\n\n" +
 			"`postponed` were deferrals. \"Not this sprint\" was about that sprint, so carrying " +
-			"one silently gives a new line expiry dates nobody chose.\n\n" +
+			"one silently gives a new line expiry dates nobody chose. Each says how long it has " +
+			"already been put off across every line it has come through, because that total is " +
+			"what carrying it again agrees to.\n\n" +
 			"`absent` cover nothing here and are left behind.",
 		Tags: []string{"Triage"},
 	}, func(ctx context.Context, input *struct {
 		Product     string `path:"product"`
 		Stream      string `path:"stream"`
 		Variant     string `path:"variant"`
-		From        string `query:"from" required:"true" doc:"The line to inherit from"`
-		FromVariant string `query:"from_variant" required:"true"`
+		From        string `query:"from" required:"true" doc:"The stream to inherit from"`
+		FromVariant string `query:"from_variant" required:"true" doc:"That stream's variant"`
 	}) (*struct{ Body CarriedBody }, error) {
 		subject, store, err := triaging(ctx, in)
 		if err != nil {
 			return nil, err
 		}
-		to, err := browsing(ctx, in, input.Product, input.Stream, input.Variant)
+		_, to, err := browsing(ctx, in, input.Product, input.Stream, input.Variant)
 		if err != nil {
 			return nil, err
 		}
-		from, err := browsing(ctx, in, input.Product, input.From, input.FromVariant)
+		_, from, err := browsing(ctx, in, input.Product, input.From, input.FromVariant)
 		if err != nil {
 			return nil, err
 		}
@@ -236,6 +249,7 @@ func inherited(rows []triage.Inherited) []InheritedBody {
 			Decision: row.DecisionID, Vulnerability: row.Vulnerability,
 			Component: row.Component, Outcome: string(row.Outcome),
 			Was: row.Was, Now: row.Now, Reasoning: row.Reasoning,
+			DeferredDays: row.DeferredDays,
 		})
 	}
 	return out

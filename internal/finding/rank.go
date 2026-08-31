@@ -107,6 +107,27 @@ func bounded(value, limit int) int {
 	}
 }
 
+// SeverityWord turns a score back into the band it falls in, for the places
+// that hold a number and have to show a word.
+//
+// The bands the scoring standard defines. A score of zero means nothing rated
+// it, which is reported as nothing rather than as a low — an unrated finding
+// is not a mild one, and saying "low" about it is a claim nobody made.
+func SeverityWord(centi int) string {
+	switch {
+	case centi <= 0:
+		return ""
+	case centi >= 900:
+		return "critical"
+	case centi >= 700:
+		return "high"
+	case centi >= 400:
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
 // SeverityScore turns a severity word into a score, for the reports that give
 // a word and no number.
 //

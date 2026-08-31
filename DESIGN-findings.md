@@ -396,10 +396,19 @@ them. The cheap form still says the useful thing: this moved, and it is still
 not the version that fixes it. Ordering would sharpen the wording and change
 nothing about when the flag is raised.
 
-The inverse is worth catching for a different reason. A component sitting at or
-past the named fix while the scanner still reports the issue means the scanner
-and the fix data disagree — which is not a triage question at all, and is why a
-decision must never be carried onto such a build.
+**Where it shows up.** On the finding, as the version it arrived from. And in
+a release comparison's still-present column, which is the reading aimed at
+whoever did the bump rather than at a triager — the same failure seen from the
+other side of the release. It does not yet appear in the review queue, which
+lists decisions rather than findings; surfacing it there means carrying the
+finding's own history onto a queue row, and that is not built.
+
+The inverse — a component sitting at or past the named fix while the scanner
+still reports the issue — would mean the scanner and the fix data disagree,
+which is not a triage question at all. **It is not detected**, and cannot be
+under the limit above: deciding whether a version sits past another is exactly
+the ordering this refuses to do. Written down because the rule is easy to state
+and reads as though something enforces it.
 
 ## Several disappearances at once are one fault
 

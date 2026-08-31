@@ -28,8 +28,9 @@ type UnassignedBody struct {
 
 // HoldingBody is how much work one person has.
 type HoldingBody struct {
-	Person string `json:"person"`
-	Open   int    `json:"open" doc:"Open findings assigned to them"`
+	Person  string `json:"person"`
+	Open    int    `json:"open" doc:"Open findings assigned to them"`
+	Overdue int    `json:"overdue" doc:"How many of those are past their deadline"`
 }
 
 func registerAssignment(api huma.API, in Ingest) {
@@ -59,10 +60,19 @@ func registerAssignment(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
-		target, issue, component, err := locateFinding(ctx, in, subject,
+		product, target, issue, component, err := locateFinding(ctx, in, subject,
 			input.Product, input.Stream, input.Variant, input.Vulnerability, input.Component)
 		if err != nil {
 			return nil, err
+		}
+
+		// Authorized to hand work around before any name is looked up.
+		// Resolving first and refusing after answers "does this person have an
+		// account here" for anybody who can merely read the product, which is
+		// a directory of the organization for the price of one request.
+		if !subject.Holds(access.PublicTriage, product) &&
+			!subject.Holds(access.PrivateTriage, product) {
+			return nil, noSuchFinding()
 		}
 
 		var to *int64
@@ -138,7 +148,11 @@ func registerAssignment(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
-		held, err := finding.NewStore(in.DB.DB).HeldBy(ctx, subject)
+		windows, err := dueWindows(ctx, in)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "cannot tell when things are due", err)
+		}
+		held, err := finding.NewStore(in.DB.DB).HeldBy(ctx, subject, windows)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "who is holding what could not be read", err)
 		}
@@ -154,7 +168,7 @@ func registerAssignment(api huma.API, in Ingest) {
 		out.Body.Items = make([]HoldingBody, 0, len(held))
 		for _, h := range held {
 			out.Body.Items = append(out.Body.Items, HoldingBody{
-				Person: names[h.PersonID], Open: h.Open,
+				Person: names[h.PersonID], Open: h.Open, Overdue: h.Overdue,
 			})
 		}
 		return out, nil
@@ -186,6 +200,14 @@ func registerAssignment(api huma.API, in Ingest) {
 		subject, err := reading(ctx)
 		if err != nil {
 			return nil, err
+		}
+		// Authorized before the name is looked up. Resolving first and
+		// refusing after answers "does this person have an account here" for
+		// anybody signed in: a name nobody holds and a name somebody holds
+		// come back differently, which is a directory of the organization
+		// readable by every account.
+		if !subject.Admin {
+			return nil, huma.Error403Forbidden("not authorized")
 		}
 		rights := access.NewStore(in.DB.DB)
 		from, err := rights.ByIdentity(ctx, input.Identity)
@@ -220,36 +242,45 @@ func registerAssignment(api huma.API, in Ingest) {
 
 // locateFinding resolves the names in a path to the finding they address.
 func locateFinding(ctx context.Context, in Ingest, subject access.Subject,
-	product, stream, variant, vulnerability, component string) (int64, int64, int64, error) {
+	product, stream, variant, vulnerability, component string) (int64, int64, int64, int64, error) {
 
 	names := catalog.NewStore(in.DB.DB)
 	named, err := names.LocateVisible(ctx, subject, product, stream, variant)
 	if err != nil {
-		return 0, 0, 0, noSuchProduct()
+		return 0, 0, 0, 0, noSuchProduct()
 	}
 	target, err := names.ExistingTarget(ctx, named.StreamID, named.VariantID)
 	if err != nil {
-		return 0, 0, 0, nothingScannedThere()
+		return 0, 0, 0, 0, nothingScannedThere()
 	}
 	issue, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, vulnerability)
 	if err != nil {
-		return 0, 0, 0, noSuchIssue()
+		return 0, 0, 0, 0, noSuchIssue()
 	}
 	held, err := graph.NewStore(in.DB.DB).ComponentAt(ctx, target.ID, component)
 	if err != nil {
-		return 0, 0, 0, noSuchFinding()
+		return 0, 0, 0, 0, noSuchFinding()
 	}
-	return target.ID, issue, held, nil
+	return named.ProductID, target.ID, issue, held, nil
 }
 
 // refusedFinding turns a store's refusal about a finding into an answer.
 //
 // Somebody who may not reach a finding is told it is not there, the same
-// answer a name nobody ever used gets — otherwise the two differ and
-// guessing becomes informative.
+// answer a name nobody ever used gets — otherwise the two differ and guessing
+// becomes informative.
+//
+// Only the refusals it recognizes are reported to the caller. Anything else is
+// a database that could not answer, and returning those as 422 told somebody
+// their request was wrong and put a driver's error text — table names,
+// statement fragments — in the response body. What is not a recognized refusal
+// is logged and answered as ours.
 func refusedFinding(in Ingest, err error) error {
-	if errors.Is(err, access.ErrDenied) {
+	switch {
+	case errors.Is(err, access.ErrDenied):
 		return noSuchFinding()
+	case errors.Is(err, finding.ErrSamePerson):
+		return huma.Error422UnprocessableEntity(err.Error())
 	}
-	return huma.Error422UnprocessableEntity(err.Error())
+	return wentWrong(in.Logger, "that could not be recorded", err)
 }

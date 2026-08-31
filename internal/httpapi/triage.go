@@ -38,6 +38,15 @@ type DecisionBody struct {
 	// Versions is how many distinct versions sit at this place. More than one
 	// means a single decision cannot honestly cover all of them.
 	Versions int `json:"versions,omitempty" doc:"How many versions of the component sit here. More than one needs care"`
+	// SentBackAt is when an approver last asked for more before they would
+	// agree. Reported, because otherwise the only trace of it is a comment,
+	// and the author's own list cannot tell a claim waiting on somebody else
+	// from one waiting on them.
+	SentBackAt string `json:"sent_back_at,omitempty" doc:"When an approver last asked for more. Empty means nobody has"`
+	// SelectedBy is how the set was narrowed, where this claim was one of many
+	// recorded in a single action. Reported so that "how were these chosen"
+	// has an answer months later.
+	SelectedBy string `json:"selected_by,omitempty" doc:"How the set was narrowed, for a claim recorded as one of many. Never part of the claim itself"`
 }
 
 // PlaceBody names what a decision is about.
@@ -543,6 +552,12 @@ func decisionBody(d triage.Decision) DecisionBody {
 	}
 	if d.DeferredUntil != nil {
 		body.DeferredUntil = d.DeferredUntil.Format(time.DateOnly)
+	}
+	if d.SentBackAt != nil {
+		body.SentBackAt = d.SentBackAt.UTC().Format(time.RFC3339)
+	}
+	if d.SelectedBy != nil {
+		body.SelectedBy = *d.SelectedBy
 	}
 	return body
 }

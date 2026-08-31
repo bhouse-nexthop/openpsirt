@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 	"github.com/bhouse-nexthop/openpsirt/internal/version"
 )
@@ -172,6 +173,12 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	registerCatalog(api, Declaring{Store: in.catalog, Logger: logger})
 	registerAdministration(api, Administering{
 		Access: in.rights, Catalog: in.catalog, Logger: logger, Mode: in.Mode,
+		Findings: func() *finding.Store {
+			if in.DB == nil {
+				return nil
+			}
+			return finding.NewStore(in.DB.DB)
+		},
 	})
 	registerRevocation(api, Administering{
 		Access: in.rights, Catalog: in.catalog, Logger: logger, Mode: in.Mode,

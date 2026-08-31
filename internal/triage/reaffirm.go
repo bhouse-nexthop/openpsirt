@@ -2,12 +2,14 @@ package triage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 )
 
@@ -58,6 +60,46 @@ func (s *Store) Reaffirm(ctx context.Context, subject access.Subject, r Reaffirm
 		return nil, fmt.Errorf("a decision is recorded as made by whoever made it")
 	}
 
+	db, ok := s.db.(*bun.DB)
+	if !ok {
+		return nil, fmt.Errorf("this store is already inside a transaction")
+	}
+
+	var made *Decision
+	err := database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+		var err error
+		made, err = (&Store{db: tx, now: s.now}).reaffirm(ctx, subject, r, severityNow)
+		return err
+	})
+	if errors.Is(err, ErrAlreadyDecided) {
+		// Read now the transaction has unwound, so the refusal can say which
+		// claim to go and read rather than which constraint was violated.
+		if standing, found := s.liveAt(ctx, liveKeyFor(r.Place)); found {
+			return nil, fmt.Errorf(
+				"%w: decision %d is already %s here — revise that one rather than recording a "+
+					"second claim about the same code",
+				ErrAlreadyDecided, standing.ID, standing.State)
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return made, nil
+}
+
+// reaffirm is the whole of a re-affirmation, in one transaction.
+//
+// One transaction because it is one act. Written as three — read the old
+// claim, write the new one, carry the agreement — a process that stopped in
+// the middle left a claim standing that nobody had agreed to and that no
+// review queue would ever show, because it was recorded as needing nobody.
+// Everything it turns on is read in here too (DAT-31): the old claim's
+// visibility, who proposed it, and whether its agreement still stands all
+// decide what this may do, and read outside they are answers about a database
+// that has since moved.
+func (s *Store) reaffirm(ctx context.Context, subject access.Subject, r Reaffirmation,
+	severityNow int) (*Decision, error) {
+
 	previous := new(Decision)
 	if err := s.db.NewSelect().Model(previous).
 		Where("id = ?", r.PreviousID).Scan(ctx); err != nil {
@@ -97,18 +139,36 @@ func (s *Store) Reaffirm(ctx context.Context, subject access.Subject, r Reaffirm
 		justification = *previous.Justification
 	}
 
-	made, err := s.Propose(ctx, subject, Proposal{
+	// Whether this needs a second person is decided before it is written, and
+	// recorded on the claim. Without it the claim was stored as needing
+	// nobody — so a re-affirmation sent back for full approval suppressed the
+	// finding the moment it was made and never appeared in the review queue,
+	// which is one person's action producing a live dismissal no second person
+	// ever sees.
+	full := needsFullApproval(*previous, severityNow)
+
+	proposal := Proposal{
 		Place: place, Outcome: previous.Outcome,
 		Justification: Justification(justification),
 		DeferredUntil: previous.DeferredUntil,
 		Reasoning:     r.Reasoning, By: r.By,
 		SeverityCenti: severityNow,
-	})
+		NeedsApproval: full,
+	}
+	// The same checks Propose makes, made here because the write is already
+	// inside a transaction and Propose opens its own.
+	if !mayDecide(subject, place.ProductID, visibilityOf(place)) {
+		return nil, ErrNotTheirs
+	}
+	if err := proposal.valid(); err != nil {
+		return nil, err
+	}
+	made, err := s.propose(ctx, proposal)
 	if err != nil {
 		return nil, err
 	}
 
-	if needsFullApproval(*previous, severityNow) {
+	if full {
 		return made, nil
 	}
 
@@ -180,9 +240,24 @@ func (s *Store) carryApproval(ctx context.Context, made *Decision, previous Deci
 	if _, err := s.db.NewInsert().Model(carried).Exec(ctx); err != nil {
 		return fmt.Errorf("carry an approval forward: %w", err)
 	}
-	if _, err := s.db.NewUpdate().Model((*Decision)(nil)).
-		Set("state = ?", Approved).Where("id = ?", made.ID).Exec(ctx); err != nil {
+	// Guarded on the revision, the way every other approval here is. An
+	// agreement is an agreement to particular words, so it only takes effect
+	// while those are still the words the claim rests on — otherwise a
+	// re-affirmation revised between being written and being approved would
+	// stand on an agreement to text nobody read.
+	result, err := s.db.NewUpdate().Model((*Decision)(nil)).
+		Set("state = ?", Approved).
+		Where("id = ?", made.ID).
+		Where("revision_id = ?", *made.RevisionID).Exec(ctx)
+	if err != nil {
 		return fmt.Errorf("carry an approval forward: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("carry an approval forward: %w", err)
+	}
+	if changed == 0 {
+		return fmt.Errorf("the reasoning changed while this was being agreed to")
 	}
 	made.State = Approved
 	return nil
@@ -297,6 +372,29 @@ func (s *Store) WouldCarry(ctx context.Context, subject access.Subject,
 		return nil, ErrNotTheirs
 	}
 
+	// Which product this is about, read from the build rather than taken from
+	// the caller. The first version selected decisions by live key and a
+	// matching place alone — and a place is a hash of component names carrying
+	// no product, so a shared distribution package matched across products and
+	// the reasoning of undisclosed claims came back to anybody who could read
+	// one product.
+	var productID int64
+	if err := s.db.NewSelect().
+		TableExpr("target AS tg").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		ColumnExpr("st.product_id").
+		Where("tg.id = ?", toTarget).
+		Scan(ctx, &productID); err != nil {
+		return nil, fmt.Errorf("look up which product this line belongs to: %w", err)
+	}
+	if !mayDecide(subject, productID, access.Public) {
+		return nil, ErrNotTheirs
+	}
+	readable := []access.Visibility{access.Public}
+	if mayDecide(subject, productID, access.Private) {
+		readable = append(readable, access.Private)
+	}
+
 	var rows []struct {
 		DecisionID    int64  `bun:"decision_id"`
 		Vulnerability string `bun:"vulnerability"`
@@ -304,14 +402,21 @@ func (s *Store) WouldCarry(ctx context.Context, subject access.Subject,
 		Outcome       string `bun:"outcome"`
 		Was           string `bun:"was"`
 		Now           string `bun:"now_at"`
+		ConsumerWas   string `bun:"consumer_was"`
+		ConsumerNow   string `bun:"consumer_now"`
 		Reasoning     string `bun:"reasoning"`
 		StillThere    bool   `bun:"still_there"`
+		// Carried so a postponement can be told how long it has already run.
+		VulnerabilityID int64  `bun:"vulnerability_id"`
+		PlaceIdentity   string `bun:"place_identity"`
 	}
 	err := s.db.NewSelect().
 		TableExpr("decision AS de").
 		Join("JOIN vulnerability AS v ON v.id = de.vulnerability_id").
 		Join("LEFT JOIN decision_revision AS dr ON dr.id = de.revision_id").
 		ColumnExpr("de.id AS decision_id").
+		ColumnExpr("de.vulnerability_id AS vulnerability_id").
+		ColumnExpr("de.place_identity AS place_identity").
 		ColumnExpr("v.identifier AS vulnerability").
 		ColumnExpr("COALESCE(de.component_upstream_version, '') AS was").
 		ColumnExpr("de.outcome AS outcome").
@@ -322,17 +427,30 @@ func (s *Store) WouldCarry(ctx context.Context, subject access.Subject,
 			WHERE f.target_id = ? AND f.vulnerability_id = de.vulnerability_id
 			  AND f.place_identity = de.place_identity AND f.closed_run_id IS NULL), '')
 			AS component`, toTarget).
+		// Both versions, because a decision is keyed on both. Comparing only
+		// the component's meant a build whose *consumer* had moved was
+		// reported as already covered, when the claim does not reach it and
+		// the finding surfaces unanswered.
 		ColumnExpr(`COALESCE((SELECT MIN(`+finding.ComponentUpstreamExpr+`) FROM "finding" AS f
 			JOIN "component" AS c ON c.id = f.component_id
 			LEFT JOIN "component" AS uc ON uc.id = f.consumer_id
 			WHERE f.target_id = ? AND f.vulnerability_id = de.vulnerability_id
 			  AND f.place_identity = de.place_identity AND f.closed_run_id IS NULL), '')
 			AS now_at`, toTarget).
+		ColumnExpr(`COALESCE((SELECT MIN(`+finding.ConsumerUpstreamExpr+`) FROM "finding" AS f
+			JOIN "component" AS c ON c.id = f.component_id
+			LEFT JOIN "component" AS uc ON uc.id = f.consumer_id
+			WHERE f.target_id = ? AND f.vulnerability_id = de.vulnerability_id
+			  AND f.place_identity = de.place_identity AND f.closed_run_id IS NULL), '')
+			AS consumer_now`, toTarget).
+		ColumnExpr("COALESCE(de.consumer_upstream_version, '') AS consumer_was").
 		ColumnExpr(`EXISTS (SELECT 1 FROM "finding" AS f
 			WHERE f.target_id = ? AND f.vulnerability_id = de.vulnerability_id
 			  AND f.place_identity = de.place_identity AND f.closed_run_id IS NULL)
 			AS still_there`, toTarget).
 		Where("de.live_key IS NOT NULL").
+		Where("de.product_id = ?", productID).
+		Where("de.visibility IN (?)", bun.List(readable)).
 		Where(`EXISTS (SELECT 1 FROM "finding" AS g
 			WHERE g.target_id = ? AND g.vulnerability_id = de.vulnerability_id
 			  AND g.place_identity = de.place_identity)`, fromTarget).
@@ -342,12 +460,13 @@ func (s *Store) WouldCarry(ctx context.Context, subject access.Subject,
 	}
 
 	carried := &Carried{}
+	var postponed []at
 	for _, row := range rows {
 		if !row.StillThere {
 			carried.Absent++
 			continue
 		}
-		if row.Was == row.Now {
+		if row.Was == row.Now && row.ConsumerWas == row.ConsumerNow {
 			// The versions match, so it reaches the new line by matching.
 			// Offering it would ask somebody to agree to something that has
 			// already happened.
@@ -360,10 +479,78 @@ func (s *Store) WouldCarry(ctx context.Context, subject access.Subject,
 			Was: row.Was, Now: row.Now, Reasoning: row.Reasoning,
 		}
 		if Outcome(row.Outcome) == Deferred {
+			postponed = append(postponed, at{row.VulnerabilityID, row.PlaceIdentity})
 			carried.Postponed = append(carried.Postponed, one)
 			continue
 		}
 		carried.Moved = append(carried.Moved, one)
 	}
+
+	// How long each postponement has already run. Somebody agreeing to carry
+	// a deferral into a new line is agreeing to however long it has been put
+	// off in total, not to the months the new one asks for — and four
+	// consecutive carries of "not this release" are a decision nobody made.
+	already, err := s.deferredSoFarAt(ctx, productID, postponed)
+	if err != nil {
+		return nil, err
+	}
+	for i := range carried.Postponed {
+		carried.Postponed[i].DeferredDays = int(already[postponed[i]].Hours() / 24)
+	}
 	return carried, nil
+}
+
+// at is one place a decision was made about.
+type at struct {
+	vulnerability int64
+	place         string
+}
+
+// deferredSoFarAt totals how long each of these places has been put off, in
+// one statement rather than one per row.
+//
+// The arithmetic happens here rather than in SQL: subtracting one timestamp
+// from another and summing the result has no portable spelling (DAT-02), and
+// the rows are already being read.
+func (s *Store) deferredSoFarAt(ctx context.Context, productID int64, places []at) (map[at]time.Duration, error) {
+	total := map[at]time.Duration{}
+	if len(places) == 0 {
+		return total, nil
+	}
+	issues := make([]int64, 0, len(places))
+	identities := make([]string, 0, len(places))
+	wanted := make(map[at]bool, len(places))
+	for _, place := range places {
+		if wanted[place] {
+			continue
+		}
+		wanted[place] = true
+		issues = append(issues, place.vulnerability)
+		identities = append(identities, place.place)
+	}
+
+	var deferrals []Decision
+	if err := s.db.NewSelect().Model(&deferrals).
+		Column("vulnerability_id", "place_identity", "proposed_at", "deferred_until").
+		Where("product_id = ?", productID).
+		Where("vulnerability_id IN (?)", bun.List(issues)).
+		Where("place_identity IN (?)", bun.List(identities)).
+		Where("outcome = ?", Deferred).
+		// What was taken back was not time the finding spent put off.
+		Where("state <> ?", Withdrawn).
+		Where("deferred_until IS NOT NULL").Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read how long these have been put off: %w", err)
+	}
+	for _, deferral := range deferrals {
+		key := at{deferral.VulnerabilityID, deferral.PlaceIdentity}
+		// The pair of lists matches more combinations than were asked for, so
+		// what was not asked for is dropped here.
+		if !wanted[key] || deferral.DeferredUntil == nil {
+			continue
+		}
+		if span := deferral.DeferredUntil.Sub(deferral.ProposedAt); span > 0 {
+			total[key] += span
+		}
+	}
+	return total, nil
 }

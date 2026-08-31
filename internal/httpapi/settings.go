@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/setting"
+	"github.com/bhouse-nexthop/openpsirt/internal/triage"
 )
 
 // SettingBody is one thing a deployment has decided for everybody in it.
@@ -36,7 +39,13 @@ var settable = []struct {
 	{setting.DeferralThreshold, "How long something may be put off before a second person has to agree. Measured against everything the finding has already been put off for, not against the postponement being asked for"},
 	{setting.SessionLifetime, "How long a sign-in lasts"},
 	{setting.MaxTokenLifetime, "The longest a personal token may be valid for"},
+	{setting.TogetherCap, "How many findings one action may claim about at once. A whole number, not a length of time"},
 }
+
+// aCount is the settings whose value is a number of things rather than a
+// length of time. Named here because the two are checked differently, and a
+// value checked as the wrong kind is stored and then silently ignored.
+func aCount(name string) bool { return name == setting.TogetherCap }
 
 func registerSettings(api huma.API, in Ingest) {
 	huma.Register(api, huma.Operation{
@@ -100,13 +109,30 @@ func registerSettings(api huma.API, in Ingest) {
 		if !known {
 			return nil, huma.Error404NotFound("this deployment has no setting by that name")
 		}
-		// Checked before it is stored. A duration nothing can read would leave
-		// every caller falling back to the shipped value, which is a policy
-		// that quietly stopped applying.
-		if _, err := time.ParseDuration(input.Body.Value); err != nil {
-			return nil, huma.Error422UnprocessableEntity(
-				fmt.Sprintf("%q is not a length of time — write it as 72h, 30m or 45s",
-					input.Body.Value))
+		// Checked before it is stored. A value nothing can read would leave
+		// every caller falling back to the shipped one, which is a policy that
+		// quietly stopped applying — and every reader here treats zero and
+		// negative as unset, so those would do the same while looking set.
+		if aCount(input.Name) {
+			n, err := strconv.Atoi(input.Body.Value)
+			if err != nil || n <= 0 {
+				return nil, huma.Error422UnprocessableEntity(
+					fmt.Sprintf("%q is not a count — write a whole number above zero",
+						input.Body.Value))
+			}
+		} else {
+			d, err := time.ParseDuration(input.Body.Value)
+			if err != nil {
+				return nil, huma.Error422UnprocessableEntity(
+					fmt.Sprintf("%q is not a length of time — write it as 72h, 30m or 45s",
+						input.Body.Value))
+			}
+			if d <= 0 {
+				return nil, huma.Error422UnprocessableEntity(
+					fmt.Sprintf("%q is not a length of time anything can wait for — "+
+						"every reader treats it as unset and falls back to the shipped value",
+						input.Body.Value))
+			}
 		}
 		if err := setting.NewStore(in.DB.DB).Set(ctx, input.Name, input.Body.Value); err != nil {
 			return nil, wentWrong(in.Logger, "that setting could not be recorded", err)
@@ -131,9 +157,11 @@ func shipped(name string) string {
 	case setting.DeferralThreshold:
 		return "720h"
 	case setting.SessionLifetime:
-		return "12h"
+		return access.DefaultSessionLifetime.String()
 	case setting.MaxTokenLifetime:
-		return "2160h"
+		return access.MaxTokenLifetime.String()
+	case setting.TogetherCap:
+		return strconv.Itoa(triage.DefaultTogetherCap)
 	}
 	return ""
 }

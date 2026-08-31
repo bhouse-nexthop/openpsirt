@@ -33,8 +33,10 @@ func registerTokens(api huma.API, in Ingest) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-my-tokens", Method: http.MethodGet, Path: "/v1/tokens",
 		Summary: "List your API tokens",
-		Description: "Yours alone. A token is a live reference to you rather than a copy of what " +
-			"you could do when it was made, so what it reaches shrinks the moment your roles do.",
+		Description: "Lists your own personal tokens: what each is called, when it expires and " +
+			"when it was last used. Never anybody else's, and never the secrets.\n\n" +
+			"A token is a live reference to you rather than a copy of what you could do when it " +
+			"was made, so what one reaches shrinks the moment your roles do.",
 		Tags: []string{"Access"},
 	}, func(ctx context.Context, _ *struct{}) (*listOutput[TokenBody], error) {
 		subject, rights, names, err := mine(ctx, in)
@@ -51,9 +53,11 @@ func registerTokens(api huma.API, in Ingest) {
 	huma.Register(api, huma.Operation{
 		OperationID: "mint-token", Method: http.MethodPost, Path: "/v1/tokens",
 		Summary: "Create an API token",
-		Description: "Shown once. Expiry is not optional: a credential that never runs out is one " +
-			"nobody ever revokes, and those are found when somebody leaves and nobody knows what " +
-			"breaks if it is turned off.",
+		Description: "Creates a personal token and returns its secret. The secret is shown once " +
+			"and never again — what is stored is a digest.\n\n" +
+			"Expiry is not optional, and `lifetime` may not exceed the ceiling an administrator " +
+			"has set. A credential that never runs out is one nobody ever revokes, and those are " +
+			"found when somebody leaves and nobody knows what breaks if it is turned off.",
 		Tags: []string{"Access"}, DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, input *struct{ Body TokenBody }) (*struct{ Body TokenBody }, error) {
 		subject, rights, names, err := mine(ctx, in)
@@ -114,8 +118,10 @@ func registerTokens(api huma.API, in Ingest) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "revoke-my-token", Method: http.MethodDelete, Path: "/v1/tokens/{name}",
-		Summary:       "Revoke one of your API tokens",
-		Description:   "Yours alone. An administrator withdraws anybody's through the administration paths.",
+		Summary: "Revoke one of your API tokens",
+		Description: "Revokes one of your own tokens by name. It stops working immediately.\n\n" +
+			"Yours alone. An administrator withdraws anybody else's through the administration " +
+			"paths.",
 		Tags:          []string{"Access"},
 		DefaultStatus: http.StatusNoContent,
 	}, func(ctx context.Context, input *struct {

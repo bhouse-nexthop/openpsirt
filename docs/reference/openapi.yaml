@@ -92,12 +92,14 @@ components:
       additionalProperties: false
       properties:
         fixed_in:
+          description: The version the report says fixes it, where it names one
           type: string
         places:
           description: How many places in this build it sits at
           format: int64
           type: integer
         severity:
+          description: How bad the report rates it
           type: string
         vulnerability:
           type: string
@@ -179,6 +181,9 @@ components:
     ChangedBody:
       additionalProperties: false
       properties:
+        arrived_from:
+          description: The version this was bumped from since the earlier build. Only on still-present entries, where it means the bump did not reach the fix
+          type: string
         because:
           description: Why it went. Only on fixed entries
           enum:
@@ -298,6 +303,9 @@ components:
           format: uri
           readOnly: true
           type: string
+        deferred_until:
+          description: Required when it is deferred. A date, as 2026-03-31
+          type: string
         justification:
           description: Required when it does not apply
           type: string
@@ -312,16 +320,23 @@ components:
           description: Why this holds for every issue named
           minLength: 1
           type: string
+        selected_by:
+          description: How you narrowed this set. Recorded, and never part of the claim
+          maxLength: 500
+          minLength: 1
+          type: string
         vulnerabilities:
           description: The issues this claim covers, by name
           items:
             type: string
+          maxItems: 2000
           minItems: 1
           type:
             - array
             - "null"
       required:
         - vulnerabilities
+        - selected_by
         - outcome
         - reasoning
       type: object
@@ -393,6 +408,12 @@ components:
         reasoning:
           description: Why, in markdown. Somebody else has to agree with this
           minLength: 1
+          type: string
+        selected_by:
+          description: How the set was narrowed, for a claim recorded as one of many. Never part of the claim itself
+          type: string
+        sent_back_at:
+          description: When an approver last asked for more. Empty means nobody has
           type: string
         state:
           description: Where it has got to
@@ -829,11 +850,16 @@ components:
           description: Open findings assigned to them
           format: int64
           type: integer
+        overdue:
+          description: How many of those are past their deadline
+          format: int64
+          type: integer
         person:
           type: string
       required:
         - person
         - open
+        - overdue
       type: object
     Info:
       additionalProperties: false
@@ -869,6 +895,10 @@ components:
         component:
           type: string
         decision:
+          format: int64
+          type: integer
+        deferred_days:
+          description: How long this has already been put off, across every line it has been carried through
           format: int64
           type: integer
         now:
@@ -935,7 +965,7 @@ components:
       additionalProperties: false
       properties:
         assigned_to:
-          description: Empty means nobody is dealing with it
+          description: Empty means nobody, or not everywhere the same person
           type: string
         component:
           type: string
@@ -948,6 +978,10 @@ components:
           type: string
         exploited:
           type: boolean
+        places:
+          description: How many places in that build this sits at
+          format: int64
+          type: integer
         product:
           type: string
         severity:
@@ -964,6 +998,7 @@ components:
         - product
         - stream
         - variant
+        - places
         - due
         - days_left
       type: object
@@ -1988,6 +2023,23 @@ components:
         - proposed_by
         - age_days
       type: object
+    Withdraw-roleResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Withdraw-roleResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        released:
+          description: Findings handed back because that was their last role here
+          format: int64
+          type: integer
+      required:
+        - released
+      type: object
 info:
   description: Track vulnerabilities in the products you ship.
   title: OpenPSIRT
@@ -2536,7 +2588,10 @@ paths:
         - Administration
   /v1/people:
     get:
-      description: "Everybody who may sign in, and what each of them holds. Nobody is here because they authenticated: access is granted in advance or not at all."
+      description: |-
+        Lists everybody who may sign in, with the roles each of them holds and the products those apply to.
+
+        Nobody appears here by having authenticated. Access is granted in advance, so this list is what an administrator has decided rather than who has turned up.
       operationId: list-people
       responses:
         "200":
@@ -2581,7 +2636,10 @@ paths:
         - Administration
   /v1/people/tokens:
     get:
-      description: Stale tokens are otherwise found only when somebody leaves and nobody knows what breaks if they are turned off.
+      description: |-
+        Lists every personal token in the deployment, whose it is, what it may send and when it was last used.
+
+        Without it a stale token is found only when somebody leaves and nobody knows what breaks if it is turned off.
       operationId: list-all-tokens
       responses:
         "200":
@@ -2638,7 +2696,12 @@ paths:
         - Administration
   /v1/people/{identity}/roles/{product}/{role}:
     delete:
-      description: A grant is a statement about now. Withdrawing one removes it rather than marking it, because what somebody used to hold is answered by the record of what they did.
+      description: |-
+        Withdraws one role from one person. Takes effect at their next request; end their sessions to cut them off now.
+
+        If it was their last role on that product, everything they were dealing with there goes back to the unassigned list. Otherwise that work is in no list at all: not in the shared one because it is assigned, and not in theirs because they can no longer open it. `released` says how much moved.
+
+        The grant is removed rather than marked as ended. What somebody used to hold is answered by the record of what they did, so this list only ever says what is true today.
       operationId: withdraw-role
       parameters:
         - in: path
@@ -2657,8 +2720,12 @@ paths:
           schema:
             type: string
       responses:
-        "204":
-          description: No Content
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Withdraw-roleResponse"
+          description: OK
         default:
           content:
             application/problem+json:
@@ -2692,7 +2759,10 @@ paths:
         - Administration
   /v1/people/{identity}/tokens/{name}:
     delete:
-      description: An owner withdraws their own through the access paths. This is for the ones whose owner is no longer here to do it.
+      description: |-
+        Revokes one person's token on their behalf. It stops working immediately; the record of what it sent stays.
+
+        An owner withdraws their own through their own token paths. This is for the ones whose owner is no longer here to do it.
       operationId: revoke-anyones-token
       parameters:
         - in: path
@@ -2719,7 +2789,10 @@ paths:
         - Administration
   /v1/products:
     get:
-      description: What a scan may be filed against. The first question after an upload is refused.
+      description: |-
+        Lists the products declared here, with what each one holds.
+
+        A scan may only be filed against something declared, so this is the first question to ask after an upload is refused for naming something unknown.
       operationId: list-products
       responses:
         "200":
@@ -2771,6 +2844,8 @@ paths:
 
         Each fixed entry says why it went, because "fixed by upgrading" and "fixed by a carried patch" are different sentences to a reader. `superseded` is the one to read carefully — it means the version moved and the issue came with it, so it was not fixed at all.
 
+        A still-present entry carrying `arrived_from` is the same failure seen from the other side: somebody moved that version since the earlier build and the issue came with it, so the bump did not reach the fix.
+
         **Public findings only unless you ask otherwise.** Its destination is usually a public document, so including something undisclosed should be deliberate rather than something pasted in without noticing.
       operationId: compare-releases
       parameters:
@@ -2779,19 +2854,21 @@ paths:
           required: true
           schema:
             type: string
-        - description: The earlier build, as stream/variant
+        - description: The earlier build's stream — a branch or a tag
           explode: false
           in: query
           name: from
           required: true
           schema:
-            description: The earlier build, as stream/variant
+            description: The earlier build's stream — a branch or a tag
             type: string
-        - explode: false
+        - description: The earlier build's variant
+          explode: false
           in: query
           name: from_variant
           required: true
           schema:
+            description: The earlier build's variant
             type: string
         - description: The later build's stream
           explode: false
@@ -2801,11 +2878,13 @@ paths:
           schema:
             description: The later build's stream
             type: string
-        - explode: false
+        - description: The later build's variant
+          explode: false
           in: query
           name: to_variant
           required: true
           schema:
+            description: The later build's variant
             type: string
         - description: Include findings nobody has disclosed
           explode: false
@@ -2888,7 +2967,10 @@ paths:
         - Catalog
   /v1/products/{product}/streams/{stream}/variants:
     get:
-      description: A subset of what the product builds. A release predating a variant has never been filed against it, which is what keeps something introduced later from appearing to have shipped years ago.
+      description: |-
+        Lists the variants one release was actually built as — a subset of what the product declares.
+
+        A release predating a variant has never been filed against it and does not list it, which is what keeps something introduced later from appearing to have shipped years ago.
       operationId: list-release-variants
       parameters:
         - in: path
@@ -2928,7 +3010,7 @@ paths:
 
         `moved` held a claim at a version this line does not have. Each would come across as a **proposal carrying the old reasoning** — never as a decision, because the version moved and the old conclusion is not a conclusion about the new code. Making somebody start from a blank page, having thrown away what was written last time, is how a tool teaches people to stop writing reasoning at all.
 
-        `postponed` were deferrals. "Not this sprint" was about that sprint, so carrying one silently gives a new line expiry dates nobody chose.
+        `postponed` were deferrals. "Not this sprint" was about that sprint, so carrying one silently gives a new line expiry dates nobody chose. Each says how long it has already been put off across every line it has come through, because that total is what carrying it again agrees to.
 
         `absent` cover nothing here and are left behind.
       operationId: preview-carried-decisions
@@ -2948,19 +3030,21 @@ paths:
           required: true
           schema:
             type: string
-        - description: The line to inherit from
+        - description: The stream to inherit from
           explode: false
           in: query
           name: from
           required: true
           schema:
-            description: The line to inherit from
+            description: The stream to inherit from
             type: string
-        - explode: false
+        - description: That stream's variant
+          explode: false
           in: query
           name: from_variant
           required: true
           schema:
+            description: That stream's variant
             type: string
       responses:
         "200":
@@ -3070,13 +3154,13 @@ paths:
   /v1/products/{product}/streams/{stream}/variants/{variant}/components/{component}/decisions:
     post:
       description: |-
-        Records the same claim against every issue you name: one outcome, one justification, one reasoning, and a **separate decision per issue**, each keyed and expiring on its own.
+        Records the same claim against every issue you name: one outcome, one justification, one reasoning, and a separate decision for every place each issue sits at, each keyed and expiring on its own.
 
-        That separateness is what makes one action across many findings defensible. It is not a blanket claim: a decision lapses when the code it was about moves, and these lapse one at a time as they should.
+        You name the issues; the places are resolved here. `selected_by` says how you narrowed the list and is recorded with every claim, so "how were these chosen" has an answer later — but it is never the claim. The reasoning has to hold for every issue in the list, since "these matched a word" is not a defence anybody would accept.
 
-        You name the issues. Nothing here selects them for you, and how you narrowed the list is not the claim — the reasoning has to hold for every issue in it, since "these matched a word" is not a defence anybody would accept.
+        Always needs a second person to agree, whatever the outcome.
 
-        Bounded: one action may cover at most 2000 findings, because an unbounded write is something somebody triggers by accident.
+        Bounded. At most 2000 names per request, and a limit on how many findings one action may write, set under `triage.together-cap`. The limit is checked against the findings this resolves to, which is more than the number of names.
       operationId: decide-together
       parameters:
         - in: path
@@ -3124,9 +3208,9 @@ paths:
   /v1/products/{product}/streams/{stream}/variants/{variant}/components/{component}/issues:
     get:
       description: |-
-        Returns the distinct issues open against this component in this build, most urgent first.
+        Returns the distinct issues open against this component in this build, most urgent first, with how many places each sits at and the version that fixes it where the report names one.
 
-        The set somebody narrows before claiming something about all of it. `contains` matches the text of a report — it is how a candidate is found, never why a claim is true, and nothing here knows a kernel from a font library.
+        `contains` matches the text of a report. It narrows a list; it is not part of any claim made afterwards.
       operationId: list-issues-at-component
       parameters:
         - in: path
@@ -3149,12 +3233,12 @@ paths:
           required: true
           schema:
             type: string
-        - description: Match the report's text. A way to narrow, not a judgment
+        - description: Match the text of the report
           explode: false
           in: query
           name: contains
           schema:
-            description: Match the report's text. A way to narrow, not a judgment
+            description: Match the text of the report
             type: string
         - explode: false
           in: query
@@ -3812,7 +3896,10 @@ paths:
         - Triage
   /v1/roles/bindings:
     delete:
-      description: Takes effect at each member's next sign-in, because membership is read then and never again. To cut somebody off now, end their sessions.
+      description: |-
+        Removes one group-to-role mapping.
+
+        It takes effect at each member's next sign-in, because group membership is read at sign-in and never again. To cut somebody off now, end their sessions.
       operationId: unbind-group
       parameters:
         - explode: false
@@ -3845,7 +3932,10 @@ paths:
       tags:
         - Administration
     get:
-      description: "The mappings that admit people in group-bound mode. In that mode a mapping is the advance authorization: somebody arriving for the first time in a mapped group is admitted, and somebody in none is refused."
+      description: |-
+        Lists every group-to-role mapping, and the groups that administer.
+
+        In group-bound mode a mapping is the advance authorization: somebody arriving for the first time in a mapped group is admitted, and somebody in none is refused.
       operationId: list-bindings
       responses:
         "200":
@@ -3864,7 +3954,10 @@ paths:
       tags:
         - Administration
     post:
-      description: Administration is bound without a product, because it is global rather than held against one. Everything else names the product it applies to.
+      description: |-
+        Maps one identity-provider group to one role, so that everybody in that group holds it from their next sign-in.
+
+        Every role but administration names the product it applies to. Administration is bound without one, because it is global rather than held against a product.
       operationId: bind-group
       requestBody:
         content:
@@ -3890,7 +3983,10 @@ paths:
         - Administration
   /v1/roles/mode:
     get:
-      description: One mode for the whole deployment. A hybrid would need a precedence rule for somebody holding one role from a team and another directly, which is how a stale assignment outlives somebody's removal from the team it was shadowing.
+      description: |-
+        Says where roles come from here: assigned by an administrator, or derived from the groups an identity provider reports.
+
+        One mode for the whole deployment, never both. A hybrid would need a precedence rule for somebody holding one role from a team and another directly, which is how a stale assignment outlives somebody's removal from the team it was shadowing.
       operationId: get-role-mode
       responses:
         "200":
@@ -3940,7 +4036,9 @@ paths:
 
         A deadline that has been answered is not on this list. A dismissal takes a finding off the clock, because the claim is that it will not be fixed, and a deferral replaces the deadline with its own date. What is left is time passing with nothing said.
 
-        The window comes from how urgent a finding is. Being known-exploited has its own and it is the shortest, whatever the severity says — otherwise the deadline contradicts the order the findings list is in.
+        The window comes from how urgent a finding is. Being known-exploited has its own and it is the shortest, whatever the severity says. Anything the reports did not rate takes the medium window.
+
+        One row per issue at a component, however many places it sits at. `days_left` is negative once something is overdue.
       operationId: list-running-out
       parameters:
         - description: How far ahead to look
@@ -4055,7 +4153,10 @@ paths:
         - Administration
   /v1/tokens:
     get:
-      description: Yours alone. A token is a live reference to you rather than a copy of what you could do when it was made, so what it reaches shrinks the moment your roles do.
+      description: |-
+        Lists your own personal tokens: what each is called, when it expires and when it was last used. Never anybody else's, and never the secrets.
+
+        A token is a live reference to you rather than a copy of what you could do when it was made, so what one reaches shrinks the moment your roles do.
       operationId: list-my-tokens
       responses:
         "200":
@@ -4074,7 +4175,10 @@ paths:
       tags:
         - Access
     post:
-      description: "Shown once. Expiry is not optional: a credential that never runs out is one nobody ever revokes, and those are found when somebody leaves and nobody knows what breaks if it is turned off."
+      description: |-
+        Creates a personal token and returns its secret. The secret is shown once and never again — what is stored is a digest.
+
+        Expiry is not optional, and `lifetime` may not exceed the ceiling an administrator has set. A credential that never runs out is one nobody ever revokes, and those are found when somebody leaves and nobody knows what breaks if it is turned off.
       operationId: mint-token
       requestBody:
         content:
@@ -4100,7 +4204,10 @@ paths:
         - Access
   /v1/tokens/{name}:
     delete:
-      description: Yours alone. An administrator withdraws anybody's through the administration paths.
+      description: |-
+        Revokes one of your own tokens by name. It stops working immediately.
+
+        Yours alone. An administrator withdraws anybody else's through the administration paths.
       operationId: revoke-my-token
       parameters:
         - in: path

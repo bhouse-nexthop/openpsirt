@@ -2,12 +2,16 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
+	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 	"github.com/bhouse-nexthop/openpsirt/internal/triage"
 )
 
@@ -15,17 +19,18 @@ import (
 // select.
 type AtComponentBody struct {
 	Vulnerability string `json:"vulnerability"`
-	Severity      string `json:"severity,omitempty"`
+	Severity      string `json:"severity,omitempty" doc:"How bad the report rates it"`
 	Places        int    `json:"places" doc:"How many places in this build it sits at"`
-	FixedIn       string `json:"fixed_in,omitempty"`
+	FixedIn       string `json:"fixed_in,omitempty" doc:"The version the report says fixes it, where it names one"`
 }
 
-// togetherCap is how many findings one action may claim about.
+// namedCap is how many issues a request may name.
 //
-// A limit rather than none, because one action writing an unbounded number of
-// rows is a denial of service somebody triggers by accident rather than
-// maliciously. Generous, because the case this exists for is a kernel.
-const togetherCap = 2000
+// Names rather than findings: each name may resolve to several places, so this
+// bounds the request and the cap on findings bounds the write. Both exist —
+// without this, a request naming a million issues is a million-row resolution
+// before anything is refused.
+const namedCap = 2000
 
 func registerBulk(api huma.API, in Ingest) {
 	huma.Register(api, huma.Operation{
@@ -34,17 +39,17 @@ func registerBulk(api huma.API, in Ingest) {
 			"/components/{component}/issues",
 		Summary: "List the issues open against one component",
 		Description: "Returns the distinct issues open against this component in this build, " +
-			"most urgent first.\n\n" +
-			"The set somebody narrows before claiming something about all of it. `contains` " +
-			"matches the text of a report — it is how a candidate is found, never why a claim is " +
-			"true, and nothing here knows a kernel from a font library.",
+			"most urgent first, with how many places each sits at and the version that fixes " +
+			"it where the report names one.\n\n" +
+			"`contains` matches the text of a report. It narrows a list; it is not part of any " +
+			"claim made afterwards.",
 		Tags: []string{"Triage"},
 	}, func(ctx context.Context, input *struct {
 		Product   string `path:"product"`
 		Stream    string `path:"stream"`
 		Variant   string `path:"variant"`
 		Component string `path:"component"`
-		Contains  string `query:"contains" doc:"Match the report's text. A way to narrow, not a judgment"`
+		Contains  string `query:"contains" doc:"Match the text of the report"`
 		Limit     int    `query:"limit" default:"50" minimum:"1" maximum:"500"`
 		Offset    int    `query:"offset" minimum:"0"`
 	}) (*struct {
@@ -57,7 +62,7 @@ func registerBulk(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
-		target, err := browsing(ctx, in, input.Product, input.Stream, input.Variant)
+		_, target, err := browsing(ctx, in, input.Product, input.Stream, input.Variant)
 		if err != nil {
 			return nil, err
 		}
@@ -87,10 +92,20 @@ func registerBulk(api huma.API, in Ingest) {
 				Total int               `json:"total"`
 			}
 		}{}
+		// One row per issue. AtComponent returns every place, because that is
+		// what a decision is written against; this list is what somebody picks
+		// from, and the place count is the useful part of it.
 		out.Body.Items = make([]AtComponentBody, 0, len(at))
+		seen := map[int64]bool{}
 		for _, each := range at {
+			if seen[each.VulnerabilityID] {
+				continue
+			}
+			seen[each.VulnerabilityID] = true
 			out.Body.Items = append(out.Body.Items, AtComponentBody{
-				Vulnerability: named[each.VulnerabilityID], Places: each.Places,
+				Vulnerability: named[each.VulnerabilityID],
+				Severity:      finding.SeverityWord(each.SeverityCenti),
+				Places:        each.Places, FixedIn: each.FixedIn,
 			})
 		}
 		out.Body.Total = total
@@ -103,16 +118,17 @@ func registerBulk(api huma.API, in Ingest) {
 			"/components/{component}/decisions",
 		Summary: "Record one judgment about several issues at once",
 		Description: "Records the same claim against every issue you name: one outcome, one " +
-			"justification, one reasoning, and a **separate decision per issue**, each keyed and " +
-			"expiring on its own.\n\n" +
-			"That separateness is what makes one action across many findings defensible. It is " +
-			"not a blanket claim: a decision lapses when the code it was about moves, and these " +
-			"lapse one at a time as they should.\n\n" +
-			"You name the issues. Nothing here selects them for you, and how you narrowed the " +
-			"list is not the claim — the reasoning has to hold for every issue in it, since " +
-			"\"these matched a word\" is not a defence anybody would accept.\n\n" +
-			"Bounded: one action may cover at most 2000 findings, because an unbounded write is " +
-			"something somebody triggers by accident.",
+			"justification, one reasoning, and a separate decision for every place each issue " +
+			"sits at, each keyed and expiring on its own.\n\n" +
+			"You name the issues; the places are resolved here. `selected_by` says how you " +
+			"narrowed the list and is recorded with every claim, so \"how were these chosen\" " +
+			"has an answer later — but it is never the claim. The reasoning has to hold for " +
+			"every issue in the list, since \"these matched a word\" is not a defence anybody " +
+			"would accept.\n\n" +
+			"Always needs a second person to agree, whatever the outcome.\n\n" +
+			"Bounded. At most 2000 names per request, and a limit on how many findings one " +
+			"action may write, set under `triage.together-cap`. The limit is checked against " +
+			"the findings this resolves to, which is more than the number of names.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, input *struct {
 		Product   string `path:"product"`
@@ -120,9 +136,11 @@ func registerBulk(api huma.API, in Ingest) {
 		Variant   string `path:"variant"`
 		Component string `path:"component"`
 		Body      struct {
-			Vulnerabilities []string `json:"vulnerabilities" minItems:"1" doc:"The issues this claim covers, by name"`
+			Vulnerabilities []string `json:"vulnerabilities" minItems:"1" maxItems:"2000" doc:"The issues this claim covers, by name"`
+			SelectedBy      string   `json:"selected_by" minLength:"1" maxLength:"500" doc:"How you narrowed this set. Recorded, and never part of the claim"`
 			Outcome         string   `json:"outcome" enum:"affected,not-applicable,deferred,wont-fix"`
 			Justification   string   `json:"justification,omitempty" doc:"Required when it does not apply"`
+			DeferredUntil   string   `json:"deferred_until,omitempty" doc:"Required when it is deferred. A date, as 2026-03-31"`
 			Reasoning       string   `json:"reasoning" minLength:"1" doc:"Why this holds for every issue named"`
 		}
 	}) (*struct {
@@ -135,7 +153,7 @@ func registerBulk(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
-		target, err := browsing(ctx, in, input.Product, input.Stream, input.Variant)
+		_, target, err := browsing(ctx, in, input.Product, input.Stream, input.Variant)
 		if err != nil {
 			return nil, err
 		}
@@ -144,48 +162,71 @@ func registerBulk(api huma.API, in Ingest) {
 			return nil, noSuchFinding()
 		}
 
-		// Every named issue is resolved to the place it actually occupies,
-		// rather than taken as stated. A caller free to name a place would be
-		// choosing which decisions apply where.
-		issues := finding.NewVulnerabilities(in.DB.DB)
-		findings := finding.NewStore(in.DB.DB)
-		places := make([]triage.Place, 0, len(input.Body.Vulnerabilities))
-		for _, name := range input.Body.Vulnerabilities {
-			id, err := issues.ByName(ctx, name)
-			if err != nil {
-				return nil, noSuchIssue()
-			}
-			at, _, err := findings.AtComponent(ctx, subject, target, component, "", 500, 0)
-			if err != nil {
-				return nil, refusedFinding(in, err)
-			}
-			found := false
-			for _, each := range at {
-				if each.VulnerabilityID != id {
-					continue
-				}
-				places = append(places, triage.Place{
-					ProductID: each.ProductID, VulnerabilityID: each.VulnerabilityID,
-					PlaceIdentity: each.PlaceIdentity, Visibility: each.Visibility,
-					ComponentUpstream: each.ComponentUpstream,
-					ConsumerUpstream:  each.ConsumerUpstream,
-				})
-				found = true
-				break
-			}
-			if !found {
-				return nil, noSuchFinding()
-			}
+		until, err := deferredUntil(input.Body.Outcome, input.Body.DeferredUntil)
+		if err != nil {
+			return nil, err
 		}
 
-		recorded, err := store.Together(ctx, subject, places, triage.Proposal{
+		// Resolved in one statement. One lookup per name is fine for three
+		// names and is two thousand round trips for the case this exists for.
+		found, err := finding.NewVulnerabilities(in.DB.DB).
+			IDsByName(ctx, input.Body.Vulnerabilities)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "which issues these are could not be read", err)
+		}
+		issues := make([]int64, 0, len(input.Body.Vulnerabilities))
+		unknown := make([]string, 0)
+		seen := map[int64]bool{}
+		for _, name := range input.Body.Vulnerabilities {
+			id, ok := found[name]
+			if !ok {
+				unknown = append(unknown, name)
+				continue
+			}
+			if seen[id] {
+				// The same issue named twice, or named once by each of two
+				// aliases. Both are one claim.
+				continue
+			}
+			seen[id] = true
+			issues = append(issues, id)
+		}
+		if len(unknown) > 0 {
+			// Which ones, because a person who pasted a list wants to fix the
+			// list rather than bisect it.
+			return nil, huma.Error404NotFound(
+				"no issue is filed under " + strings.Join(clipped(unknown), ", "))
+		}
+
+		cap, err := setting.NewStore(in.DB.DB).Count(ctx, setting.TogetherCap,
+			triage.DefaultTogetherCap)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "the limit on one action could not be read", err)
+		}
+
+		// The places are resolved inside the write, not here. Reading them
+		// first and passing them in would authorize this against rows as they
+		// stood before the transaction (DAT-31), and would let a caller's
+		// selection decide which places a decision lands on.
+		recorded, err := store.Together(ctx, subject, triage.TogetherAt{
+			TargetID: target, ComponentID: component, VulnerabilityIDs: issues,
+		}, triage.Proposal{
 			Outcome:       triage.Outcome(input.Body.Outcome),
 			Justification: triage.Justification(input.Body.Justification),
+			DeferredUntil: until,
 			Reasoning:     input.Body.Reasoning,
+			SelectedBy:    input.Body.SelectedBy,
 			By:            subject.ID,
+			// Always. One person answering hundreds of findings in one action
+			// is the case a second pair of eyes exists for, and the short
+			// deferral that stands on its own is a claim about one finding.
 			NeedsApproval: true,
-		}, togetherCap)
+		}, cap)
 		if err != nil {
+			if errors.Is(err, triage.ErrNothingOpen) {
+				return nil, huma.Error404NotFound(
+					"none of those are open against that component any more")
+			}
 			return nil, refusedDecision(err)
 		}
 
@@ -199,4 +240,44 @@ func registerBulk(api huma.API, in Ingest) {
 		out.Body.IDs = recorded
 		return out, nil
 	})
+}
+
+// deferredUntil reads the date a postponement runs to.
+//
+// Required when something is deferred, and refused otherwise. "Deferred" was
+// offered as an outcome here with nowhere to say until when, which recorded a
+// postponement with no end — the one thing a deferral has to have, since the
+// threshold that decides whether a second person must agree is measured
+// against it.
+func deferredUntil(outcome, stated string) (*time.Time, error) {
+	if outcome != string(triage.Deferred) {
+		if stated != "" {
+			return nil, huma.Error422UnprocessableEntity(
+				"a date to defer until only means something when the outcome is deferred")
+		}
+		return nil, nil
+	}
+	if stated == "" {
+		return nil, huma.Error422UnprocessableEntity(
+			"deferring needs a date to defer until — write it as 2026-03-31")
+	}
+	parsed, err := time.Parse(time.DateOnly, stated)
+	if err != nil {
+		return nil, huma.Error422UnprocessableEntity(
+			"that is not a date — write it as 2026-03-31")
+	}
+	parsed = parsed.UTC()
+	return &parsed, nil
+}
+
+// clipped shortens a list of names for an error message.
+//
+// A person who pasted two thousand names does not want two thousand back, and
+// an error body that large is its own problem.
+func clipped(names []string) []string {
+	const most = 10
+	if len(names) <= most {
+		return names
+	}
+	return append(append([]string{}, names[:most]...), "and more")
 }

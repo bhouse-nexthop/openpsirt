@@ -45,6 +45,11 @@ type Deciding struct {
 	// SeverityCenti is how bad this is judged to be now, recorded with the
 	// claim so a later re-affirmation can ask whether it has risen since.
 	SeverityCenti int
+	// FixedIn is the version the report says this was fixed in, where it says
+	// one. Somebody deciding to defer should see whether there is anywhere to
+	// go, and somebody claiming a whole component is unreachable should see
+	// which of it is already fixable.
+	FixedIn string
 	// distinctVersions is how many versions of this component sit at this
 	// place. More than one means a decision cannot cover all of them.
 	distinctVersions int

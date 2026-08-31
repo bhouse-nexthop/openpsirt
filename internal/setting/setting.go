@@ -58,6 +58,12 @@ const (
 	DueHigh      = "remediation.due.high"
 	DueMedium    = "remediation.due.medium"
 	DueLow       = "remediation.due.low"
+	// TogetherCap is how many findings one action may claim about at once.
+	// A bound rather than none, because a single action writing an unbounded
+	// number of rows is a denial of service somebody triggers by accident. How
+	// generous it should be is a judgment about a product — a kernel's list is
+	// long — so it is tuned here rather than compiled in.
+	TogetherCap = "triage.together-cap"
 )
 
 // Store reads and writes settings.
@@ -159,6 +165,20 @@ func (s *Store) Duration(ctx context.Context, name string, fallback time.Duratio
 		return fallback, err
 	}
 	parsed, err := time.ParseDuration(raw)
+	if err != nil || parsed <= 0 {
+		return fallback, nil
+	}
+	return parsed, nil
+}
+
+// Count reads a setting as a whole number of things, falling back where it is
+// unset, unreadable or not a positive count.
+func (s *Store) Count(ctx context.Context, name string, fallback int) (int, error) {
+	raw, set, err := s.Get(ctx, name)
+	if err != nil || !set {
+		return fallback, err
+	}
+	parsed, err := strconv.Atoi(raw)
 	if err != nil || parsed <= 0 {
 		return fallback, nil
 	}

@@ -3,8 +3,9 @@
 What people decide about findings, and when a decision stops applying.
 
 Satisfies TRI-01 to TRI-03, TRI-05 to TRI-08, TRI-10 to TRI-18, TRI-20 to
-TRI-33, REM-25, UIX-35, REL-05, REL-06, REL-09, MDL-08, MDL-19, ACC-09. The text rules
-themselves are in `DESIGN-text.md`.
+TRI-36, REM-25, UIX-35, REL-05, REL-06, REL-09, MDL-08, MDL-19, ACC-09. The
+text rules themselves are in `DESIGN-text.md`, and the reports these numbers
+feed are in `DESIGN-reporting.md`.
 
 ## A decision is a claim about code, not about a release
 
@@ -357,10 +358,14 @@ record per target, each keyed to its own versions. They are not one blanket
 claim: a dismissal carried onto an older branch lapses by itself the moment
 that branch moves, without anybody remembering it exists.
 
-**A row is withheld rather than offered** where the version already sits past
-the fix the data names and the issue is still reported. Ticking it would assert
-something visibly wrong, and the disagreement between the scanner and the fix
-data is the thing worth looking at.
+**Nothing is withheld for sitting past the named fix.** It would be the right
+rule — ticking a build whose version already carries the fix while the scanner
+still reports the issue asserts something visibly wrong — and it is not
+enforced, because deciding whether one version sits past another needs
+per-ecosystem ordering that does not exist here (`DESIGN-findings.md`). What is
+recorded instead is the case that needs no ordering: a version moved and the
+issue came with it, which travels with the finding and marks the still-present
+column of a release comparison.
 
 ### An approval names the reach, not only the words
 
@@ -393,11 +398,38 @@ of issues at one component — one outcome, one justification, one reasoning, on
 approval — writing a separate decision per issue, each keyed and expiring
 independently like any other.
 
+**A separate decision per issue and per place.** A decision is keyed on a
+place, so a claim built from one place of an issue would silence one consumer
+and leave the rest open while reporting that it had covered them. The places
+are resolved from the findings inside the transaction that writes them — a
+caller free to name a place would be choosing which decisions apply where, and
+a place read before the write is a fact about a database that has since moved
+(DAT-31).
+
 Whatever is offered to narrow the set — a weakness class, a subsystem named in
 the advisory text — is a starting point for a person, never a selection the
 tool asserts is right. **No SBOM says whether a driver was compiled in**, so
 this is a claim somebody makes and signs for, with the kernel config or
 whatever else supports it written into the reasoning.
+
+**How the set was narrowed is recorded with every claim in it**, separately
+from the reasoning. The two are not the same thing: narrowing is how a
+candidate was found, and the reasoning is why the claim is true — "these
+matched a word" is not a defence anybody would accept. Keeping it is what gives
+"how were these chosen" an answer months later.
+
+**Bounded, and the bound is a setting.** One action writing an unbounded number
+of rows is a denial of service somebody triggers by accident. Two limits, not
+one: how many issues a request may name, and how many findings the action may
+write. They differ because each name may sit at many places, and the second is
+checked against what the names actually resolve to — a limit checked against
+the names would let a request naming two thousand issues write sixty thousand
+rows.
+
+**It always needs a second person**, whatever the outcome. The exception that
+lets a short deferral stand on its own is about one finding somebody is putting
+off for a fortnight; one person answering hundreds in a single action is the
+case a second pair of eyes exists for.
 
 The alternative, letting people hide these from the counts instead, is refused
 (REJ-10): a total that depends on who is looking is not a total. A filter
@@ -446,7 +478,8 @@ permanently overdue and the signal is ignored inside a month.
 
 The windows are settings, and the shipped numbers are a starting point rather
 than a recommendation: what a deployment can hold to is a question about that
-deployment.
+deployment. How the list of what is running out is built, and what an unrated
+finding gets, are in `DESIGN-reporting.md`.
 
 ## A lapse is marked when the scan that caused it runs
 
@@ -514,6 +547,17 @@ withdrawn; a caller inventing one would carry an agreement that never existed.
 A withdrawn decision keeps its approval rows — who agreed, and to what, is part
 of the record — so without that check a version bump would undo a withdrawal.
 
+**All of it is one transaction.** Written as three steps — read the old claim,
+write the new one, carry the agreement — a process that stopped in the middle
+left a claim standing that nobody had agreed to and that no review queue would
+ever show, because it was recorded as needing nobody. Everything the act turns
+on is read inside that transaction for the same reason every other write here
+is (DAT-30, DAT-31).
+
+**The carried agreement is guarded on the revision**, the way every other
+approval is. An agreement is an agreement to particular words, so it takes
+effect only while those are still the words the claim rests on.
+
 ## What the code moved out from under is marked
 
 Reading finds a lapsed decision by its key not matching, which is enough to
@@ -572,9 +616,11 @@ something harmless in one build is not automatically true in another. All-or-
 nothing would be a single click that made a claim about builds nobody looked
 at.
 
-Builds already covered are left out entirely. Offering them would ask somebody
-to agree to something that has already happened, which teaches people that
-these lists are noise.
+Builds already covered are counted and never offered. The count is part of what
+somebody is shown before they decide, because a judgment reaching eleven other
+builds is worth knowing; what would be wrong is putting a tick box beside them,
+which asks somebody to agree to something that has already happened and teaches
+people that these lists are noise.
 
 ## What a person actually does
 

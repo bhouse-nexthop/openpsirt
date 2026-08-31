@@ -2,6 +2,7 @@ package finding
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,6 +11,14 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 )
+
+// ErrSamePerson says work was handed from somebody to themselves.
+//
+// A sentinel because it is the one refusal here that is about what was asked
+// rather than about what went wrong. Everything else this returns is a
+// database that could not answer, and reporting those to a caller as though
+// they were its fault is how a driver's error text ends up on a screen.
+var ErrSamePerson = errors.New("that would hand their work to themselves")
 
 // Assign records who is dealing with an issue in a component.
 //
@@ -27,8 +36,17 @@ func (s *Store) Assign(ctx context.Context, subject access.Subject, targetID, vu
 	if err != nil {
 		return 0, err
 	}
+	// Deciding who deals with something is a write, so it asks for the right
+	// that names it. Being able to *see* a finding is not being able to hand
+	// it around, and narrowing by visibility is not an authorization check —
+	// it stops somebody assigning what they cannot see, not somebody
+	// assigning.
+	if !subject.Holds(access.PublicTriage, productID) &&
+		!subject.Holds(access.PrivateTriage, productID) {
+		return 0, access.Denied(fmt.Sprintf("decide who deals with findings in product %d", productID))
+	}
 	visible := visibleTo(subject, productID)
-	if !subject.Sees(productID) || len(visible) == 0 {
+	if len(visible) == 0 {
 		return 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
 
@@ -54,7 +72,7 @@ func (s *Store) Assign(ctx context.Context, subject access.Subject, targetID, vu
 	}
 	moved, err := result.RowsAffected()
 	if err != nil {
-		return 0, nil
+		return 0, fmt.Errorf("record who is dealing with this: %w", err)
 	}
 	return moved, nil
 }
@@ -81,9 +99,39 @@ func (s *Store) Release(ctx context.Context, subject access.Subject, personID in
 // takes it on has not been decided.
 func (s *Store) HandOver(ctx context.Context, subject access.Subject, from, to int64) (int64, error) {
 	if from == to {
-		return 0, fmt.Errorf("that would hand their work to themselves")
+		return 0, ErrSamePerson
 	}
 	return s.handOver(ctx, subject, from, &to)
+}
+
+// ReleaseIn hands back what one person holds in one product.
+//
+// The narrow form of Release, for when somebody's last role on a product is
+// withdrawn. What they hold elsewhere is untouched, because nothing about that
+// product changed.
+//
+// Administrative like Release: this moves work somebody else was given.
+func (s *Store) ReleaseIn(ctx context.Context, subject access.Subject, personID, productID int64) (int64, error) {
+	if !subject.Admin {
+		return 0, access.Denied("move work assigned to somebody else")
+	}
+	var moved int64
+	err := database.InTransaction(ctx, s.db, func(ctx context.Context, tx bun.Tx) error {
+		result, err := tx.NewUpdate().Model((*Finding)(nil)).
+			Set("assigned_to = ?", nil).Set("assigned_at = ?", nil).
+			Where("assigned_to = ?", personID).
+			Where("closed_run_id IS NULL").
+			Where(`target_id IN (SELECT tg.id FROM "target" AS tg
+				JOIN "stream" AS st ON st.id = tg.stream_id
+				WHERE st.product_id = ?)`, productID).
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("hand back what they were dealing with: %w", err)
+		}
+		moved, err = result.RowsAffected()
+		return err
+	})
+	return moved, err
 }
 
 func (s *Store) handOver(ctx context.Context, subject access.Subject, from int64, to *int64) (int64, error) {
@@ -116,9 +164,12 @@ func (s *Store) handOver(ctx context.Context, subject access.Subject, from int64
 
 // Holding is how much work one person has, and how much of it is late.
 type Holding struct {
-	PersonID int64
-	Open     int
-	Overdue  int
+	PersonID int64 `bun:"person_id"`
+	Open     int   `bun:"open"`
+	// Overdue is how much of it is past its deadline. The number that says
+	// whether somebody is holding work or sitting on it — a large open count
+	// on somebody who is keeping up is not the same signal at all.
+	Overdue int `bun:"overdue"`
 }
 
 // HeldBy reports what each person is dealing with, for the people this subject
@@ -127,28 +178,65 @@ type Holding struct {
 // The number that matters is not how many findings exist but how many are
 // stuck behind somebody: an idle account holding nothing is harmless, and work
 // waiting on a person who is not here is the thing worth surfacing.
-func (s *Store) HeldBy(ctx context.Context, subject access.Subject) ([]Holding, error) {
+func (s *Store) HeldBy(ctx context.Context, subject access.Subject, w Windows) ([]Holding, error) {
 	products, all := subject.Products()
 	if subject.Kind != access.Person || (!all && len(products) == 0) {
 		return nil, nil
 	}
 
-	query := s.db.NewSelect().
-		TableExpr("finding AS f").
-		Join("JOIN target AS tg ON tg.id = f.target_id").
-		Join("JOIN stream AS st ON st.id = tg.stream_id").
-		ColumnExpr("f.assigned_to AS person_id").
-		ColumnExpr("COUNT(*) AS open").
-		Where("f.closed_run_id IS NULL").
-		Where("f.assigned_to IS NOT NULL").
-		GroupExpr("f.assigned_to")
-	if !all {
-		query = query.Where("st.product_id IN (?)", bun.List(products))
+	mine := func() *bun.SelectQuery {
+		query := s.db.NewSelect().
+			TableExpr("finding AS f").
+			Join("JOIN target AS tg ON tg.id = f.target_id").
+			Join("JOIN stream AS st ON st.id = tg.stream_id").
+			Where("f.closed_run_id IS NULL").
+			Where("f.assigned_to IS NOT NULL")
+		if !all {
+			query = query.Where("st.product_id IN (?)", bun.List(products))
+		}
+		// The same narrowing every other query here carries. A count is as
+		// much a disclosure as a row: "somebody holds six" tells a reader
+		// there are six.
+		return onlyVisible(query, subject, products, all)
 	}
 
 	var held []Holding
-	if err := query.Scan(ctx, &held); err != nil {
+	if err := mine().
+		ColumnExpr("f.assigned_to AS person_id").
+		ColumnExpr("COUNT(*) AS open").
+		ColumnExpr("0 AS overdue").
+		GroupExpr("f.assigned_to").
+		Scan(ctx, &held); err != nil {
 		return nil, fmt.Errorf("read who is holding what: %w", err)
+	}
+
+	// How much of it is late, band by band. The deadline is the first sighting
+	// plus a window that differs per band, so each band is asked with its own
+	// cutoff — the arithmetic happens here and the statement compares
+	// timestamps, which every engine spells the same way (DAT-02).
+	now := s.now().UTC()
+	overdue := map[int64]int{}
+	for _, each := range bands(w) {
+		var counted []struct {
+			PersonID int64 `bun:"person_id"`
+			Overdue  int   `bun:"overdue"`
+		}
+		query := each.where(mine().
+			Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+			Join("JOIN scan_run AS o ON o.id = f.opened_run_id").
+			ColumnExpr("f.assigned_to AS person_id").
+			ColumnExpr("COUNT(*) AS overdue").
+			Where("o.started_at < ?", now.Add(-each.window)).
+			GroupExpr("f.assigned_to"))
+		if err := query.Scan(ctx, &counted); err != nil {
+			return nil, fmt.Errorf("read how much of it is late: %w", err)
+		}
+		for _, row := range counted {
+			overdue[row.PersonID] += row.Overdue
+		}
+	}
+	for i := range held {
+		held[i].Overdue = overdue[held[i].PersonID]
 	}
 	return held, nil
 }
@@ -195,15 +283,29 @@ func (s *Store) Unassigned(ctx context.Context, subject access.Subject,
 		if !all {
 			q = q.Where("st.product_id IN (?)", bun.List(products))
 		}
-		// Visibility per product, the way it is everywhere else: holding
-		// private read on one product does not make undisclosed findings on
-		// another visible.
-		return q.Where("(f.visibility = ? OR st.product_id IN (?))",
-			access.Public, bun.List(privateFor(subject, products, all)))
+		return onlyVisible(q, subject, products, all)
 	}
 
-	total, err := narrow(s.db.NewSelect()).
-		ColumnExpr("COUNT(DISTINCT f.vulnerability_id || '-' || f.component_id)").
+	// Counted by grouping and counting the groups, not by a COUNT DISTINCT
+	// expression. Two reasons, and both were live at once.
+	//
+	// With no GROUP BY, bun's Count() emits its own count(*) and never appends
+	// the columns — so the expression was dead text and the total was a count
+	// of finding *rows* while the list is grouped. On a real image the fan-out
+	// is the whole point of this model, so the total was not slightly wrong.
+	//
+	// And the expression concatenated with ||, which on two of the four
+	// engines is logical OR: the operands coerce to numbers, the whole thing
+	// collapses to 1, and the count comes back as 1 for any non-empty result.
+	// Measured: 3 on SQLite and PostgreSQL, 1 on MySQL and MariaDB.
+	//
+	// The derived table is named "grouped" and quoted. GROUPS is a reserved
+	// word in MySQL 8 — it names a window frame type — so the obvious alias
+	// is a syntax error on one engine and fine on the other three (DAT-33).
+	total, err := s.db.NewSelect().
+		TableExpr(`(?) AS "grouped"`, narrow(s.db.NewSelect()).
+			ColumnExpr("f.vulnerability_id").
+			GroupExpr("f.vulnerability_id, f.component_id, f.target_id")).
 		Count(ctx)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count what nobody is dealing with: %w", err)
@@ -237,10 +339,20 @@ func (s *Store) Unassigned(ctx context.Context, subject access.Subject,
 	return rows, total, nil
 }
 
-// privateFor is the products this subject may see undisclosed findings in.
-func privateFor(subject access.Subject, products []int64, all bool) []int64 {
+// onlyVisible narrows a query to what this subject may read, per product.
+//
+// Holding private read on one product does not make undisclosed findings on
+// another visible, so the clause is per product rather than a single flag.
+//
+// **An administrator is not narrowed at all**, and the first version of this
+// got that exactly backwards: Products() reports "everything" as an empty list
+// with a flag, the empty list rendered as IN (NULL) — which is never true —
+// and the clause collapsed to public-only for the one subject who is supposed
+// to see everything. Their dashboard, deadline list and trend all
+// under-reported, with nothing saying so.
+func onlyVisible(q *bun.SelectQuery, subject access.Subject, products []int64, all bool) *bun.SelectQuery {
 	if all {
-		return products
+		return q
 	}
 	held := make([]int64, 0, len(products))
 	for _, id := range products {
@@ -249,9 +361,10 @@ func privateFor(subject access.Subject, products []int64, all bool) []int64 {
 		}
 	}
 	if len(held) == 0 {
-		// An empty list would make the condition always false, which is the
-		// right answer: this person sees no undisclosed findings anywhere.
-		return []int64{0}
+		// Nothing undisclosed anywhere, which is a real answer rather than an
+		// empty condition to be filled in.
+		return q.Where("f.visibility = ?", access.Public)
 	}
-	return held
+	return q.Where("(f.visibility = ? OR st.product_id IN (?))",
+		access.Public, bun.List(held))
 }

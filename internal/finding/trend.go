@@ -42,14 +42,30 @@ func (s *Store) Trend(ctx context.Context, subject access.Subject, since time.Ti
 	if steps <= 0 || steps > 104 {
 		steps = 12
 	}
+	// A step of nothing makes every point the same instant, so the chart is
+	// one number drawn twelve times. A week is what the callers ask for.
+	if step <= 0 {
+		step = 7 * 24 * time.Hour
+	}
+	// Longer than the whole history is a range nothing falls in. Bounded here
+	// rather than trusted, because the range is a query parameter and the loop
+	// below walks it whatever it says.
+	if step > 366*24*time.Hour {
+		step = 366 * 24 * time.Hour
+	}
+	if since.IsZero() {
+		since = s.now().UTC().Add(-time.Duration(steps) * step)
+	}
+	until := since.Add(time.Duration(steps) * step)
 
 	// Every open and closed moment in range, once, and the counting happens
 	// here. The alternative is a statement per point per severity, which is
 	// sixty round trips to answer one question.
 	var rows []struct {
-		Severity string     `bun:"severity"`
-		OpenedAt time.Time  `bun:"opened_at"`
-		ClosedAt *time.Time `bun:"closed_at"`
+		Severity      string     `bun:"severity"`
+		OpenedAt      time.Time  `bun:"opened_at"`
+		ClosedAt      *time.Time `bun:"closed_at"`
+		ClosedBecause string     `bun:"closed_because"`
 	}
 	query := s.db.NewSelect().
 		TableExpr("finding AS f").
@@ -60,12 +76,21 @@ func (s *Store) Trend(ctx context.Context, subject access.Subject, since time.Ti
 		Join("LEFT JOIN scan_run AS c ON c.id = f.closed_run_id").
 		ColumnExpr("COALESCE(v.severity, 'unknown') AS severity").
 		ColumnExpr("o.started_at AS opened_at").
-		ColumnExpr("c.started_at AS closed_at")
+		ColumnExpr("c.started_at AS closed_at").
+		ColumnExpr("COALESCE(f.closed_because, '') AS closed_because").
+		// Only what can fall in the range. A finding opened after the last
+		// point contributes to nothing, and one closed before the first
+		// contributes to nothing either — reading the whole table to discard
+		// most of it grows the cost of a chart with the age of the deployment.
+		Where("o.started_at <= ?", until).
+		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.WhereOr("f.closed_run_id IS NULL").
+				WhereOr("c.started_at > ?", since)
+		})
 	if !all {
 		query = query.Where("st.product_id IN (?)", bun.List(products))
 	}
-	query = query.Where("(f.visibility = ? OR st.product_id IN (?))",
-		access.Public, bun.List(privateFor(subject, products, all)))
+	query = onlyVisible(query, subject, products, all)
 
 	if err := query.Scan(ctx, &rows); err != nil {
 		return nil, fmt.Errorf("read what changed over time: %w", err)
@@ -80,7 +105,8 @@ func (s *Store) Trend(ctx context.Context, subject access.Subject, since time.Ti
 			if row.OpenedAt.After(from) && !row.OpenedAt.After(to) {
 				point.Opened++
 			}
-			if row.ClosedAt != nil && row.ClosedAt.After(from) && !row.ClosedAt.After(to) {
+			if row.ClosedAt != nil && row.ClosedAt.After(from) && !row.ClosedAt.After(to) &&
+				resolving(Closure(row.ClosedBecause)) {
 				point.Resolved++
 			}
 			// Open at the end of this step: opened by then, and either still
@@ -97,4 +123,20 @@ func (s *Store) Trend(ctx context.Context, subject access.Subject, since time.Ti
 		points = append(points, point)
 	}
 	return points, nil
+}
+
+// resolving says whether a finding closing means the issue went away.
+//
+// Superseded does not. The component's version moved and the issue came with
+// it: this row closed and the same issue reopened against the new version, so
+// counting it as resolved draws a line saying work was completed while the
+// same chart's new-findings line rises by exactly as much. Unexplained does
+// not either — the scanner stopped saying it, which is not the same as
+// somebody having fixed it.
+func resolving(because Closure) bool {
+	switch because {
+	case Superseded, Unexplained:
+		return false
+	}
+	return true
 }

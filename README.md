@@ -21,8 +21,11 @@ place to triage what it finds and track it through to a fix.
 > layer; and triage — decisions, approval, revision history, comments and the
 > review queue.
 >
-> What does not: the web interface, remediation tracking, reports,
-> notifications, private findings and attachments. The design record is in
+> Reporting has begun: release-to-release comparison, trends, deadlines and
+> what a new line would inherit.
+>
+> What does not: the web interface, remediation tracking, notifications,
+> private findings and attachments. The design record is in
 > [DECISIONS.md](DECISIONS.md).
 
 ## What it does
@@ -38,8 +41,8 @@ place to triage what it finds and track it through to a fix.
 - **Carries triage decisions forward**, so a nightly scan doesn't reset the work
 - **Rescans shipped releases**, so a CVE published after a release still gets
   found
-- **Reports** on what was fixed between releases, what was dismissed and why, and
-  whether the team is keeping pace
+- **Reports** on what was fixed between releases, what was dismissed and why,
+  what is running out of time, and whether the team is keeping pace
 
 ## What it doesn't do
 
@@ -61,12 +64,17 @@ each is built:
 | | |
 |---|---|
 | [DESIGN-access.md](DESIGN-access.md) | Who is asking, and what they may reach |
+| [DESIGN-api.md](DESIGN-api.md) | The shape of the HTTP surface |
 | [DESIGN-build.md](DESIGN-build.md) | Layout, the validation pipeline, how a change is checked |
-| [DESIGN-database.md](DESIGN-database.md) | Four engines, migrations, locking |
 | [DESIGN-data-model.md](DESIGN-data-model.md) | What a scan is filed against, and the dependency graph |
+| [DESIGN-database.md](DESIGN-database.md) | Four engines, migrations, locking |
 | [DESIGN-findings.md](DESIGN-findings.md) | What a scan run found, and where |
 | [DESIGN-ingest.md](DESIGN-ingest.md) | What happens to a scan when it arrives, and how one is read |
 | [DESIGN-packaging.md](DESIGN-packaging.md) | Container image and Helm chart |
+| [DESIGN-queue.md](DESIGN-queue.md) | How work waiting to be done is held and picked up |
+| [DESIGN-reporting.md](DESIGN-reporting.md) | Trends, release comparison, deadlines, settings |
+| [DESIGN-text.md](DESIGN-text.md) | What may be written, and how it is rendered |
+| [DESIGN-triage.md](DESIGN-triage.md) | What people decide about findings, and when a decision stops applying |
 
 ## License
 

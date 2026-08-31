@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"time"
 
@@ -21,7 +22,8 @@ type LateBody struct {
 	Product       string `json:"product"`
 	Stream        string `json:"stream"`
 	Variant       string `json:"variant"`
-	AssignedTo    string `json:"assigned_to,omitempty" doc:"Empty means nobody is dealing with it"`
+	Places        int    `json:"places" doc:"How many places in that build this sits at"`
+	AssignedTo    string `json:"assigned_to,omitempty" doc:"Empty means nobody, or not everywhere the same person"`
 	Due           string `json:"due" doc:"When it is due, as a date"`
 	DaysLeft      int    `json:"days_left" doc:"Negative once it is overdue"`
 }
@@ -36,9 +38,11 @@ func registerDue(api huma.API, in Ingest) {
 			"off the clock, because the claim is that it will not be fixed, and a deferral " +
 			"replaces the deadline with its own date. What is left is time passing with nothing " +
 			"said.\n\n" +
-			"The window comes from how urgent a finding is. Being known-exploited has its own and " +
-			"it is the shortest, whatever the severity says — otherwise the deadline contradicts " +
-			"the order the findings list is in.",
+			"The window comes from how urgent a finding is. Being known-exploited has its own " +
+			"and it is the shortest, whatever the severity says. Anything the reports did not " +
+			"rate takes the medium window.\n\n" +
+			"One row per issue at a component, however many places it sits at. `days_left` is " +
+			"negative once something is overdue.",
 		Tags: []string{"Findings"},
 	}, func(ctx context.Context, input *struct {
 		Days  int `query:"days" default:"14" minimum:"0" maximum:"365" doc:"How far ahead to look"`
@@ -78,8 +82,12 @@ func registerDue(api huma.API, in Ingest) {
 				Vulnerability: row.Vulnerability, Severity: row.Severity,
 				Exploited: row.Exploited, Component: row.Component,
 				Product: row.Product, Stream: row.Stream, Variant: row.Variant,
-				Due:      row.Due.Format(time.DateOnly),
-				DaysLeft: int(row.Due.Sub(now).Hours() / 24),
+				Places: row.Places,
+				Due:    row.Due.Format(time.DateOnly),
+				// Rounded down, not toward zero. Truncation reports something
+				// twelve hours overdue as having zero days left, which reads
+				// as due today rather than as late.
+				DaysLeft: int(math.Floor(row.Due.Sub(now).Hours() / 24)),
 			}
 			if row.AssignedTo != nil {
 				body.AssignedTo = names[*row.AssignedTo]

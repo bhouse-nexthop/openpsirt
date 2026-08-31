@@ -28,9 +28,11 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 	huma.Register(api, huma.Operation{
 		OperationID: "get-role-mode", Method: http.MethodGet, Path: "/v1/roles/mode",
 		Summary: "Get the role assignment mode",
-		Description: "One mode for the whole deployment. A hybrid would need a precedence rule " +
-			"for somebody holding one role from a team and another directly, which is how a stale " +
-			"assignment outlives somebody's removal from the team it was shadowing.",
+		Description: "Says where roles come from here: assigned by an administrator, or derived " +
+			"from the groups an identity provider reports.\n\n" +
+			"One mode for the whole deployment, never both. A hybrid would need a precedence " +
+			"rule for somebody holding one role from a team and another directly, which is how a " +
+			"stale assignment outlives somebody's removal from the team it was shadowing.",
 		Tags: []string{"Administration"},
 	}, func(ctx context.Context, _ *struct{}) (*struct{ Body ModeBody }, error) {
 		if _, _, err := administerable(ctx, a); err != nil {
@@ -94,9 +96,11 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 
 	huma.Register(api, huma.Operation{
 		OperationID: "list-bindings", Method: http.MethodGet, Path: "/v1/roles/bindings",
-		Summary:     "List group-to-role bindings",
-		Description: "The mappings that admit people in group-bound mode. In that mode a mapping is the advance authorization: somebody arriving for the first time in a mapped group is admitted, and somebody in none is refused.",
-		Tags:        []string{"Administration"},
+		Summary: "List group-to-role bindings",
+		Description: "Lists every group-to-role mapping, and the groups that administer.\n\n" +
+			"In group-bound mode a mapping is the advance authorization: somebody arriving for " +
+			"the first time in a mapped group is admitted, and somebody in none is refused.",
+		Tags: []string{"Administration"},
 	}, func(ctx context.Context, _ *struct{}) (*listOutput[BindingBody], error) {
 		rights, _, err := administerable(ctx, a)
 		if err != nil {
@@ -133,8 +137,10 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 	huma.Register(api, huma.Operation{
 		OperationID: "bind-group", Method: http.MethodPost, Path: "/v1/roles/bindings",
 		Summary: "Bind an identity-provider group to a role",
-		Description: "Administration is bound without a product, because it is global rather than " +
-			"held against one. Everything else names the product it applies to.",
+		Description: "Maps one identity-provider group to one role, so that everybody in that " +
+			"group holds it from their next sign-in.\n\n" +
+			"Every role but administration names the product it applies to. Administration is " +
+			"bound without one, because it is global rather than held against a product.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, in *struct{ Body BindingBody }) (*struct{ Body BindingBody }, error) {
 		rights, names, err := administerable(ctx, a)
@@ -170,8 +176,9 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 	huma.Register(api, huma.Operation{
 		OperationID: "unbind-group", Method: http.MethodDelete, Path: "/v1/roles/bindings",
 		Summary: "Remove a group-to-role binding",
-		Description: "Takes effect at each member's next sign-in, because membership is read then " +
-			"and never again. To cut somebody off now, end their sessions.",
+		Description: "Removes one group-to-role mapping.\n\n" +
+			"It takes effect at each member's next sign-in, because group membership is read at " +
+			"sign-in and never again. To cut somebody off now, end their sessions.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusNoContent,
 	}, func(ctx context.Context, in *struct {
 		Group   string `query:"group" required:"true"`
@@ -267,9 +274,12 @@ func productNames(ctx context.Context, a Administering) (map[int64]string, error
 func registerRevocation(api huma.API, a Administering) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-all-tokens", Method: http.MethodGet, Path: "/v1/people/tokens",
-		Summary:     "List all users' API tokens",
-		Description: "Stale tokens are otherwise found only when somebody leaves and nobody knows what breaks if they are turned off.",
-		Tags:        []string{"Administration"},
+		Summary: "List all users' API tokens",
+		Description: "Lists every personal token in the deployment, whose it is, what it may " +
+			"send and when it was last used.\n\n" +
+			"Without it a stale token is found only when somebody leaves and nobody knows what " +
+			"breaks if it is turned off.",
+		Tags: []string{"Administration"},
 	}, func(ctx context.Context, _ *struct{}) (*listOutput[TokenBody], error) {
 		rights, names, err := administerable(ctx, a)
 		if err != nil {
@@ -292,10 +302,13 @@ func registerRevocation(api huma.API, a Administering) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "revoke-anyones-token", Method: http.MethodDelete,
-		Path:        "/v1/people/{identity}/tokens/{name}",
-		Summary:     "Revoke another user's API token",
-		Description: "An owner withdraws their own through the access paths. This is for the ones whose owner is no longer here to do it.",
-		Tags:        []string{"Administration"}, DefaultStatus: http.StatusNoContent,
+		Path:    "/v1/people/{identity}/tokens/{name}",
+		Summary: "Revoke another user's API token",
+		Description: "Revokes one person's token on their behalf. It stops working immediately; " +
+			"the record of what it sent stays.\n\n" +
+			"An owner withdraws their own through their own token paths. This is for the ones " +
+			"whose owner is no longer here to do it.",
+		Tags: []string{"Administration"}, DefaultStatus: http.StatusNoContent,
 	}, func(ctx context.Context, in *struct {
 		Identity string `path:"identity"`
 		Name     string `path:"name"`

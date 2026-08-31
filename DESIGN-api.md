@@ -48,6 +48,18 @@ later edit withdraws. **The reasoning is not there.** Somebody making a request
 work does not want the design argument standing between them and the request;
 it lives here and in `DECISIONS.md`.
 
+**The first sentence says what the operation does**, and a dozen of these did
+not. They opened with the argument — "one mode for the whole deployment, a
+hybrid would need a precedence rule" — and never said the endpoint lists which
+mode is in force. The rule reads as though it were about tone; it is not. A
+description that argues instead of describing leaves a reader who has never
+seen this system with no idea what the request returns, which is the one thing
+the reference is for. Where the reasoning genuinely changes how an endpoint is
+used, it goes in a paragraph after that first sentence.
+
+Every parameter carries its own description too. A required query parameter
+documented as nothing is a parameter somebody guesses at.
+
 ## What the shapes mean
 
 | | |

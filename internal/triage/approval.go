@@ -83,9 +83,11 @@ func (s *Store) approve(ctx context.Context, subject access.Subject, decisionID 
 	// Counted now, and kept. A build appearing later is covered without
 	// anybody acting, so asking again in a year answers what it covers then —
 	// which is a useful question, and a different one from what was agreed to.
-	if covered, err := s.covering(ctx, *decision); err == nil {
-		approval.Covered = &covered
+	covered, err := s.covering(ctx, subject, *decision)
+	if err != nil {
+		return err
 	}
+	approval.Covered = &covered
 	if _, err := s.db.NewInsert().Model(approval).Exec(ctx); err != nil {
 		return fmt.Errorf("record an approval: %w", err)
 	}
@@ -143,7 +145,8 @@ func (s *Store) Revise(ctx context.Context, subject access.Subject, decisionID i
 }
 
 func (s *Store) revise(ctx context.Context, subject access.Subject, decisionID int64, reasoning string) (*Revision, error) {
-	if err := s.reachable(ctx, subject, decisionID); err != nil {
+	decision, err := s.reaching(ctx, subject, decisionID, mayDecide)
+	if err != nil {
 		return nil, err
 	}
 
@@ -177,9 +180,22 @@ func (s *Store) revise(ctx context.Context, subject access.Subject, decisionID i
 		Where("withdrawn_at IS NULL").Exec(ctx); err != nil {
 		return nil, fmt.Errorf("withdraw the approvals on what was revised: %w", err)
 	}
+	// Retaken, because revising a withdrawn or lapsed claim brings it back to
+	// life and the key is what the uniqueness rule is enforced through. Without
+	// this the row is live and holds nothing, the unique index cannot see it,
+	// and a second contradictory claim about the same code is accepted — both
+	// can then be approved, with one silently governing. That is the exact
+	// failure the rule exists to prevent, walked around rather than raced.
+	key := liveKeyFor(Place{
+		ProductID: decision.ProductID, VulnerabilityID: decision.VulnerabilityID,
+		PlaceIdentity:     decision.PlaceIdentity,
+		ComponentUpstream: orEmpty(decision.ComponentUpstreamVersion),
+		ConsumerUpstream:  orEmpty(decision.ConsumerUpstreamVersion),
+	})
 	if _, err := s.db.NewUpdate().Model((*Decision)(nil)).
 		Set("revision_id = ?", revision.ID).
 		Set("state = ?", Proposed).
+		Set("live_key = ?", key).
 		// Whatever was asked for has been answered, or at least responded to.
 		// Leaving the mark would keep the claim out of the approval queue
 		// forever, which is the failure that makes sending back unusable.
@@ -282,6 +298,11 @@ func (s *Store) undoBatch(ctx context.Context, subject access.Subject, batch str
 	// still recorded would discard an agreement nobody took back.
 	if _, err := s.db.NewUpdate().Model((*Decision)(nil)).
 		Set("state = ?", Proposed).
+		// Cleared here as well as on a revision. A claim sent back and then
+		// approved under a batch, with the batch later undone, was left
+		// proposed, needing approval, and in no queue at all — visible to
+		// nobody but whoever knew its identifier.
+		Set("sent_back_at = ?", nil).
 		Where("id IN (?)", bun.List(decisions)).
 		Where("NOT EXISTS (SELECT 1 FROM decision_approval AS still " +
 			"WHERE still.decision_id = de.id AND still.withdrawn_at IS NULL)").
@@ -372,7 +393,14 @@ func (s *Store) SendBack(ctx context.Context, subject access.Subject, decisionID
 // and kept, because a decision reaches by matching and so covers more as
 // builds appear — with nobody having acted, and nobody having agreed to the
 // larger number.
-func (s *Store) covering(ctx context.Context, decision Decision) (int, error) {
+func (s *Store) covering(ctx context.Context, subject access.Subject, decision Decision) (int, error) {
+	// Narrowed like every other count here. What is stored on the approval is
+	// served back, so an unnarrowed count discloses how many undisclosed
+	// findings sit behind a claim to somebody who may not read one.
+	readable := []access.Visibility{access.Public}
+	if subject.Reads(access.Private, decision.ProductID) {
+		readable = append(readable, access.Private)
+	}
 	query := s.db.NewSelect().
 		TableExpr("finding AS f").
 		Join("JOIN target AS tg ON tg.id = f.target_id").
@@ -384,7 +412,8 @@ func (s *Store) covering(ctx context.Context, decision Decision) (int, error) {
 		Where("f.place_identity = ?", decision.PlaceIdentity).
 		Where("f.closed_run_id IS NULL").
 		Where("COALESCE(?, '') = "+finding.ComponentUpstreamExpr, decision.ComponentUpstreamVersion).
-		Where("COALESCE(?, '') = "+finding.ConsumerUpstreamExpr, decision.ConsumerUpstreamVersion)
+		Where("COALESCE(?, '') = "+finding.ConsumerUpstreamExpr, decision.ConsumerUpstreamVersion).
+		Where("f.visibility IN (?)", bun.List(readable))
 
 	covered, err := query.Count(ctx)
 	if err != nil {

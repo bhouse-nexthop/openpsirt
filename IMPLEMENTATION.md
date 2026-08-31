@@ -158,9 +158,14 @@ what was written.
 
 ## Stage 6 — Remediation, reporting, notifications
 
+Part of this landed early, because the interface stage needed numbers to draw
+and shaping them against a screen after the fact would have meant shaping them
+twice. `DESIGN-reporting.md` records what exists: release comparison, trends,
+deadlines and what a new line would inherit.
+
 - Declared targets, computed resolution, reconciliation against scans
-- Reports: dismissals, coverage, metrics, release comparison
-- Trends on both axes
+- Reports: dismissals, coverage, metrics — **release comparison is built**
+- **Trends on calendar time are built.** Release over release is not
 - Email, digest, operational alerts, in-app notifications
 
 **Proves it works:** a release comparison matches a known pair of releases; a
@@ -220,61 +225,50 @@ Work that has to happen once, at the end, and would be wrong to do earlier.
 
 ## What the reach and shortfall decisions cost
 
-Recorded before anything is built, because two of these look cheap and one of
-them is not.
+These were costed before they were built. What each actually took is recorded
+here so the estimates can be read against the outcome.
 
 ### TRI-30, TRI-31 — stating and recording reach
 
-**Schema:** three columns on the approval row for the counts as granted. Nothing
-else — the reach itself is derived, and storing it as anything but a snapshot
-taken at approval would create a second copy of the matching rules to keep in
-step.
+**Built.** One column on the approval for the count as granted, not the three
+first costed: the split between this build, the builds already matching and the
+ones ticked deliberately is how the reach is *shown*, and what the record needs
+is how much was agreed to.
 
-**Query:** the two automatic tiers are one query each against open findings —
-same product, same place, same issue — grouped by whether the upstream versions
-match. Both run over the same rows the finding detail already reads. The third
-tier is the same query inverted, so all three come from one pass.
-
-**Cost:** low, and it is worth doing before the interface rather than after. The
-counts change what a decision endpoint returns, and the API is easier to shape
-now than once clients read it.
+The reach itself stays derived. Storing it as anything but a snapshot taken at
+approval would create a second copy of the matching rules to keep in step.
 
 ### TRI-32 — one judgment across many issues
 
-**Schema:** none. It writes the decisions the model already has, and a batch
-name already exists for undoing a bulk approval as a unit.
+**Built**, and the schema estimate was wrong by one column: how the set was
+narrowed is recorded with each claim, so "how were these chosen" has an answer
+later. The rest was as costed — it writes the decisions the model already has,
+and a batch name already existed for undoing a bulk approval as a unit.
 
-**Query:** selecting the set is the work, and the honest version of it is
-narrow: filter by component, then by whatever the person types. Anything
-cleverer — grouping by weakness class, or by a subsystem read out of advisory
-text — is a **guess presented as an aid**, and the design rule is that it may
-narrow a list and may never be the claim.
+Selecting the set is the work, and the honest version of it is narrow: filter
+by component, then by whatever the person types. Anything cleverer — grouping
+by weakness class, or by a subsystem read out of advisory text — is a **guess
+presented as an aid**, and the rule is that it may narrow a list and may never
+be the claim.
 
-**Cost:** low in mechanism and awkward in interface. Writing 1,674 decisions in
-one transaction is fine; showing somebody what they are about to assert, in a
-way they will actually read, is the part that needs care. **It also needs a
-bound**: a single action writing an unbounded number of rows is a denial of
-service somebody triggers by accident, so the count is capped and the cap is a
-setting.
+The bound is a setting rather than a constant, as costed. What it bounds turned
+out to matter: the limit is checked against the findings the names resolve to,
+not the number of names, because each name may sit at many places and all of
+them are written.
 
 ### STA-18 — marking a bump that fell short
 
-**Schema:** one column on the finding, and one on the scan run if the reason is
-to be reported per scan.
+**Built**, and the question the estimate flagged answered the cheap way: a
+version change is not an update in place. Component identity carries the
+version, so a bump closes one finding and opens another and both versions are
+in hand at the moment of the change. The new row records what it arrived from.
 
-**Query:** it needs the *previous* run's upstream version for the same place,
-which the interval storage already holds — a finding closed and reopened
-carries its history, and an open one carries the run that opened it. This is
-the part to check before committing to it: if the version moved without the
-finding closing, the open row was **updated in place** rather than reopened,
-and the previous version is not on it. Either the update records what moved, or
-the comparison happens against the component row as it stood at the previous
-scan. The first is cheaper and is the one to try.
+It surfaces on the finding and in a release comparison's still-present column.
+Not yet in the review queue, which lists decisions rather than findings.
 
-**Cost:** low as inequality. **Do not let it become version ordering by
-accident** — that is a different project, with a per-ecosystem comparator and
-a corpus to test it against, and it buys a sharper sentence rather than a new
-signal.
+It stayed an inequality. **Do not let it become version ordering by accident** —
+that is a different project, with a per-ecosystem comparator and a corpus to
+test it against, and it buys a sharper sentence rather than a new signal.
 
 ## Decided, and waiting for the stage that carries it
 
@@ -284,6 +278,7 @@ thing rather than a gap somebody rediscovers by auditing.
 | Decision | Waits for | Why not now |
 |---|---|---|
 | ACC-45 | Somebody being told | Assignment exists now, and so does releasing what an absent person holds. What is missing is the prompt — noticing that somebody has not signed in for a while *and* holds work — which is a notification rather than a screen |
+| ACC-43, second half | Deactivating an account | The half with a trigger today is built: withdrawing somebody's last role on a product hands back what they were dealing with there. The other half needs a way to deactivate somebody, which does not exist — an account is recorded or it is not |
 | ACC-44 | Nothing — it is a statement | That we cannot detect somebody has left is recorded so nobody assumes a cleanup happens that never does |
 | MDL-12, MDL-13 | End-of-life dates | Whole feature, scheduled with lifecycle |
 | MDL-16 | The tree views | Interface |
@@ -291,7 +286,6 @@ thing rather than a gap somebody rediscovers by auditing.
 | REL-07, ING-13 | The interface | What a new line would inherit can be asked for; ticking the ones to carry is a screen |
 | ACC-46 to ACC-49 | Private findings | Whole feature, with disclosure dates and the escalation around them |
 | ING-24 to ING-27, SCP-11 | Analyzer findings | Intended scope, not built. The finding model carries a kind from the start so a second kind needs no rewrite, which is the part that had to be got right early |
-| TRI-31 | An approval recording the reach it was granted for | The reach itself is built and returned; what is not stored is the counts as they stood when somebody agreed. It wants three columns on the approval and, more interestingly, a decision about whether the number recorded is what was *shown* to the approver or what was true at that moment — those differ, and the first is the one worth having |
 | REL-01, REL-03, REL-04, SCP-05 | The interface | All are about how findings and exceptions are presented and acted on together. Deciding them against a real screen rather than in the abstract is the point |
 | MDL-10 | Nothing — it is a limitation | The same version built with different feature flags can use its dependencies differently. Recorded so nobody assumes the graph says more than it does |
 

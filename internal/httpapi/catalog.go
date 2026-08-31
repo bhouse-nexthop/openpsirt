@@ -204,9 +204,11 @@ func registerCatalog(api huma.API, d Declaring) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "list-products", Method: http.MethodGet, Path: "/v1/products",
-		Summary:     "List products",
-		Description: "What a scan may be filed against. The first question after an upload is refused.",
-		Tags:        []string{"Catalog"},
+		Summary: "List products",
+		Description: "Lists the products declared here, with what each one holds.\n\n" +
+			"A scan may only be filed against something declared, so this is the first question " +
+			"to ask after an upload is refused for naming something unknown.",
+		Tags: []string{"Catalog"},
 	}, func(ctx context.Context, _ *struct{}) (*listOutput[ProductBody], error) {
 		subject, err := reading(ctx)
 		if err != nil {
@@ -290,9 +292,11 @@ func registerCatalog(api huma.API, d Declaring) {
 		OperationID: "list-release-variants", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/streams/{stream}/variants",
 		Summary: "List the variants a release was built as",
-		Description: "A subset of what the product builds. A release predating a variant has " +
-			"never been filed against it, which is what keeps something introduced later from " +
-			"appearing to have shipped years ago.",
+		Description: "Lists the variants one release was actually built as — a subset of what " +
+			"the product declares.\n\n" +
+			"A release predating a variant has never been filed against it and does not list " +
+			"it, which is what keeps something introduced later from appearing to have shipped " +
+			"years ago.",
 		Tags: []string{"Catalog"},
 	}, func(ctx context.Context, in *struct {
 		Product string `path:"product"`

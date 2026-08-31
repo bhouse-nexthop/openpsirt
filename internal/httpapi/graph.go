@@ -6,6 +6,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 )
@@ -41,11 +42,11 @@ func registerGraph(api huma.API, in Ingest) {
 		Stream  string `path:"stream"`
 		Variant string `path:"variant"`
 	}) (*listOutput[NeighbourBody], error) {
-		target, err := browsing(ctx, in, input.Product, input.Stream, input.Variant)
+		subject, target, err := browsing(ctx, in, input.Product, input.Stream, input.Variant)
 		if err != nil {
 			return nil, err
 		}
-		roots, err := graph.NewStore(in.DB.DB).Roots(ctx, target)
+		roots, err := graph.NewStore(in.DB.DB).Roots(ctx, subject, target)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "the build's contents could not be read", err)
 		}
@@ -73,11 +74,11 @@ func registerGraph(api huma.API, in Ingest) {
 		Variant   string `path:"variant"`
 		Component string `path:"component" doc:"The component's name, as the findings list gives it"`
 	}) (*struct{ Body AroundBody }, error) {
-		target, err := browsing(ctx, in, input.Product, input.Stream, input.Variant)
+		subject, target, err := browsing(ctx, in, input.Product, input.Stream, input.Variant)
 		if err != nil {
 			return nil, err
 		}
-		above, below, err := graph.NewStore(in.DB.DB).Around(ctx, target, input.Component)
+		above, below, err := graph.NewStore(in.DB.DB).Around(ctx, subject, target, input.Component)
 		if err != nil {
 			return nil, noSuchFinding()
 		}
@@ -99,19 +100,19 @@ func neighbours(rows []graph.Neighbour) []NeighbourBody {
 }
 
 // browsing resolves a build somebody may look at.
-func browsing(ctx context.Context, in Ingest, product, stream, variant string) (int64, error) {
+func browsing(ctx context.Context, in Ingest, product, stream, variant string) (access.Subject, int64, error) {
 	subject, err := reading(ctx)
 	if err != nil {
-		return 0, err
+		return access.Subject{}, 0, err
 	}
 	names := catalog.NewStore(in.DB.DB)
 	named, err := names.LocateVisible(ctx, subject, product, stream, variant)
 	if err != nil {
-		return 0, noSuchProduct()
+		return access.Subject{}, 0, noSuchProduct()
 	}
 	target, err := names.ExistingTarget(ctx, named.StreamID, named.VariantID)
 	if err != nil {
-		return 0, nothingScannedThere()
+		return access.Subject{}, 0, nothingScannedThere()
 	}
-	return target.ID, nil
+	return subject, target.ID, nil
 }

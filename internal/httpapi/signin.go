@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 	"github.com/bhouse-nexthop/openpsirt/internal/signin"
 )
 
@@ -156,9 +157,21 @@ func complete(w http.ResponseWriter, r *http.Request, in Ingest) {
 		return
 	}
 
+	// The administrator's setting first, then whatever the deployment was
+	// started with, then the built-in. The setting is offered on the
+	// administration screen, so it has to be the one that decides — a value
+	// somebody sets there and nothing reads is worse than not offering it.
 	lifetime := access.DefaultSessionLifetime
 	if in.SessionLifetime > 0 {
 		lifetime = in.SessionLifetime
+	}
+	if in.DB != nil {
+		chosen, err := setting.NewStore(in.DB.DB).Duration(r.Context(), setting.SessionLifetime, lifetime)
+		if err != nil {
+			wentWrongHere(w, in, "how long a sign-in lasts could not be read", err)
+			return
+		}
+		lifetime = chosen
 	}
 	issued, err := rights.StartSession(r.Context(), person.ID, lifetime)
 	if err != nil {

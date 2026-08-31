@@ -688,6 +688,9 @@ func TestTheNewEndpointsAnswerRatherThanExist(t *testing.T) {
 		var issues struct {
 			Items []struct {
 				Vulnerability string `json:"vulnerability"`
+				Severity      string `json:"severity"`
+				Places        int    `json:"places"`
+				FixedIn       string `json:"fixed_in"`
 			} `json:"items"`
 			Total int `json:"total"`
 		}
@@ -696,6 +699,13 @@ func TestTheNewEndpointsAnswerRatherThanExist(t *testing.T) {
 		if issues.Total != 1 || len(issues.Items) != 1 {
 			t.Fatalf("%d issues at the component, want 1", issues.Total)
 		}
+		// The list a person picks from carries what they need to pick: how bad
+		// it is, how much of the build it sits in, and whether there is
+		// anywhere to go.
+		if issues.Items[0].Severity == "" || issues.Items[0].FixedIn == "" ||
+			issues.Items[0].Places == 0 {
+			t.Errorf("the list to choose from says nothing to choose on: %+v", issues.Items[0])
+		}
 
 		// One claim across a named set.
 		got := asPerson(t, r, "triager", http.MethodPost,
@@ -703,18 +713,64 @@ func TestTheNewEndpointsAnswerRatherThanExist(t *testing.T) {
 				"/components/libnl-3-200/decisions",
 			`{"vulnerabilities":["CVE-2026-9999"],"outcome":"not-applicable",`+
 				`"justification":"vulnerable_code_not_in_execute_path",`+
+				`"selected_by":"searched the reports for \"driver\"",`+
 				`"reasoning":"These are in drivers absent from our kernel config."}`)
 		if got.Code != http.StatusCreated {
 			t.Fatalf("deciding a set together answered %d: %s", got.Code, got.Body.String())
 		}
 		var recorded struct {
-			Recorded int `json:"recorded"`
+			Recorded int     `json:"recorded"`
+			IDs      []int64 `json:"ids"`
 		}
 		if err := json.Unmarshal(got.Body.Bytes(), &recorded); err != nil {
 			t.Fatal(err)
 		}
-		if recorded.Recorded != 1 {
-			t.Errorf("recorded %d decisions, want one per issue named", recorded.Recorded)
+		// One per *place*, not one per name. A decision is keyed on a place,
+		// so a claim built from one of them would silence one consumer and
+		// leave the rest open while reporting that it had covered them.
+		var places int
+		for _, each := range issues.Items {
+			places += each.Places
+		}
+		if recorded.Recorded != places {
+			t.Errorf("recorded %d decisions for %d places, want one each",
+				recorded.Recorded, places)
+		}
+
+		// And how the set was narrowed is on the record, because "how were
+		// these chosen" is the question asked of a bulk judgment later.
+		var made struct {
+			Decision struct {
+				SelectedBy string `json:"selected_by"`
+			} `json:"decision"`
+		}
+		read(t, r, "triager", fmt.Sprintf("/v1/decisions/%d", recorded.IDs[0]), &made)
+		if made.Decision.SelectedBy == "" {
+			t.Error("a claim recorded as one of many does not say how the set was narrowed")
+		}
+
+		// A deferral with nowhere to say until when is refused rather than
+		// recorded as a postponement with no end.
+		if got := asPerson(t, r, "triager", http.MethodPost,
+			"/v1/products/mine/streams/master/variants/broadcom"+
+				"/components/libnl-3-200/decisions",
+			`{"vulnerabilities":["CVE-2026-9999"],"outcome":"deferred",`+
+				`"selected_by":"the same search","reasoning":"Not this release."}`,
+		); got.Code != http.StatusUnprocessableEntity {
+			t.Errorf("deferring with no date answered %d: %s", got.Code, got.Body.String())
+		}
+
+		// A name nobody here knows says which name, so a person who pasted a
+		// list can fix the list rather than bisect it.
+		if got := asPerson(t, r, "triager", http.MethodPost,
+			"/v1/products/mine/streams/master/variants/broadcom"+
+				"/components/libnl-3-200/decisions",
+			`{"vulnerabilities":["CVE-2026-9999","CVE-1999-0001"],"outcome":"wont-fix",`+
+				`"selected_by":"a list somebody pasted","reasoning":"Not worth it."}`,
+		); got.Code != http.StatusNotFound ||
+			!strings.Contains(got.Body.String(), "CVE-1999-0001") {
+			t.Errorf("an unknown issue answered %d without naming it: %s",
+				got.Code, got.Body.String())
 		}
 
 		// The trend, worked out rather than stored.
@@ -753,6 +809,187 @@ func TestTheNewEndpointsAnswerRatherThanExist(t *testing.T) {
 			"/v1/settings/remediation.due.critical",
 			`{"value":"48h"}`); got.Code != http.StatusNoContent {
 			t.Errorf("setting a deadline answered %d: %s", got.Code, got.Body.String())
+		}
+	})
+}
+
+func TestNobodyLearnsWhoHasAnAccountByBeingRefused(t *testing.T) {
+	// A name nobody holds and a name somebody holds must come back the same
+	// way to anybody not authorized to act on either, or the refusal is a
+	// directory of the organization readable by every account.
+	eachReach(t, func(t *testing.T, r *reach) {
+		r.scanned(t)
+
+		// Handing back somebody's work is administrative. A reader asking
+		// about a real account and a made-up one gets one answer.
+		real := asPerson(t, r, "reader", http.MethodPost,
+			"/v1/people/triager/assignments/release", `{}`)
+		invented := asPerson(t, r, "reader", http.MethodPost,
+			"/v1/people/nobody-at-all/assignments/release", `{}`)
+		if real.Code != invented.Code {
+			t.Errorf("releasing a real person's work answered %d and an invented one %d",
+				real.Code, invented.Code)
+		}
+		if real.Code != http.StatusForbidden {
+			t.Errorf("a reader releasing somebody's work answered %d, want 403", real.Code)
+		}
+
+		// Assigning is the same shape: reading a product is not being able to
+		// hand its findings around, so the name is never resolved first.
+		at := "/v1/products/mine/streams/master/variants/broadcom" +
+			"/findings/CVE-2026-9999/components/libnl-3-200/assignment"
+		known := asPerson(t, r, "reader", http.MethodPut, at, `{"person":"triager"}`)
+		unknown := asPerson(t, r, "reader", http.MethodPut, at, `{"person":"nobody-at-all"}`)
+		if known.Code != unknown.Code || known.Body.String() != unknown.Body.String() {
+			t.Errorf("assigning to a real person answered %d %s and to an invented one %d %s",
+				known.Code, known.Body.String(), unknown.Code, unknown.Body.String())
+		}
+	})
+}
+
+func TestASettingThatWouldReadAsUnsetIsRefused(t *testing.T) {
+	// Every reader treats zero and negative as unset and falls back to the
+	// shipped value, so storing one produces a setting that looks set on the
+	// administration screen and does nothing at all.
+	eachReach(t, func(t *testing.T, r *reach) {
+		for _, value := range []string{"0h", "-48h", "nonsense"} {
+			if got := asPerson(t, r, "admin", http.MethodPut,
+				"/v1/settings/remediation.due.critical",
+				`{"value":"`+value+`"}`); got.Code != http.StatusUnprocessableEntity {
+				t.Errorf("%q was accepted as a deadline: %d %s",
+					value, got.Code, got.Body.String())
+			}
+		}
+
+		// The one setting that is a count rather than a duration is checked as
+		// a count. A duration there would be stored and then ignored.
+		cap := "/v1/settings/triage.together-cap"
+		if got := asPerson(t, r, "admin", http.MethodPut, cap,
+			`{"value":"48h"}`); got.Code != http.StatusUnprocessableEntity {
+			t.Errorf("a duration was accepted as a count: %d %s", got.Code, got.Body.String())
+		}
+		if got := asPerson(t, r, "admin", http.MethodPut, cap,
+			`{"value":"0"}`); got.Code != http.StatusUnprocessableEntity {
+			t.Errorf("a cap of nothing was accepted: %d %s", got.Code, got.Body.String())
+		}
+		if got := asPerson(t, r, "admin", http.MethodPut, cap,
+			`{"value":"5"}`); got.Code != http.StatusNoContent {
+			t.Errorf("setting the cap answered %d: %s", got.Code, got.Body.String())
+		}
+	})
+}
+
+func TestWithdrawingSomebodysLastRoleHandsBackWhatTheyHeld(t *testing.T) {
+	// ACC-43. Otherwise their work is in no list at all: assigned, so not in
+	// the shared one, and assigned to somebody who can no longer open it.
+	eachReach(t, func(t *testing.T, r *reach) {
+		r.scanned(t)
+		at := "/v1/products/mine/streams/master/variants/broadcom" +
+			"/findings/CVE-2026-9999/components/libnl-3-200/assignment"
+		if got := asPerson(t, r, "triager", http.MethodPut, at,
+			`{"person":"triager"}`); got.Code != http.StatusNoContent {
+			t.Fatalf("assigning answered %d: %s", got.Code, got.Body.String())
+		}
+
+		var holdings struct {
+			Items []struct {
+				Person string `json:"person"`
+				Open   int    `json:"open"`
+			} `json:"items"`
+		}
+		read(t, r, "admin", "/v1/assignments", &holdings)
+		if len(holdings.Items) == 0 {
+			t.Fatal("nothing was assigned to begin with")
+		}
+
+		got := asPerson(t, r, "admin", http.MethodDelete,
+			"/v1/people/triager/roles/mine/public-triage", "")
+		if got.Code != http.StatusOK {
+			t.Fatalf("withdrawing a role answered %d: %s", got.Code, got.Body.String())
+		}
+		var withdrawn struct {
+			Released int64 `json:"released"`
+		}
+		if err := json.Unmarshal(got.Body.Bytes(), &withdrawn); err != nil {
+			t.Fatal(err)
+		}
+		if withdrawn.Released == 0 {
+			t.Error("withdrawing their last role here handed nothing back")
+		}
+
+		read(t, r, "admin", "/v1/assignments", &holdings)
+		if len(holdings.Items) != 0 {
+			t.Errorf("%d people still hold work here after losing their role",
+				len(holdings.Items))
+		}
+	})
+}
+
+func TestABulkClaimCoversWhatTheClaimantCanSeeAndNoMore(t *testing.T) {
+	// A public triager's judgment covers the places they can read. The
+	// undisclosed ones stay open for whoever can read them — which is the
+	// ordinary division of work, not a gap. Refusing the whole action because
+	// something undisclosed sits at the same component would answer somebody
+	// who picked from the list they were shown with a bare "not found".
+	eachReach(t, func(t *testing.T, r *reach) {
+		r.scanned(t)
+
+		// A second place for the same issue, so the component holds one the
+		// public triager may read and one they may not.
+		var rows []finding.Finding
+		if err := r.db.DB.NewSelect().Model(&rows).Scan(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("the fixture has %d findings, want 1", len(rows))
+		}
+		second := rows[0]
+		second.ID = 0
+		// A different identity of the same width. A place identity is a hash
+		// stored in a fixed-width column, so appending to one overflows on
+		// three of the four engines and is silently accepted on the fourth.
+		second.PlaceIdentity = second.PlaceIdentity[:len(second.PlaceIdentity)-4] + "beef"
+		if _, err := r.db.DB.NewInsert().Model(&second).Exec(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.db.DB.NewUpdate().Table("finding").
+			Set("visibility = ?", "private").
+			Where("id = ?", rows[0].ID).Exec(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+
+		at := "/v1/products/mine/streams/master/variants/broadcom" +
+			"/components/libnl-3-200/decisions"
+		body := `{"vulnerabilities":["CVE-2026-9999"],"outcome":"wont-fix",` +
+			`"selected_by":"everything at this component","reasoning":"Not worth the churn."}`
+
+		// One of the two places is theirs to argue about, and that is what the
+		// claim covers.
+		got := asPerson(t, r, "triager", http.MethodPost, at, body)
+		if got.Code != http.StatusCreated {
+			t.Fatalf("a public triager answered %d: %s", got.Code, got.Body.String())
+		}
+		var recorded struct {
+			Recorded int `json:"recorded"`
+		}
+		if err := json.Unmarshal(got.Body.Bytes(), &recorded); err != nil {
+			t.Fatal(err)
+		}
+		if recorded.Recorded != 1 {
+			t.Errorf("a public triager covered %d places, want only the disclosed one",
+				recorded.Recorded)
+		}
+
+		// And the undisclosed one is still open, waiting for somebody who can
+		// see it.
+		standing, err := r.db.DB.NewSelect().Table("decision").
+			Where("place_identity = ?", rows[0].PlaceIdentity).
+			Where("live_key IS NOT NULL").Count(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if standing != 0 {
+			t.Errorf("%d claims stand against a place the claimant cannot read", standing)
 		}
 	})
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 )
 
@@ -236,11 +237,10 @@ func (s *Store) ComponentAt(ctx context.Context, targetID int64, name string) (i
 
 // Neighbour is one component next to another in the graph.
 type Neighbour struct {
-	ComponentID int64  `bun:"component_id"`
-	Name        string `bun:"name"`
-	Version     string `bun:"version"`
-	Findings    int    `bun:"findings"`
-	Children    int    `bun:"children"`
+	Name     string `bun:"name"`
+	Version  string `bun:"version"`
+	Findings int    `bun:"findings"`
+	Children int    `bun:"children"`
 }
 
 // Around reports what sits directly above and below one component in a build.
@@ -252,16 +252,18 @@ type Neighbour struct {
 //
 // Naming a component rather than an identifier: it is what a findings list
 // gives out and what somebody composing a request has.
-func (s *Store) Around(ctx context.Context, targetID int64, name string) ([]Neighbour, []Neighbour, error) {
+func (s *Store) Around(ctx context.Context, subject access.Subject, targetID int64,
+	name string) ([]Neighbour, []Neighbour, error) {
+
 	componentID, err := s.ComponentAt(ctx, targetID, name)
 	if err != nil {
 		return nil, nil, err
 	}
-	below, err := s.step(ctx, targetID, componentID, true)
+	below, err := s.step(ctx, subject, targetID, componentID, true)
 	if err != nil {
 		return nil, nil, err
 	}
-	above, err := s.step(ctx, targetID, componentID, false)
+	above, err := s.step(ctx, subject, targetID, componentID, false)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -269,7 +271,7 @@ func (s *Store) Around(ctx context.Context, targetID int64, name string) ([]Neig
 }
 
 // Roots reports what the build itself pulls in directly.
-func (s *Store) Roots(ctx context.Context, targetID int64) ([]Neighbour, error) {
+func (s *Store) Roots(ctx context.Context, subject access.Subject, targetID int64) ([]Neighbour, error) {
 	var rootID int64
 	err := s.db.NewSelect().
 		TableExpr("graph_node AS n").
@@ -286,7 +288,7 @@ func (s *Store) Roots(ctx context.Context, targetID int64) ([]Neighbour, error) 
 	if err != nil {
 		return nil, fmt.Errorf("look up what this build is: %w", err)
 	}
-	return s.step(ctx, targetID, rootID, true)
+	return s.step(ctx, subject, targetID, rootID, true)
 }
 
 // step walks one edge, downward or upward.
@@ -295,26 +297,36 @@ func (s *Store) Roots(ctx context.Context, targetID int64) ([]Neighbour, error) 
 // in one build — so both ends go through the node table. Reading the edge
 // columns as component identifiers is the mistake this comment exists to stop
 // somebody making twice.
-func (s *Store) step(ctx context.Context, targetID, componentID int64, down bool) ([]Neighbour, error) {
+func (s *Store) step(ctx context.Context, subject access.Subject, targetID, componentID int64,
+	down bool) ([]Neighbour, error) {
 	near, far := "parent_id", "child_id"
 	if !down {
 		near, far = far, near
 	}
 
+	readable, err := s.visibleIn(ctx, subject, targetID)
+	if err != nil {
+		return nil, err
+	}
+
 	var rows []Neighbour
-	err := s.db.NewSelect().
+	err = s.db.NewSelect().
 		TableExpr("graph_edge AS e").
 		Join("JOIN graph_node AS nn ON nn.id = e."+near).
 		Join("JOIN graph_node AS fn ON fn.id = e."+far).
 		Join("JOIN component AS c ON c.id = fn.component_id").
-		ColumnExpr("c.id AS component_id").
 		ColumnExpr("c.name AS name").
 		ColumnExpr("c.version AS version").
 		// What is open against it here, so descending follows the findings
 		// rather than being exploration.
+		// Narrowed like every other count. Without this a reader browsing the
+		// tree gets an accurate count of the undisclosed findings under each
+		// component and can bisect down to which one holds them — a leak that
+		// needs no row to be shown.
 		ColumnExpr(`(SELECT COUNT(*) FROM "finding" AS f
 			WHERE f.target_id = ? AND f.component_id = c.id
-			  AND f.closed_run_id IS NULL) AS findings`, targetID).
+			  AND f.closed_run_id IS NULL AND f.visibility IN (?)) AS findings`,
+			targetID, bun.List(readable)).
 		// Whether anything is under it, so a node that opens can be told from
 		// one that does not before somebody clicks it.
 		ColumnExpr(`(SELECT COUNT(*) FROM "graph_edge" AS d
@@ -331,4 +343,37 @@ func (s *Store) step(ctx context.Context, targetID, componentID int64, down bool
 		return nil, fmt.Errorf("walk the graph: %w", err)
 	}
 	return rows, nil
+}
+
+// visibleIn reports the visibilities this subject may read in a build, and
+// refuses where they may read none.
+//
+// The graph is browsed beside a findings list that is narrowed correctly, so a
+// count here that is not narrowed the same way is the more dangerous of the
+// two: nobody looking at it expects it to be a disclosure.
+func (s *Store) visibleIn(ctx context.Context, subject access.Subject, targetID int64) ([]access.Visibility, error) {
+	var productID int64
+	err := s.db.NewSelect().
+		TableExpr("target AS tg").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		ColumnExpr("st.product_id").
+		Where("tg.id = ?", targetID).
+		Scan(ctx, &productID)
+	if err != nil {
+		return nil, fmt.Errorf("look up which product this build belongs to: %w", err)
+	}
+	if !subject.Sees(productID) {
+		return nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
+	}
+	readable := []access.Visibility{}
+	if subject.Reads(access.Public, productID) {
+		readable = append(readable, access.Public)
+	}
+	if subject.Reads(access.Private, productID) {
+		readable = append(readable, access.Private)
+	}
+	if len(readable) == 0 {
+		return nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
+	}
+	return readable, nil
 }

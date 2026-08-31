@@ -10,6 +10,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 )
 
 // Administering is what the endpoints for people and credentials need.
@@ -20,6 +21,11 @@ type Administering struct {
 	// Mode says where roles come from, read per request because an
 	// administrator can change it without a restart.
 	Mode func(context.Context) access.Mode
+	// Findings is what withdrawing somebody's last role on a product needs:
+	// their work there goes back to the unassigned list rather than staying
+	// where nobody can reach it (ACC-43). Nil where this process has no
+	// database, and then nothing is released.
+	Findings func() *finding.Store
 }
 
 // PersonBody is somebody who has been granted access.
@@ -88,8 +94,10 @@ func registerAdministration(api huma.API, a Administering) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-people", Method: http.MethodGet, Path: "/v1/people",
 		Summary: "List users",
-		Description: "Everybody who may sign in, and what each of them holds. Nobody is here " +
-			"because they authenticated: access is granted in advance or not at all.",
+		Description: "Lists everybody who may sign in, with the roles each of them holds and " +
+			"the products those apply to.\n\n" +
+			"Nobody appears here by having authenticated. Access is granted in advance, so this " +
+			"list is what an administrator has decided rather than who has turned up.",
 		Tags: []string{"Administration"},
 	}, func(ctx context.Context, _ *struct{}) (*listOutput[PersonBody], error) {
 		store, names, err := administerable(ctx, a)
@@ -205,15 +213,29 @@ func registerAdministration(api huma.API, a Administering) {
 		OperationID: "withdraw-role", Method: http.MethodDelete,
 		Path:    "/v1/people/{identity}/roles/{product}/{role}",
 		Summary: "Revoke a user's role on a product",
-		Description: "A grant is a statement about now. Withdrawing one removes it rather than " +
-			"marking it, because what somebody used to hold is answered by the record of what " +
-			"they did.",
-		Tags: []string{"Administration"}, DefaultStatus: http.StatusNoContent,
+		Description: "Withdraws one role from one person. Takes effect at their next request; " +
+			"end their sessions to cut them off now.\n\n" +
+			"If it was their last role on that product, everything they were dealing with there " +
+			"goes back to the unassigned list. Otherwise that work is in no list at all: not in " +
+			"the shared one because it is assigned, and not in theirs because they can no " +
+			"longer open it. `released` says how much moved.\n\n" +
+			"The grant is removed rather than marked as ended. What somebody used to hold is " +
+			"answered by the record of what they did, so this list only ever says what is true " +
+			"today.",
+		Tags: []string{"Administration"},
 	}, func(ctx context.Context, in *struct {
 		Identity string `path:"identity"`
 		Product  string `path:"product"`
 		Role     string `path:"role"`
-	}) (*struct{}, error) {
+	}) (*struct {
+		Body struct {
+			Released int64 `json:"released" doc:"Findings handed back because that was their last role here"`
+		}
+	}, error) {
+		subject, err := requester(ctx)
+		if err != nil {
+			return nil, err
+		}
 		store, names, err := administerable(ctx, a)
 		if err != nil {
 			return nil, err
@@ -229,7 +251,32 @@ func registerAdministration(api huma.API, a Administering) {
 		if err := store.Withdraw(ctx, person.ID, product.ID, access.Role(in.Role)); err != nil {
 			return nil, wentWrong(a.Logger, "cannot withdraw the role", err)
 		}
-		return nil, nil
+
+		out := &struct {
+			Body struct {
+				Released int64 `json:"released" doc:"Findings handed back because that was their last role here"`
+			}
+		}{}
+		// Asked after the withdrawal, so what it sees is what the withdrawal
+		// left. Their last role here going is what turns their assigned work
+		// into work nobody can reach.
+		remaining, err := store.HoldsAnythingIn(ctx, person.ID, product.ID)
+		if err != nil {
+			return nil, wentWrong(a.Logger, "cannot read what they still hold", err)
+		}
+		if remaining || a.Findings == nil {
+			return out, nil
+		}
+		findings := a.Findings()
+		if findings == nil {
+			return out, nil
+		}
+		released, err := findings.ReleaseIn(ctx, subject, person.ID, product.ID)
+		if err != nil {
+			return nil, wentWrong(a.Logger, "cannot hand back what they were dealing with", err)
+		}
+		out.Body.Released = released
+		return out, nil
 	})
 
 	huma.Register(api, huma.Operation{

@@ -2,7 +2,7 @@
 
 How OpenPSIRT talks to a database, and why the awkward parts are awkward.
 
-Satisfies SCP-15, DAT-01 to DAT-24, DAT-30 to DAT-35, and the portability
+Satisfies SCP-15, DAT-01 to DAT-24, DAT-30 to DAT-36, and the portability
 constraints in Section 6 of `DECISIONS.md`.
 
 ## Four engines, one set of queries
@@ -109,6 +109,14 @@ replaces includes the strictness that makes an oversized value an error rather
 than a quiet truncation. The first version assigned, and a nine-character
 string stored in a four-character column came back four characters long, with
 no error, on these two engines and on neither of the others.
+
+**A name a query invents needs the same care.** The rule was written about the
+data definition and quietly read as being only about it, so a grouped count
+wrapped its subquery in `AS groups` — and `GROUPS` is a reserved word in MySQL
+8, where it names a window frame type. Three engines parsed it and one returned
+a syntax error, which the handler above it turned into a 500 with the driver's
+message discarded. The alias is now quoted and named around the keyword, and a
+test reaches both of the counts that use this shape on all four engines.
 
 Silent truncation is the worst shape a portability difference can take:
 nothing fails and the data is wrong. Two tests hold it — one that a value is

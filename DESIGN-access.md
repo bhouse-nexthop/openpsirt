@@ -3,7 +3,8 @@
 Who is asking, and what they may reach.
 
 Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-50 to ACC-53, SEC-03,
-SEC-07, SEC-09, ACC-43, ACC-44, ACC-54.
+SEC-07, SEC-09, ACC-44, ACC-54 to ACC-56, and the half of ACC-43 that has a
+trigger today.
 
 ## Authenticating is not being authorized
 
@@ -65,6 +66,26 @@ dealing with it and puts it back where it can be picked up — the honest answer
 when who takes it on has not been decided. **Handing over** says who is dealing
 with it now. Only an administrator does either; a person hands back their own by
 assigning it to nobody.
+
+### One trigger that does happen on its own
+
+**Withdrawing somebody's last role on a product hands back what they were
+dealing with there**, and only there — what they hold elsewhere is untouched,
+because nothing about those products changed.
+
+That is the case where the software does know something has changed, so
+waiting for an administrator to notice a second time would be waiting for
+nothing. The other trigger ACC-43 names is deactivating an account, and there
+is no such thing here: an account is recorded or it is not.
+
+### Nobody learns who has an account by being refused
+
+Every one of these resolves the person **after** deciding whether the caller
+may act at all. Resolving first and refusing after answers "does this person
+have an account here" for anybody signed in — a name nobody holds and a name
+somebody holds come back differently, which is a directory of the organization
+readable by every account. It is the same rule as a finding somebody may not
+reach answering as one that is not there, applied to people.
 
 ## Roles are held against a product
 

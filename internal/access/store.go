@@ -338,6 +338,21 @@ func (s *Store) Withdraw(ctx context.Context, personID, productID int64, role Ro
 	return nil
 }
 
+// HoldsAnythingIn reports whether somebody still has any role on a product.
+//
+// Asked after a role is withdrawn, because the last one going is what turns
+// their assigned work into work nobody can reach: assigned, so not in the
+// shared queue, and assigned to somebody who can no longer open it.
+func (s *Store) HoldsAnythingIn(ctx context.Context, personID, productID int64) (bool, error) {
+	n, err := s.db.NewSelect().Model((*Grant)(nil)).
+		Where("person_id = ?", personID).
+		Where("product_id = ?", productID).Count(ctx)
+	if err != nil {
+		return false, fmt.Errorf("read what they still hold: %w", err)
+	}
+	return n > 0, nil
+}
+
 // Keys lists the pipeline credentials, without their secrets.
 //
 // There is nothing to list them with: what is stored is a digest, and that is

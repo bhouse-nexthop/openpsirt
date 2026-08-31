@@ -465,8 +465,12 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 	return evidence, nil
 }
 
-// AtComponent lists the open issues against one component of a build, as
-// places a decision can be made about.
+// AtComponent lists the open issues against one component of a build, with
+// every place each one occupies.
+//
+// Every place, because a decision is keyed on one — so a claim built from a
+// single arbitrary place would silence one consumer and leave the others open
+// while reporting that it had covered them.
 //
 // The set somebody narrows before claiming something about all of it. What
 // narrows it is theirs — a text match on what a report says is how a candidate
@@ -502,8 +506,13 @@ func (s *Store) AtComponent(ctx context.Context, subject access.Subject, targetI
 		return q
 	}
 
-	total, err := narrow(s.db.NewSelect()).
-		ColumnExpr("COUNT(DISTINCT f.vulnerability_id)").Count(ctx)
+	// Grouped and counted, not COUNT DISTINCT: with no GROUP BY, Count() emits
+	// its own count(*) and the expression never reaches the statement, so the
+	// total counted places while the list counts issues.
+	total, err := s.db.NewSelect().
+		TableExpr(`(?) AS "grouped"`, narrow(s.db.NewSelect()).
+			ColumnExpr("f.vulnerability_id").GroupExpr("f.vulnerability_id")).
+		Count(ctx)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count what is open against this component: %w", err)
 	}
@@ -515,6 +524,7 @@ func (s *Store) AtComponent(ctx context.Context, subject access.Subject, targetI
 		ComponentUpstream string `bun:"component_upstream"`
 		ConsumerUpstream  string `bun:"consumer_upstream"`
 		Severity          int    `bun:"severity_centi"`
+		FixedIn           string `bun:"fixed_in"`
 		Places            int    `bun:"places"`
 	}
 	err = narrow(s.db.NewSelect()).
@@ -522,10 +532,15 @@ func (s *Store) AtComponent(ctx context.Context, subject access.Subject, targetI
 		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("MIN(f.place_identity) AS place_identity").
+		// The most restrictive visibility any place of this issue has. MIN
+		// sorts 'private' before 'public' alphabetically, which happens to be
+		// the safe direction — stated here so it is a rule rather than an
+		// accident somebody normalizes away.
 		ColumnExpr("MIN(f.visibility) AS visibility").
 		ColumnExpr("MIN("+ComponentUpstreamExpr+") AS component_upstream").
 		ColumnExpr("MIN("+ConsumerUpstreamExpr+") AS consumer_upstream").
 		ColumnExpr("MIN(COALESCE(v.score_centi, 0)) AS severity_centi").
+		ColumnExpr("MIN(COALESCE(f.fixed_in, '')) AS fixed_in").
 		ColumnExpr("COUNT(*) AS places").
 		GroupExpr("f.vulnerability_id").
 		OrderExpr("MAX(f.urgency) DESC, f.vulnerability_id").
@@ -535,15 +550,73 @@ func (s *Store) AtComponent(ctx context.Context, subject access.Subject, targetI
 		return nil, 0, fmt.Errorf("read what is open against this component: %w", err)
 	}
 
+	// Every place, fetched for the page of issues rather than one arbitrary
+	// place per issue. A decision is keyed on a place, so a claim built from
+	// MIN(place_identity) covers one consumer and leaves the rest open while
+	// reporting that it covered them.
+	issues := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		issues = append(issues, row.VulnerabilityID)
+	}
+	everywhere, err := s.placesOf(ctx, targetID, componentID, issues, visible)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	at := make([]Deciding, 0, len(rows))
 	for _, row := range rows {
-		at = append(at, Deciding{
-			ProductID: productID, VulnerabilityID: row.VulnerabilityID,
+		for _, place := range everywhere[row.VulnerabilityID] {
+			place.ProductID = productID
+			place.VulnerabilityID = row.VulnerabilityID
+			place.SeverityCenti = row.Severity
+			place.FixedIn = row.FixedIn
+			place.Places = row.Places
+			at = append(at, place)
+		}
+	}
+	return at, total, nil
+}
+
+// placesOf reads every place a set of issues occupies at one component.
+func (s *Store) placesOf(ctx context.Context, targetID, componentID int64, issues []int64,
+	visible []access.Visibility) (map[int64][]Deciding, error) {
+
+	everywhere := map[int64][]Deciding{}
+	if len(issues) == 0 {
+		return everywhere, nil
+	}
+	var rows []struct {
+		VulnerabilityID   int64  `bun:"vulnerability_id"`
+		PlaceIdentity     string `bun:"place_identity"`
+		Visibility        string `bun:"visibility"`
+		ComponentUpstream string `bun:"component_upstream"`
+		ConsumerUpstream  string `bun:"consumer_upstream"`
+	}
+	err := s.db.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN component AS c ON c.id = f.component_id").
+		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
+		ColumnExpr("f.vulnerability_id AS vulnerability_id").
+		ColumnExpr("f.place_identity AS place_identity").
+		ColumnExpr("f.visibility AS visibility").
+		ColumnExpr(ComponentUpstreamExpr+" AS component_upstream").
+		ColumnExpr(ConsumerUpstreamExpr+" AS consumer_upstream").
+		Where("f.target_id = ?", targetID).
+		Where("f.component_id = ?", componentID).
+		Where("f.closed_run_id IS NULL").
+		Where("f.vulnerability_id IN (?)", bun.List(issues)).
+		Where("f.visibility IN (?)", bun.List(visible)).
+		GroupExpr("f.vulnerability_id, f.place_identity, f.visibility, c.upstream_version, c.version, uc.upstream_version, uc.version").
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("read where these sit: %w", err)
+	}
+	for _, row := range rows {
+		everywhere[row.VulnerabilityID] = append(everywhere[row.VulnerabilityID], Deciding{
 			PlaceIdentity:     row.PlaceIdentity,
 			Visibility:        access.AsVisibility(row.Visibility),
 			ComponentUpstream: row.ComponentUpstream, ConsumerUpstream: row.ConsumerUpstream,
-			SeverityCenti: row.Severity, Places: row.Places,
 		})
 	}
-	return at, total, nil
+	return everywhere, nil
 }

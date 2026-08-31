@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
@@ -18,6 +19,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/httpapi"
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 	"github.com/bhouse-nexthop/openpsirt/internal/schema"
+	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 	"github.com/bhouse-nexthop/openpsirt/internal/signin"
 )
 
@@ -49,6 +51,9 @@ type signInReach struct {
 	handler  http.Handler
 	provider *stubProvider
 	rights   *access.Store
+	// db is the same database the handler reads, so a test can change a
+	// setting the sign-in path is supposed to obey.
+	db *database.DB
 }
 
 func eachSignIn(t *testing.T, fn func(t *testing.T, r *signInReach)) {
@@ -96,7 +101,7 @@ func eachSignIn(t *testing.T, fn func(t *testing.T, r *signInReach)) {
 			// it was registered with, so it cannot be taken from the request.
 			BaseURL: "http://example.com",
 		})
-		fn(t, &signInReach{handler: handler, provider: provider, rights: rights})
+		fn(t, &signInReach{handler: handler, provider: provider, rights: rights, db: db})
 	})
 }
 
@@ -321,6 +326,42 @@ func TestAnIdentityTokenNamingNobodyIsRefused(t *testing.T) {
 		r.provider.says = &signin.Identity{Subject: "", Username: "granted"}
 		if rec := callback(t, r, "the-state", "a-code", true); rec.Code != http.StatusUnauthorized {
 			t.Errorf("a sign-in naming no subject answered %d, want 401", rec.Code)
+		}
+	})
+}
+
+func TestHowLongASignInLastsIsTheSettingAnAdministratorChanged(t *testing.T) {
+	// The setting is offered on the administration screen, so it has to be the
+	// one that decides. It was offered and read by nothing for a while, and a
+	// value somebody sets that changes nothing is worse than not offering it.
+	eachSignIn(t, func(t *testing.T, r *signInReach) {
+		const chosen = 90 * time.Minute
+		if err := setting.NewStore(r.db.DB).Set(t.Context(),
+			setting.SessionLifetime, chosen.String()); err != nil {
+			t.Fatal(err)
+		}
+
+		rec := callback(t, r, "the-state", "a-code", true)
+		if rec.Code != http.StatusFound {
+			t.Fatalf("signing in answered %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var sessions []struct {
+			ExpiresAt time.Time `bun:"expires_at"`
+		}
+		if err := r.db.DB.NewSelect().Table("session").
+			ColumnExpr("expires_at").Scan(t.Context(), &sessions); err != nil {
+			t.Fatal(err)
+		}
+		if len(sessions) != 1 {
+			t.Fatalf("%d sessions were started, want 1", len(sessions))
+		}
+		// Against the default rather than against an exact instant: what is
+		// being tested is that the setting decided, not the clock.
+		lasts := time.Until(sessions[0].ExpiresAt)
+		if lasts > 2*chosen || lasts >= access.DefaultSessionLifetime {
+			t.Errorf("the session lasts %v, want about %v — the setting was not read",
+				lasts.Round(time.Minute), chosen)
 		}
 	})
 }

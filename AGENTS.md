@@ -76,7 +76,10 @@ unpick later.
 | **An affected-row count means rows matched, not rows changed.** A conditional update reads it as "the row was still there", so a write whose values were already correct must not report zero — the connection settings make that true on all four engines | DAT-35 |
 | **Exported code with no caller is a defect, not spare capacity.** A store method nothing routes to, a renderer nothing renders with — the analysis gate only sees unexported symbols, so this is checked separately and the check is not optional | — |
 | **A test for a control is verified by breaking the control.** Watch it fail for the reason it names, then put the control back. A control whose test has never been seen to fail is a control nobody has tested | — |
+| **A request is authorized before any name in it is resolved.** Resolving first and refusing after makes the refusal informative: a name nobody holds and a name somebody holds come back differently, which turns a lookup into a directory | ACC-56 |
+| **Every setting offered is one something reads.** A value somebody sets that changes nothing is worse than not offering it, and zero or negative reads as unset everywhere — so those are refused rather than stored | — |
 | **A name people type is matched without regard to capitals; an identity a provider hands over is matched exactly.** Normalize the stored value rather than asking an engine to compare loosely — the engines default differently, and a normalized value compares the same under any of them | MDL-21 |
+| **Every identifier a query invents is quoted too**, and named around the reserved words. A derived table called `groups` is a syntax error on MySQL 8 and fine on the other three | DAT-36 |
 | **Every identifier in the schema is quoted.** A reserved word is only reserved when bare, and the four engines do not agree on which words those are — an unquoted name fails on whichever engine somebody is least likely to be running | DAT-33, DAT-34 |
 
 ## Nothing is made faster until it is measured slow
@@ -113,6 +116,11 @@ function" is all it takes (STA-18).
 issues is deliberate and useful; one action writing an unbounded number of rows
 is a denial of service somebody triggers by accident. The cap is a setting, not
 a constant, and there is always a cap (TRI-32).
+
+**Bound what is written, not what was asked for.** The two differ whenever one
+named thing expands into many rows — an issue sits at many places — so a limit
+checked against the request lets a small request do a large amount of work
+(TRI-35).
 
 ## Source file size
 

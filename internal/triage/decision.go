@@ -14,6 +14,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/markdown"
 )
 
@@ -51,9 +52,14 @@ type Decision struct {
 	// the claim is still proposed and still suppresses nothing, and what
 	// changed is whose turn it is.
 	SentBackAt *time.Time `bun:"sent_back_at"`
-	ProposedBy int64      `bun:"proposed_by,notnull"`
-	ProposedAt time.Time  `bun:"proposed_at,notnull"`
-	RevisionID *int64     `bun:"revision_id"`
+	// SelectedBy is how the set this was part of was narrowed, for a claim
+	// recorded as one of many in a single action. Null for a claim made on
+	// its own — and never the claim itself: "these matched a word" is how a
+	// candidate was found, not a reason anybody would accept.
+	SelectedBy *string   `bun:"selected_by"`
+	ProposedBy int64     `bun:"proposed_by,notnull"`
+	ProposedAt time.Time `bun:"proposed_at,notnull"`
+	RevisionID *int64    `bun:"revision_id"`
 	// LiveKey is what this decision is a claim about, while it is still a live
 	// claim. Null once it is withdrawn or has lapsed, which is what lets a
 	// fresh claim be made at a place a dead one used to cover.
@@ -193,6 +199,10 @@ type Proposal struct {
 	// Recorded with the claim so that a later re-affirmation can ask whether
 	// it has risen since.
 	SeverityCenti int
+	// SelectedBy is how the set was narrowed, where this is one of many
+	// recorded together. Recorded with the claim so that "how were these
+	// chosen" has an answer later (TRI-32).
+	SelectedBy string
 	// NeedsApproval says a second person must agree before this takes effect.
 	// Worked out by the caller through NeedsApproval, and recorded, because a
 	// claim that is waiting and one that is in force must be distinguishable
@@ -272,6 +282,10 @@ func (s *Store) propose(ctx context.Context, p Proposal) (*Decision, error) {
 	if p.SeverityCenti > 0 {
 		judged := p.SeverityCenti
 		decision.SeverityCenti = &judged
+	}
+	if p.SelectedBy != "" {
+		how := p.SelectedBy
+		decision.SelectedBy = &how
 	}
 	if _, err := s.db.NewInsert().Model(decision).Exec(ctx); err != nil {
 		if database.IsDuplicate(err) {
@@ -391,6 +405,23 @@ func liveKeyFor(at Place) string {
 // it: two claims about one finding are a disagreement, and a disagreement
 // belongs in one place where both sides are readable.
 var ErrAlreadyDecided = errors.New("a decision already stands here")
+
+// ErrNothingOpen says a selection named nothing that is actually open where it
+// was claimed to be.
+//
+// Its own error because it is not a refusal and not a fault in what was
+// written: whatever was selected has since been fixed, closed or renamed, and
+// what the caller should do about it is look again.
+var ErrNothingOpen = errors.New("nothing named here is open")
+
+// orEmpty reads a stored version back as the string a place states. The
+// inverse of text, which is why neither is named for what it does to a value.
+func orEmpty(stored *string) string {
+	if stored == nil {
+		return ""
+	}
+	return *stored
+}
 
 // visibilityOf reads a place's visibility, treating anything unset as not
 // disclosed.
@@ -519,6 +550,29 @@ func narrowedBy(query *bun.SelectQuery, subject access.Subject, column string,
 	})
 }
 
+// DefaultTogetherCap is how many findings one action may claim about when
+// nobody has set a limit.
+//
+// Generous, because the case this exists for is a kernel: a real image put
+// 305,487 findings against one, and a person narrowing that down to the
+// drivers their build does not include is doing the right thing with a long
+// list. The bound is there because an unbounded write is something somebody
+// triggers by accident, not because two thousand is a suspicious number.
+const DefaultTogetherCap = 2000
+
+// TogetherAt names what one judgment covers: some issues, and the build and
+// component they sit at.
+//
+// The places themselves are not named. A caller free to name a place would be
+// choosing which decisions apply where, and would be naming rows it read
+// before this ran — so they are resolved here, inside the transaction that
+// writes.
+type TogetherAt struct {
+	TargetID         int64
+	ComponentID      int64
+	VulnerabilityIDs []int64
+}
+
 // Together records the same judgment against many issues at one component.
 //
 // The transpose of grouping. One issue across many places is what a decision
@@ -528,20 +582,25 @@ func narrowedBy(query *bun.SelectQuery, subject access.Subject, column string,
 // which nobody does, or hiding them, which is refused.
 //
 // One outcome, one justification, one reasoning, one approval, and a separate
-// record per issue. Each is keyed and expires on its own, which is what makes
-// one action across many findings defensible rather than a blanket claim.
+// record per issue **and per place**. Each is keyed and expires on its own,
+// which is what makes one action across many findings defensible rather than a
+// blanket claim — and covering every place is what stops it reporting that it
+// answered a consumer it left open.
+//
+// Everything authorization turns on is read inside the transaction that writes
+// (DAT-31). Which product these sit in, and whether any of them is undisclosed,
+// decide whether this person may make the claim at all; read before the
+// transaction, they would be answers about a database that has since moved.
 //
 // Bounded, because one action writing an unbounded number of rows is a denial
-// of service somebody triggers by accident.
-func (s *Store) Together(ctx context.Context, subject access.Subject, at []Place, p Proposal,
+// of service somebody triggers by accident. The bound is checked against the
+// places this actually resolves to — the count somebody is asked to narrow is
+// the number of rows about to be written, not the number of names they typed.
+func (s *Store) Together(ctx context.Context, subject access.Subject, at TogetherAt, p Proposal,
 	cap int) ([]int64, error) {
 
-	if len(at) == 0 {
+	if len(at.VulnerabilityIDs) == 0 {
 		return nil, fmt.Errorf("nothing was selected, so there is nothing to claim")
-	}
-	if cap > 0 && len(at) > cap {
-		return nil, fmt.Errorf("that is %d findings and the limit here is %d: narrow the "+
-			"selection, or raise the limit deliberately", len(at), cap)
 	}
 	if p.By != subject.ID {
 		return nil, fmt.Errorf("a decision is recorded as made by whoever made it")
@@ -560,12 +619,25 @@ func (s *Store) Together(ctx context.Context, subject access.Subject, at []Place
 		recorded = recorded[:0]
 		within := &Store{db: tx, now: s.now}
 
-		for _, place := range at {
-			if !mayDecide(subject, place.ProductID, visibilityOf(place)) {
+		places, err := placesWithin(ctx, tx, subject, at)
+		if err != nil {
+			return err
+		}
+		if len(places) == 0 {
+			return fmt.Errorf("%w against that component", ErrNothingOpen)
+		}
+		if cap > 0 && len(places) > cap {
+			return fmt.Errorf("that is %d findings and the limit here is %d: narrow the "+
+				"selection, or raise the limit deliberately", len(places), cap)
+		}
+
+		for _, place := range places {
+			if !mayDecide(subject, place.ProductID, visibilityOf(place.Place)) {
 				return ErrNotTheirs
 			}
 			each := p
-			each.Place = place
+			each.Place = place.Place
+			each.SeverityCenti = place.SeverityCenti
 			if err := each.valid(); err != nil {
 				return err
 			}
@@ -589,4 +661,112 @@ func (s *Store) Together(ctx context.Context, subject access.Subject, at []Place
 		return nil, err
 	}
 	return recorded, nil
+}
+
+// onlyDecidable narrows a places query to what this subject may argue about.
+//
+// Written here rather than through narrowedBy because the product and the
+// visibility sit on different tables in this statement — the product on the
+// stream, the visibility on the finding — and narrowedBy takes one alias for
+// both.
+func onlyDecidable(query *bun.SelectQuery, subject access.Subject) *bun.SelectQuery {
+	if subject.Kind != access.Person {
+		return query.Where("1 = 0")
+	}
+	products, all := subject.Products()
+	if all {
+		return query
+	}
+	var private, public []int64
+	for _, id := range products {
+		switch {
+		case mayDecide(subject, id, access.Private):
+			private = append(private, id)
+		case mayDecide(subject, id, access.Public):
+			public = append(public, id)
+		}
+	}
+	if len(private) == 0 && len(public) == 0 {
+		return query.Where("1 = 0")
+	}
+	return query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+		if len(private) > 0 {
+			q = q.WhereOr("st.product_id IN (?)", bun.List(private))
+		}
+		if len(public) > 0 {
+			q = q.WhereOr("st.product_id IN (?) AND f.visibility = ?",
+				bun.List(public), access.Public)
+		}
+		return q
+	})
+}
+
+// resolved is a place a judgment is about to be written against, with how bad
+// the issue there is judged to be.
+type resolved struct {
+	Place
+	SeverityCenti int
+}
+
+// placesWithin reads every open place the named issues occupy at one
+// component, in the transaction that is about to write against them.
+//
+// Narrowed to what this subject may read, like every other query here. A claim
+// therefore covers every place the person making it can see, and the places
+// they cannot are left open for whoever can — which is the ordinary division
+// of work rather than a gap. The alternative, refusing the whole action
+// because something undisclosed sits at the same component, answers a person
+// who picked from the list they were shown with a bare "not found" and no way
+// to tell why.
+func placesWithin(ctx context.Context, tx bun.Tx, subject access.Subject,
+	at TogetherAt) ([]resolved, error) {
+
+	var rows []struct {
+		ProductID         int64  `bun:"product_id"`
+		VulnerabilityID   int64  `bun:"vulnerability_id"`
+		PlaceIdentity     string `bun:"place_identity"`
+		Visibility        string `bun:"visibility"`
+		ComponentUpstream string `bun:"component_upstream"`
+		ConsumerUpstream  string `bun:"consumer_upstream"`
+		Severity          int    `bun:"severity_centi"`
+	}
+	query := tx.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN target AS tg ON tg.id = f.target_id").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+		Join("JOIN component AS c ON c.id = f.component_id").
+		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
+		ColumnExpr("st.product_id AS product_id").
+		ColumnExpr("f.vulnerability_id AS vulnerability_id").
+		ColumnExpr("f.place_identity AS place_identity").
+		ColumnExpr("f.visibility AS visibility").
+		ColumnExpr(finding.ComponentUpstreamExpr+" AS component_upstream").
+		ColumnExpr(finding.ConsumerUpstreamExpr+" AS consumer_upstream").
+		ColumnExpr("COALESCE(v.score_centi, 0) AS severity_centi").
+		Where("f.target_id = ?", at.TargetID).
+		Where("f.component_id = ?", at.ComponentID).
+		Where("f.closed_run_id IS NULL").
+		Where("f.vulnerability_id IN (?)", bun.List(at.VulnerabilityIDs)).
+		GroupExpr("st.product_id, f.vulnerability_id, f.place_identity, f.visibility, " +
+			"c.upstream_version, c.version, uc.upstream_version, uc.version, v.score_centi").
+		OrderExpr("f.vulnerability_id, f.place_identity")
+	if err := onlyDecidable(query, subject).Scan(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("read where these issues sit: %w", err)
+	}
+
+	places := make([]resolved, 0, len(rows))
+	for _, row := range rows {
+		places = append(places, resolved{
+			Place: Place{
+				ProductID: row.ProductID, VulnerabilityID: row.VulnerabilityID,
+				PlaceIdentity:     row.PlaceIdentity,
+				Visibility:        access.AsVisibility(row.Visibility),
+				ComponentUpstream: row.ComponentUpstream,
+				ConsumerUpstream:  row.ConsumerUpstream,
+			},
+			SeverityCenti: row.Severity,
+		})
+	}
+	return places, nil
 }

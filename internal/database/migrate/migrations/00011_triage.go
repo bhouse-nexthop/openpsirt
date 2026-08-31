@@ -93,6 +93,14 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 			"sent_back_at"               ` + t.timestamp + ` NULL,
 			"proposed_by"                ` + t.ref + ` NOT NULL,
 			"proposed_at"                ` + t.timestamp + ` NOT NULL,
+			-- How the set this claim was part of was narrowed, where it was
+			-- one of many recorded in a single action. Kept because "how were
+			-- these chosen" is the question asked of a bulk judgment months
+			-- later, and the words that narrowed the list are not in the
+			-- reasoning: narrowing is how a candidate was found, and the
+			-- reasoning is why the claim is true. Null for a claim made on
+			-- its own.
+			"selected_by"                ` + t.free + ` NULL,
 			-- What the current reasoning is. An approval points at one
 			-- revision rather than at the decision, so this moving is exactly
 			-- what withdraws an approval.
