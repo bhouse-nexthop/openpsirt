@@ -283,7 +283,7 @@ thing rather than a gap somebody rediscovers by auditing.
 
 | Decision | Waits for | Why not now |
 |---|---|---|
-| ACC-43, ACC-45 | Assignment, which does not exist | Both are about work assigned to somebody who has gone. Neither can be built before there is such a thing as assigned work, and assignment is an interface concern rather than a data one |
+| ACC-45 | Somebody being told | Assignment exists now, and so does releasing what an absent person holds. What is missing is the prompt — noticing that somebody has not signed in for a while *and* holds work — which is a notification rather than a screen |
 | ACC-44 | Nothing — it is a statement | That we cannot detect somebody has left is recorded so nobody assumes a cleanup happens that never does |
 | MDL-12, MDL-13 | End-of-life dates | Whole feature, scheduled with lifecycle |
 | MDL-16 | The tree views | Interface |

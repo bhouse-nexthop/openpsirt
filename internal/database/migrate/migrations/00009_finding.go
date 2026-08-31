@@ -214,6 +214,20 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			-- bump did not resolve it, which is aimed at whoever did the bump
 			-- rather than at whoever triages.
 			"arrived_from"     ` + t.free + ` NULL,
+			-- Who is dealing with this. Null is nobody, which is a state to be
+			-- asked about rather than an absence: work nobody owns is what
+			-- falls between people, and it is invisible unless it can be
+			-- listed.
+			--
+			-- No foreign key, because people are declared after findings and
+			-- one engine cannot add a constraint to a table afterwards. Worth
+			-- knowing how that surfaced: with the constraint written here,
+			-- SQLite created the table happily against a person table that did
+			-- not exist yet, and PostgreSQL refused outright. Nobody is ever
+			-- deleted — an account is deactivated and its work released — so
+			-- what the constraint would prevent cannot arise.
+			"assigned_to"      ` + t.refNull + ` NULL,
+			"assigned_at"      ` + t.timestamp + ` NULL,
 			"last_changed_at"  ` + t.timestamp + ` NOT NULL,
 			"opened_run_id"    ` + t.ref + ` NOT NULL,
 			"closed_run_id"    ` + t.refNull + ` NULL,
@@ -240,6 +254,10 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 		// itself is over groups and cannot be served by an index however it is
 		// built — what this removes is the row lookup per finding behind the
 		// aggregate, which is the part that scales with the image.
+		// Both directions are asked constantly: what one person holds, and what
+		// nobody holds. The second is the one that matters and the one a plain
+		// index on the column would serve badly, since it is a null lookup.
+		`CREATE INDEX "finding_assigned_idx" ON "finding" ("assigned_to", "closed_run_id")`,
 		`CREATE INDEX "finding_urgency_idx" ON "finding" ("target_id", "closed_run_id", "urgency")`,
 	}
 

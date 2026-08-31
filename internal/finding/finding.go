@@ -115,6 +115,17 @@ type Finding struct {
 	Urgency       int64 `bun:"urgency,notnull"`
 	RankExploited bool  `bun:"urgency_exploited,notnull"`
 	RankShipped   bool  `bun:"urgency_shipped,notnull"`
+	// AssignedTo is who is dealing with this, and AssignedAt is when they were
+	// given it. Absent means nobody, which is a state worth being able to ask
+	// about rather than an empty column: work nobody owns is the thing that
+	// falls between people.
+	//
+	// Held per finding rather than per group, because the rows are what
+	// everything else is keyed on — but it is set for a whole group at once,
+	// since assigning one place of an issue and not another is not something
+	// anybody means to do.
+	AssignedTo *int64     `bun:"assigned_to"`
+	AssignedAt *time.Time `bun:"assigned_at"`
 	// LastChangedAt is when anything about this finding last moved — a fix
 	// appearing, or the build answering it. A finding open for years outlives
 	// any record of the change kept elsewhere, so it carries its own.

@@ -526,3 +526,95 @@ func TestAFindingCarriesEverythingNeededToActOnIt(t *testing.T) {
 		}
 	})
 }
+
+func TestWorkNobodyOwnsCanBeFoundAndGivenToSomebody(t *testing.T) {
+	// Work falling between people is what hides when every screen shows one
+	// product: assigned, so not in the shared list; assigned to nobody who is
+	// looking, so not in anybody's own.
+	eachReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+		const at = "/v1/products/mine/streams/master/variants/broadcom" +
+			"/findings/CVE-2026-9999/components/libnl-3-200/assignment"
+
+		var waiting struct {
+			Items []struct {
+				Vulnerability string `json:"vulnerability"`
+				Component     string `json:"component"`
+				Product       string `json:"product"`
+			} `json:"items"`
+			Total int `json:"total"`
+		}
+		read(t, r, "triager", "/v1/unassigned", &waiting)
+		if waiting.Total != 1 || len(waiting.Items) != 1 {
+			t.Fatalf("%d findings are waiting for an owner, want 1", waiting.Total)
+		}
+		if waiting.Items[0].Component != "libnl-3-200" || waiting.Items[0].Product != "Mine" {
+			t.Errorf("the unassigned row does not say what it is: %+v", waiting.Items[0])
+		}
+
+		if got := asPerson(t, r, "triager", http.MethodPut, at,
+			`{"person":"reader"}`); got.Code != http.StatusNoContent {
+			t.Fatalf("assigning answered %d: %s", got.Code, got.Body.String())
+		}
+
+		read(t, r, "triager", "/v1/unassigned", &waiting)
+		if waiting.Total != 0 {
+			t.Errorf("%d findings still have no owner after being assigned", waiting.Total)
+		}
+
+		var holdings struct {
+			Items []struct {
+				Person string `json:"person"`
+				Open   int    `json:"open"`
+			} `json:"items"`
+		}
+		read(t, r, "triager", "/v1/assignments", &holdings)
+		if len(holdings.Items) != 1 || holdings.Items[0].Person != "reader" {
+			t.Fatalf("who is holding what reads as %+v", holdings.Items)
+		}
+
+		// Handing it back is the same action, not a different one.
+		if got := asPerson(t, r, "triager", http.MethodPut, at,
+			`{"person":""}`); got.Code != http.StatusNoContent {
+			t.Fatalf("handing it back answered %d: %s", got.Code, got.Body.String())
+		}
+		read(t, r, "triager", "/v1/unassigned", &waiting)
+		if waiting.Total != 1 {
+			t.Errorf("handing it back left %d waiting for an owner", waiting.Total)
+		}
+	})
+}
+
+func TestOnlyAnAdministratorMovesSomebodyElsesWork(t *testing.T) {
+	// A person hands back their own by assigning it to nobody. Moving what
+	// somebody else was given is an administrative act, and it is the one that
+	// matters when they have gone.
+	eachReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+		const at = "/v1/products/mine/streams/master/variants/broadcom" +
+			"/findings/CVE-2026-9999/components/libnl-3-200/assignment"
+		if got := asPerson(t, r, "triager", http.MethodPut, at,
+			`{"person":"reader"}`); got.Code != http.StatusNoContent {
+			t.Fatal(got.Body.String())
+		}
+
+		release := "/v1/people/reader/assignments/release"
+		if got := asPerson(t, r, "triager", http.MethodPost, release, `{}`); got.Code < 400 {
+			t.Errorf("a triager released somebody else's work: %d", got.Code)
+		}
+
+		got := asPerson(t, r, "admin", http.MethodPost, release, `{}`)
+		if got.Code != http.StatusOK {
+			t.Fatalf("an administrator releasing work answered %d: %s", got.Code, got.Body.String())
+		}
+		var moved struct {
+			Moved int64 `json:"moved"`
+		}
+		if err := json.Unmarshal(got.Body.Bytes(), &moved); err != nil {
+			t.Fatal(err)
+		}
+		if moved.Moved == 0 {
+			t.Error("releasing an absent person's work moved nothing")
+		}
+	})
+}

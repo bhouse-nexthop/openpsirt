@@ -3,7 +3,7 @@
 Who is asking, and what they may reach.
 
 Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-50 to ACC-53, SEC-03,
-SEC-07, SEC-09.
+SEC-07, SEC-09, ACC-43, ACC-44, ACC-54.
 
 ## Authenticating is not being authorized
 
@@ -27,6 +27,44 @@ between an embarrassment and an incident.
 
 Anything unrecognized reads as **not disclosed**. A column added later would
 otherwise default every row that predates it to visible.
+
+## Work is assigned, and comes back when somebody goes
+
+A finding can be given to a person. It is set for a whole group at once — one
+issue in one component, however many places it sits at — because assigning one
+place and not another is not something anybody means to do.
+
+**Handing something back is the same operation as giving it out**, with nobody
+as the recipient. Two paths for what is one act drift apart, and the one used
+less often is the one that ends up wrong.
+
+**Nobody is assigned is a state to be asked about**, not an absence. Work that
+nobody owns is what falls between people, and it is invisible unless it can be
+listed — so it is listed across every product somebody can see, since work
+falling between people is exactly what hides when every screen shows one
+product and nobody looks at the others.
+
+**Assigning covers what is there now.** Findings arriving under the same
+component tomorrow start unassigned and appear in that list. A standing rule —
+this subtree belongs to that person — is a different feature and worth having,
+but conflating it with assignment means neither behaves predictably (ACC-54).
+
+### Somebody leaving
+
+Nothing tells this software that somebody has gone. Membership is read at
+sign-in, and a person who has left never signs in again, so it is an action an
+administrator takes rather than something discovered.
+
+Until it is taken, their work is in no list at all: not in the shared one
+because it is assigned, and not in anybody's own because they are not here.
+That is worse than visibly orphaned, which is why releasing it exists as its
+own operation and why an administrator can see how much each person holds.
+
+Two answers, because they are different questions. **Releasing** says nobody is
+dealing with it and puts it back where it can be picked up — the honest answer
+when who takes it on has not been decided. **Handing over** says who is dealing
+with it now. Only an administrator does either; a person hands back their own by
+assigning it to nobody.
 
 ## Roles are held against a product
 
