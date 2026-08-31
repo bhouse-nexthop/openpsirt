@@ -239,6 +239,52 @@ What is being typed after an `@` is read from the text before the cursor rather
 than tracked as state, so it stays right however somebody edits — pasting,
 deleting, or clicking elsewhere in the line.
 
+## Running it locally
+
+Two problems have to be solved to see this on a machine: signing in without an
+identity provider, and having anything to look at.
+
+**Signing in.** The server already supports a trusted header — a deployment
+behind a proxy that authenticates for it — and in development the Vite dev
+server is that proxy. It injects the header only when `OPENPSIRT_DEV_USER` is
+set, and it only means anything if the server was started trusting that header
+from that address. Two deliberate settings, neither of which a real deployment
+has, in a file that configures the dev server rather than the thing that serves
+the built interface.
+
+**A write needs an `Origin` the server recognizes.** The trusted-header path
+carries no session to hold an echoed token, so the forgery guard falls back to
+where the request came from — and a deployment on that path answers a
+state-changing request only when it has been told which origins it serves. In
+development the browser's origin is the dev server's, not the API's, so
+`OPENPSIRT_BASE_URL` has to name it. Reads work without this and writes do not,
+which is a confusing way to find out; it is written down here so nobody has to.
+
+    make web && make build          # or run vite for hot reloading
+
+    OPENPSIRT_DATABASE_URL=sqlite://dev.db \
+    OPENPSIRT_PLAIN_HTTP=1 \
+    OPENPSIRT_BOOTSTRAP_ADMINS=proxy:you \
+    OPENPSIRT_TRUSTED_HEADER=X-User \
+    OPENPSIRT_TRUSTED_SOURCES=127.0.0.1/32 \
+    OPENPSIRT_BASE_URL=http://localhost:5173 \
+    ./bin/openpsirt
+
+    OPENPSIRT_DEV_USER=you npm --prefix web run dev
+
+The bootstrap name carries the provider prefix the trusted-header path gives
+it, so `X-User: you` becomes `proxy:you` and that is what has to be named as an
+administrator.
+
+**Something to look at.** Declare a product, a branch and a variant, then send
+the full-size fixture in `internal/sbom/testdata` — a real switch image, 8,374
+components. That fills the catalog and the dependency tree.
+
+Findings need a scanner. Without `grype` on the path the upload is accepted,
+the graph is stored, and the scan step fails with a receipt saying so — which
+is the honest outcome and is what the scans list is for, but it does mean the
+triage screens stay empty until a scanner is installed.
+
 ## Not built yet
 
 Named so that what is missing is a plan rather than something rediscovered by

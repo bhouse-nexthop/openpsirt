@@ -16,6 +16,24 @@ export default defineConfig({
   server: {
     // In development the API is a separate process. Same-origin in production,
     // so nothing here needs CORS and no origin is configured in two places.
-    proxy: { "/v1": "http://localhost:8080" },
+    proxy: {
+      "/v1": {
+        target: process.env.OPENPSIRT_DEV_API ?? "http://localhost:8080",
+        changeOrigin: false,
+        // Signing in locally otherwise needs an identity provider. The server
+        // already supports a trusted header — a deployment behind a proxy that
+        // authenticates for it — and this is that proxy, for one developer on
+        // one machine.
+        //
+        // It does nothing unless OPENPSIRT_DEV_USER is set here *and* the
+        // server is started trusting that header from this address. Two
+        // deliberate settings, neither of which a real deployment has, and
+        // this file never ships: it configures the dev server, which is not
+        // the thing that serves the built interface.
+        headers: process.env.OPENPSIRT_DEV_USER
+          ? { "X-User": process.env.OPENPSIRT_DEV_USER }
+          : undefined,
+      },
+    },
   },
 });
