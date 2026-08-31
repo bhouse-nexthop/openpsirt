@@ -241,49 +241,58 @@ deleting, or clicking elsewhere in the line.
 
 ## Running it locally
 
-Two problems have to be solved to see this on a machine: signing in without an
-identity provider, and having anything to look at.
+    make demo                       # build, start, seed, and say where to go
+    make demo DEMO_HOST=yourbox     # if you browse by something but localhost
 
-**Signing in.** The server already supports a trusted header — a deployment
-behind a proxy that authenticates for it — and in development the Vite dev
-server is that proxy. It injects the header only when `OPENPSIRT_DEV_USER` is
-set, and it only means anything if the server was started trusting that header
-from that address. Two deliberate settings, neither of which a real deployment
-has, in a file that configures the dev server rather than the thing that serves
-the built interface.
+`make demo` is the whole of it. It builds the interface and the binary, starts
+both, declares somewhere to file scans against, sends the full-size fixture
+from `internal/sbom/testdata`, and prints the address. `make demo-status` says
+whether the scan has landed and how much it found; `make demo-down` stops it;
+`make demo-reset` throws the database away.
+
+Seeding is idempotent — declaring something that exists succeeds and changes
+nothing, and a document already ingested is recognized rather than read again —
+so it can be run repeatedly without tearing anything down.
+
+Four things it settles, each of which is a wrong answer somebody would
+otherwise arrive at by experiment:
+
+**Signing in without an identity provider.** The server supports a trusted
+header — a deployment behind a proxy that authenticates for it — and in
+development the Vite dev server is that proxy. It injects the header only when
+`OPENPSIRT_DEV_USER` is set, and that only means anything if the server was
+started trusting the header from that address. Two deliberate settings, neither
+of which a real deployment has, in a file that configures the dev server rather
+than the thing that serves the built interface.
+
+The header's identity is prefixed by the path it arrives on, so `X-User: dev`
+becomes `proxy:dev` — and that is the name the administrator has to be
+bootstrapped under.
 
 **A write needs an `Origin` the server recognizes.** The trusted-header path
 carries no session to hold an echoed token, so the forgery guard falls back to
-where the request came from — and a deployment on that path answers a
-state-changing request only when it has been told which origins it serves. In
-development the browser's origin is the dev server's, not the API's, so
-`OPENPSIRT_BASE_URL` has to name it. Reads work without this and writes do not,
-which is a confusing way to find out; it is written down here so nobody has to.
+where the request came from, and answers a state-changing request only when it
+has been told which origins it serves. The browser's origin is the dev
+server's, not the API's, so `OPENPSIRT_BASE_URL` names the former. Reads work
+without this and writes return 401 — a confusing way to find out, which is why
+`DEMO_HOST` sets all three places at once.
 
-    make web && make build          # or run vite for hot reloading
+**The dev server refuses a Host it does not know.** That is protection against
+a hostile page resolving a name to this machine, so browsing by anything but
+localhost has to name the host — a hostname rather than a wildcard, so the
+protection still means something.
 
-    OPENPSIRT_DATABASE_URL=sqlite://dev.db \
-    OPENPSIRT_PLAIN_HTTP=1 \
-    OPENPSIRT_BOOTSTRAP_ADMINS=proxy:you \
-    OPENPSIRT_TRUSTED_HEADER=X-User \
-    OPENPSIRT_TRUSTED_SOURCES=127.0.0.1/32 \
-    OPENPSIRT_BASE_URL=http://localhost:5173 \
-    ./bin/openpsirt
+**Findings need a scanner.** Without `grype` on the path the upload is
+accepted, the graph is stored, and the scan step fails with a receipt saying
+so. That is the honest outcome and it is what the scans list is for, but the
+triage screens stay empty until one is installed.
 
-    OPENPSIRT_DEV_USER=you npm --prefix web run dev
+### What it is not
 
-The bootstrap name carries the provider prefix the trusted-header path gives
-it, so `X-User: you` becomes `proxy:you` and that is what has to be named as an
-administrator.
-
-**Something to look at.** Declare a product, a branch and a variant, then send
-the full-size fixture in `internal/sbom/testdata` — a real switch image, 8,374
-components. That fills the catalog and the dependency tree.
-
-Findings need a scanner. Without `grype` on the path the upload is accepted,
-the graph is stored, and the scan step fails with a receipt saying so — which
-is the honest outcome and is what the scans list is for, but it does mean the
-triage screens stay empty until a scanner is installed.
+A demonstration deployment, not a small production one. It serves plain HTTP,
+trusts a header from loopback, and hands administration to whoever sets that
+header. Every one of those is a hole; together they are a machine somebody can
+click around on.
 
 ## Not built yet
 

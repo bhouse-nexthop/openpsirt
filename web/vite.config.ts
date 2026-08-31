@@ -14,6 +14,14 @@ export default defineConfig({
   // sanitize in, which is what jsdom is here for.
   test: { environment: "jsdom", include: ["src/**/*.test.ts"] },
   server: {
+    // Vite refuses a Host header it does not recognize, which is protection
+    // against a hostile page resolving a name to this machine. Browsing by
+    // anything but localhost therefore has to say so — a hostname, not a wild
+    // card, so the protection still means something.
+    allowedHosts: (process.env.OPENPSIRT_DEV_HOSTS ?? "")
+      .split(",")
+      .map((host) => host.trim())
+      .filter(Boolean),
     // In development the API is a separate process. Same-origin in production,
     // so nothing here needs CORS and no origin is configured in two places.
     proxy: {

@@ -37,7 +37,24 @@ LICENSE_EXCEPTIONS := modernc.org/mathutil
 
 NPM ?= npm
 
-.PHONY: unreachable all build test vet lint fmt openapi openapi-current run clean check check-packaging tools govulncheck licenses sbom web web-deps web-api web-check
+# A throwaway deployment to click around in. Everything about it is
+# overridable, because the two settings people get wrong are the host they
+# browse to and who they arrive as.
+#
+#   DEMO_HOST   what you type in the browser. Must match what the forgery
+#               guard is told to expect, which is why it appears three times
+#               below rather than once
+#   DEMO_USER   who you arrive as. The trusted-header path prefixes it, so the
+#               administrator is proxy:$(DEMO_USER)
+DEMO_HOST ?= localhost
+DEMO_PORT ?= 5173
+DEMO_API  ?= 127.0.0.1:8080
+DEMO_USER ?= dev
+DEMO_DIR  ?= $(HOME)/openpsirt-dev
+DEMO_DB   ?= $(DEMO_DIR)/dev.db
+DEMO_URL  := http://$(DEMO_HOST):$(DEMO_PORT)
+
+.PHONY: unreachable all build test vet lint fmt openapi openapi-current run clean check check-packaging tools govulncheck licenses sbom web web-deps web-api web-check demo demo-up demo-down demo-seed demo-reset demo-status
 
 all: check build
 
@@ -169,6 +186,69 @@ check-packaging:
 
 run:
 	$(GO) run ./cmd/openpsirt
+
+# Bring up something to look at, seed it, and say where to go.
+demo: build web demo-up demo-seed demo-status
+
+demo-up: demo-down
+	@mkdir -p $(DEMO_DIR)
+	@OPENPSIRT_DATABASE_URL="sqlite://$(DEMO_DB)" \
+	 OPENPSIRT_ADDR="$(DEMO_API)" \
+	 OPENPSIRT_PLAIN_HTTP=1 \
+	 OPENPSIRT_BOOTSTRAP_ADMINS="proxy:$(DEMO_USER)" \
+	 OPENPSIRT_TRUSTED_HEADER="X-User" \
+	 OPENPSIRT_TRUSTED_SOURCES="127.0.0.0/8" \
+	 OPENPSIRT_BASE_URL="$(DEMO_URL)" \
+	 nohup ./$(BIN) > $(DEMO_DIR)/api.log 2>&1 & echo $$! > $(DEMO_DIR)/api.pid
+	@OPENPSIRT_DEV_USER="$(DEMO_USER)" \
+	 OPENPSIRT_DEV_HOSTS="$(DEMO_HOST)" \
+	 nohup $(NPM) --prefix web run dev -- --host --port $(DEMO_PORT) \
+	   > $(DEMO_DIR)/web.log 2>&1 & echo $$! > $(DEMO_DIR)/web.pid
+	@sleep 6
+	@echo "api  $(DEMO_API)   log $(DEMO_DIR)/api.log"
+	@echo "web  $(DEMO_URL)   log $(DEMO_DIR)/web.log"
+
+demo-down:
+	@-pkill -f "$(BIN)" 2>/dev/null || true
+	@-pkill -f "vite.*--port $(DEMO_PORT)" 2>/dev/null || true
+	@rm -f $(DEMO_DIR)/api.pid $(DEMO_DIR)/web.pid
+	@sleep 1
+
+# Declares somewhere to file scans against and sends the full-size fixture.
+# Idempotent: declaring something that exists succeeds and changes nothing, so
+# this can be run again without tearing anything down.
+demo-seed:
+	@command -v xz >/dev/null || { echo "xz is needed to read the fixture"; exit 1; }
+	@xz -dc internal/sbom/testdata/switch-image.cdx.json.xz > $(DEMO_DIR)/image.cdx.json
+	@for spec in \
+	  '/v1/products|{"name":"sonic","display_name":"SONiC"}' \
+	  '/v1/products/sonic/streams|{"name":"master","kind":"branch"}' \
+	  '/v1/products/sonic/variants|{"name":"broadcom","customer_facing":true}'; do \
+	  path=$${spec%%|*}; body=$${spec#*|}; \
+	  curl -sS --noproxy '*' -o /dev/null -w "  $$path %{http_code}\n" \
+	    -X POST -H "X-User: $(DEMO_USER)" -H "Origin: $(DEMO_URL)" \
+	    -H 'Content-Type: application/json' -d "$$body" \
+	    "http://$(DEMO_API)$$path"; \
+	done
+	@curl -sS --noproxy '*' -o /dev/null -w "  upload %{http_code}\n" \
+	  -X POST -H "X-User: $(DEMO_USER)" -H "Origin: $(DEMO_URL)" \
+	  -F "inventory=@$(DEMO_DIR)/image.cdx.json" \
+	  "http://$(DEMO_API)/v1/products/sonic/streams/master/variants/broadcom/scans"
+	@echo "  the scan runs in the background; make demo-status shows when it lands"
+
+demo-status:
+	@printf "  scan   "; curl -sS --noproxy '*' -H "X-User: $(DEMO_USER)" \
+	  "http://$(DEMO_API)/v1/products/sonic/streams/master/variants/broadcom/scans" \
+	  | sed -e 's/.*"state":"\([a-z]*\)".*/\1/' -e 's/^{.*/no scans yet/'
+	@printf "  open   "; curl -sS --noproxy '*' -H "X-User: $(DEMO_USER)" \
+	  "http://$(DEMO_API)/v1/products/sonic/streams/master/variants/broadcom/findings?limit=1" \
+	  | sed -e 's/.*"total":\([0-9]*\).*/\1 findings/' -e 's/^{.*/unreadable/'
+	@echo "  open $(DEMO_URL) — you arrive as proxy:$(DEMO_USER), no sign-in"
+
+# Start over. The database is the only state, so removing it is the whole of it.
+demo-reset: demo-down
+	@rm -f $(DEMO_DB)
+	@echo "  removed $(DEMO_DB)"
 
 clean-web:
 	rm -rf web/node_modules web/dist internal/webui/dist/assets internal/webui/dist/index.html

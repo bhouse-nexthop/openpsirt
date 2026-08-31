@@ -54,6 +54,21 @@ place to triage what it finds and track it through to a fix.
 - Discover what is in a product — the component list always comes from the build
 - Build or deploy fixes
 
+## Trying it
+
+    make demo                    # build, start, seed with a real image, print the address
+    make demo DEMO_HOST=yourbox  # if you browse by something other than localhost
+
+Brings up a throwaway deployment with a real switch image in it, signed in
+without an identity provider. `make demo-status` says what it found,
+`make demo-down` stops it, `make demo-reset` starts over. Findings need
+[grype](https://github.com/anchore/grype) on the path; without it the
+inventory still loads and the scan reports why it could not run.
+
+It is a demonstration deployment rather than a small production one — plain
+HTTP, and administration handed to whoever sets a header. `DESIGN-interface.md`
+says what that costs.
+
 ## Documentation
 
 | | |
