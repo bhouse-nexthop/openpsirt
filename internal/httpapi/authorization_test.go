@@ -540,6 +540,21 @@ func TestNothingButTheProbesAnswersWithoutACredential(t *testing.T) {
 				t.Errorf("%s answered %d", path, got.code)
 			}
 		}
+
+		// So does the list of ways in, which is what somebody sees before they
+		// hold anything. It is the one reading endpoint outside the probes
+		// that answers to a stranger, so what it discloses is asserted rather
+		// than assumed: names an operator configured, and nothing about
+		// whether any account exists.
+		got := r.body(t, "", http.MethodGet, "/v1/sign-in")
+		if got.code != http.StatusOK {
+			t.Errorf("the sign-in providers answered %d to a stranger", got.code)
+		}
+		for _, leaked := range []string{"reader", "triager", "admin", "identity", "person"} {
+			if strings.Contains(strings.ToLower(got.text), leaked) {
+				t.Errorf("the providers list mentions %q: %s", leaked, got.text)
+			}
+		}
 	})
 }
 

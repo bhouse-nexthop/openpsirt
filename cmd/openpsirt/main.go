@@ -26,6 +26,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 	"github.com/bhouse-nexthop/openpsirt/internal/signin"
 	"github.com/bhouse-nexthop/openpsirt/internal/version"
+	"github.com/bhouse-nexthop/openpsirt/internal/webui"
 )
 
 func main() {
@@ -146,6 +147,7 @@ func run(args []string, stdout, stderr *os.File) error {
 	work := queue.New(db, queue.DefaultOptions())
 	handler, _ := httpapi.New(logger, db.Validate, httpapi.Ingest{
 		DB: db, Queue: work,
+		Interface: httpapi.Interface{Files: webui.Files()},
 		Access: access.NewResolver(rights, access.Trust{
 			Header: cfg.TrustedHeader, From: cfg.TrustedSources,
 			GroupsHeader: cfg.TrustedGroupsHeader, GroupsDelimiter: cfg.TrustedGroupsDelimiter,

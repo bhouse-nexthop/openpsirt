@@ -3,7 +3,7 @@
 Who is asking, and what they may reach.
 
 Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-50 to ACC-53, SEC-03,
-SEC-07, SEC-09, ACC-44, ACC-54 to ACC-56, and the half of ACC-43 that has a
+SEC-07, SEC-09, ACC-44, ACC-54 to ACC-58, and the half of ACC-43 that has a
 trigger today.
 
 ## Authenticating is not being authorized

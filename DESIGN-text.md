@@ -61,26 +61,48 @@ halves of one rule disagreeing is worse than either answer alone, because
 nothing reports it: a link accepted when it was written stopped being a link
 when anybody read it.
 
-## Markup is a representation, offered on request
+## Markdown is the only representation
 
-What comes back by default is markdown. It is what an integrating application
-can most easily lay out, and it reads as plain text as it stands, so it doubles
-as the plain form. HTML assumes a browser, which most callers of an API-first
-tool are not — so a caller that wants markup asks for it.
+What comes back is markdown. Not as a default with markup available on request
+— as the only form there is.
 
-Markup is produced on the way out, every time, and never stored. A sanitizer
-rule written next year then applies to text written last year, which it could
-not if markup had been stored when the text arrived. That is also why the
-sanitizer runs on render at all, when the submission check already refused the
-text: stored text predates rules written since, and a control that only ran
-when the text arrived protects nothing written before it existed. There is a
-test that writes a payload straight into the row, past the submission check, to
-prove the second half runs.
+It is what an integrating application can most easily lay out, and it reads as
+plain text as it stands, so it doubles as the plain form. HTML assumes a
+browser, which most callers of an API-first tool are not.
 
-A rendering that fails yields nothing rather than failing the request. The
-source is in the same answer and is the authoritative form; refusing to return
-a decision because one field could not be turned into markup would make a
-presentation problem into an outage.
+This was first built the other way, with an `html=true` that rendered stored
+text on the way out. That existed for exactly two readers: our own interface,
+and the HTML part of an email. The interface renders in the browser, and an
+email is composed server-side without going through the API — so the parameter
+had no caller left, and a rendered field nobody asked for is one somebody
+eventually displays without sanitizing it themselves.
+
+**The server still renders**, for an email's HTML part (Stage 6). What it no
+longer does is render for a reader on the way out of the API.
+
+### What that moves, and what it does not
+
+The split is the one SEC-15 already drew. **Policy** runs on the server at
+submission, before the text is stored: what is permitted, which links survive,
+what each reference resolves to. That is the half no client can do, because it
+needs data and authorization checks nobody else holds, and it is unchanged.
+
+**Sanitizing is part of rendering**, so it travels with it. For the interface
+that is the browser; for an email it is here.
+
+That is a real change and worth stating plainly rather than glossing. The
+argument for sanitizing on render was that stored text predates rules written
+since, so a control that only ran when the text arrived protects nothing
+written before it existed. That argument still holds — it is simply now the
+renderer's to honor. Our own interface ships more often than this server does,
+so a tightened rule reaches old text sooner rather than later. An integrator
+rendering our markdown is responsible for sanitizing what they render, which is
+the ordinary contract for any API that returns text somebody typed, and is now
+explicit rather than implied.
+
+A rendering that fails is the renderer's problem to survive. The source is the
+authoritative form and is what the API returns, so nothing about a presentation
+failure can turn into an outage here.
 
 ## Nothing is fetched
 

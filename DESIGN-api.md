@@ -97,17 +97,24 @@ only point at the problem if the answer says where the problem is. It was
 briefly flattened into one sentence, which reads fine to a person and leaves a
 client with nothing to point at.
 
-## Markdown by default, markup on request
+## Markdown, and only markdown
 
 Text written by people comes back as markdown. It is what an integrating
 application can most easily lay out, it reads as plain text as it stands so it
 doubles as the plain form, and it does not assume a browser — which most
 callers of an API-first tool are not.
 
-HTML is available on request, never by default, on the fields that carry
-written text. It is produced on the way out and never stored, so a sanitizer
-rule written next year applies to text written last year. The rules themselves
-are in `DESIGN-text.md`.
+There is no markup representation and no `html=true`. There was, and it existed
+for two readers: our own interface, and an email's HTML part. The interface
+renders in the browser, and an email never goes through the API — so the
+parameter had no caller. It was removed while API-20 is not yet in force and
+removing it costs nothing.
+
+What this means for a caller: you receive the source, and rendering it is
+yours. Sanitize what you render. The server has already refused what its policy
+forbids at submission (SEC-15), so the text is known-good under the rules in
+force when it was written — but rules written since are the renderer's to
+apply. The rules themselves are in `DESIGN-text.md`.
 
 ## Sorting and filtering
 

@@ -394,65 +394,78 @@ func read(t *testing.T, r *reach, who, path string, into any) {
 	}
 }
 
-func TestHTMLIsOfferedOnRequestAndNeverByDefault(t *testing.T) {
-	// Markdown is what every consumer gets: it is what an integrating
-	// application can most easily lay out, and it reads as plain text as it
-	// stands. HTML assumes a browser, which in an API-first tool most callers
-	// are not — so a caller that wants it says so.
+func TestTheAPIReturnsMarkdownAndNeverMarkup(t *testing.T) {
+	// One representation, to every consumer. HTML assumes a browser, and in an
+	// API-first tool most callers are not one — the adapters already on the
+	// books want neither HTML nor markdown, and markdown is the form an
+	// integrating application can most easily lay out and re-render.
+	//
+	// Our own interface renders in the browser, so it needs no server-rendered
+	// half either, and a second renderer is the thing that eventually
+	// disagrees with the first.
 	eachReach(t, func(t *testing.T, r *reach) {
 		place := r.scanned(t)
 		id := r.decided(t, place)
 
-		var plain struct {
-			Reasoning     string `json:"reasoning"`
-			ReasoningHTML string `json:"reasoning_html"`
+		var body map[string]any
+		read(t, r, "triager", fmt.Sprintf("/v1/decisions/%d", id), &body)
+		if body["reasoning"] == "" || body["reasoning"] == nil {
+			t.Error("the answer carries no text at all")
 		}
-		read(t, r, "triager", fmt.Sprintf("/v1/decisions/%d", id), &plain)
-		if plain.Reasoning == "" {
-			t.Error("the default representation carries no text at all")
-		}
-		if plain.ReasoningHTML != "" {
-			t.Errorf("markup came back without being asked for: %q", plain.ReasoningHTML)
+		for key := range body {
+			if strings.HasSuffix(key, "_html") {
+				t.Errorf("the answer carries a rendered field %q", key)
+			}
 		}
 
-		var rendered struct {
-			ReasoningHTML string `json:"reasoning_html"`
+		// And there is no longer any way to ask for markup. An old client
+		// still sending html=true is answered rather than refused — unknown
+		// query parameters are ignored — and what it gets is the source,
+		// never a rendered field it might display without sanitizing.
+		var asked map[string]any
+		read(t, r, "triager", fmt.Sprintf("/v1/decisions/%d?html=true", id), &asked)
+		for key := range asked {
+			if strings.HasSuffix(key, "_html") {
+				t.Errorf("html=true still produced a rendered field %q", key)
+			}
 		}
-		read(t, r, "triager", fmt.Sprintf("/v1/decisions/%d?html=true", id), &rendered)
-		if !strings.Contains(rendered.ReasoningHTML, "<p>") {
-			t.Errorf("asking for markup returned %q", rendered.ReasoningHTML)
+		if asked["reasoning"] != body["reasoning"] {
+			t.Error("html=true changed the answer")
 		}
 	})
 }
 
-func TestMarkupComesBackSanitizedHoweverItWasStored(t *testing.T) {
-	// The sanitizer runs on the way out as well as at submission, because
-	// stored text predates rules written since — a control that only ran when
-	// the text arrived protects nothing written before it existed. This writes
-	// past the submission check to prove the second half runs.
+func TestStoredTextComesBackExactlyAsWritten(t *testing.T) {
+	// The counterpart to rendering in the browser: the server hands back the
+	// source it holds, unaltered, so whatever renders it is rendering the
+	// authoritative form rather than something already transformed.
+	//
+	// Sanitizing is the renderer's job and is tested where the renderer lives
+	// (internal/markdown). What matters here is that nothing between the row
+	// and the reader quietly rewrites the text — a reader that trusted a
+	// half-cleaned string would be trusting the wrong control.
 	eachReach(t, func(t *testing.T, r *reach) {
 		place := r.scanned(t)
 		id := r.decided(t, place)
 
 		// Straight into the row, the way text stored under an older rule would
 		// already be sitting there.
+		hostile := "Fine, then <img src=x onerror=alert(1)> and " +
+			"[a link](javascript:alert(2))."
 		if _, err := r.db.DB.NewUpdate().
 			Table("decision_revision").
-			Set("body = ?", "Fine, then <img src=x onerror=alert(1)> and "+
-				"[a link](javascript:alert(2)).").
+			Set("body = ?", hostile).
 			Where("decision_id = ?", id).
 			Exec(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 
-		var rendered struct {
-			ReasoningHTML string `json:"reasoning_html"`
+		var body struct {
+			Reasoning string `json:"reasoning"`
 		}
-		read(t, r, "triager", fmt.Sprintf("/v1/decisions/%d?html=true", id), &rendered)
-		for _, forbidden := range []string{"onerror", "javascript:", "<img"} {
-			if strings.Contains(rendered.ReasoningHTML, forbidden) {
-				t.Errorf("markup carries %q: %s", forbidden, rendered.ReasoningHTML)
-			}
+		read(t, r, "triager", fmt.Sprintf("/v1/decisions/%d", id), &body)
+		if body.Reasoning != hostile {
+			t.Errorf("the source came back altered:\n got %q\nwant %q", body.Reasoning, hostile)
 		}
 	})
 }
@@ -990,6 +1003,79 @@ func TestABulkClaimCoversWhatTheClaimantCanSeeAndNoMore(t *testing.T) {
 		}
 		if standing != 0 {
 			t.Errorf("%d claims stand against a place the claimant cannot read", standing)
+		}
+	})
+}
+
+func TestTheCallerIsToldWhatTheyMayDoRatherThanFindingOut(t *testing.T) {
+	// A screen has to know whether to offer an action before it draws one.
+	// Without this the client either offers everything and lets people walk
+	// into a refusal, or re-implements the mapping from roles to capabilities
+	// and drifts from the one the server actually enforces.
+	eachReach(t, func(t *testing.T, r *reach) {
+		type can struct {
+			Product   string `json:"product"`
+			MaySee    bool   `json:"may_see"`
+			SeesAll   bool   `json:"sees_all"`
+			MayTriage bool   `json:"may_triage"`
+			MayHide   bool   `json:"may_hide"`
+			MayAgree  bool   `json:"may_agree"`
+		}
+		type who struct {
+			Identity string `json:"identity"`
+			Name     string `json:"name"`
+			Admin    bool   `json:"admin"`
+			Kind     string `json:"kind"`
+			Reach    []can  `json:"reach"`
+		}
+
+		var reader who
+		read(t, r, "reader", "/v1/session/me", &reader)
+		if reader.Identity != "reader" || reader.Kind != "person" {
+			t.Errorf("a reader is described as %+v", reader)
+		}
+		if reader.Name == "" {
+			t.Error("nothing to show in a header")
+		}
+		if reader.Admin {
+			t.Error("a reader is reported as an administrator")
+		}
+		if len(reader.Reach) == 0 {
+			t.Fatal("a reader reaches no product at all")
+		}
+		for _, each := range reader.Reach {
+			if !each.MaySee {
+				t.Errorf("%s is listed but cannot be seen", each.Product)
+			}
+			// Reading what is disclosed is not reading what is not, and it is
+			// certainly not deciding. This is the assertion that catches a
+			// capability widened by accident.
+			if each.SeesAll || each.MayTriage || each.MayHide || each.MayAgree {
+				t.Errorf("a reader is offered more than reading in %s: %+v", each.Product, each)
+			}
+		}
+
+		var triager who
+		read(t, r, "triager", "/v1/session/me", &triager)
+		for _, each := range triager.Reach {
+			if !each.MayTriage {
+				t.Errorf("a triager may not triage %s", each.Product)
+			}
+			if each.MayHide {
+				t.Errorf("a public triager is offered undisclosed findings in %s", each.Product)
+			}
+		}
+
+		// An administrator reaches everything, which is the one role not held
+		// against a product.
+		var admin who
+		read(t, r, "admin", "/v1/session/me", &admin)
+		if !admin.Admin {
+			t.Error("the administrator is not described as one")
+		}
+		if len(admin.Reach) < len(reader.Reach) {
+			t.Errorf("an administrator reaches %d products where a reader reaches %d",
+				len(admin.Reach), len(reader.Reach))
 		}
 	})
 }

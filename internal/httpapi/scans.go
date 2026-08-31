@@ -40,6 +40,10 @@ type Ingest struct {
 	// running it locally looks like. It only ever loosens a cookie, so it is
 	// named for what it is rather than for what it switches off.
 	PlainHTTP bool
+	// Interface is the built web interface, where this binary was built with
+	// one. Zero serves the API alone, which is what a development build and an
+	// API-only deployment both look like.
+	Interface Interface
 	// Providers are the ways somebody may sign in, by the name a URL uses.
 	// Empty means none is configured, and the sign-in paths are not mounted at
 	// all rather than mounted and answering that nothing is available.

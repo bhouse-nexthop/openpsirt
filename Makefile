@@ -35,7 +35,9 @@ ALLOWED_LICENSES := Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,MPL-2.0
 #                         "neither the name of the copyright holder".
 LICENSE_EXCEPTIONS := modernc.org/mathutil
 
-.PHONY: unreachable all build test vet lint fmt openapi openapi-current run clean check check-packaging tools govulncheck licenses sbom
+NPM ?= npm
+
+.PHONY: unreachable all build test vet lint fmt openapi openapi-current run clean check check-packaging tools govulncheck licenses sbom web web-deps web-api web-check
 
 all: check build
 
@@ -84,7 +86,41 @@ openapi:
 # Everything CI runs, reachable from one command. Container and chart checks
 # are included because CI runs them; omitting them meant four of nine jobs
 # could not be reproduced locally.
-check: build vet lint unreachable test govulncheck licenses openapi-current sbom
+check: build vet lint unreachable test govulncheck licenses openapi-current sbom web-check
+
+# The interface, built into the directory the binary embeds. Kept out of
+# "build" so a checkout with no node toolchain still produces a working
+# API-only binary — the embed tolerates an empty directory on purpose.
+web: web-deps
+	$(NPM) --prefix web run build
+	# The build output only. The directory itself and its two dotfiles are
+	# tracked, because the embed needs the directory to exist in a fresh
+	# clone — removing the directory wholesale would delete them.
+	rm -rf internal/webui/dist/assets internal/webui/dist/index.html
+	cp -r web/dist/. internal/webui/dist/
+	@git check-ignore -q internal/webui/dist/index.html \
+	  || { echo "internal/webui/dist is not ignored: build output would be committed"; exit 1; }
+
+# Reproducible, like every other dependency here: npm ci installs exactly what
+# the lockfile pins rather than re-resolving ranges at build time.
+web-deps:
+	$(NPM) --prefix web ci
+
+# The client is generated from the committed document (UIX-19), so a drifted
+# document is a compile error in the interface rather than a runtime surprise.
+web-api: openapi
+	$(NPM) --prefix web run api
+	@git diff --exit-code -- web/src/api/schema.d.ts \
+	  || { echo "web/src/api/schema.d.ts is stale: run make web-api and commit it"; exit 1; }
+
+# What CI runs for the interface. Skipped with a note rather than failing where
+# there is no node, so the Go half still gates on a machine without it.
+web-check:
+	@command -v $(NPM) >/dev/null 2>&1 \
+	  || { echo "npm not found, so the interface is unchecked here"; exit 0; }
+	$(MAKE) web-deps
+	$(NPM) --prefix web run typecheck
+	$(MAKE) web-api
 
 # Exported code nothing reaches. The analysis gate only reports unexported
 # symbols, which left ten real defects invisible in one review — a store method
@@ -132,6 +168,9 @@ check-packaging:
 
 run:
 	$(GO) run ./cmd/openpsirt
+
+clean-web:
+	rm -rf web/node_modules web/dist internal/webui/dist/assets internal/webui/dist/index.html
 
 clean:
 	rm -rf bin

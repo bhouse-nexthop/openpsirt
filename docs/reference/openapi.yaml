@@ -140,6 +140,42 @@ components:
         - group
         - role
       type: object
+    CanBody:
+      additionalProperties: false
+      properties:
+        may_agree:
+          description: Agree to somebody else's claim
+          type: boolean
+        may_hide:
+          description: Argue about a finding nobody has disclosed
+          type: boolean
+        may_report:
+          description: Read the reports
+          type: boolean
+        may_see:
+          description: Read findings that have been disclosed
+          type: boolean
+        may_triage:
+          description: Argue about a finding
+          type: boolean
+        name:
+          description: What to show for it
+          type: string
+        product:
+          type: string
+        sees_all:
+          description: Read findings nobody has disclosed yet
+          type: boolean
+      required:
+        - product
+        - name
+        - may_see
+        - sees_all
+        - may_triage
+        - may_hide
+        - may_agree
+        - may_report
+      type: object
     CarriedBody:
       additionalProperties: false
       properties:
@@ -240,9 +276,6 @@ components:
       properties:
         body:
           description: The comment text, in markdown
-          type: string
-        body_html:
-          description: The same text as sanitized HTML. Only when html=true
           type: string
         edited_at:
           description: When the author last changed it, if they did
@@ -456,9 +489,6 @@ components:
           type: string
         reasoning:
           description: The justification as it currently stands, in markdown
-          type: string
-        reasoning_html:
-          description: The same text as sanitized HTML. Only when html=true
           type: string
       required:
         - decision
@@ -1238,6 +1268,25 @@ components:
       required:
         - items
       type: object
+    ListBodyProviderBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyProviderBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/ProviderBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
     ListBodyRevisionBody:
       additionalProperties: false
       properties:
@@ -1503,6 +1552,19 @@ components:
       required:
         - name
       type: object
+    ProviderBody:
+      additionalProperties: false
+      properties:
+        name:
+          description: What to put in the sign-in path
+          type: string
+        path:
+          description: Where to send the browser to start
+          type: string
+      required:
+        - name
+        - path
+      type: object
     QueueOutputBody:
       additionalProperties: false
       properties:
@@ -1704,9 +1766,6 @@ components:
       properties:
         body:
           description: The justification text, in markdown
-          type: string
-        body_html:
-          description: The same text as sanitized HTML. Only when html=true
           type: string
         id:
           description: What an approval names when it says which words were agreed to
@@ -2023,6 +2082,45 @@ components:
         - proposed_by
         - age_days
       type: object
+    WhoBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/WhoBody.json
+          format: uri
+          readOnly: true
+          type: string
+        admin:
+          description: Administers this deployment
+          type: boolean
+        identity:
+          description: What this deployment calls them
+          type: string
+        kind:
+          description: A person who signed in, or a credential
+          enum:
+            - person
+            - key
+          type: string
+        name:
+          description: What to show instead of the identity, where one is recorded
+          type: string
+        reach:
+          description: The products they can reach, and what they may do in each
+          items:
+            $ref: "#/components/schemas/CanBody"
+          type:
+            - array
+            - "null"
+      required:
+        - identity
+        - name
+        - admin
+        - kind
+        - reach
+      type: object
     Withdraw-roleResponse:
       additionalProperties: false
       properties:
@@ -2178,13 +2276,6 @@ paths:
           schema:
             description: Only deferrals whose date has passed
             type: boolean
-        - description: Also return each justification as sanitized HTML
-          explode: false
-          in: query
-          name: html
-          schema:
-            description: Also return each justification as sanitized HTML
-            type: boolean
         - explode: false
           in: query
           name: limit
@@ -2253,13 +2344,6 @@ paths:
           schema:
             format: int64
             type: integer
-        - description: Also return the justification as sanitized HTML
-          explode: false
-          in: query
-          name: html
-          schema:
-            description: Also return the justification as sanitized HTML
-            type: boolean
       responses:
         "200":
           content:
@@ -2356,13 +2440,6 @@ paths:
           schema:
             format: int64
             type: integer
-        - description: Also return each comment as sanitized HTML
-          explode: false
-          in: query
-          name: html
-          schema:
-            description: Also return each comment as sanitized HTML
-            type: boolean
       responses:
         "200":
           content:
@@ -2462,13 +2539,6 @@ paths:
           schema:
             format: int64
             type: integer
-        - description: Also return each justification as sanitized HTML
-          explode: false
-          in: query
-          name: html
-          schema:
-            description: Also return each justification as sanitized HTML
-            type: boolean
       responses:
         "200":
           content:
@@ -4097,6 +4167,31 @@ paths:
       summary: Sign out
       tags:
         - Access
+  /v1/session/me:
+    get:
+      description: |-
+        Returns the caller, the products they can reach, and what they may do in each one.
+
+        It answers what a screen has to know before it draws: whether to offer an action at all. Without it a client either hides nothing and lets people find the refusal, or re-implements the mapping from roles to capabilities and drifts from the one the server enforces.
+
+        Capabilities, not roles, for that reason. Which roles produce which capability is the server's rule and stays there.
+      operationId: get-current-subject
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhoBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Describe whoever is asking
+      tags:
+        - Access
   /v1/settings:
     get:
       description: |-
@@ -4151,6 +4246,29 @@ paths:
       summary: Change something for this deployment
       tags:
         - Administration
+  /v1/sign-in:
+    get:
+      description: |-
+        Returns the sign-in providers this deployment has configured, so a sign-in page can offer them.
+
+        **Answered without a credential**, because it is what somebody sees before they have one. It is the only reading endpoint that is, and it reports names an operator configured and nothing else — no account exists or does not exist as far as this is concerned, which is the disclosure that would matter.
+      operationId: list-sign-in-providers
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyProviderBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the ways in
+      tags:
+        - Access
   /v1/tokens:
     get:
       description: |-

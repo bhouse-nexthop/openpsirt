@@ -142,13 +142,18 @@ in the output.
 - Findings list, dependency tree, finding detail, review queue, home
 - Generated API client; responsive layouts
 - Markdown editor: toolbar, Write and Preview, mention autocomplete
+- **Client-side markdown rendering and sanitizing**, one renderer for preview
+  and published text alike (UIX-22)
 - Client-side syntax highlighting, loaded only where a code block appears
 - Draft preservation across failure, session expiry and a closed tab
 
 **Proves it works:** the findings list stays usable against a full-size product;
 the tree opens lazily without attempting a full render; every screen works on a
 phone; **the preview matches what is published**, because it is the same
-renderer; **a submission refused by the server leaves the text untouched and
+renderer — the same one, in the browser, rather than two agreeing by luck; **a
+corpus of known cross-site-scripting payloads survives the client renderer with
+nothing executable in the output**, which is the control that moved out of the
+server when rendering did; **a submission refused by the server leaves the text untouched and
 says which line to fix**, and a session that expires mid-write does not lose
 what was written.
 
@@ -287,6 +292,8 @@ thing rather than a gap somebody rediscovers by auditing.
 | ACC-46 to ACC-49 | Private findings | Whole feature, with disclosure dates and the escalation around them |
 | ING-24 to ING-27, SCP-11 | Analyzer findings | Intended scope, not built. The finding model carries a kind from the start so a second kind needs no rewrite, which is the part that had to be got right early |
 | REL-01, REL-03, REL-04, SCP-05 | The interface | All are about how findings and exceptions are presented and acted on together. Deciding them against a real screen rather than in the abstract is the point |
+| UIX-25, mention autocomplete | The markdown editor | Nothing handles a mention anywhere, and no endpoint offers the people who could be mentioned on a finding. It is server work and a screen, and both belong with the editor rather than ahead of it |
+| The server-side renderer (`internal/markdown.Render`) | An email's HTML part | The interface renders in the browser (UIX-22), so the renderer's only remaining reader is a digest email, which has no client to render for it. It is kept rather than deleted and rebuilt: it carries the sanitizer and a corpus of cross-site-scripting payloads, and a security control rebuilt from memory comes back weaker. Its tests are what keep it exercised until Stage 6 wires it up |
 | MDL-10 | Nothing — it is a limitation | The same version built with different feature flags can use its dependencies differently. Recorded so nobody assumes the graph says more than it does |
 
 ## Not planned yet

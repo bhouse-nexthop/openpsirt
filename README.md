@@ -24,7 +24,10 @@ place to triage what it finds and track it through to a fix.
 > Reporting has begun: release-to-release comparison, trends, deadlines and
 > what a new line would inherit.
 >
-> What does not: the web interface, remediation tracking, notifications,
+> The web interface has started: sign-in, the product list and the findings
+> list, embedded into the binary and served from it.
+>
+> What does not: the rest of the interface, remediation tracking, notifications,
 > private findings and attachments. The design record is in
 > [DECISIONS.md](DECISIONS.md).
 
@@ -70,6 +73,7 @@ each is built:
 | [DESIGN-database.md](DESIGN-database.md) | Four engines, migrations, locking |
 | [DESIGN-findings.md](DESIGN-findings.md) | What a scan run found, and where |
 | [DESIGN-ingest.md](DESIGN-ingest.md) | What happens to a scan when it arrives, and how one is read |
+| [DESIGN-interface.md](DESIGN-interface.md) | The web interface, how it is built and how it reaches the server |
 | [DESIGN-packaging.md](DESIGN-packaging.md) | Container image and Helm chart |
 | [DESIGN-queue.md](DESIGN-queue.md) | How work waiting to be done is held and picked up |
 | [DESIGN-reporting.md](DESIGN-reporting.md) | Trends, release comparison, deadlines, settings |

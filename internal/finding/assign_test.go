@@ -5,6 +5,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 )
 
 // assigned reads who holds each open finding of this target.
@@ -242,9 +243,16 @@ func TestTheCountsBesideTheseListsAreAskedForOnEveryEngine(t *testing.T) {
 			t.Errorf("%d rows and a total of %d, want 2 and 2", len(nobodys), total)
 		}
 
-		open := f.open(t)
+		// Named, not whichever row came back first. Two components carry
+		// findings here and they hold different numbers of places, so
+		// indexing into an unordered read makes this assert a different
+		// thing on different runs.
+		library, err := graph.NewStore(f.db.DB).ComponentAt(t.Context(), f.target, libnl.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
 		at, atTotal, err := f.store.AtComponent(t.Context(), who, f.target,
-			open[0].ComponentID, "", 50, 0)
+			library, "", 50, 0)
 		if err != nil {
 			t.Fatal(err)
 		}

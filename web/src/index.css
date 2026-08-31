@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+/* Every colour and the brand mark resolve through these, in one place.
+   How an operator overrides them is deliberately not settled yet — that gets
+   decided against real screens rather than in the abstract — but keeping the
+   whole palette here means the answer is a stylesheet, whatever it turns out
+   to be, rather than a hunt through components. */
+@theme {
+  --color-ground: oklch(99% 0.002 260);
+  --color-raised: oklch(100% 0 0);
+  --color-sunken: oklch(96.5% 0.004 260);
+  --color-edge: oklch(90% 0.006 260);
+  --color-ink: oklch(23% 0.012 260);
+  --color-muted: oklch(50% 0.012 260);
+  --color-accent: oklch(52% 0.13 245);
+  --color-accent-ink: oklch(99% 0 0);
+
+  /* Severity is its own scale and is never the accent. A page that paints
+     "critical" in the brand colour has no colour left to mean "act on this". */
+  --color-exploited: oklch(48% 0.19 15);
+  --color-critical: oklch(56% 0.17 25);
+  --color-high: oklch(64% 0.15 55);
+  --color-medium: oklch(72% 0.12 85);
+  --color-low: oklch(62% 0.04 240);
+}
+
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-ground: oklch(17% 0.01 260);
+    --color-raised: oklch(21% 0.012 260);
+    --color-sunken: oklch(14% 0.01 260);
+    --color-edge: oklch(30% 0.014 260);
+    --color-ink: oklch(94% 0.004 260);
+    --color-muted: oklch(68% 0.01 260);
+    --color-accent: oklch(72% 0.13 245);
+    --color-accent-ink: oklch(17% 0.01 260);
+    --color-exploited: oklch(66% 0.18 15);
+    --color-critical: oklch(70% 0.16 25);
+    --color-high: oklch(76% 0.14 55);
+    --color-medium: oklch(82% 0.11 85);
+    --color-low: oklch(70% 0.04 240);
+  }
+}
+
+html { color-scheme: light dark; }
+
+body {
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}

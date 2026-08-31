@@ -72,6 +72,20 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 				return
 			}
 
+			// A path this server has no route for belongs to the interface,
+			// which does its own routing — and the page has to load for
+			// somebody holding nothing, because the sign-in screen is the
+			// page. Asked of the router rather than by matching a prefix, so
+			// this cannot shadow a route: anything registered, including the
+			// framework's own document and schema routes, still goes through
+			// the check below. What is served here is a compiled page and its
+			// assets, which carry no data.
+			if in.Interface.Files != nil && !reserved(r.URL.Path) &&
+				!router.Match(chi.NewRouteContext(), r.Method, r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			var subject access.Subject
 			var session *access.Session
 			var err error
@@ -153,6 +167,8 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	registerDue(api, in)
 	registerGraph(api, in)
 	registerSettings(api, in)
+	registerProviders(api, in)
+	registerWhoAmI(api, in)
 	registerBulk(api, in)
 	registerReports(api, in)
 	registerCarry(api, in)
@@ -184,6 +200,9 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 		Access: in.rights, Catalog: in.catalog, Logger: logger, Mode: in.Mode,
 	})
 
+	// Last, so it claims only what nothing above it did.
+	mountInterface(router, in.Interface)
+
 	return router, api
 }
 
@@ -206,6 +225,13 @@ func wentWrong(logger *slog.Logger, what string, err error) error {
 var open = map[string]bool{
 	"/healthz": true,
 	"/readyz":  true,
+	// What somebody sees before they have a credential. It lists the
+	// providers an operator configured and nothing else — the sign-in page
+	// has to draw a button per provider, and it cannot ask for that list
+	// while holding nothing. Everything under openPrefix already answers
+	// without a credential for the same reason; this is the list of what is
+	// down there.
+	"/v1/sign-in": true,
 }
 
 // openPrefix is the one place a prefix is used rather than a named route,
