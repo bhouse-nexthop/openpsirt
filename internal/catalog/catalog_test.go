@@ -210,3 +210,84 @@ func contains(h, n string) bool {
 	}
 	return false
 }
+
+func TestADeclaredNameIsFoundHoweverItIsCapitalized(t *testing.T) {
+	// These names get typed by hand into build scripts. "sonic" reaching a
+	// product declared as "SONiC" is the same typo problem that declaring
+	// before use exists to catch — and refusing it teaches somebody the
+	// product is not declared when it plainly is.
+	each(t, func(t *testing.T, _ *database.DB, s *catalog.Store) {
+		ctx := t.Context()
+		product, err := s.DeclareProduct(ctx, "SONiC", "SONiC")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.DeclareStream(ctx, product.ID, "Master", catalog.Branch, nil); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.DeclareVariant(ctx, product.ID, "Broadcom", true); err != nil {
+			t.Fatal(err)
+		}
+
+		for _, spelling := range []string{"sonic", "SONIC", "  SoNiC  "} {
+			found, err := s.ProductByName(ctx, spelling)
+			if err != nil {
+				t.Errorf("looking up %q after declaring \"SONiC\": %v", spelling, err)
+				continue
+			}
+			// And what comes back is what somebody wrote, not what we store
+			// to compare with. Reading it back as "sonic" looks like the tool
+			// got the name wrong.
+			if found.DisplayName != "SONiC" {
+				t.Errorf("the product reads back as %q", found.DisplayName)
+			}
+		}
+		if _, err := s.StreamByName(ctx, product.ID, "master"); err != nil {
+			t.Errorf("looking up stream \"master\" after declaring \"Master\": %v", err)
+		}
+		if _, err := s.VariantByName(ctx, product.ID, "BROADCOM"); err != nil {
+			t.Errorf("looking up variant \"BROADCOM\" after declaring \"Broadcom\": %v", err)
+		}
+
+		// The other half: a second spelling is the same thing, so declaring it
+		// again is declaring something that exists.
+		if _, err := s.DeclareProduct(ctx, "sonic", "sonic"); !errors.Is(err, catalog.ErrExists) {
+			t.Errorf("declaring \"sonic\" beside \"SONiC\" gave %v, want it to already exist", err)
+		}
+		if _, err := s.DeclareVariant(ctx, product.ID, "broadcom", true); !errors.Is(err, catalog.ErrExists) {
+			t.Errorf("declaring \"broadcom\" beside \"Broadcom\" gave %v, want it to already exist", err)
+		}
+	})
+}
+
+func TestWhatAScanIsFiledAgainstIgnoresCapitals(t *testing.T) {
+	// The case that matters in practice: a pipeline whose script spells the
+	// variant differently from whoever declared it. Before this, that filed
+	// against nothing and the upload was refused as undeclared.
+	each(t, func(t *testing.T, _ *database.DB, s *catalog.Store) {
+		ctx := t.Context()
+		product, err := s.DeclareProduct(ctx, "SONiC", "SONiC")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.DeclareStream(ctx, product.ID, "master", catalog.Branch, nil); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.DeclareVariant(ctx, product.ID, "broadcom", true); err != nil {
+			t.Fatal(err)
+		}
+
+		target, err := s.Resolve(ctx, "sonic", "MASTER", "Broadcom")
+		if err != nil {
+			t.Fatalf("a scan spelled differently was refused: %v", err)
+		}
+		where, err := s.Describe(ctx, target.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// And it describes itself the way people wrote it.
+		if where.Product != "SONiC" || where.Stream != "master" || where.Variant != "broadcom" {
+			t.Errorf("reads back as %s / %s / %s", where.Product, where.Stream, where.Variant)
+		}
+	})
+}

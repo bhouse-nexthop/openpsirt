@@ -107,7 +107,7 @@ func registerAdministration(api huma.API, a Administering) {
 		}
 		named := map[int64]string{}
 		for _, product := range products {
-			named[product.ID] = product.Name
+			named[product.ID] = product.DisplayName
 		}
 
 		out := &listOutput[PersonBody]{}
@@ -253,7 +253,7 @@ func registerAdministration(api huma.API, a Administering) {
 		for _, key := range keys {
 			body := KeyBody{Name: key.Name, Revoked: key.RevokedAt != nil}
 			if product, err := names.ProductByID(ctx, key.ProductID); err == nil {
-				body.Product = product.Name
+				body.Product = product.DisplayName
 			}
 			if key.LastUsedAt != nil {
 				body.LastUsedAt = key.LastUsedAt.UTC().Format(timeFormat)

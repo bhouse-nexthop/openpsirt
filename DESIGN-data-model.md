@@ -2,8 +2,8 @@
 
 What a scan is filed against, and why the shape is what it is.
 
-Satisfies MDL-01 to MDL-08, MDL-11, MDL-17, MDL-18, ING-09, ING-11, ING-36 to
-ING-38, STA-08.
+Satisfies MDL-01 to MDL-08, MDL-11, MDL-17, MDL-18, MDL-21, ING-09, ING-11,
+ING-36 to ING-38, STA-08.
 
 ## The tracked unit
 
@@ -77,11 +77,32 @@ something somewhere was wrong.
 
 ## Names
 
-Bounded and exact. No leading or trailing spaces, nothing empty, and a length
-that keeps a unique index inside every engine's key-length limit.
+Bounded. No leading or trailing spaces, nothing empty, and a length that keeps
+a unique index inside every engine's key-length limit.
 
 Uniqueness is within the parent: a product name is unique globally, and a
 stream name and a variant name are each unique within their product.
+
+**Capitals do not distinguish two names.** These get typed by hand into build
+scripts, so a pipeline saying `sonic` against a product declared as `SONiC` is
+the same typo problem that declaring before use exists to catch — and refusing
+it teaches somebody the product is not declared when it plainly is.
+
+What is stored for matching is the normalized form, and the spelling somebody
+wrote is kept beside it and is what gets shown back. Reading a product back as
+`sonic` when it was declared `SONiC` looks like the tool got the name wrong.
+
+Normalizing the value is what makes this behave the same everywhere, rather
+than asking each engine to compare loosely: a lower-case value compares the
+same under any collation, and the unique constraint means one thing on all
+four. It is worth saying which way round that goes, because the first attempt
+went the other way — treating it as an engine difference to be configured
+around, when the schema had already settled that and what was actually
+undecided was what a name means.
+
+An identity a sign-in provider hands over is a different thing and is compared
+exactly. It is not typed by us and not ours to reinterpret; deciding on our own
+that two accounts are really one person merges access nobody granted.
 
 ## Engine differences
 

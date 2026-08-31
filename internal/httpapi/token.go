@@ -173,7 +173,7 @@ func tokenList(ctx context.Context, names *catalog.Store, tokens []access.Token,
 		}
 		if token.ProductID != nil {
 			if product, err := names.ProductByID(ctx, *token.ProductID); err == nil {
-				body.Product = product.Name
+				body.Product = product.DisplayName
 			}
 		}
 		out.Body.Items = append(out.Body.Items, body)

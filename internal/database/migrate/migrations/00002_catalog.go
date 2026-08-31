@@ -32,6 +32,15 @@ func upCatalog(ctx context.Context, tx *sql.Tx) error {
 	}
 
 	statements := []string{
+		// name is the normalized form — lower case, trimmed — and is what
+		// everything matches on. display_name keeps the spelling somebody
+		// typed, because "SONiC" is how people write it and reading it back
+		// as "sonic" looks like the tool got it wrong.
+		//
+		// Normalizing the stored value rather than comparing case-insensitively
+		// is what makes this behave the same on every engine without any of
+		// them being asked to: a lower-case value compares the same under any
+		// collation.
 		`CREATE TABLE "product" (
 			"id"           ` + t.id + `,
 			"name"         ` + t.name + ` NOT NULL,
@@ -46,7 +55,8 @@ func upCatalog(ctx context.Context, tx *sql.Tx) error {
 		`CREATE TABLE "stream" (
 			"id"         ` + t.id + `,
 			"product_id" ` + t.ref + ` NOT NULL,
-			"name"       ` + t.name + ` NOT NULL,
+			"name"         ` + t.name + ` NOT NULL,
+			"display_name" ` + t.text + ` NOT NULL,
 			"kind"       ` + t.kind + ` NOT NULL,
 			"parent_id"  ` + t.refNull + ` NULL,
 			"eol_on"     ` + t.date + ` NULL,
@@ -69,6 +79,7 @@ func upCatalog(ctx context.Context, tx *sql.Tx) error {
 			"id"              ` + t.id + `,
 			"product_id"      ` + t.ref + ` NOT NULL,
 			"name"            ` + t.name + ` NOT NULL,
+			"display_name"    ` + t.text + ` NOT NULL,
 			"customer_facing" ` + t.boolean + ` NOT NULL,
 			"created_at"      ` + t.timestamp + ` NOT NULL,
 			CONSTRAINT "variant_name_unique" UNIQUE ("product_id", "name"),

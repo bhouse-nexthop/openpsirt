@@ -252,7 +252,7 @@ func productNames(ctx context.Context, a Administering) (map[int64]string, error
 	}
 	named := map[int64]string{}
 	for _, product := range products {
-		named[product.ID] = product.Name
+		named[product.ID] = product.DisplayName
 	}
 	return named, nil
 }

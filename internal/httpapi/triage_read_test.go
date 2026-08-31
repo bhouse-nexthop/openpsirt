@@ -199,7 +199,9 @@ func TestEverythingWrittenAboutADecisionCanBeReadBack(t *testing.T) {
 		if detail.Decision.State != "approved" {
 			t.Errorf("the decision reads as %q after being approved", detail.Decision.State)
 		}
-		if detail.Place.Product != "mine" || detail.Place.Vulnerability != "CVE-2026-9999" {
+		// "Mine" rather than "mine": what comes back is the spelling somebody
+		// declared, not the normalized form we match on.
+		if detail.Place.Product != "Mine" || detail.Place.Vulnerability != "CVE-2026-9999" {
 			t.Errorf("the decision does not say what it is about: %+v", detail.Place)
 		}
 		if detail.Reasoning == "" {

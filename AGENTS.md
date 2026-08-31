@@ -76,7 +76,7 @@ unpick later.
 | **An affected-row count means rows matched, not rows changed.** A conditional update reads it as "the row was still there", so a write whose values were already correct must not report zero — the connection settings make that true on all four engines | DAT-35 |
 | **Exported code with no caller is a defect, not spare capacity.** A store method nothing routes to, a renderer nothing renders with — the analysis gate only sees unexported symbols, so this is checked separately and the check is not optional | — |
 | **A test for a control is verified by breaking the control.** Watch it fail for the reason it names, then put the control back. A control whose test has never been seen to fail is a control nobody has tested | — |
-| **A name people type is matched without regard to capitals; an identity a provider hands over is matched exactly.** The engines disagree on this by default, so neither behavior may be left to collation | MDL-21 |
+| **A name people type is matched without regard to capitals; an identity a provider hands over is matched exactly.** Normalize the stored value rather than asking an engine to compare loosely — the engines default differently, and a normalized value compares the same under any of them | MDL-21 |
 | **Every identifier in the schema is quoted.** A reserved word is only reserved when bare, and the four engines do not agree on which words those are — an unquoted name fails on whichever engine somebody is least likely to be running | DAT-33, DAT-34 |
 
 ## Nothing is made faster until it is measured slow

@@ -60,8 +60,8 @@ func (s *Store) Elsewhere(ctx context.Context, subject access.Subject, at Decidi
 		Join("JOIN component AS c ON c.id = f.component_id").
 		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
 		ColumnExpr("f.target_id AS target_id").
-		ColumnExpr("st.name AS stream").
-		ColumnExpr("va.name AS variant").
+		ColumnExpr("st.display_name AS stream").
+		ColumnExpr("va.display_name AS variant").
 		ColumnExpr("c.upstream_version AS component_upstream").
 		ColumnExpr("COALESCE(uc.upstream_version, '') AS consumer_upstream").
 		ColumnExpr("COUNT(*) AS places").
@@ -71,8 +71,8 @@ func (s *Store) Elsewhere(ctx context.Context, subject access.Subject, at Decidi
 		Where("f.target_id <> ?", exceptTargetID).
 		Where("f.closed_run_id IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
-		GroupExpr("f.target_id, st.name, va.name, c.upstream_version, uc.upstream_version").
-		OrderExpr("st.name, va.name").
+		GroupExpr("f.target_id, st.display_name, va.display_name, c.upstream_version, uc.upstream_version").
+		OrderExpr("st.display_name, va.display_name").
 		Scan(ctx, &rows)
 	if err != nil {
 		return nil, fmt.Errorf("look for the same issue elsewhere: %w", err)

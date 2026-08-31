@@ -162,7 +162,7 @@ func registerCatalog(api huma.API, d Declaring) {
 			return nil, declineDeclaration(err)
 		}
 		return answer(created, StreamBody{
-			Name: stream.Name, Kind: string(stream.Kind), Parent: in.Body.Parent,
+			Name: stream.DisplayName, Kind: string(stream.Kind), Parent: in.Body.Parent,
 		}), nil
 	})
 
@@ -199,7 +199,7 @@ func registerCatalog(api huma.API, d Declaring) {
 		if err != nil {
 			return nil, declineDeclaration(err)
 		}
-		return answer(created, VariantBody{Name: variant.Name, CustomerFacing: &variant.CustomerFacing}), nil
+		return answer(created, VariantBody{Name: variant.DisplayName, CustomerFacing: &variant.CustomerFacing}), nil
 	})
 
 	huma.Register(api, huma.Operation{
