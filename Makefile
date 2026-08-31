@@ -35,7 +35,7 @@ ALLOWED_LICENSES := Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,MPL-2.0
 #                         "neither the name of the copyright holder".
 LICENSE_EXCEPTIONS := modernc.org/mathutil
 
-.PHONY: all build test vet lint fmt openapi openapi-current run clean check check-packaging tools govulncheck licenses sbom
+.PHONY: unreachable all build test vet lint fmt openapi openapi-current run clean check check-packaging tools govulncheck licenses sbom
 
 all: check build
 
@@ -84,7 +84,14 @@ openapi:
 # Everything CI runs, reachable from one command. Container and chart checks
 # are included because CI runs them; omitting them meant four of nine jobs
 # could not be reproduced locally.
-check: build vet lint test govulncheck licenses openapi-current sbom
+check: build vet lint unreachable test govulncheck licenses openapi-current sbom
+
+# Exported code nothing reaches. The analysis gate only reports unexported
+# symbols, which left ten real defects invisible in one review — a store method
+# with no route to it, a renderer nothing rendered with, a rule enforced in a
+# second place nothing called. Every one looked like working code.
+unreachable:
+	$(GO) run ./internal/tools/unreachable
 
 # CI fails when the committed document has drifted, so check the same thing.
 openapi-current: openapi

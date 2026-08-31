@@ -117,6 +117,11 @@ jobs:
       # tool must be built with a Go at least as new as the code, or it cannot
       # read the compiler's export data.
       - run: make lint
+      # Exported code nothing reaches. The analysis gate above only reports
+      # unexported symbols, which left a store method with no route to it, a
+      # renderer nothing rendered with, and a rule enforced in a second place
+      # nothing called — all of it looking like working code.
+      - run: make unreachable
 
   security:
     name: Vulnerabilities and licenses

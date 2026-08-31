@@ -175,16 +175,6 @@ func (s *Store) CurrentNodes(ctx context.Context, targetID int64) ([]Node, error
 	return nodes, err
 }
 
-// CurrentEdges returns the dependencies present in a variant now.
-func (s *Store) CurrentEdges(ctx context.Context, targetID int64) ([]Edge, error) {
-	var edges []Edge
-	err := s.db.NewSelect().Model(&edges).
-		Where("target_id = ?", targetID).
-		Where("closed_scan_id IS NULL").
-		Scan(ctx)
-	return edges, err
-}
-
 // CurrentComponents returns what a target contains now, as the scanner needs
 // to be given it.
 //

@@ -74,7 +74,45 @@ unpick later.
 | **Nothing a transaction depends on is read outside it.** A retry re-runs the closure against a moved database, so a value fetched before it began describes a world that is gone. Anything the closure uses but does not fetch is a defect | DAT-31 |
 | **SQL values are parameterized and SQL identifiers come from an allowlist.** A placeholder cannot bind a column name, so a sort column from a query parameter is the real risk | SEC-01, SEC-02 |
 | **An affected-row count means rows matched, not rows changed.** A conditional update reads it as "the row was still there", so a write whose values were already correct must not report zero — the connection settings make that true on all four engines | DAT-35 |
+| **Exported code with no caller is a defect, not spare capacity.** A store method nothing routes to, a renderer nothing renders with — the analysis gate only sees unexported symbols, so this is checked separately and the check is not optional | — |
+| **A test for a control is verified by breaking the control.** Watch it fail for the reason it names, then put the control back. A control whose test has never been seen to fail is a control nobody has tested | — |
+| **A name people type is matched without regard to capitals; an identity a provider hands over is matched exactly.** The engines disagree on this by default, so neither behavior may be left to collation | MDL-21 |
 | **Every identifier in the schema is quoted.** A reserved word is only reserved when bare, and the four engines do not agree on which words those are — an unquoted name fails on whichever engine somebody is least likely to be running | DAT-33, DAT-34 |
+
+## Nothing is made faster until it is measured slow
+
+**Work out an answer when it is asked for.** No caching, no precomputed
+totals, no refresh job, no denormalized copy — until somebody has measured a
+real deployment and found a real problem. A stale answer is a cost paid up
+front for a benefit nobody has demonstrated, and it brings its own bugs:
+invalidation, drift, and a number that is wrong in a way nothing reports.
+
+This is worth stating because the pressure is always toward the opposite. A
+mature tool nearby stores metric snapshots and refreshes them hourly, and
+copying that looked like prudence rather than what it was — adopting somebody
+else's constraints, from a hosted product with traffic this one will not see.
+
+**Storing a derived value to be correct is a different thing.** A finding's
+urgency is worked out when a scan is applied and kept, not because reading it
+again would be slow, but because the signals it was made from get rewritten as
+later reports revise them — so recomputing it later would compare a judgment
+against a number that has since moved. That is a fact about a moment, and it is
+stored for the same reason the scan's provenance is. The test is what the
+storing is *for*: correctness keeps it, speed has to earn it.
+
+## Two limits that erode if they are not rules
+
+**A short-bump flag is inequality, never ordering.** Saying "this moved and is
+still not the version that fixes it" needs no version comparison. Adding one is
+a different project — per-ecosystem ordering for Debian epochs, RPM release
+segments, semantic versions and the ecosystems that follow none of them — and
+it buys a sharper sentence rather than a new signal. One "just add a compare
+function" is all it takes (STA-18).
+
+**A bulk write is bounded.** One action recording a judgment against many
+issues is deliberate and useful; one action writing an unbounded number of rows
+is a denial of service somebody triggers by accident. The cap is a setting, not
+a constant, and there is always a cap (TRI-32).
 
 ## Source file size
 

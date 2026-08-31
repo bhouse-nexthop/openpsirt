@@ -10,8 +10,6 @@
 // judgment made about a leaf.
 package triage
 
-import "strings"
-
 // Outcome is what somebody decided about a finding.
 //
 // Four rather than two. A vocabulary with only "affects us" and "does not"
@@ -51,18 +49,6 @@ func (o Outcome) Valid() bool {
 // person, and putting it back does not. "Affected" is the only one of the four
 // that leaves the issue visible as an issue.
 func (o Outcome) HidesRisk() bool { return o != Affected }
-
-// Exported says what an outcome is published as.
-//
-// A deferral exports as affected, never as not-affected. Deferring is an
-// internal scheduling judgment; publishing it as not-affected would tell the
-// outside world we assessed something as harmless when we had only put it off.
-func (o Outcome) Exported() Outcome {
-	if o == Deferred {
-		return Affected
-	}
-	return o
-}
 
 // Justification is why something does not affect us.
 //
@@ -104,16 +90,6 @@ func (j Justification) Valid() bool {
 		}
 	}
 	return false
-}
-
-// AsJustification reads a stated category, tolerating the spellings that
-// arrive from elsewhere.
-//
-// Producers and people write these with either separator and in either case.
-// Refusing a claim over a hyphen would throw away the reasoning it carried.
-func AsJustification(s string) (Justification, bool) {
-	normalized := Justification(strings.ReplaceAll(strings.ToLower(strings.TrimSpace(s)), "-", "_"))
-	return normalized, normalized.Valid()
 }
 
 // State is where a decision has got to.
