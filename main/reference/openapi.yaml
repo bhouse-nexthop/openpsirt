@@ -40,6 +40,22 @@ components:
           description: Name a batch to agree to many at once, so it can be undone as one
           type: string
       type: object
+    Assign-findingRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Assign-findingRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        person:
+          description: Their sign-in identity, or empty for nobody
+          type: string
+      required:
+        - person
+      type: object
     BindingBody:
       additionalProperties: false
       properties:
@@ -600,6 +616,19 @@ components:
         - role
         - effective
       type: object
+    HoldingBody:
+      additionalProperties: false
+      properties:
+        open:
+          description: Open findings assigned to them
+          format: int64
+          type: integer
+        person:
+          type: string
+      required:
+        - person
+        - open
+      type: object
     Info:
       additionalProperties: false
       properties:
@@ -666,6 +695,29 @@ components:
         - name
         - product
       type: object
+    List-unassignedResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/List-unassignedResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/UnassignedBody"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
+      type: object
     ListBodyApprovalBody:
       additionalProperties: false
       properties:
@@ -717,6 +769,25 @@ components:
         items:
           items:
             $ref: "#/components/schemas/CommentBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyHoldingBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyHoldingBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/HoldingBody"
           type:
             - array
             - "null"
@@ -1112,6 +1183,36 @@ components:
         - url
         - kind
       type: object
+    Release-assignmentsRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Release-assignmentsRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        to:
+          description: Who takes it on. Omit to return it to nobody
+          type: string
+      type: object
+    Release-assignmentsResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Release-assignmentsResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        moved:
+          format: int64
+          type: integer
+      required:
+        - moved
+      type: object
     Revise-decisionRequest:
       additionalProperties: false
       properties:
@@ -1273,6 +1374,38 @@ components:
       required:
         - name
       type: object
+    UnassignedBody:
+      additionalProperties: false
+      properties:
+        component:
+          type: string
+        exploited:
+          type: boolean
+        places:
+          description: How many places this issue sits at in that build
+          format: int64
+          type: integer
+        product:
+          type: string
+        severity:
+          type: string
+        stream:
+          type: string
+        variant:
+          type: string
+        version:
+          type: string
+        vulnerability:
+          type: string
+      required:
+        - vulnerability
+        - component
+        - version
+        - product
+        - stream
+        - variant
+        - places
+      type: object
     Undo-batchResponse:
       additionalProperties: false
       properties:
@@ -1404,6 +1537,29 @@ paths:
       summary: Undo a bulk approval
       tags:
         - Triage
+  /v1/assignments:
+    get:
+      description: |-
+        Returns everyone holding open findings you can see, with how many.
+
+        The number worth watching is not how many findings exist but how many are waiting behind somebody: an idle account holding nothing is harmless, and work stuck behind a person who has gone is the problem — nothing tells this software that somebody has left.
+      operationId: list-holdings
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyHoldingBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List how much each person is dealing with
+      tags:
+        - Findings
   /v1/comments/{id}:
     put:
       description: |-
@@ -1921,6 +2077,43 @@ paths:
       summary: List all users' API tokens
       tags:
         - Administration
+  /v1/people/{identity}/assignments/release:
+    post:
+      description: |-
+        Returns all their open findings to the unassigned list. For when somebody has left, or their last role is removed.
+
+        Nothing tells this software that somebody has gone — membership is read at sign-in, and a person who has left never signs in again. So this is an action an administrator takes rather than something that happens on its own, and until it is taken their work is in no list at all: not in the shared one because it is assigned, and not in anybody's own because they are not here.
+
+        Send `to` instead to hand it to a named person rather than to nobody.
+      operationId: release-assignments
+      parameters:
+        - in: path
+          name: identity
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Release-assignmentsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Release-assignmentsResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Hand back everything one person is dealing with
+      tags:
+        - Administration
   /v1/people/{identity}/roles/{product}/{role}:
     delete:
       description: A grant is a statement about now. Withdrawing one removes it rather than marking it, because what somebody used to hold is answered by the record of what they did.
@@ -2246,6 +2439,59 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Get everything known about one finding
+      tags:
+        - Findings
+  /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/assignment:
+    put:
+      description: |-
+        Records who is dealing with this issue in this component. It covers every place the component sits at in this build, because they are the same problem seen from several parents.
+
+        Send `person` as an empty string to hand it back to nobody. Handing back is the same operation as giving out, so there is one path rather than two that drift.
+
+        Findings arriving later under the same component start unassigned.
+      operationId: assign-finding
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: vulnerability
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: component
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Assign-findingRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Assign a finding to somebody
       tags:
         - Findings
   /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision:
@@ -2911,6 +3157,46 @@ paths:
       summary: Revoke one of your API tokens
       tags:
         - Access
+  /v1/unassigned:
+    get:
+      description: |-
+        Returns open findings with no assignee, across every product you can see, most urgent first.
+
+        Deliberately not scoped to one product: work falling between people is exactly what hides when every screen shows one product and nobody looks at the others.
+      operationId: list-unassigned
+      parameters:
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: offset
+          schema:
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/List-unassignedResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List findings nobody is dealing with
+      tags:
+        - Findings
   /v1/version:
     get:
       description: Identifies the build that is answering, so an operator can tell which version they are looking at.
