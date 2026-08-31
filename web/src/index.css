@@ -49,3 +49,52 @@ body {
   color: var(--color-ink);
   font-variant-numeric: tabular-nums;
 }
+
+/* What a rendered justification looks like. Written here rather than as
+   utility classes on the renderer's output, because the renderer emits plain
+   markup by design — it is the same markup an email would carry, and styling
+   it from one place is what keeps the two from diverging. */
+.prose-openpsirt {
+  line-height: 1.6;
+}
+.prose-openpsirt > * + * { margin-top: 0.75em; }
+.prose-openpsirt h1,
+.prose-openpsirt h2,
+.prose-openpsirt h3,
+.prose-openpsirt h4 { font-weight: 600; line-height: 1.3; text-wrap: balance; }
+.prose-openpsirt h1 { font-size: 1.25em; }
+.prose-openpsirt h2 { font-size: 1.125em; }
+.prose-openpsirt h3, .prose-openpsirt h4 { font-size: 1em; }
+.prose-openpsirt a { color: var(--color-accent); text-decoration: underline; }
+.prose-openpsirt ul, .prose-openpsirt ol { padding-left: 1.25em; }
+.prose-openpsirt ul { list-style: disc; }
+.prose-openpsirt ol { list-style: decimal; }
+.prose-openpsirt li + li { margin-top: 0.25em; }
+.prose-openpsirt blockquote {
+  border-left: 2px solid var(--color-edge);
+  padding-left: 0.75em;
+  color: var(--color-muted);
+}
+.prose-openpsirt code {
+  font-size: 0.9em;
+  background: var(--color-sunken);
+  border-radius: 0.25rem;
+  padding: 0.1em 0.3em;
+}
+/* Wide content scrolls inside its own box. The page itself never scrolls
+   sideways, on any screen. */
+.prose-openpsirt pre {
+  background: var(--color-sunken);
+  border: 1px solid var(--color-edge);
+  border-radius: 0.5rem;
+  padding: 0.75em;
+  overflow-x: auto;
+}
+.prose-openpsirt pre code { background: none; padding: 0; }
+.prose-openpsirt table { display: block; overflow-x: auto; border-collapse: collapse; }
+.prose-openpsirt th, .prose-openpsirt td {
+  border: 1px solid var(--color-edge);
+  padding: 0.35em 0.6em;
+  text-align: left;
+}
+.prose-openpsirt hr { border-color: var(--color-edge); }

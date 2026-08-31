@@ -2,10 +2,10 @@
 
 The web interface, how it is built, and how it reaches the server.
 
-Satisfies UIX-01, UIX-07, UIX-11, UIX-16, UIX-18 to UIX-20, UIX-22, UIX-34,
-UIX-37, API-17, ACC-56 to ACC-58. What is built so far is the shell, sign-in,
-the product list and the findings list; the rest of Stage 5 is named at the
-end.
+Satisfies UIX-01 to UIX-05, UIX-07, UIX-08, UIX-11, UIX-14, UIX-16, UIX-18 to
+UIX-23, UIX-27, UIX-30 to UIX-32, UIX-34, UIX-36, UIX-37, API-17, ACC-56 to
+ACC-58. What is not built is named at the end rather than left to be found by
+clicking.
 
 ## One artifact
 
@@ -185,14 +185,50 @@ lockfile.
 the one the server wrote, which names the line to fix or which part of a
 declaration is missing — and is the more useful of the two.
 
+## Writing, and what carries it
+
+The editor is a formatting toolbar over a plain textarea with Write and Preview
+tabs — not a rich-text editor. What is stored is markdown, and an editor that
+hides that eventually disagrees with what gets published. Every toolbar control
+is a button rather than a keyboard shortcut, because it has to work on a phone.
+
+**Preview is the published rendering**, not a second one that resembles it.
+Both go through the renderer above.
+
+**Unsent text is kept and restored.** A draft is written to the browser as
+somebody types and cleared only once the server has actually taken it — so a
+refused submission, an expired session and a closed tab all leave the words
+where they were. Losing what somebody wrote is what teaches people to write
+less, and the reasoning is the part of a decision that matters most.
+
+Restoring is deliberately narrow: only into an empty field, and only once. A
+draft that overwrote something a caller supplied would lose the thing it exists
+to protect.
+
+Storage that a browser refuses is not a failure. The draft is a convenience;
+the text in front of somebody is the real thing, so every read and write of it
+tolerates being turned down.
+
+## What the initial load carries
+
+Screens are split by route. The findings list has to stay usable against a
+full-size product and has no business downloading a charting library, and the
+markdown renderer is only needed where somebody reads or writes a
+justification.
+
+Measured: one bundle of 820 KB became a 248 KB initial load, with the chart
+(369 KB) and the renderer (146 KB) fetched only by the screens that use them.
+
 ## Not built yet
 
 Named so that what is missing is a plan rather than something rediscovered by
-clicking: the dependency tree (UIX-02 to UIX-04), the finding detail (UIX-14),
-the review queue, the home page assembled from what somebody holds (UIX-05,
-UIX-08), and the markdown editor with its toolbar, preview and mention
-autocomplete (UIX-21, UIX-23, UIX-25, UIX-30 to UIX-33).
+clicking: assignment, re-affirming a lapsed decision, the bulk judgment across
+many issues at one component, comment threads on a decision, and the revision
+history UIX-26 wants shown.
 
-Mentions need server work that does not exist: UIX-25 wants autocomplete
-offering only people who can see the finding, and there is no mention handling
-anywhere and no endpoint to ask. That lands with the editor.
+**Mentions need server work that does not exist.** UIX-25 wants autocomplete
+offering only people who can see the finding, and refusing a mention of
+somebody who cannot while it is being written. There is no mention handling
+anywhere and no endpoint to ask for the candidates. Both halves land together,
+because an autocomplete that offers people the server will then refuse is worse
+than none.

@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
 import { Severity } from "../ui/Severity";
+import { Crumbs } from "../ui/Crumbs";
 
 const PAGE = 50;
 
@@ -50,6 +51,19 @@ export function Findings() {
 
   return (
     <div>
+      <Crumbs product={product} stream={stream} variant={variant} />
+      <div className="mb-4">
+        <Link
+          to={
+            `/products/${encodeURIComponent(product)}` +
+            `/streams/${encodeURIComponent(stream)}` +
+            `/variants/${encodeURIComponent(variant)}/components`
+          }
+          className="text-sm text-accent hover:underline"
+        >
+          What this build contains →
+        </Link>
+      </div>
       <header className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-lg font-semibold tracking-tight">
           {product} <span className="text-muted">/ {stream} / {variant}</span>
@@ -65,7 +79,9 @@ export function Findings() {
         {rows.map((row) => (
           <li key={`${row.vulnerability}-${row.component}`} className="rounded-lg border border-edge bg-raised p-3">
             <div className="flex items-start justify-between gap-2">
-              <span className="font-medium">{row.vulnerability}</span>
+              <Link to={to(product, stream, variant, row)} className="font-medium hover:text-accent">
+                {row.vulnerability}
+              </Link>
               <Severity word={row.severity} exploited={row.exploited} />
             </div>
             <p className="mt-1 text-sm text-muted">
@@ -90,7 +106,11 @@ export function Findings() {
           <tbody>
             {rows.map((row) => (
               <tr key={`${row.vulnerability}-${row.component}`} className="border-t border-edge bg-raised">
-                <td className="px-3 py-2 font-medium">{row.vulnerability}</td>
+                <td className="px-3 py-2 font-medium">
+                  <Link to={to(product, stream, variant, row)} className="hover:text-accent">
+                    {row.vulnerability}
+                  </Link>
+                </td>
                 <td className="px-3 py-2">
                   {row.component}
                   <span className="text-muted"> {row.version}</span>
@@ -120,6 +140,24 @@ export function Findings() {
         }}
       />
     </div>
+  );
+}
+
+// Where a row opens. Clicking the row opens the thing it names (UIX-36);
+// nothing here is a preview overlay, because nothing here is a set somebody is
+// assembling and would lose by navigating away.
+function to(
+  product: string,
+  stream: string,
+  variant: string,
+  row: { vulnerability?: string; component?: string },
+): string {
+  return (
+    `/products/${encodeURIComponent(product)}` +
+    `/streams/${encodeURIComponent(stream)}` +
+    `/variants/${encodeURIComponent(variant)}` +
+    `/findings/${encodeURIComponent(row.vulnerability ?? "")}` +
+    `/components/${encodeURIComponent(row.component ?? "")}`
   );
 }
 

@@ -120,6 +120,7 @@ web-check:
 	  || { echo "npm not found, so the interface is unchecked here"; exit 0; }
 	$(MAKE) web-deps
 	$(NPM) --prefix web run typecheck
+	$(NPM) --prefix web test
 	$(MAKE) web-api
 
 # Exported code nothing reaches. The analysis gate only reports unexported
