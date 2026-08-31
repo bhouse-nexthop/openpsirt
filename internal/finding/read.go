@@ -337,6 +337,11 @@ type Evidence struct {
 	FixState FixState
 	FixedIn  string
 	FixedAt  *time.Time
+	// ArrivedFrom is the version this place held before, where the version
+	// moved and the issue came with it. Its presence says somebody bumped this
+	// and the bump did not resolve it — which is aimed at whoever did the
+	// bump rather than at whoever triages.
+	ArrivedFrom string
 	// Places is where it sits here — the consumer that pulls the component in,
 	// and whether the build has already argued that place away.
 	Places []Sitting
@@ -373,6 +378,7 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		FixState      string     `bun:"fix_state"`
 		FixedIn       string     `bun:"fixed_in"`
 		FixedAt       *time.Time `bun:"fixed_at"`
+		ArrivedFrom   string     `bun:"arrived_from"`
 	}
 	err = s.db.NewSelect().
 		TableExpr("finding AS f").
@@ -384,6 +390,7 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		ColumnExpr("f.fix_state AS fix_state").
 		ColumnExpr("f.fixed_in AS fixed_in").
 		ColumnExpr("f.fixed_at AS fixed_at").
+		ColumnExpr("COALESCE(f.arrived_from, '') AS arrived_from").
 		Where("f.target_id = ?", targetID).
 		Where("f.vulnerability_id = ?", vulnerabilityID).
 		Where("f.component_id = ?", componentID).
@@ -430,6 +437,7 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		References: references,
 		Component:  component.Name, Version: component.Version,
 		FixState: FixState(rows[0].FixState), FixedIn: rows[0].FixedIn, FixedAt: rows[0].FixedAt,
+		ArrivedFrom: rows[0].ArrivedFrom,
 	}
 	if issue.ScoreCenti != nil {
 		evidence.ScoreCenti = *issue.ScoreCenti

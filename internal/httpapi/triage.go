@@ -393,6 +393,32 @@ func decidingAbout(ctx context.Context, in Ingest, subject access.Subject,
 	return at, nil
 }
 
+// ReachBody is how far a judgment made here would travel.
+type ReachBody struct {
+	Here      int         `json:"here" doc:"Places in this build the judgment covers"`
+	Automatic []MatchBody `json:"automatic" doc:"Other builds it reaches by matching. Nothing to agree to"`
+	Differing []MatchBody `json:"differing" doc:"Same issue, another version. Each is a separate judgment"`
+}
+
+func reachBody(r finding.Reach) ReachBody {
+	body := ReachBody{
+		Here:      r.Here,
+		Automatic: make([]MatchBody, 0, len(r.Automatic)),
+		Differing: make([]MatchBody, 0, len(r.Differing)),
+	}
+	for _, m := range r.Automatic {
+		body.Automatic = append(body.Automatic, MatchBody{
+			Stream: m.Stream, Variant: m.Variant, Version: m.ComponentUpstream, Places: m.Places,
+		})
+	}
+	for _, m := range r.Differing {
+		body.Differing = append(body.Differing, MatchBody{
+			Stream: m.Stream, Variant: m.Variant, Version: m.ComponentUpstream, Places: m.Places,
+		})
+	}
+	return body
+}
+
 // MatchBody is the same issue at the same place in another build.
 type MatchBody struct {
 	Stream  string `json:"stream"`
@@ -406,14 +432,18 @@ type MatchBody struct {
 
 func registerElsewhere(api huma.API, in Ingest) {
 	huma.Register(api, huma.Operation{
-		OperationID: "list-same-issue-elsewhere", Method: http.MethodGet,
-		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/elsewhere",
-		Summary: "List the same vulnerability in other builds",
-		Description: "Lists other builds of this product with the same vulnerability at the same " +
-			"place, **excluding** builds a decision made here would already cover.\n\n" +
-			"A decision automatically applies to any build running the same upstream versions. " +
-			"This returns the builds where versions differ, so a separate decision is needed — " +
-			"each with the version it has, so you can judge them one at a time.",
+		OperationID: "get-decision-reach", Method: http.MethodGet,
+		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/reach",
+		Summary: "Show how far a decision here would reach",
+		Description: "Returns the three parts of what a judgment made here covers.\n\n" +
+			"`here` is how many places in this build. `automatic` are other builds it reaches " +
+			"without anybody doing anything, because their upstream versions and chains already " +
+			"match — a decision is a claim about a combination of code, not about a release. " +
+			"`differing` hold the same issue at the same place at another version, so each is a " +
+			"separate judgment.\n\n" +
+			"Only `differing` is a choice. The first two follow from the matching rules and are " +
+			"there to be told, not agreed to — and showing them as one number is how a decision " +
+			"comes to reach builds the person making it never knew about.",
 		Tags: []string{"Triage"},
 	}, func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
@@ -421,7 +451,7 @@ func registerElsewhere(api huma.API, in Ingest) {
 		Variant       string `path:"variant"`
 		Vulnerability string `path:"vulnerability"`
 		Place         string `path:"place"`
-	}) (*listOutput[MatchBody], error) {
+	}) (*struct{ Body ReachBody }, error) {
 		subject, _, err := triaging(ctx, in)
 		if err != nil {
 			return nil, err
@@ -442,20 +472,11 @@ func registerElsewhere(api huma.API, in Ingest) {
 			return nil, nothingScannedThere()
 		}
 
-		matches, err := finding.NewStore(in.DB.DB).Elsewhere(ctx, subject, *at, here.ID)
+		reach, err := finding.NewStore(in.DB.DB).Reaching(ctx, subject, *at, here.ID)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "cannot look for the same issue elsewhere", err)
 		}
-
-		out := &listOutput[MatchBody]{}
-		out.Body.Items = make([]MatchBody, 0, len(matches))
-		for _, match := range matches {
-			out.Body.Items = append(out.Body.Items, MatchBody{
-				Stream: match.Stream, Variant: match.Variant,
-				Version: match.ComponentUpstream, Places: match.Places,
-			})
-		}
-		return out, nil
+		return &struct{ Body ReachBody }{Body: reachBody(reach)}, nil
 	})
 }
 

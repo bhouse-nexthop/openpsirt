@@ -618,3 +618,34 @@ func TestOnlyAnAdministratorMovesSomebodyElsesWork(t *testing.T) {
 		}
 	})
 }
+
+func TestHowFarADecisionWouldReachComesBackInThreeParts(t *testing.T) {
+	// Presenting it as one number is what turns a considered judgment into a
+	// reflex, and it is how a decision comes to reach builds the person making
+	// it never knew about. The first two parts are consequences of the
+	// matching rules and are not choices; only the third is.
+	eachReach(t, func(t *testing.T, r *reach) {
+		place := r.scanned(t)
+		var reached struct {
+			Here      int `json:"here"`
+			Automatic []struct {
+				Stream string `json:"stream"`
+			} `json:"automatic"`
+			Differing []struct {
+				Stream  string `json:"stream"`
+				Version string `json:"version"`
+			} `json:"differing"`
+		}
+		read(t, r, "triager", fmt.Sprintf("/v1/products/mine/streams/master/variants/broadcom"+
+			"/findings/CVE-2026-9999/places/%s/reach", place), &reached)
+
+		if reached.Here != 1 {
+			t.Errorf("the judgment covers %d places here, want 1", reached.Here)
+		}
+		// One build in this deployment, so nothing else to reach either way —
+		// what matters is that both lists come back rather than being absent.
+		if reached.Automatic == nil || reached.Differing == nil {
+			t.Errorf("reach came back incomplete: %+v", reached)
+		}
+	})
+}

@@ -292,7 +292,8 @@ thing rather than a gap somebody rediscovers by auditing.
 | REL-01, REL-03, REL-04, REL-07, SCP-05 | The interface | All are about how findings and exceptions are presented and acted on together. Deciding them against a real screen rather than in the abstract is the point |
 | ACC-46 to ACC-49 | Private findings | Whole feature, with disclosure dates and the escalation around them |
 | ING-24 to ING-27, SCP-11 | Analyzer findings | Intended scope, not built. The finding model carries a kind from the start so a second kind needs no rewrite, which is the part that had to be got right early |
-| TRI-30, TRI-31, TRI-32, STA-18 | The interface, mostly | Each costs little in the data layer and most of the work is in showing somebody what they are about to assert. Costed above rather than discovered later |
+| TRI-31 | An approval recording the reach it was granted for | The reach itself is built and returned; what is not stored is the counts as they stood when somebody agreed. It wants three columns on the approval and, more interestingly, a decision about whether the number recorded is what was *shown* to the approver or what was true at that moment — those differ, and the first is the one worth having |
+| TRI-32 | The interface | The mechanism is nothing: it writes decisions the model already has. The work is showing somebody what they are about to assert, and the cap |
 | MDL-10 | Nothing — it is a limitation | The same version built with different feature flags can use its dependencies differently. Recorded so nobody assumes the graph says more than it does |
 
 ## Not planned yet

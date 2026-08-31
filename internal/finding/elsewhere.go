@@ -9,6 +9,28 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 )
 
+// Reach is how far a judgment travels, in the three parts somebody deciding
+// needs told apart.
+//
+// The first two are consequences of the matching rules and are not choices —
+// there is nothing to agree to, only something to be told. The third is the
+// only choice, and it is the one worth slowing down for: ticking one is a
+// claim about a version nobody has looked at.
+//
+// Presenting them as one number is what turns a considered judgment into a
+// reflex, and it is also how a decision comes to reach builds the person
+// making it never knew about.
+type Reach struct {
+	// Here is how many places in this build the judgment covers.
+	Here int
+	// Automatic are the other builds it reaches by matching: same upstream
+	// versions, same chain. Nothing to tick.
+	Automatic []Match
+	// Differing hold the same issue at the same place at another version, so
+	// each is asked separately.
+	Differing []Match
+}
+
 // Match is the same issue at the same place in another build.
 type Match struct {
 	TargetID int64
@@ -35,13 +57,13 @@ type Match struct {
 // Offered one at a time rather than as one answer. A component may be used in
 // a later release and not an earlier one, and the reasoning that made something
 // harmless in one build is not automatically true in another.
-func (s *Store) Elsewhere(ctx context.Context, subject access.Subject, at Deciding, exceptTargetID int64) ([]Match, error) {
+func (s *Store) Reaching(ctx context.Context, subject access.Subject, at Deciding, exceptTargetID int64) (Reach, error) {
 	if !subject.Sees(at.ProductID) {
-		return nil, access.Denied(fmt.Sprintf("read findings in product %d", at.ProductID))
+		return Reach{}, access.Denied(fmt.Sprintf("read findings in product %d", at.ProductID))
 	}
 	visible := visibleTo(subject, at.ProductID)
 	if len(visible) == 0 {
-		return nil, access.Denied(fmt.Sprintf("read findings in product %d", at.ProductID))
+		return Reach{}, access.Denied(fmt.Sprintf("read findings in product %d", at.ProductID))
 	}
 
 	var rows []struct {
@@ -75,23 +97,25 @@ func (s *Store) Elsewhere(ctx context.Context, subject access.Subject, at Decidi
 		OrderExpr("st.display_name, va.display_name").
 		Scan(ctx, &rows)
 	if err != nil {
-		return nil, fmt.Errorf("look for the same issue elsewhere: %w", err)
+		return Reach{}, fmt.Errorf("look for the same issue elsewhere: %w", err)
 	}
 
-	matches := make([]Match, 0, len(rows))
+	reach := Reach{Here: at.Places}
 	for _, row := range rows {
-		// Where the versions are identical the decision already reaches it,
-		// and offering it again would ask somebody to agree to something that
-		// has already happened.
-		if row.ComponentUpstream == at.ComponentUpstream &&
-			row.ConsumerUpstream == at.ConsumerUpstream {
-			continue
-		}
-		matches = append(matches, Match{
+		match := Match{
 			TargetID: row.TargetID, Stream: row.Stream, Variant: row.Variant,
 			ComponentUpstream: row.ComponentUpstream, ConsumerUpstream: row.ConsumerUpstream,
 			Places: row.Places,
-		})
+		}
+		// Where the versions are identical the decision reaches it by
+		// matching, so there is nothing to agree to — but somebody deciding
+		// should still be told, because it is how far their judgment travels.
+		if row.ComponentUpstream == at.ComponentUpstream &&
+			row.ConsumerUpstream == at.ConsumerUpstream {
+			reach.Automatic = append(reach.Automatic, match)
+			continue
+		}
+		reach.Differing = append(reach.Differing, match)
 	}
-	return matches, nil
+	return reach, nil
 }

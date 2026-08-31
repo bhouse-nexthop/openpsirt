@@ -142,6 +142,10 @@ type EvidenceBody struct {
 	FixState  string `json:"fix_state,omitempty" enum:"fixed,none,wont-fix"`
 	FixedIn   string `json:"fixed_in,omitempty" doc:"The version that resolves it"`
 	FixedAt   string `json:"fixed_at,omitempty" doc:"When that version became available"`
+	// ArrivedFrom says somebody moved this version and the issue came with it.
+	// A different sentence aimed at a different person: whoever did the bump,
+	// rather than whoever triages.
+	ArrivedFrom string `json:"arrived_from,omitempty" doc:"The version this was bumped from, where the bump did not resolve it"`
 
 	Places []SittingBody `json:"places"`
 }
@@ -206,7 +210,7 @@ func evidenceBody(e finding.Evidence) EvidenceBody {
 		Exploited: e.Exploited, Likelihood: float64(e.LikelihoodPPM) / 1_000_000,
 		Weaknesses: e.Weaknesses, Description: e.Description, Advisory: e.Advisory,
 		Component: e.Component, Version: e.Version, Upstream: e.Upstream,
-		FixState: string(e.FixState), FixedIn: e.FixedIn,
+		FixState: string(e.FixState), FixedIn: e.FixedIn, ArrivedFrom: e.ArrivedFrom,
 		Places: make([]SittingBody, 0, len(e.Places)),
 	}
 	if e.FixedAt != nil {
