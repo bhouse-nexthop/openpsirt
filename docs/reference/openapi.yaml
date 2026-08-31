@@ -1,0 +1,3371 @@
+components:
+  schemas:
+    ApprovalBody:
+      additionalProperties: false
+      properties:
+        approved_at:
+          type: string
+        approved_by:
+          type: string
+        batch:
+          description: The batch it was approved under, if it was a bulk approval
+          type: string
+        id:
+          format: int64
+          type: integer
+        revision_id:
+          description: Which revision of the justification was agreed to
+          format: int64
+          type: integer
+        withdrawn_at:
+          description: When this approval was taken back, if it was
+          type: string
+      required:
+        - id
+        - revision_id
+        - approved_by
+        - approved_at
+      type: object
+    Approve-decisionRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Approve-decisionRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        batch:
+          description: Name a batch to agree to many at once, so it can be undone as one
+          type: string
+      type: object
+    Assign-findingRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Assign-findingRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        person:
+          description: Their sign-in identity, or empty for nobody
+          type: string
+      required:
+        - person
+      type: object
+    BindingBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/BindingBody.json
+          format: uri
+          readOnly: true
+          type: string
+        group:
+          description: The group as the provider names it — a team slug, or a claim value
+          maxLength: 191
+          minLength: 1
+          type: string
+        product:
+          description: The product the role is held against
+          type: string
+        role:
+          description: What membership of this group grants
+          enum:
+            - reporting
+            - approver
+            - public-read
+            - private-read
+            - public-triage
+            - private-triage
+            - admin
+          type: string
+      required:
+        - group
+        - role
+      type: object
+    Comment-on-decisionRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Comment-on-decisionRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        body:
+          minLength: 1
+          type: string
+      required:
+        - body
+      type: object
+    Comment-on-decisionResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Comment-on-decisionResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          format: int64
+          type: integer
+      required:
+        - id
+      type: object
+    CommentBody:
+      additionalProperties: false
+      properties:
+        body:
+          description: The comment text, in markdown
+          type: string
+        body_html:
+          description: The same text as sanitized HTML. Only when html=true
+          type: string
+        edited_at:
+          description: When the author last changed it, if they did
+          type: string
+        id:
+          format: int64
+          type: integer
+        written_at:
+          type: string
+        written_by:
+          type: string
+      required:
+        - id
+        - body
+        - written_by
+        - written_at
+      type: object
+    DecisionBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DecisionBody.json
+          format: uri
+          readOnly: true
+          type: string
+        deferred_until:
+          description: When a deferral returns, as a date. Required for a deferral
+          type: string
+        id:
+          description: What to name this decision in a later request
+          format: int64
+          type: integer
+        justification:
+          description: Why it does not apply. Required when it does not
+          enum:
+            - component_not_present
+            - vulnerable_code_not_present
+            - vulnerable_code_not_in_execute_path
+            - vulnerable_code_cannot_be_controlled_by_adversary
+            - inline_mitigations_already_exist
+          type: string
+        needs_approval:
+          description: Whether a second person has to agree before it takes effect
+          type: boolean
+        outcome:
+          description: What was decided
+          enum:
+            - affected
+            - not-applicable
+            - deferred
+            - wont-fix
+          type: string
+        places:
+          description: How many findings this decision covers
+          format: int64
+          type: integer
+        reasoning:
+          description: Why, in markdown. Somebody else has to agree with this
+          minLength: 1
+          type: string
+        state:
+          description: Where it has got to
+          enum:
+            - proposed
+            - approved
+            - withdrawn
+            - lapsed
+          type: string
+        versions:
+          description: How many versions of the component sit here. More than one needs care
+          format: int64
+          type: integer
+      required:
+        - outcome
+        - reasoning
+      type: object
+    DecisionDetail:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DecisionDetail.json
+          format: uri
+          readOnly: true
+          type: string
+        age_days:
+          description: How long the claim has stood. An old judgment should look like one
+          format: int64
+          type: integer
+        decision:
+          $ref: "#/components/schemas/DecisionBody"
+        place:
+          $ref: "#/components/schemas/PlaceBody"
+        proposed_at:
+          description: When the claim was made, as a date and time
+          type: string
+        proposed_by:
+          type: string
+        reasoning:
+          description: The justification as it currently stands, in markdown
+          type: string
+        reasoning_html:
+          description: The same text as sanitized HTML. Only when html=true
+          type: string
+      required:
+        - decision
+        - place
+        - reasoning
+        - proposed_by
+        - proposed_at
+        - age_days
+      type: object
+    DecisionsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DecisionsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/DecisionDetail"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
+      type: object
+    DeclaredKeyBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DeclaredKeyBody.json
+          format: uri
+          readOnly: true
+          type: string
+        created:
+          type: boolean
+        item:
+          $ref: "#/components/schemas/KeyBody"
+      required:
+        - created
+        - item
+      type: object
+    DeclaredPersonBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DeclaredPersonBody.json
+          format: uri
+          readOnly: true
+          type: string
+        created:
+          type: boolean
+        item:
+          $ref: "#/components/schemas/PersonBody"
+      required:
+        - created
+        - item
+      type: object
+    DeclaredProductBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DeclaredProductBody.json
+          format: uri
+          readOnly: true
+          type: string
+        created:
+          type: boolean
+        item:
+          $ref: "#/components/schemas/ProductBody"
+      required:
+        - created
+        - item
+      type: object
+    DeclaredStreamBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DeclaredStreamBody.json
+          format: uri
+          readOnly: true
+          type: string
+        created:
+          type: boolean
+        item:
+          $ref: "#/components/schemas/StreamBody"
+      required:
+        - created
+        - item
+      type: object
+    DeclaredVariantBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DeclaredVariantBody.json
+          format: uri
+          readOnly: true
+          type: string
+        created:
+          type: boolean
+        item:
+          $ref: "#/components/schemas/VariantBody"
+      required:
+        - created
+        - item
+      type: object
+    Edit-commentRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Edit-commentRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        body:
+          minLength: 1
+          type: string
+      required:
+        - body
+      type: object
+    ErrorDetail:
+      additionalProperties: false
+      properties:
+        location:
+          description: Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'
+          type: string
+        message:
+          description: Error message text
+          type: string
+        value:
+          description: The value at the given location
+      type: object
+    ErrorModel:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ErrorModel.json
+          format: uri
+          readOnly: true
+          type: string
+        detail:
+          description: A human-readable explanation specific to this occurrence of the problem.
+          examples:
+            - Property foo is required but is missing.
+          type: string
+        errors:
+          description: Optional list of individual error details
+          items:
+            $ref: "#/components/schemas/ErrorDetail"
+          type:
+            - array
+            - "null"
+        instance:
+          description: A URI reference that identifies the specific occurrence of the problem.
+          examples:
+            - https://example.com/error-log/abc123
+          format: uri
+          type: string
+        status:
+          description: HTTP status code
+          examples:
+            - 400
+          format: int64
+          type: integer
+        title:
+          description: A short, human-readable summary of the problem type. This value should not change between occurrences of the error.
+          examples:
+            - Bad Request
+          type: string
+        type:
+          default: about:blank
+          description: A URI reference to human-readable documentation for the error.
+          examples:
+            - https://example.com/errors/example
+          format: uri
+          type: string
+      type: object
+    EvidenceBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/EvidenceBody.json
+          format: uri
+          readOnly: true
+          type: string
+        advisory:
+          description: Where the issue is written up
+          type: string
+        aliases:
+          description: Other names the same issue is known by
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        component:
+          type: string
+        description:
+          type: string
+        exploited:
+          description: Somebody is known to be exploiting this
+          type: boolean
+        fix_state:
+          enum:
+            - fixed
+            - none
+            - wont-fix
+          type: string
+        fixed_at:
+          description: When that version became available
+          type: string
+        fixed_in:
+          description: The version that resolves it
+          type: string
+        likelihood:
+          description: Published probability of exploitation, 0 to 1
+          format: double
+          type: number
+        places:
+          items:
+            $ref: "#/components/schemas/SittingBody"
+          type:
+            - array
+            - "null"
+        references:
+          items:
+            $ref: "#/components/schemas/ReferenceBody"
+          type:
+            - array
+            - "null"
+        score:
+          description: The same judgment as a number, where one is published
+          format: double
+          type: number
+        severity:
+          description: As the data rates it. A word
+          type: string
+        upstream:
+          description: What a fork was made from, where it is one
+          type: string
+        vector:
+          description: What the score assumes — reachability, privilege, interaction
+          type: string
+        version:
+          type: string
+        vulnerability:
+          type: string
+        weaknesses:
+          description: What kind of flaw this is, as CWE identifiers
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+      required:
+        - vulnerability
+        - component
+        - version
+        - places
+      type: object
+    FindingBody:
+      additionalProperties: false
+      properties:
+        answered:
+          description: How many of those the build has already argued do not apply
+          format: int64
+          type: integer
+        component:
+          description: What carries it
+          type: string
+        exploited:
+          description: Somebody is known to be exploiting this
+          type: boolean
+        fix_state:
+          description: What upstream has done about it
+          enum:
+            - fixed
+            - none
+            - wont-fix
+          type: string
+        fixed_in:
+          description: The version that resolves it, where one exists
+          type: string
+        places:
+          description: How many places this component sits at here
+          format: int64
+          type: integer
+        severity:
+          description: As the scanner rated it. A word, not a score
+          type: string
+        upstream:
+          description: What a fork was made from, where it is one
+          type: string
+        version:
+          description: The version that ships
+          type: string
+        vulnerability:
+          description: The issue, under the name it is most widely known by
+          type: string
+      required:
+        - vulnerability
+        - component
+        - version
+        - places
+      type: object
+    FindingsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/FindingsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/FindingBody"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
+      type: object
+    HeldBody:
+      additionalProperties: false
+      properties:
+        effective:
+          description: Whether this grants anything right now
+          type: boolean
+        product:
+          description: The product the role is held against
+          minLength: 1
+          type: string
+        role:
+          description: What they may do with it
+          enum:
+            - reporting
+            - approver
+            - public-read
+            - private-read
+            - public-triage
+            - private-triage
+          type: string
+        source:
+          description: Whether an administrator assigned this or a group derived it
+          enum:
+            - assigned
+            - derived
+          type: string
+      required:
+        - product
+        - role
+        - effective
+      type: object
+    HoldingBody:
+      additionalProperties: false
+      properties:
+        open:
+          description: Open findings assigned to them
+          format: int64
+          type: integer
+        person:
+          type: string
+      required:
+        - person
+        - open
+      type: object
+    Info:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Info.json
+          format: uri
+          readOnly: true
+          type: string
+        commit:
+          description: Git commit the binary was built from
+          type: string
+        date:
+          description: Build timestamp, RFC 3339
+          type: string
+        go:
+          description: Go toolchain that produced the binary
+          type: string
+        version:
+          description: Release version, or "dev" for an unreleased build
+          type: string
+      required:
+        - version
+        - commit
+        - date
+        - go
+      type: object
+    KeyBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/KeyBody.json
+          format: uri
+          readOnly: true
+          type: string
+        last_used_at:
+          description: When it last sent something
+          type: string
+        name:
+          description: What this credential is for
+          maxLength: 191
+          minLength: 1
+          type: string
+        product:
+          description: The product it may send scans for. Always required
+          minLength: 1
+          type: string
+        revoked:
+          description: Whether it has been withdrawn
+          type: boolean
+        secret:
+          description: Shown once, at creation. It is stored hashed and cannot be shown again
+          type: string
+        stream:
+          description: Optionally, the one release it may send for
+          type: string
+        variant:
+          description: Optionally, the one variant it may send for
+          type: string
+      required:
+        - name
+        - product
+      type: object
+    LateBody:
+      additionalProperties: false
+      properties:
+        assigned_to:
+          description: Empty means nobody is dealing with it
+          type: string
+        component:
+          type: string
+        days_left:
+          description: Negative once it is overdue
+          format: int64
+          type: integer
+        due:
+          description: When it is due, as a date
+          type: string
+        exploited:
+          type: boolean
+        product:
+          type: string
+        severity:
+          type: string
+        stream:
+          type: string
+        variant:
+          type: string
+        vulnerability:
+          type: string
+      required:
+        - vulnerability
+        - component
+        - product
+        - stream
+        - variant
+        - due
+        - days_left
+      type: object
+    List-unassignedResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/List-unassignedResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/UnassignedBody"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
+      type: object
+    ListBodyApprovalBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyApprovalBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/ApprovalBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyBindingBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyBindingBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/BindingBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyCommentBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyCommentBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/CommentBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyHoldingBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyHoldingBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/HoldingBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyKeyBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyKeyBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/KeyBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyLateBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyLateBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/LateBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyMatchBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyMatchBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/MatchBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyPersonBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyPersonBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/PersonBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyProductBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyProductBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/ProductBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyRevisionBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyRevisionBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/RevisionBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyStreamBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyStreamBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/StreamBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyTokenBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyTokenBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/TokenBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyVariantBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyVariantBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/VariantBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    MatchBody:
+      additionalProperties: false
+      properties:
+        places:
+          description: How many places it sits at there
+          format: int64
+          type: integer
+        stream:
+          type: string
+        variant:
+          type: string
+        version:
+          description: The upstream version that build has, which differs from this one
+          type: string
+      required:
+        - stream
+        - variant
+        - places
+      type: object
+    ModeBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ModeBody.json
+          format: uri
+          readOnly: true
+          type: string
+        mode:
+          description: Whether an administrator assigns roles or provider groups derive them
+          enum:
+            - direct
+            - group-bound
+          type: string
+      required:
+        - mode
+      type: object
+    PersonBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/PersonBody.json
+          format: uri
+          readOnly: true
+          type: string
+        admin:
+          description: Whether they administer this deployment
+          type: boolean
+        display_name:
+          description: What to show instead of the identity
+          type: string
+        holds:
+          items:
+            $ref: "#/components/schemas/HeldBody"
+          type:
+            - array
+            - "null"
+        identity:
+          description: What to call them here
+          maxLength: 191
+          minLength: 1
+          type: string
+        provider:
+          description: Which sign-in path they will arrive by, such as proxy for a trusted header
+          type: string
+        signs_in_by:
+          items:
+            $ref: "#/components/schemas/SignInBody"
+          type:
+            - array
+            - "null"
+        username:
+          description: What that provider calls them. Defaults to the identity
+          type: string
+      required:
+        - identity
+      type: object
+    PlaceBody:
+      additionalProperties: false
+      properties:
+        place:
+          description: Which place in the build, as the findings list gives it
+          minLength: 1
+          type: string
+        product:
+          minLength: 1
+          type: string
+        vulnerability:
+          description: The issue, by any name it is known under
+          minLength: 1
+          type: string
+      required:
+        - product
+        - vulnerability
+        - place
+      type: object
+    ProductBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ProductBody.json
+          format: uri
+          readOnly: true
+          type: string
+        display_name:
+          description: What people see. Defaults to the name
+          type: string
+        name:
+          description: How scans name this product
+          maxLength: 191
+          minLength: 1
+          type: string
+      required:
+        - name
+      type: object
+    QueueOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/QueueOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/WaitingBody"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
+      type: object
+    Reaffirm-decisionRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Reaffirm-decisionRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        previous:
+          description: The decision being re-made
+          format: int64
+          type: integer
+        reasoning:
+          description: Why it still holds, in markdown
+          minLength: 1
+          type: string
+      required:
+        - previous
+        - reasoning
+      type: object
+    ReceiptBody:
+      additionalProperties: false
+      properties:
+        built_at:
+          description: When the producer says the build was made
+          type: string
+        failure:
+          description: Why it could not be used, where it could not
+          type: string
+        received_at:
+          description: When it arrived here
+          type: string
+        scan_id:
+          description: The scan this upload became
+          format: int64
+          type: integer
+        serial:
+          description: The identity the inventory carries for itself
+          type: string
+        state:
+          description: How far it has got
+          enum:
+            - reading
+            - scanning
+            - scanned
+            - failed
+          type: string
+      required:
+        - scan_id
+        - received_at
+        - state
+      type: object
+    ReceiptsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ReceiptsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/ReceiptBody"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
+      type: object
+    ReferenceBody:
+      additionalProperties: false
+      properties:
+        kind:
+          description: What it appears to be. A patch is the change itself
+          enum:
+            - patch
+            - advisory
+            - report
+            - other
+          type: string
+        url:
+          type: string
+      required:
+        - url
+        - kind
+      type: object
+    Release-assignmentsRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Release-assignmentsRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        to:
+          description: Who takes it on. Omit to return it to nobody
+          type: string
+      type: object
+    Release-assignmentsResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Release-assignmentsResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        moved:
+          format: int64
+          type: integer
+      required:
+        - moved
+      type: object
+    Revise-decisionRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Revise-decisionRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        reasoning:
+          minLength: 1
+          type: string
+      required:
+        - reasoning
+      type: object
+    RevisionBody:
+      additionalProperties: false
+      properties:
+        body:
+          description: The justification text, in markdown
+          type: string
+        body_html:
+          description: The same text as sanitized HTML. Only when html=true
+          type: string
+        id:
+          description: What an approval names when it says which words were agreed to
+          format: int64
+          type: integer
+        ordinal:
+          description: Which revision this is, counting from one
+          format: int64
+          type: integer
+        written_at:
+          type: string
+        written_by:
+          type: string
+      required:
+        - id
+        - ordinal
+        - body
+        - written_by
+        - written_at
+      type: object
+    Send-decision-backRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Send-decision-backRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        because:
+          description: What needs to change, in markdown
+          minLength: 1
+          type: string
+      required:
+        - because
+      type: object
+    SignInBody:
+      additionalProperties: false
+      properties:
+        pinned:
+          type: boolean
+        provider:
+          type: string
+        username:
+          type: string
+      required:
+        - provider
+        - username
+        - pinned
+      type: object
+    SittingBody:
+      additionalProperties: false
+      properties:
+        consumer:
+          description: What pulls the component in here. Absent under the product itself
+          type: string
+        place:
+          description: Name this when recording a decision about it
+          type: string
+        suppressed:
+          description: The build has already argued this place away
+          type: boolean
+      required:
+        - place
+      type: object
+    StandingBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/StandingBody.json
+          format: uri
+          readOnly: true
+          type: string
+        previously:
+          items:
+            $ref: "#/components/schemas/DecisionDetail"
+          type:
+            - array
+            - "null"
+        standing:
+          $ref: "#/components/schemas/DecisionDetail"
+      required:
+        - previously
+      type: object
+    StreamBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/StreamBody.json
+          format: uri
+          readOnly: true
+          type: string
+        kind:
+          description: Whether this line moves. A branch is rebuilt; a tag never changes
+          enum:
+            - branch
+            - tag
+          type: string
+        name:
+          description: How scans name this branch or tag
+          maxLength: 191
+          minLength: 1
+          type: string
+        parent:
+          description: For a tag, the branch it was cut from
+          type: string
+      required:
+        - name
+        - kind
+      type: object
+    TokenBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/TokenBody.json
+          format: uri
+          readOnly: true
+          type: string
+        expires_at:
+          description: When it stops working
+          type: string
+        last_used_at:
+          description: When it was last used
+          type: string
+        lifetime:
+          description: How long it lasts, such as "720h". There is a configured maximum
+          type: string
+        name:
+          description: What its owner calls it
+          maxLength: 191
+          minLength: 1
+          type: string
+        owner:
+          description: Whose it is. Shown to an administrator listing everybody's
+          type: string
+        product:
+          description: Optionally, the one product it may reach
+          type: string
+        revoked:
+          description: Whether it has been withdrawn
+          type: boolean
+        secret:
+          description: Shown once, at creation. It is stored hashed and cannot be shown again
+          type: string
+      required:
+        - name
+      type: object
+    UnassignedBody:
+      additionalProperties: false
+      properties:
+        component:
+          type: string
+        exploited:
+          type: boolean
+        places:
+          description: How many places this issue sits at in that build
+          format: int64
+          type: integer
+        product:
+          type: string
+        severity:
+          type: string
+        stream:
+          type: string
+        variant:
+          type: string
+        version:
+          type: string
+        vulnerability:
+          type: string
+      required:
+        - vulnerability
+        - component
+        - version
+        - product
+        - stream
+        - variant
+        - places
+      type: object
+    Undo-batchResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Undo-batchResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        undone:
+          format: int64
+          type: integer
+      required:
+        - undone
+      type: object
+    UploadResult:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/UploadResult.json
+          format: uri
+          readOnly: true
+          type: string
+        built_at:
+          description: When the producer says the build was made
+          type: string
+        outcome:
+          description: Whether this upload was taken or matched one already held
+          enum:
+            - queued
+            - already_held
+          type: string
+        scan_id:
+          description: The scan this upload became, or the one it matched
+          format: int64
+          type: integer
+        serial:
+          description: The identity the inventory carries for itself
+          type: string
+      required:
+        - scan_id
+        - outcome
+      type: object
+    VariantBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/VariantBody.json
+          format: uri
+          readOnly: true
+          type: string
+        customer_facing:
+          description: Whether this reaches customers. Defaults to yes
+          type: boolean
+        name:
+          description: How scans name this build of the stream
+          maxLength: 191
+          minLength: 1
+          type: string
+      required:
+        - name
+      type: object
+    WaitingBody:
+      additionalProperties: false
+      properties:
+        age_days:
+          description: How long the claim has stood. An old judgment should look like one
+          format: int64
+          type: integer
+        decision:
+          $ref: "#/components/schemas/DecisionBody"
+        deferred_days:
+          description: How long this finding has been put off in total
+          format: int64
+          type: integer
+        place:
+          $ref: "#/components/schemas/PlaceBody"
+        previously_approved:
+          description: This was agreed to before and came back
+          type: boolean
+        proposed_by:
+          type: string
+        reasoning:
+          type: string
+      required:
+        - decision
+        - place
+        - reasoning
+        - proposed_by
+        - age_days
+      type: object
+info:
+  description: Track vulnerabilities in the products you ship.
+  title: OpenPSIRT
+  version: dev
+openapi: 3.1.0
+paths:
+  /v1/approval-batches/{batch}:
+    delete:
+      description: |-
+        Withdraws every approval recorded under this batch name, returning those decisions to the review queue. The decisions themselves stand — only the approvals are undone. Returns how many were affected.
+
+        Only decisions on products you may triage are touched.
+      operationId: undo-batch
+      parameters:
+        - in: path
+          name: batch
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Undo-batchResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Undo a bulk approval
+      tags:
+        - Triage
+  /v1/assignments:
+    get:
+      description: |-
+        Returns everyone holding open findings you can see, with how many.
+
+        The number worth watching is not how many findings exist but how many are waiting behind somebody: an idle account holding nothing is harmless, and work stuck behind a person who has gone is the problem — nothing tells this software that somebody has left.
+      operationId: list-holdings
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyHoldingBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List how much each person is dealing with
+      tags:
+        - Findings
+  /v1/comments/{id}:
+    put:
+      description: |-
+        Replaces the text of a comment. Only its author may do this, and the new text overwrites the old rather than being kept as a revision — a comment is a remark, not a justification.
+
+        The text is markdown and is validated before it is stored; a 422 names the line and the offending text.
+      operationId: edit-comment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Edit-commentRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Edit a comment
+      tags:
+        - Triage
+  /v1/decisions:
+    get:
+      description: |-
+        Returns triage decisions on products you may triage, newest first, with the justification text for each.
+
+        Filter by `outcome` to list dismissals (`not-applicable`, `wont-fix`) or postponements (`deferred`), by `state` to separate what is approved from what is still waiting or has been withdrawn, and by `product` to limit to one product.
+
+        Set `expired=true` to list deferrals whose date has passed — the findings that have come back and need judging again.
+      operationId: list-decisions
+      parameters:
+        - description: Limit to one product, by name
+          explode: false
+          in: query
+          name: product
+          schema:
+            description: Limit to one product, by name
+            type: string
+        - description: Limit to one outcome
+          explode: false
+          in: query
+          name: outcome
+          schema:
+            description: Limit to one outcome
+            enum:
+              - affected
+              - not-applicable
+              - deferred
+              - wont-fix
+            type: string
+        - description: Limit to one state
+          explode: false
+          in: query
+          name: state
+          schema:
+            description: Limit to one state
+            enum:
+              - proposed
+              - approved
+              - withdrawn
+              - lapsed
+            type: string
+        - description: Only deferrals whose date has passed
+          explode: false
+          in: query
+          name: expired
+          schema:
+            description: Only deferrals whose date has passed
+            type: boolean
+        - description: Also return each justification as sanitized HTML
+          explode: false
+          in: query
+          name: html
+          schema:
+            description: Also return each justification as sanitized HTML
+            type: boolean
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: offset
+          schema:
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List triage decisions
+      tags:
+        - Triage
+  /v1/decisions/{id}:
+    delete:
+      description: Withdraws the decision so it no longer applies to any finding. The record is kept — a withdrawn decision reads as proposed, approved, then withdrawn. Requires no approval.
+      operationId: withdraw-decision
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Withdraw a triage decision
+      tags:
+        - Triage
+    get:
+      description: |-
+        Returns one decision with the justification as it currently stands, where it applies, who proposed it and how long it has stood.
+
+        For the earlier justifications see `GET /v1/decisions/{id}/revisions`, and for who agreed to which of them see `GET /v1/decisions/{id}/approvals`.
+      operationId: get-decision
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - description: Also return the justification as sanitized HTML
+          explode: false
+          in: query
+          name: html
+          schema:
+            description: Also return the justification as sanitized HTML
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionDetail"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get a triage decision
+      tags:
+        - Triage
+  /v1/decisions/{id}/approval:
+    post:
+      description: |-
+        Approves a proposed decision. Returns 409 if you proposed it yourself — the proposer and approver must always be different people, and there is no override.
+
+        An approval is recorded against the specific revision of the justification that exists now. Editing the justification afterwards withdraws the approval and returns the decision to this queue.
+
+        Pass `batch` to approve many decisions under one name, so they can be undone together with `DELETE /v1/approval-batches/{batch}`.
+      operationId: approve-decision
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Approve-decisionRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Approve a triage decision
+      tags:
+        - Triage
+  /v1/decisions/{id}/approvals:
+    get:
+      description: |-
+        Returns every approval recorded against this decision, including ones later withdrawn, each naming the revision of the justification it was given for.
+
+        A withdrawn approval is kept rather than deleted: who agreed to what, and when it stopped counting, is part of the record.
+      operationId: list-decision-approvals
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyApprovalBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List who approved a decision
+      tags:
+        - Triage
+  /v1/decisions/{id}/comments:
+    get:
+      description: |-
+        Returns the comments on a decision, oldest first, with who wrote each and when. A comment that has been edited also carries when it was last changed.
+
+        Comments are separate from the justification and never affect an approval.
+      operationId: list-decision-comments
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - description: Also return each comment as sanitized HTML
+          explode: false
+          in: query
+          name: html
+          schema:
+            description: Also return each comment as sanitized HTML
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyCommentBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List comments on a decision
+      tags:
+        - Triage
+    post:
+      description: |-
+        Adds a markdown comment to a decision. Comments are separate from the justification and never affect an approval, so an approved decision can be annotated at any time.
+
+        A comment may later be edited by its author only, and editing overwrites it rather than keeping revisions.
+      operationId: comment-on-decision
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Comment-on-decisionRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment-on-decisionResponse"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Add a comment to a decision
+      tags:
+        - Triage
+  /v1/decisions/{id}/reasoning:
+    put:
+      description: |-
+        Replaces the justification text with a new revision. Earlier revisions are kept and remain readable.
+
+        **This withdraws any existing approval** and returns the decision to the review queue, marked as previously approved. Requires no approval of its own.
+
+        The text is markdown and is validated before it is stored; a 422 names the line and the offending text.
+      operationId: revise-decision
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Revise-decisionRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update a decision's justification
+      tags:
+        - Triage
+  /v1/decisions/{id}/revisions:
+    get:
+      description: |-
+        Returns every revision of the justification, oldest first, with who wrote each and when.
+
+        An approval names the specific revision that was agreed to, so this is how to read what an approver actually saw rather than what the text says now.
+      operationId: list-decision-revisions
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - description: Also return each justification as sanitized HTML
+          explode: false
+          in: query
+          name: html
+          schema:
+            description: Also return each justification as sanitized HTML
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyRevisionBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List a decision's justification history
+      tags:
+        - Triage
+  /v1/decisions/{id}/send-back:
+    post:
+      description: |-
+        Asks the author for more before agreeing. The claim leaves the review queue and comes back when they revise it.
+
+        `because` is required and is recorded as a comment, because that is what it is — the author needs the words, and a reason kept anywhere else is one nobody reads. Sending something back without saying what is missing is a round trip nobody learns from.
+
+        Needs no approval of its own: it puts risk back on the table rather than taking it off. You cannot send back a claim whose current words are your own — that is yours to revise.
+      operationId: send-decision-back
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Send-decision-backRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Send a decision back for more
+      tags:
+        - Triage
+  /v1/keys:
+    get:
+      description: "Which credentials exist, what each may send, when it was last used and whether it still works. The secrets are not here and cannot be: what is stored is a digest."
+      operationId: list-keys
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyKeyBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List API keys
+      tags:
+        - Administration
+    post:
+      description: "Creates a credential a build may send scans with, and returns its secret. The secret is shown once and stored hashed: a credential store that can hand back what it holds gives up every pipeline's key with a copy of the database."
+      operationId: create-key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeclaredKeyBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create an API key
+      tags:
+        - Administration
+  /v1/keys/{name}:
+    delete:
+      description: Stops it working, without removing the record of what it sent. Revoking one credential leaves every other pipeline running.
+      operationId: revoke-key
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Revoke an API key
+      tags:
+        - Administration
+  /v1/people:
+    get:
+      description: "Everybody who may sign in, and what each of them holds. Nobody is here because they authenticated: access is granted in advance or not at all."
+      operationId: list-people
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyPersonBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List users
+      tags:
+        - Administration
+    post:
+      description: Records somebody so that they may sign in, and optionally what they hold. Recording the same person again confirms them and adds any roles named.
+      operationId: record-person
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersonBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeclaredPersonBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create a user and grant roles
+      tags:
+        - Administration
+  /v1/people/tokens:
+    get:
+      description: Stale tokens are otherwise found only when somebody leaves and nobody knows what breaks if they are turned off.
+      operationId: list-all-tokens
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyTokenBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List all users' API tokens
+      tags:
+        - Administration
+  /v1/people/{identity}/assignments/release:
+    post:
+      description: |-
+        Returns all their open findings to the unassigned list. For when somebody has left, or their last role is removed.
+
+        Nothing tells this software that somebody has gone — membership is read at sign-in, and a person who has left never signs in again. So this is an action an administrator takes rather than something that happens on its own, and until it is taken their work is in no list at all: not in the shared one because it is assigned, and not in anybody's own because they are not here.
+
+        Send `to` instead to hand it to a named person rather than to nobody.
+      operationId: release-assignments
+      parameters:
+        - in: path
+          name: identity
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Release-assignmentsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Release-assignmentsResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Hand back everything one person is dealing with
+      tags:
+        - Administration
+  /v1/people/{identity}/roles/{product}/{role}:
+    delete:
+      description: A grant is a statement about now. Withdrawing one removes it rather than marking it, because what somebody used to hold is answered by the record of what they did.
+      operationId: withdraw-role
+      parameters:
+        - in: path
+          name: identity
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: role
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Revoke a user's role on a product
+      tags:
+        - Administration
+  /v1/people/{identity}/sessions:
+    delete:
+      description: Takes effect at once, whichever copy of the application answers next. Roles and group mappings are re-read at sign-in, so withdrawing one takes effect then; this is what makes somebody leaving immediate instead.
+      operationId: end-sessions
+      parameters:
+        - in: path
+          name: identity
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: End all of a user's sessions
+      tags:
+        - Administration
+  /v1/people/{identity}/tokens/{name}:
+    delete:
+      description: An owner withdraws their own through the access paths. This is for the ones whose owner is no longer here to do it.
+      operationId: revoke-anyones-token
+      parameters:
+        - in: path
+          name: identity
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Revoke another user's API token
+      tags:
+        - Administration
+  /v1/products:
+    get:
+      description: What a scan may be filed against. The first question after an upload is refused.
+      operationId: list-products
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyProductBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List products
+      tags:
+        - Catalog
+    post:
+      description: Records a product so scans may be filed against it. Declaring one that already exists succeeds without changing anything, so this can run on every build.
+      operationId: declare-product
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeclaredProductBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create a product
+      tags:
+        - Catalog
+  /v1/products/{product}/streams:
+    get:
+      operationId: list-streams
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyStreamBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List a product's branches and tags
+      tags:
+        - Catalog
+    post:
+      description: Records a line of a product. A branch moves and is rebuilt; a tag never changes and is what somebody received.
+      operationId: declare-stream
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeclaredStreamBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create a branch or tag
+      tags:
+        - Catalog
+  /v1/products/{product}/streams/{stream}/variants:
+    get:
+      description: A subset of what the product builds. A release predating a variant has never been filed against it, which is what keeps something introduced later from appearing to have shipped years ago.
+      operationId: list-release-variants
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyVariantBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the variants a release was built as
+      tags:
+        - Catalog
+  /v1/products/{product}/streams/{stream}/variants/{variant}/findings:
+    get:
+      description: |-
+        Returns one row per vulnerability-and-component pair, not one row per place the component appears. Each row gives the number of places it occupies and how many of those the build's VEX documents already answer.
+
+        Grouping matters at real scale: one switch image produced 335,021 individual findings, which collapse to 7,906 rows here.
+
+        Ordered by urgency — known-exploited first, then whether the build ships to customers, then likelihood, then severity. Supports limit and offset.
+      operationId: list-findings
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - description: How many to return
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            description: How many to return
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - description: How many to skip
+          explode: false
+          in: query
+          name: offset
+          schema:
+            description: How many to skip
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FindingsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List vulnerability findings
+      tags:
+        - Findings
+  /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}:
+    get:
+      description: |-
+        Returns the full record for one issue in one component of a build: the description, the advisory, every reference the data carries with patches listed first, the score and what it assumes, whether it is known to be exploited and how likely exploitation is, the weakness classification, what upstream has done about it, and every place the component sits at here.
+
+        This is what a triage decision is made from, so it is gathered into one request. Each entry in `places` carries the `place` identity to name when recording a decision about it.
+      operationId: get-finding
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - description: The issue, by any name it is known under
+          in: path
+          name: vulnerability
+          required: true
+          schema:
+            description: The issue, by any name it is known under
+            type: string
+        - description: The component's name, as the findings list gives it
+          in: path
+          name: component
+          required: true
+          schema:
+            description: The component's name, as the findings list gives it
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get everything known about one finding
+      tags:
+        - Findings
+  /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/assignment:
+    put:
+      description: |-
+        Records who is dealing with this issue in this component. It covers every place the component sits at in this build, because they are the same problem seen from several parents.
+
+        Send `person` as an empty string to hand it back to nobody. Handing back is the same operation as giving out, so there is one path rather than two that drift.
+
+        Findings arriving later under the same component start unassigned.
+      operationId: assign-finding
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: vulnerability
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: component
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Assign-findingRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Assign a finding to somebody
+      tags:
+        - Findings
+  /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision:
+    get:
+      description: |-
+        Returns the decision currently suppressing this finding, if any, together with everything decided here before — withdrawn claims, and claims that stopped applying when an upstream version changed.
+
+        `standing` is absent when nothing has been decided, or when a claim is still waiting for approval: a claim nobody has agreed to suppresses nothing.
+
+        Read `previously` before deciding again. A claim that lapsed on a version bump is usually still the right answer, and re-affirming it is a different request from making a new one.
+      operationId: get-finding-decision
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - description: The issue, by any name it is known under
+          in: path
+          name: vulnerability
+          required: true
+          schema:
+            description: The issue, by any name it is known under
+            type: string
+        - description: Which place, as the findings list gives it
+          in: path
+          name: place
+          required: true
+          schema:
+            description: Which place, as the findings list gives it
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandingBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get what has been decided about a finding
+      tags:
+        - Triage
+    post:
+      description: |-
+        Records how a finding was triaged: `affected`, `not-applicable`, `deferred` or `wont-fix`.
+
+        `not-applicable` requires a `justification` from the standard VEX vocabulary. `deferred` requires `deferred_until` as a date.
+
+        The decision applies to every build running the same component and consumer upstream versions, including future releases — it is matched by code, not copied between releases. It stops applying automatically when either upstream version changes.
+
+        The response says whether a second person must approve it. Most outcomes require approval; a deferral shorter than the configured threshold does not.
+
+        It also says how many findings this one judgment covers, and how many distinct versions of the component sit at this place — more than one means a single decision cannot honestly cover all of them.
+      operationId: decide
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - description: The issue, by any name it is known under
+          in: path
+          name: vulnerability
+          required: true
+          schema:
+            description: The issue, by any name it is known under
+            type: string
+        - description: Which place, as the findings list gives it
+          in: path
+          name: place
+          required: true
+          schema:
+            description: Which place, as the findings list gives it
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecisionBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Record a triage decision for a finding
+      tags:
+        - Triage
+  /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision/reaffirmation:
+    post:
+      description: |-
+        Re-makes a decision that stopped applying because an upstream version moved, at the versions this finding has now. `previous` is the decision being re-made, from `previously` in `GET .../decision`.
+
+        Only the person who made the original may do this, and it normally needs no second approver: two people already agreed to the claim, and a version bump is a prompt to re-check rather than a new claim.
+
+        It does need approval again if the justification differs from the original, or if the vulnerability's severity has risen since — both mean this is not the claim that was agreed to. The response says which happened.
+
+        `reasoning` is required. "Still true" with nothing behind it is what a re-affirmation becomes when it is made too easy.
+      operationId: reaffirm-decision
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: vulnerability
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: place
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reaffirm-decisionRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Re-affirm a decision after an upstream version changed
+      tags:
+        - Triage
+  /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/elsewhere:
+    get:
+      description: |-
+        Lists other builds of this product with the same vulnerability at the same place, **excluding** builds a decision made here would already cover.
+
+        A decision automatically applies to any build running the same upstream versions. This returns the builds where versions differ, so a separate decision is needed — each with the version it has, so you can judge them one at a time.
+      operationId: list-same-issue-elsewhere
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: vulnerability
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: place
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyMatchBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the same vulnerability in other builds
+      tags:
+        - Triage
+  /v1/products/{product}/streams/{stream}/variants/{variant}/scans:
+    get:
+      description: |-
+        Returns uploads newest first, each with its state: `reading` (accepted, not yet parsed), `scanning` (parsed, vulnerability scan pending), `scanned` (complete), or `failed` with the reason.
+
+        Because uploads return 202 before parsing, this is how a build pipeline finds out whether its SBOM was usable. An API key sees only the uploads it sent itself.
+      operationId: list-scans
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - description: How many to return
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 20
+            description: How many to return
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+        - description: How many to skip
+          explode: false
+          in: query
+          name: offset
+          schema:
+            description: How many to skip
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List uploaded scans and their status
+      tags:
+        - Ingest
+    post:
+      description: |-
+        Accepts a CycloneDX SBOM and any number of OpenVEX documents as multipart form fields named `inventory` and `suppressions`.
+
+        The product, branch and variant must already exist; an upload naming something undeclared is rejected and the error says which part is missing.
+
+        **Returns 202 before the documents are parsed.** A success here means they were accepted for processing, not that they were valid. Poll `GET .../scans` to find out whether they parsed and what the scan found.
+      operationId: upload-scan
+      parameters:
+        - description: The declared product this build is of
+          in: path
+          name: product
+          required: true
+          schema:
+            description: The declared product this build is of
+            type: string
+        - description: The declared branch or tag
+          in: path
+          name: stream
+          required: true
+          schema:
+            description: The declared branch or tag
+            type: string
+        - description: The declared way that stream is built
+          in: path
+          name: variant
+          required: true
+          schema:
+            description: The declared way that stream is built
+            type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            encoding:
+              inventory:
+                contentType: application/json,application/octet-stream
+              suppressions:
+                contentType: application/json,application/octet-stream
+            schema:
+              properties:
+                inventory:
+                  contentEncoding: binary
+                  contentMediaType: application/octet-stream
+                  format: binary
+                  type: string
+                suppressions:
+                  items:
+                    contentEncoding: binary
+                    contentMediaType: application/octet-stream
+                    format: binary
+                    type: string
+                  type: array
+              required:
+                - inventory
+              type: object
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadResult"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Upload an SBOM and its VEX documents
+      tags:
+        - Ingest
+  /v1/products/{product}/variants:
+    get:
+      operationId: list-variants
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyVariantBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List a product's build variants
+      tags:
+        - Catalog
+    post:
+      description: "Records one of the parallel builds of a product — a chip variant, an architecture, an operating system. Declared once for the product, not once per release: a release is filed against it the first time a scan arrives, so nobody restates the list and no release ends up with the name spelled differently."
+      operationId: declare-variant
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariantBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeclaredVariantBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create a build variant
+      tags:
+        - Catalog
+  /v1/review-queue:
+    get:
+      description: |-
+        Returns triage decisions proposed but not yet approved, limited to products you hold a triage role on.
+
+        Each row includes the full justification text, whether the decision was previously approved and came back, how long the finding has been deferred in total, and how old the claim is — enough to judge it without a second request.
+      operationId: list-review-queue
+      parameters:
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: offset
+          schema:
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List decisions awaiting approval
+      tags:
+        - Triage
+  /v1/roles/bindings:
+    delete:
+      description: Takes effect at each member's next sign-in, because membership is read then and never again. To cut somebody off now, end their sessions.
+      operationId: unbind-group
+      parameters:
+        - explode: false
+          in: query
+          name: group
+          required: true
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: product
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: role
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove a group-to-role binding
+      tags:
+        - Administration
+    get:
+      description: "The mappings that admit people in group-bound mode. In that mode a mapping is the advance authorization: somebody arriving for the first time in a mapped group is admitted, and somebody in none is refused."
+      operationId: list-bindings
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyBindingBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List group-to-role bindings
+      tags:
+        - Administration
+    post:
+      description: Administration is bound without a product, because it is global rather than held against one. Everything else names the product it applies to.
+      operationId: bind-group
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BindingBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BindingBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Bind an identity-provider group to a role
+      tags:
+        - Administration
+  /v1/roles/mode:
+    get:
+      description: One mode for the whole deployment. A hybrid would need a precedence rule for somebody holding one role from a team and another directly, which is how a stale assignment outlives somebody's removal from the team it was shadowing.
+      operationId: get-role-mode
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModeBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get the role assignment mode
+      tags:
+        - Administration
+    put:
+      description: Turning group binding on sets assignments aside rather than deleting them, and turning it off restores them — so trying it is not a one-way door. Refused if it would leave nobody able to administer this deployment.
+      operationId: set-role-mode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModeBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModeBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Set the role assignment mode
+      tags:
+        - Administration
+  /v1/running-out:
+    get:
+      description: |-
+        Returns open findings whose deadline falls within `days`, where nobody has recorded a decision, across every product you can see.
+
+        A deadline that has been answered is not on this list. A dismissal takes a finding off the clock, because the claim is that it will not be fixed, and a deferral replaces the deadline with its own date. What is left is time passing with nothing said.
+
+        The window comes from how urgent a finding is. Being known-exploited has its own and it is the shortest, whatever the severity says — otherwise the deadline contradicts the order the findings list is in.
+      operationId: list-running-out
+      parameters:
+        - description: How far ahead to look
+          explode: false
+          in: query
+          name: days
+          schema:
+            default: 14
+            description: How far ahead to look
+            format: int64
+            maximum: 365
+            minimum: 0
+            type: integer
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyLateBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List findings running out of time that nobody has decided about
+      tags:
+        - Findings
+  /v1/session:
+    delete:
+      description: Ends the session the request arrived on, everywhere rather than in this browser alone — the session is stored, so it stops working whichever copy of the application answers next.
+      operationId: sign-out
+      responses:
+        "204":
+          description: No Content
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Sign out
+      tags:
+        - Access
+  /v1/tokens:
+    get:
+      description: Yours alone. A token is a live reference to you rather than a copy of what you could do when it was made, so what it reaches shrinks the moment your roles do.
+      operationId: list-my-tokens
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyTokenBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List your API tokens
+      tags:
+        - Access
+    post:
+      description: "Shown once. Expiry is not optional: a credential that never runs out is one nobody ever revokes, and those are found when somebody leaves and nobody knows what breaks if it is turned off."
+      operationId: mint-token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create an API token
+      tags:
+        - Access
+  /v1/tokens/{name}:
+    delete:
+      description: Yours alone. An administrator withdraws anybody's through the administration paths.
+      operationId: revoke-my-token
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Revoke one of your API tokens
+      tags:
+        - Access
+  /v1/unassigned:
+    get:
+      description: |-
+        Returns open findings with no assignee, across every product you can see, most urgent first.
+
+        Deliberately not scoped to one product: work falling between people is exactly what hides when every screen shows one product and nobody looks at the others.
+      operationId: list-unassigned
+      parameters:
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: offset
+          schema:
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/List-unassignedResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List findings nobody is dealing with
+      tags:
+        - Findings
+  /v1/version:
+    get:
+      description: Identifies the build that is answering, so an operator can tell which version they are looking at.
+      operationId: get-version
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Info"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get the server version
+      tags:
+        - Meta
