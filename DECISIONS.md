@@ -543,8 +543,30 @@ fetch one.
 
 ## 4. Still open
 
-None. Every question raised so far has been answered — see Section 11 for how
-the significant ones were settled.
+**Two people proposing about the same place at once.** Nothing stops two
+competing claims being made about one finding, and nothing marks them as
+competing: both sit in the review queue as ordinary proposals, and an approver
+reading either has no sign the other exists. Approving both leaves one silently
+standing over the other.
+
+Not dangerous — neither suppresses anything until somebody agrees to it, so the
+finding stays exposed throughout — which is why this is recorded rather than
+fixed in a hurry. What is undecided is which answer is right: refuse the second
+proposal, allow it and show both together as one thing to settle, or let the
+later one supersede the earlier the way a revision does. The third is the least
+work and the most surprising, which is usually the wrong trade.
+
+**A year of nightly scans has never been measured.** Scan files are deleted
+once read, and the interval storage was shaped so that a rebuild changing
+nothing writes nothing — which is asserted by a test and was checked by
+breaking it. What has not been checked is the shape after a year of real
+nightly scans across a real number of products: how large the findings table
+actually gets, and whether the queries over it still behave. The design says it
+should be fine. "Should" is doing work in that sentence, and this project'"'"'s own
+rule is that a decision carries the measurement that forced it.
+
+Everything else raised so far has been answered — see Section 11 for how the
+significant ones were settled.
 
 ---
 
