@@ -45,6 +45,14 @@ const (
 	// Revised means the shipped version changed while the upstream version did
 	// not, which is what a carried patch looks like from the outside.
 	Revised Closure = "revised"
+	// Superseded means the component's version moved and the issue came with
+	// it: this row closed, and the same issue is open against the new version.
+	//
+	// Told apart from Upgraded because they are opposite answers to "was this
+	// fixed". Without it a bump that resolved nothing was recorded as a fix,
+	// and the same issue appeared as fixed and as newly present in one
+	// release comparison — a document that goes to customers.
+	Superseded Closure = "superseded"
 	// Unexplained means the component is present and unchanged and the scanner
 	// stopped reporting it. It is always flagged and never suppressed.
 	Unexplained Closure = "unexplained"
@@ -111,9 +119,14 @@ type Finding struct {
 	// appearing, or the build answering it. A finding open for years outlives
 	// any record of the change kept elsewhere, so it carries its own.
 	LastChangedAt time.Time `bun:"last_changed_at,notnull"`
-	OpenedRunID   int64     `bun:"opened_run_id,notnull"`
-	ClosedRunID   *int64    `bun:"closed_run_id"`
-	ClosedBecause Closure   `bun:"closed_because"`
+	// ArrivedFrom is the upstream version this place held before, recorded
+	// only where the version moved and the issue came with it. Its presence is
+	// the statement that somebody bumped this and the bump did not resolve it;
+	// its value is what they bumped from, so saying so needs no second query.
+	ArrivedFrom   string  `bun:"arrived_from"`
+	OpenedRunID   int64   `bun:"opened_run_id,notnull"`
+	ClosedRunID   *int64  `bun:"closed_run_id"`
+	ClosedBecause Closure `bun:"closed_because"`
 }
 
 // Reported is one issue a scanner reported against one component.

@@ -209,6 +209,11 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			"urgency"           ` + t.ref + ` NOT NULL,
 			"urgency_exploited" ` + t.boolean + ` NOT NULL,
 			"urgency_shipped"   ` + t.boolean + ` NOT NULL,
+			-- What this place held before, where the version moved and the
+			-- issue came with it. Present means somebody bumped this and the
+			-- bump did not resolve it, which is aimed at whoever did the bump
+			-- rather than at whoever triages.
+			"arrived_from"     ` + t.free + ` NULL,
 			"last_changed_at"  ` + t.timestamp + ` NOT NULL,
 			"opened_run_id"    ` + t.ref + ` NOT NULL,
 			"closed_run_id"    ` + t.refNull + ` NULL,

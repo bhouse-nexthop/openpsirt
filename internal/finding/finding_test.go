@@ -1036,3 +1036,106 @@ func TestNamingAPageOfFindingsDoesNotCostAQueryPerRow(t *testing.T) {
 		}
 	})
 }
+
+func TestABumpThatFixedNothingIsNotRecordedAsAFix(t *testing.T) {
+	// A version change closes the old row and opens a new one, because
+	// component identity carries the version. Nothing asked whether the issue
+	// had actually gone, so a bump that resolved nothing was recorded as
+	// "fixed by upgrading" — and the same issue then appeared as fixed and as
+	// newly present in one release comparison, which is a document that goes
+	// to customers.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+
+		// Bumped, and the scanner still reports it: 3.9.0 is not far enough.
+		f.shipped(t, movedTo(libnlNew))
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnlNew)}); err != nil {
+			t.Fatal(err)
+		}
+
+		closed, opened := f.byState(t)
+		if len(closed) != 2 || len(opened) != 2 {
+			t.Fatalf("closed %d and opened %d, want 2 and 2", len(closed), len(opened))
+		}
+		for _, row := range closed {
+			if row.ClosedBecause != finding.Superseded {
+				t.Errorf("a bump that fixed nothing closed as %q", row.ClosedBecause)
+			}
+		}
+		// And what it moved from is on the new row, so saying "3.7.0 → 3.9.0"
+		// costs no second query.
+		for _, row := range opened {
+			if row.ArrivedFrom != "3.7.0" {
+				t.Errorf("the new finding says it arrived from %q, want 3.7.0", row.ArrivedFrom)
+			}
+		}
+	})
+}
+
+func TestABumpThatDidFixItStillReadsAsAFix(t *testing.T) {
+	// The direction that must not break. An upgrade that actually resolved
+	// something is the ordinary good case, and calling it superseded would
+	// make every real fix disappear from what was fixed.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+
+		// Bumped, and the scanner reports nothing against the new version.
+		f.shipped(t, movedTo(libnlNew))
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{}); err != nil {
+			t.Fatal(err)
+		}
+
+		closed, opened := f.byState(t)
+		if len(opened) != 0 {
+			t.Fatalf("%d findings are still open after a real fix", len(opened))
+		}
+		for _, row := range closed {
+			if row.ClosedBecause != finding.Upgraded {
+				t.Errorf("a bump that resolved it closed as %q", row.ClosedBecause)
+			}
+			if row.ArrivedFrom != "" {
+				t.Errorf("a resolved finding was marked as having arrived from %q", row.ArrivedFrom)
+			}
+		}
+	})
+}
+
+// movedTo is the same graph with the library at another version.
+func movedTo(library graph.Described) graph.Snapshot {
+	return graph.Snapshot{
+		Root:       root,
+		Components: []graph.Described{swss, teamd, library},
+		Dependencies: []graph.Dependency{
+			{Parent: root, Child: swss}, {Parent: root, Child: teamd},
+			{Parent: swss, Child: library}, {Parent: teamd, Child: library},
+		},
+	}
+}
+
+// byState splits this target's findings into closed and open.
+func (f *fixture) byState(t *testing.T) (closed, opened []finding.Finding) {
+	t.Helper()
+	var rows []finding.Finding
+	if err := f.db.NewSelect().Model(&rows).
+		Where("target_id = ?", f.target).Order("id").Scan(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row.ClosedRunID != nil {
+			closed = append(closed, row)
+			continue
+		}
+		opened = append(opened, row)
+	}
+	return closed, opened
+}

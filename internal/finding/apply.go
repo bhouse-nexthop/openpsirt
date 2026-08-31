@@ -25,6 +25,16 @@ type key struct {
 	place           place
 }
 
+// at identifies a finding by where it sits rather than by what sits there.
+//
+// The place identity is built from names alone, so it survives a version
+// change where the component identity does not. Comparing the two is what
+// distinguishes a version moving under a finding from the finding going away.
+type at struct {
+	vulnerabilityID int64
+	placeIdentity   string
+}
+
 // Apply records what a run found, writing only the difference.
 //
 // A scanner reports a package at a version. Fanning that out across the places
@@ -146,8 +156,20 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 		}
 
 		held := map[key]Finding{}
+		// A second index, by place *name* rather than by component. A version
+		// change makes a different component and therefore a different key, so
+		// the two indexes disagree exactly where a version moved — which is
+		// the case worth telling apart from every other kind of closure.
+		heldAt := map[at]Finding{}
 		for _, f := range open {
 			held[key{f.VulnerabilityID, place{f.ComponentID, value(f.ConsumerID)}}] = f
+			heldAt[at{f.VulnerabilityID, f.PlaceIdentity}] = f
+		}
+		// What those findings were about, so a version can be named rather
+		// than merely known to have changed.
+		before, err := componentsByID(ctx, tx, open)
+		if err != nil {
+			return err
 		}
 
 		now := s.now().UTC().Truncate(time.Microsecond)
@@ -160,6 +182,14 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 			already, open := held[k]
 			if !open {
 				f.LastChangedAt = now
+				// The same issue at the same place a moment ago, on a
+				// different component, means the version moved and the issue
+				// came with it. Recorded on the way in, because this is the
+				// only point where both versions are in hand.
+				if was, moved := heldAt[at{f.VulnerabilityID, f.PlaceIdentity}]; moved &&
+					was.ComponentID != f.ComponentID {
+					f.ArrivedFrom = upstreamOf(before[was.ComponentID])
+				}
 				opening = append(opening, f)
 				continue
 			}
@@ -190,6 +220,12 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 		}
 
 		var closing []Finding
+		// Where the same issue is still wanted at the same place, this row is
+		// being superseded by one against a new version rather than resolved.
+		wantedAt := map[at]bool{}
+		for _, f := range wanted {
+			wantedAt[at{f.VulnerabilityID, f.PlaceIdentity}] = true
+		}
 		for k, f := range held {
 			if _, still := wanted[k]; still {
 				continue
@@ -206,6 +242,13 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 		byReason := map[Closure][]int64{}
 		for _, f := range closing {
 			reason := present.why(departed[f.ComponentID])
+			// Asked before anything else, because every other explanation is
+			// about a finding that went away and this one did not. Recording
+			// it as an upgrade would say a bump fixed something it did not,
+			// in a report that goes to customers.
+			if wantedAt[at{f.VulnerabilityID, f.PlaceIdentity}] {
+				reason = Superseded
+			}
 			byReason[reason] = append(byReason[reason], f.ID)
 			if reason == Unexplained {
 				applied.Unexplained++

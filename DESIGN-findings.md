@@ -375,6 +375,17 @@ says the bump fell short. For a producer that patches and bumps rather than
 upgrading wholesale, this is the failure that otherwise goes unnoticed for a
 whole release cycle.
 
+**A version change is not an update in place**, which is what makes this cheap.
+Component identity carries the version, so a bump closes one finding and opens
+another — both versions are in hand at the moment of the change. The old row
+records that it was *superseded* rather than upgraded, and the new row records
+what it arrived from, so saying "3.7.0 → 3.9.0" costs no second query.
+
+Telling those two closures apart is not a refinement. Recording a bump that
+fixed nothing as "fixed by upgrading" put one issue in both the fixed and the
+newly-present column of the same release comparison — and that comparison is
+written to go straight into release notes.
+
 **It is stated as inequality, not ordering**, and that limit is real rather
 than a simplification worth removing later without noticing. Nothing here can
 compare 3.0.12 against 3.0.14: there is no version comparison anywhere in this
