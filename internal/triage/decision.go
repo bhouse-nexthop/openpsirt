@@ -83,6 +83,13 @@ type Approval struct {
 	ApprovedAt  time.Time  `bun:"approved_at,notnull"`
 	WithdrawnAt *time.Time `bun:"withdrawn_at"`
 	Batch       *string    `bun:"batch"`
+	// Covered is how many findings this claim covered when it was agreed to.
+	//
+	// Kept rather than worked out later. A decision reaches by matching, so a
+	// build appearing afterwards is covered without anybody acting — asking
+	// what it covers *now* answers a different question from what somebody
+	// consented to, and only one of those two can be recovered after the fact.
+	Covered *int `bun:"covered"`
 }
 
 // Place is what a decision is a claim about, as a finding presents it.

@@ -168,6 +168,22 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 			-- What a bulk approval was, so undoing one is undoing a batch
 			-- rather than hunting for what it touched.
 			"batch"        ` + t.hash + ` NULL,
+			-- How many findings this claim covered **when somebody agreed to
+			-- it**.
+			--
+			-- Recorded rather than worked out later, because a decision is a
+			-- claim about a combination of code and reaches by matching — a
+			-- branch cut next month that still ships the same versions is
+			-- covered too, with nobody having acted. Asking what it covers now
+			-- answers a different question from what somebody consented to,
+			-- and only one of the two can be recovered afterwards. Keeping the
+			-- number at the time is what makes "agreed covering six, now
+			-- covers sixty-one" a question anybody can ask.
+			--
+			-- One number rather than the three the interface shows. The split
+			-- between here, already-matching and deliberately-carried is how
+			-- it is presented; what the record needs is how much was agreed to.
+			"covered"      ` + t.ref + ` NULL,
 			CONSTRAINT "decision_approval_decision_fk" FOREIGN KEY ("decision_id") REFERENCES "decision"("id"),
 			CONSTRAINT "decision_approval_revision_fk" FOREIGN KEY ("revision_id") REFERENCES "decision_revision"("id"),
 			CONSTRAINT "decision_approval_approver_fk" FOREIGN KEY ("approved_by") REFERENCES "person"("id")

@@ -368,10 +368,19 @@ An approval points at one revision of a justification, which binds it to
 particular words and says nothing about how far those words travel. The same
 sentence covers one finding or four hundred.
 
-So the counts are shown to the approver before they act, and recorded with the
-approval. Reach can grow afterwards — a build appearing with matching versions
-is reached automatically, which is the rule working — and the record is what
-lets somebody later ask whether it did.
+So the three parts are shown to the approver before they act, and **how much
+the claim covered is counted at that moment and kept**.
+
+Kept rather than worked out later, because the number moves on its own. A
+decision reaches by matching, so a branch cut next month that still ships the
+same versions is covered too — with nobody having acted, and nobody having
+agreed to the larger number. Asking afterwards what a claim covers is a useful
+question and a *different* one from what somebody consented to, and only one of
+the two survives if it is not written down when it happens.
+
+One number rather than three. The split between this build, the builds already
+matching and the ones ticked deliberately is how it is presented; what the
+record needs is how much was agreed to.
 
 ## Many issues at one component
 

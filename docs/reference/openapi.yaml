@@ -10,6 +10,10 @@ components:
         batch:
           description: The batch it was approved under, if it was a bulk approval
           type: string
+        covered:
+          description: Findings this covered when it was agreed to
+          format: int64
+          type: integer
         id:
           format: int64
           type: integer
@@ -1867,6 +1871,8 @@ paths:
         Returns every approval recorded against this decision, including ones later withdrawn, each naming the revision of the justification it was given for.
 
         A withdrawn approval is kept rather than deleted: who agreed to what, and when it stopped counting, is part of the record.
+
+        `covered` is how many findings the claim covered **when it was agreed to**. A decision applies to every build running the same versions, so it covers more as builds appear — with nobody acting, and nobody having agreed to the larger number. Comparing this against what it covers now is the point of keeping it.
       operationId: list-decision-approvals
       parameters:
         - in: path

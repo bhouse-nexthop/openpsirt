@@ -850,3 +850,35 @@ func TestNobodySendsTheirOwnWordsBack(t *testing.T) {
 		}
 	})
 }
+
+func TestAnApprovalKeepsWhatItCoveredAtTheTime(t *testing.T) {
+	// A decision reaches by matching, so it covers more as builds appear —
+	// with nobody acting, and nobody having agreed to the larger number.
+	// Asking later what it covers answers a different question from what
+	// somebody consented to, and only one of the two survives if it is not
+	// written down when it happens.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		claimed := f.claims(t, f.at())
+		if err := f.store.Approve(ctx, f.reviewer, claimed.ID, ""); err != nil {
+			t.Fatal(err)
+		}
+
+		approvals, err := f.store.Approvals(ctx, f.reviewer, claimed.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(approvals) != 1 {
+			t.Fatalf("%d approvals recorded", len(approvals))
+		}
+		if approvals[0].Covered == nil {
+			t.Fatal("the approval does not say how much it covered")
+		}
+		// This fixture has no findings behind the place, so the honest answer
+		// is none — what matters is that the number was taken and kept rather
+		// than left to be worked out later.
+		if *approvals[0].Covered != 0 {
+			t.Errorf("recorded covering %d, want the count at the time", *approvals[0].Covered)
+		}
+	})
+}

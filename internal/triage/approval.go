@@ -11,6 +11,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/markdown"
 )
 
@@ -78,6 +79,12 @@ func (s *Store) approve(ctx context.Context, subject access.Subject, decisionID 
 	}
 	if strings.TrimSpace(batch) != "" {
 		approval.Batch = &batch
+	}
+	// Counted now, and kept. A build appearing later is covered without
+	// anybody acting, so asking again in a year answers what it covers then —
+	// which is a useful question, and a different one from what was agreed to.
+	if covered, err := s.covering(ctx, *decision); err == nil {
+		approval.Covered = &covered
 	}
 	if _, err := s.db.NewInsert().Model(approval).Exec(ctx); err != nil {
 		return fmt.Errorf("record an approval: %w", err)
@@ -356,4 +363,32 @@ func (s *Store) SendBack(ctx context.Context, subject access.Subject, decisionID
 		}
 		return nil
 	})
+}
+
+// covering counts the open findings a claim covers right now.
+//
+// The same match a finding makes when it asks whether a decision applies to
+// it: the place, and both upstream versions. Read at the moment of approval
+// and kept, because a decision reaches by matching and so covers more as
+// builds appear — with nobody having acted, and nobody having agreed to the
+// larger number.
+func (s *Store) covering(ctx context.Context, decision Decision) (int, error) {
+	query := s.db.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN target AS tg ON tg.id = f.target_id").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		Join("JOIN component AS c ON c.id = f.component_id").
+		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
+		Where("st.product_id = ?", decision.ProductID).
+		Where("f.vulnerability_id = ?", decision.VulnerabilityID).
+		Where("f.place_identity = ?", decision.PlaceIdentity).
+		Where("f.closed_run_id IS NULL").
+		Where("COALESCE(?, '') = "+finding.ComponentUpstreamExpr, decision.ComponentUpstreamVersion).
+		Where("COALESCE(?, '') = "+finding.ConsumerUpstreamExpr, decision.ConsumerUpstreamVersion)
+
+	covered, err := query.Count(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count what this covers: %w", err)
+	}
+	return covered, nil
 }

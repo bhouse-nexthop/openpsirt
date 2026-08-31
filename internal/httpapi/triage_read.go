@@ -47,6 +47,11 @@ type ApprovalBody struct {
 	ApprovedAt  string `json:"approved_at"`
 	WithdrawnAt string `json:"withdrawn_at,omitempty" doc:"When this approval was taken back, if it was"`
 	Batch       string `json:"batch,omitempty" doc:"The batch it was approved under, if it was a bulk approval"`
+	// Covered is how many findings the claim covered when this approval was
+	// given. A decision reaches by matching, so it covers more as builds
+	// appear — comparing this against what it covers now is how "agreed
+	// covering six, now covers sixty-one" gets asked.
+	Covered int `json:"covered,omitempty" doc:"Findings this covered when it was agreed to"`
 }
 
 // CommentBody is one remark on a decision.
@@ -196,7 +201,11 @@ func registerTriageReading(api huma.API, in Ingest) {
 		Description: "Returns every approval recorded against this decision, including ones later " +
 			"withdrawn, each naming the revision of the justification it was given for.\n\n" +
 			"A withdrawn approval is kept rather than deleted: who agreed to what, and when it " +
-			"stopped counting, is part of the record.",
+			"stopped counting, is part of the record.\n\n" +
+			"`covered` is how many findings the claim covered **when it was agreed to**. A " +
+			"decision applies to every build running the same versions, so it covers more as " +
+			"builds appear — with nobody acting, and nobody having agreed to the larger number. " +
+			"Comparing this against what it covers now is the point of keeping it.",
 		Tags: []string{"Triage"},
 	}, func(ctx context.Context, input *struct {
 		ID int64 `path:"id"`
@@ -232,6 +241,9 @@ func registerTriageReading(api huma.API, in Ingest) {
 			}
 			if approval.Batch != nil {
 				body.Batch = *approval.Batch
+			}
+			if approval.Covered != nil {
+				body.Covered = *approval.Covered
 			}
 			out.Body.Items = append(out.Body.Items, body)
 		}
