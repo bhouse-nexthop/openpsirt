@@ -3,7 +3,7 @@
 What people decide about findings, and when a decision stops applying.
 
 Satisfies TRI-01 to TRI-03, TRI-05 to TRI-08, TRI-10 to TRI-18, TRI-20 to
-TRI-29, REL-05, REL-06, REL-09, MDL-08, MDL-19, ACC-09. The text rules
+TRI-32, REL-05, REL-06, REL-09, MDL-08, MDL-19, ACC-09. The text rules
 themselves are in `DESIGN-text.md`.
 
 ## A decision is a claim about code, not about a release
@@ -289,6 +289,74 @@ re-examined however much the code moves.
 The compensating control is that a decision's age travels with it everywhere it
 appears. An eight-year-old judgment should look like one rather than reading
 the same as yesterday's.
+
+## Where a judgment lands, in three parts
+
+A decision is a claim about a code combination rather than about a release, so
+it reaches further than the finding it was made on. How much further is not one
+number, and presenting it as one is what turns a considered judgment into a
+reflex.
+
+| | What it is | What the person does |
+|---|---|---|
+| **Places in this build** | The same component under several consumers — the same code, the same versions | Nothing. One judgment covers all of them |
+| **Other builds already matching** | Variants and branches whose upstream versions and chains are identical | Nothing. The decision reaches them by matching, not by copying |
+| **Builds where the code differs** | The same issue at the same place, at another version | Chooses, one row at a time, each unchecked |
+
+The first two follow from the matching rules and are not offered as choices —
+there is nothing to agree to, only something to be told. The third is the only
+choice, and it is the one worth slowing down.
+
+**Two rules that read as contradictory are not.** All-places-by-default and
+one-unchecked-box-per-match cover different axes: the first is places running
+identical code, where making somebody answer sixty-two times guarantees they
+stop reading; the second is builds running *different* code, where a tick is a
+claim about a version nobody has looked at. Built from both without
+distinguishing them, an interface collapses into a single apply-everywhere
+control.
+
+**What makes carrying acceptable at all** is that one action writes a separate
+record per target, each keyed to its own versions. They are not one blanket
+claim: a dismissal carried onto an older branch lapses by itself the moment
+that branch moves, without anybody remembering it exists.
+
+**A row is withheld rather than offered** where the version already sits past
+the fix the data names and the issue is still reported. Ticking it would assert
+something visibly wrong, and the disagreement between the scanner and the fix
+data is the thing worth looking at.
+
+### An approval names the reach, not only the words
+
+An approval points at one revision of a justification, which binds it to
+particular words and says nothing about how far those words travel. The same
+sentence covers one finding or four hundred.
+
+So the counts are shown to the approver before they act, and recorded with the
+approval. Reach can grow afterwards — a build appearing with matching versions
+is reached automatically, which is the rule working — and the record is what
+lets somebody later ask whether it did.
+
+## Many issues at one component
+
+Grouping runs one way: one issue across many places. The transpose has no
+answer at all, and it is the case that breaks a queue.
+
+A kernel carries thousands of issues, most of them in drivers a given image
+never builds. One action can therefore record the same judgment against a set
+of issues at one component — one outcome, one justification, one reasoning, one
+approval — writing a separate decision per issue, each keyed and expiring
+independently like any other.
+
+Whatever is offered to narrow the set — a weakness class, a subsystem named in
+the advisory text — is a starting point for a person, never a selection the
+tool asserts is right. **No SBOM says whether a driver was compiled in**, so
+this is a claim somebody makes and signs for, with the kernel config or
+whatever else supports it written into the reasoning.
+
+The alternative, letting people hide these from the counts instead, is refused
+(REJ-10): a total that depends on who is looking is not a total. A filter
+narrows what somebody is looking at, is carried in the URL, and states what it
+excluded — it never subtracts from a number anybody else is reported.
 
 ## A lapse is marked when the scan that caused it runs
 

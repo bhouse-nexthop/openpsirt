@@ -5,7 +5,7 @@ What a scan run found, and where.
 Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, ING-02, ING-21,
 ING-29, ING-30, ING-39, ING-40, STA-03, STA-04, STA-05, STA-08, STA-17,
 RNK-01 to RNK-06, MDL-09, STA-01, STA-02, STA-06, STA-07, STA-09, STA-10,
-STA-13 to STA-16.
+STA-13 to STA-16, STA-18.
 
 ## A scanner reports a package; we work out the places
 
@@ -360,6 +360,35 @@ eleven use-after-frees in eleven libraries are one conversation, and eleven
 unrelated issues in one library are not. A report usually names the same
 weakness from several sources, so what is stored is deduplicated and ordered;
 otherwise a re-scan would rewrite the row having learned nothing.
+
+## A bump that did not reach the fix
+
+Two things are already held and never put together: that a component's upstream
+version moved since the previous run, and what version the data says fixes the
+issue. When a finding stays open across a version change and the shipped
+version is not the one named as fixing it, that is somebody's remediation
+failing to land.
+
+Today it surfaces as a lapsed decision and a finding to judge again, which is
+aimed at a triager. The useful reading is aimed at whoever did the bump, and it
+says the bump fell short. For a producer that patches and bumps rather than
+upgrading wholesale, this is the failure that otherwise goes unnoticed for a
+whole release cycle.
+
+**It is stated as inequality, not ordering**, and that limit is real rather
+than a simplification worth removing later without noticing. Nothing here can
+compare 3.0.12 against 3.0.14: there is no version comparison anywhere in this
+codebase, the fixed-in field is free text and is sometimes a list of versions,
+and doing it properly means per-ecosystem ordering — Debian epochs, RPM
+release segments, semantic versions, and the ecosystems that follow none of
+them. The cheap form still says the useful thing: this moved, and it is still
+not the version that fixes it. Ordering would sharpen the wording and change
+nothing about when the flag is raised.
+
+The inverse is worth catching for a different reason. A component sitting at or
+past the named fix while the scanner still reports the issue means the scanner
+and the fix data disagree — which is not a triage question at all, and is why a
+decision must never be carried onto such a build.
 
 ## Several disappearances at once are one fault
 

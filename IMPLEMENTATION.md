@@ -218,6 +218,64 @@ Work that has to happen once, at the end, and would be wrong to do earlier.
 - **Start keeping schema and API compatibility** from that point (DAT-29,
   API-20). Until then a schema change is an edit and a database is recreated.
 
+## What the reach and shortfall decisions cost
+
+Recorded before anything is built, because two of these look cheap and one of
+them is not.
+
+### TRI-30, TRI-31 — stating and recording reach
+
+**Schema:** three columns on the approval row for the counts as granted. Nothing
+else — the reach itself is derived, and storing it as anything but a snapshot
+taken at approval would create a second copy of the matching rules to keep in
+step.
+
+**Query:** the two automatic tiers are one query each against open findings —
+same product, same place, same issue — grouped by whether the upstream versions
+match. Both run over the same rows the finding detail already reads. The third
+tier is the same query inverted, so all three come from one pass.
+
+**Cost:** low, and it is worth doing before the interface rather than after. The
+counts change what a decision endpoint returns, and the API is easier to shape
+now than once clients read it.
+
+### TRI-32 — one judgment across many issues
+
+**Schema:** none. It writes the decisions the model already has, and a batch
+name already exists for undoing a bulk approval as a unit.
+
+**Query:** selecting the set is the work, and the honest version of it is
+narrow: filter by component, then by whatever the person types. Anything
+cleverer — grouping by weakness class, or by a subsystem read out of advisory
+text — is a **guess presented as an aid**, and the design rule is that it may
+narrow a list and may never be the claim.
+
+**Cost:** low in mechanism and awkward in interface. Writing 1,674 decisions in
+one transaction is fine; showing somebody what they are about to assert, in a
+way they will actually read, is the part that needs care. **It also needs a
+bound**: a single action writing an unbounded number of rows is a denial of
+service somebody triggers by accident, so the count is capped and the cap is a
+setting.
+
+### STA-18 — marking a bump that fell short
+
+**Schema:** one column on the finding, and one on the scan run if the reason is
+to be reported per scan.
+
+**Query:** it needs the *previous* run's upstream version for the same place,
+which the interval storage already holds — a finding closed and reopened
+carries its history, and an open one carries the run that opened it. This is
+the part to check before committing to it: if the version moved without the
+finding closing, the open row was **updated in place** rather than reopened,
+and the previous version is not on it. Either the update records what moved, or
+the comparison happens against the component row as it stood at the previous
+scan. The first is cheaper and is the one to try.
+
+**Cost:** low as inequality. **Do not let it become version ordering by
+accident** — that is a different project, with a per-ecosystem comparator and
+a corpus to test it against, and it buys a sharper sentence rather than a new
+signal.
+
 ## Decided, and waiting for the stage that carries it
 
 Recorded here so a decision that exists and is not implemented is a scheduled
@@ -234,6 +292,7 @@ thing rather than a gap somebody rediscovers by auditing.
 | REL-01, REL-03, REL-04, REL-07, SCP-05 | The interface | All are about how findings and exceptions are presented and acted on together. Deciding them against a real screen rather than in the abstract is the point |
 | ACC-46 to ACC-49 | Private findings | Whole feature, with disclosure dates and the escalation around them |
 | ING-24 to ING-27, SCP-11 | Analyzer findings | Intended scope, not built. The finding model carries a kind from the start so a second kind needs no rewrite, which is the part that had to be got right early |
+| TRI-30, TRI-31, TRI-32, STA-18 | The interface, mostly | Each costs little in the data layer and most of the work is in showing somebody what they are about to assert. Costed above rather than discovered later |
 | MDL-10 | Nothing — it is a limitation | The same version built with different feature flags can use its dependencies differently. Recorded so nobody assumes the graph says more than it does |
 
 ## Not planned yet
