@@ -19,6 +19,15 @@ const PlaceDecision = lazy(() =>
 );
 const Tree = lazy(() => import("../screens/Tree").then((m) => ({ default: m.Tree })));
 const Queue = lazy(() => import("../screens/Queue").then((m) => ({ default: m.Queue })));
+const Decision = lazy(() =>
+  import("../screens/Decision").then((m) => ({ default: m.Decision })),
+);
+const Unassigned = lazy(() =>
+  import("../screens/Unassigned").then((m) => ({ default: m.Unassigned })),
+);
+const Together = lazy(() =>
+  import("../screens/Together").then((m) => ({ default: m.Together })),
+);
 
 const build = "/products/:product/streams/:stream/variants/:variant";
 
@@ -37,6 +46,8 @@ export function App() {
       <Routes>
         <Route path="/" element={<Home who={who.data} />} />
         <Route path="/review-queue" element={<Queue />} />
+        <Route path="/unassigned" element={<Unassigned />} />
+        <Route path="/decisions/:id" element={<Decision who={who.data} />} />
         <Route path="/products" element={<Products who={who.data} />} />
         <Route path="/products/:product/streams" element={<Streams />} />
         <Route path="/products/:product/streams/:stream" element={<Variants />} />
@@ -44,6 +55,7 @@ export function App() {
         <Route path={`${build}/findings/:vulnerability/components/:component`} element={<Finding />} />
         <Route path={`${build}/findings/:vulnerability/places/:place`} element={<PlaceDecision />} />
         <Route path={`${build}/components`} element={<Tree />} />
+        <Route path={`${build}/components/:component/decide`} element={<Together />} />
         {/* A path the page does not know either. Sending somebody home is
             better than a dead end, and the address bar already told them
             where they tried to go. */}

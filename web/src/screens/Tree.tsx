@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
@@ -104,7 +105,20 @@ function Around({
         </button>
       </div>
 
-      <h2 className="mb-2 text-sm font-semibold">{component}</h2>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <h2 className="text-sm font-semibold">{component}</h2>
+        <Link
+          to={
+            `/products/${encodeURIComponent(at.product)}` +
+            `/streams/${encodeURIComponent(at.stream)}` +
+            `/variants/${encodeURIComponent(at.variant)}` +
+            `/components/${encodeURIComponent(component)}/decide`
+          }
+          className="text-sm text-accent hover:underline"
+        >
+          Decide several at once
+        </Link>
+      </div>
 
       <section className="mb-5">
         <h3 className="mb-2 text-sm text-muted">What pulls it in</h3>

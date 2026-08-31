@@ -169,6 +169,7 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	registerSettings(api, in)
 	registerProviders(api, in)
 	registerWhoAmI(api, in)
+	registerMentions(api, in)
 	registerBulk(api, in)
 	registerReports(api, in)
 	registerCarry(api, in)

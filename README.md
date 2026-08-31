@@ -24,12 +24,12 @@ place to triage what it finds and track it through to a fix.
 > Reporting has begun: release-to-release comparison, trends, deadlines and
 > what a new line would inherit.
 >
-> The web interface: sign-in, products, the findings list, finding detail, the
-> dependency tree, the review queue and a home page — embedded into the binary
-> and served from it.
+> The web interface: sign-in, products, findings, finding detail, the
+> dependency tree, decisions with their history, the review queue, assignment,
+> bulk triage and a home page — embedded into the binary and served from it.
 >
-> What does not: assignment and bulk triage in the interface, remediation
-> tracking, notifications, private findings and attachments. The design record is in
+> What does not: the administration screens, remediation tracking,
+> notifications, private findings and attachments. The design record is in
 > [DECISIONS.md](DECISIONS.md).
 
 ## What it does

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
 import { useApprove, useSendBack } from "../api/mutations";
@@ -81,7 +82,14 @@ function Waiting({ row }: { row: Row }) {
             agreed before
           </span>
         )}
-        <span className="ml-auto text-sm text-muted">{row.place?.product}</span>
+        <span className="ml-auto flex items-center gap-3 text-sm text-muted">
+          {row.place?.product}
+          {id && (
+            <Link to={`/decisions/${id}`} className="text-accent hover:underline">
+              Read it
+            </Link>
+          )}
+        </span>
       </div>
 
       <p className="mb-2 text-sm text-muted">

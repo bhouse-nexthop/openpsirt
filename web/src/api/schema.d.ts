@@ -502,6 +502,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product}/mentionable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List who may be mentioned here
+         * @description Returns the people who can already read findings of this visibility in this product, so an editor can offer them.
+         *
+         *     Only people who can already see the thing. An autocomplete listing everybody teaches somebody to name a colleague who then cannot open what they were called to — and on an undisclosed finding, the mention itself says a finding exists, which is the disclosure the visibility rule prevents.
+         *
+         *     `visibility` says which kind of finding the text is about. Asking about undisclosed findings requires being able to read them.
+         */
+        get: operations["list-mentionable"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product}/streams": {
         parameters: {
             query?: never;
@@ -1878,6 +1902,15 @@ export interface components {
             readonly $schema?: string;
             items: components["schemas"]["LateBody"][] | null;
         };
+        ListBodyMentionableBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListBodyMentionableBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["MentionableBody"][] | null;
+        };
         ListBodyNeighbourBody: {
             /**
              * Format: uri
@@ -1978,6 +2011,12 @@ export interface components {
             variant: string;
             /** @description The upstream version that build has, which differs from this one */
             version?: string;
+        };
+        MentionableBody: {
+            /** @description What to write after the @ */
+            identity: string;
+            /** @description What to show while choosing */
+            name: string;
         };
         ModeBody: {
             /**
@@ -3228,6 +3267,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Compare-releasesResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-mentionable": {
+        parameters: {
+            query?: {
+                /** @description Which kind of finding the text is about */
+                visibility?: "public" | "private";
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                product: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListBodyMentionableBody"];
                 };
             };
             /** @description Error */

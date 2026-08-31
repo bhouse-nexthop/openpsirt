@@ -3,9 +3,9 @@
 The web interface, how it is built, and how it reaches the server.
 
 Satisfies UIX-01 to UIX-05, UIX-07, UIX-08, UIX-11, UIX-14, UIX-16, UIX-18 to
-UIX-23, UIX-27, UIX-30 to UIX-32, UIX-34, UIX-36, UIX-37, API-17, ACC-56 to
-ACC-58. What is not built is named at the end rather than left to be found by
-clicking.
+UIX-23, UIX-25 to UIX-27, UIX-30 to UIX-32, UIX-34 to UIX-37, API-17, ACC-56
+to ACC-59. What is not built is named at the end rather than left to be found
+by clicking.
 
 ## One artifact
 
@@ -219,16 +219,37 @@ justification.
 Measured: one bundle of 820 KB became a 248 KB initial load, with the chart
 (369 KB) and the renderer (146 KB) fetched only by the screens that use them.
 
+## Mentions offer only people who can already see it
+
+Autocomplete after an `@` offers the people who can read findings of that
+visibility in that product, and nobody else.
+
+An autocomplete listing everybody teaches somebody to name a colleague who then
+cannot open what they were called to. On an undisclosed finding it is worse
+than unhelpful: the mention itself says a finding exists, which is the
+disclosure the visibility rule is there to prevent.
+
+**Asking who may be mentioned on an undisclosed finding is itself a question
+about undisclosed findings**, so somebody who cannot read them is answered as
+though the product were not there — the same answer every other path gives.
+Without that second half, the endpoint is a way to enumerate who holds private
+access, which is a more useful thing to steal than the list it is attached to.
+
+What is being typed after an `@` is read from the text before the cursor rather
+than tracked as state, so it stays right however somebody edits — pasting,
+deleting, or clicking elsewhere in the line.
+
 ## Not built yet
 
 Named so that what is missing is a plan rather than something rediscovered by
-clicking: assignment, re-affirming a lapsed decision, the bulk judgment across
-many issues at one component, comment threads on a decision, and the revision
-history UIX-26 wants shown.
+clicking: editing a comment after it is written, undoing a bulk approval as a
+batch, the release comparison and the carry-forward preview, and the
+administration screens for people, roles, keys and settings — all of which have
+endpoints and no interface.
 
-**Mentions need server work that does not exist.** UIX-25 wants autocomplete
-offering only people who can see the finding, and refusing a mention of
-somebody who cannot while it is being written. There is no mention handling
-anywhere and no endpoint to ask for the candidates. Both halves land together,
-because an autocomplete that offers people the server will then refuse is worse
-than none.
+**A mention currently links nobody.** The editor offers the right candidates
+and writes `@name` into the text, but the renderer treats it as ordinary words:
+UIX-24 wants a mention and a finding reference to become links, and that is
+resolution the server has to do because it needs to know what the reader may
+see. Notifying somebody who was mentioned is a notification (Stage 6) rather
+than a screen.

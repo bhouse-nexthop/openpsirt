@@ -8,7 +8,8 @@ import { Crumbs } from "../ui/Crumbs";
 import { Outcome, JUSTIFICATIONS } from "../ui/Outcome";
 import { State } from "../ui/State";
 import { Markdown } from "../ui/Markdown";
-import { Editor } from "../ui/Editor";
+import { Editor, forget } from "../ui/Editor";
+import { Reach } from "../ui/Reach";
 
 // What was decided at one place, and how to decide it. A place is the
 // component and what directly pulled it in, which is the unit a decision is
@@ -45,6 +46,8 @@ export function PlaceDecision() {
         ),
       ),
     onSuccess: () => {
+      // Cleared only now. A refused submission keeps every word.
+      forget(`decide:${product}:${vulnerability}:${place}`);
       void queries.invalidateQueries({ queryKey: ["decided"] });
       void queries.invalidateQueries({ queryKey: ["queue"] });
     },
@@ -78,16 +81,18 @@ export function PlaceDecision() {
             Nothing is in force here. A claim waiting for a second person suppresses nothing,
             so it does not appear as one.
           </p>
+          <Reach at={at} />
           <Decide
             onDecide={(body) => decide.mutate(body)}
             pending={decide.isPending}
             error={decide.error}
             draftKey={`decide:${product}:${vulnerability}:${place}`}
+            mentions={{ product }}
           />
         </>
       )}
 
-      {previously.length > 0 && <Previously items={previously} />}
+      {previously.length > 0 && <Previously items={previously} at={at} standing={!!standing} />}
     </div>
   );
 }
@@ -106,6 +111,11 @@ function Standing({ detail }: { detail: Detail }) {
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <Outcome outcome={detail.decision?.outcome} />
         <State state={detail.decision?.state} />
+        {detail.decision?.id && (
+          <Link to={`/decisions/${detail.decision.id}`} className="text-sm text-accent hover:underline">
+            History and comments
+          </Link>
+        )}
         {detail.decision?.deferred_until && (
           <span className="text-sm text-muted">until {detail.decision.deferred_until}</span>
         )}
@@ -122,7 +132,15 @@ function Standing({ detail }: { detail: Detail }) {
 // Read what was decided here before deciding again. A claim that lapsed on a
 // version bump is usually still the right answer, and re-affirming it is a
 // different request from making a new one.
-function Previously({ items }: { items: Detail[] }) {
+function Previously({
+  items,
+  at,
+  standing,
+}: {
+  items: Detail[];
+  at: { product: string; stream: string; variant: string; vulnerability: string; place: string };
+  standing: boolean;
+}) {
   return (
     <section className="mt-8">
       <h2 className="mb-2 text-sm font-semibold">Decided here before</h2>
@@ -137,11 +155,26 @@ function Previously({ items }: { items: Detail[] }) {
               <Outcome outcome={each.decision?.outcome} />
               <State state={each.decision?.state} />
               <span className="text-sm text-muted">{each.proposed_by}</span>
+              {each.decision?.id && (
+                <Link
+                  to={`/decisions/${each.decision.id}`}
+                  className="ml-auto text-sm text-accent hover:underline"
+                >
+                  Read it
+                </Link>
+              )}
             </div>
             {each.reasoning && (
               <div className="text-sm">
                 <Markdown source={each.reasoning} />
               </div>
+            )}
+            {/* A claim that lapsed because a version moved is usually still
+                the right answer, and re-affirming it is a different request
+                from making a new one — it carries the agreement the original
+                already had. Only offered where nothing else is in force. */}
+            {!standing && each.decision?.state === "lapsed" && each.decision.id && (
+              <Reaffirm at={at} previous={each.decision.id} was={each.reasoning ?? ""} />
             )}
           </li>
         ))}
@@ -150,16 +183,96 @@ function Previously({ items }: { items: Detail[] }) {
   );
 }
 
+// Re-making a claim the code moved out from under. The old words are offered
+// as a starting point rather than thrown away: making somebody start from a
+// blank page is how a tool teaches people to stop writing reasoning at all.
+function Reaffirm({
+  at,
+  previous,
+  was,
+}: {
+  at: { product: string; stream: string; variant: string; vulnerability: string; place: string };
+  previous: number;
+  was: string;
+}) {
+  const queries = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [reasoning, setReasoning] = useState(was);
+  const draftKey = `reaffirm:${previous}`;
+
+  const again = useMutation({
+    mutationFn: async () =>
+      unwrap(
+        await api.POST(
+          "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision/reaffirmation",
+          { params: { path: at }, body: { previous, reasoning } },
+        ),
+      ),
+    onSuccess: () => {
+      forget(draftKey);
+      setOpen(false);
+      void queries.invalidateQueries({ queryKey: ["decided"] });
+      void queries.invalidateQueries({ queryKey: ["queue"] });
+    },
+  });
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-2 text-sm text-accent hover:underline"
+      >
+        Say this still holds
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3">
+      <p className="mb-2 text-sm text-muted">
+        A fresh reason is required. "Still true" with nothing behind it is what a re-affirmation
+        becomes when it is made too easy. It normally needs no second approver — but it does if
+        the severity has risen since, and the answer will say so.
+      </p>
+      <Editor
+        value={reasoning}
+        onChange={setReasoning}
+        draftKey={draftKey}
+        rows={5}
+        label="Why it still holds"
+        mentions={{ product: at.product }}
+      />
+      {again.error != null && <Failed error={again.error} what="That could not be recorded." />}
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          disabled={!reasoning.trim() || again.isPending}
+          onClick={() => again.mutate()}
+          className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink disabled:opacity-50"
+        >
+          Re-affirm
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="rounded border border-edge px-3 py-1.5 text-sm">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Decide({
   onDecide,
   pending,
   error,
   draftKey,
+  mentions,
 }: {
   onDecide: (body: { outcome: string; justification?: string; deferred_until?: string; reasoning: string }) => void;
   pending: boolean;
   error: unknown;
   draftKey: string;
+  mentions: { product: string };
 }) {
   const [outcome, setOutcome] = useState("not-applicable");
   const [justification, setJustification] = useState(JUSTIFICATIONS[0]?.value ?? "");
@@ -233,6 +346,7 @@ function Decide({
             onChange={setReasoning}
             draftKey={draftKey}
             label="Reasoning"
+            mentions={mentions}
             placeholder="What makes this true for this component, at this place?"
           />
         </div>

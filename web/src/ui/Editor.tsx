@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "../api/client";
+import { unwrap } from "../api/queries";
 import { Markdown } from "./Markdown";
 
 // Write and Preview over a plain textarea, with a formatting toolbar. Not a
@@ -29,6 +32,7 @@ export function Editor({
   rows = 8,
   placeholder,
   label,
+  mentions,
 }: {
   value: string;
   onChange: (next: string) => void;
@@ -39,9 +43,61 @@ export function Editor({
   rows?: number;
   placeholder?: string;
   label?: string;
+  // Where mentions may be offered from. Omitted where there is no product in
+  // hand, in which case nothing is offered rather than everybody.
+  mentions?: { product: string; visibility?: "public" | "private" };
 }) {
   const [showing, setShowing] = useState<"write" | "preview">("write");
+  const [typing, setTyping] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+
+  // Only people who can already read what this text is about. An autocomplete
+  // listing everybody teaches somebody to name a colleague who then cannot
+  // open what they were called to — and on an undisclosed finding the mention
+  // itself would say a finding exists.
+  const offerable = useQuery({
+    queryKey: ["mentionable", mentions?.product, mentions?.visibility],
+    enabled: typing !== null && !!mentions?.product,
+    staleTime: 5 * 60_000,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/products/{product}/mentionable", {
+          params: {
+            path: { product: mentions?.product ?? "" },
+            query: { visibility: mentions?.visibility ?? "public", limit: 50 },
+          },
+        }),
+      ),
+  });
+
+  const candidates = (offerable.data?.items ?? []).filter((each) =>
+    typing ? (each.identity ?? "").toLowerCase().startsWith(typing.toLowerCase()) : true,
+  );
+
+  // What is being typed after an @, if anything. Read from the text before the
+  // cursor rather than tracked as state, so it stays right however somebody
+  // edits — pasting, deleting, clicking elsewhere in the line.
+  function partial(field: HTMLTextAreaElement): string | null {
+    const upto = field.value.slice(0, field.selectionStart);
+    const match = /(?:^|\s)@([A-Za-z0-9._-]*)$/.exec(upto);
+    return match ? (match[1] ?? "") : null;
+  }
+
+  function complete(identity: string) {
+    const field = box.current;
+    if (!field) return;
+    const upto = value.slice(0, field.selectionStart);
+    const start = upto.lastIndexOf("@");
+    if (start < 0) return;
+    const next = value.slice(0, start) + "@" + identity + " " + value.slice(field.selectionStart);
+    onChange(next);
+    setTyping(null);
+    queueMicrotask(() => {
+      field.focus();
+      const at = start + identity.length + 2;
+      field.setSelectionRange(at, at);
+    });
+  }
 
   // Restore whatever was left behind, once, and only over an empty field —
   // a draft must never overwrite something the caller supplied.
@@ -118,6 +174,26 @@ export function Editor({
         </div>
       </div>
 
+      {showing === "write" && typing !== null && candidates.length > 0 && (
+        <ul className="mx-3 mt-1 max-h-40 overflow-y-auto rounded border border-edge bg-sunken text-sm">
+          {candidates.map((each) => (
+            <li key={each.identity}>
+              <button
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => complete(each.identity ?? "")}
+                className="block w-full px-3 py-1.5 text-left hover:bg-raised"
+              >
+                <span className="font-medium">@{each.identity}</span>
+                {each.name && each.name !== each.identity && (
+                  <span className="ml-2 text-muted">{each.name}</span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
       {showing === "write" ? (
         <textarea
           ref={box}
@@ -125,7 +201,16 @@ export function Editor({
           rows={rows}
           aria-label={label ?? "Markdown"}
           placeholder={placeholder}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => {
+            onChange(event.target.value);
+            setTyping(mentions?.product ? partial(event.target) : null);
+          }}
+          onKeyUp={(event) => setTyping(mentions?.product ? partial(event.currentTarget) : null)}
+          onBlur={() => {
+            // Left open, a list floating over the next control is worse than
+            // no list. Delayed so a click on an entry still lands.
+            window.setTimeout(() => setTyping(null), 150);
+          }}
           className="w-full resize-y bg-transparent px-3 py-2 font-mono text-sm outline-none"
         />
       ) : (

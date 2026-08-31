@@ -392,3 +392,66 @@ func (s *Store) Names(ctx context.Context, ids []int64) (map[int64]string, error
 	}
 	return names, nil
 }
+
+// Mentionable is somebody who could be named in text about a product.
+type Mentionable struct {
+	Identity string `bun:"identity"`
+	Name     string `bun:"name"`
+}
+
+// WhoCanRead lists the people who may read findings of this visibility in this
+// product, for offering as mentions.
+//
+// **Offering only people who can already see the thing** is the whole point.
+// An autocomplete that lists everybody teaches somebody to mention a colleague
+// who then cannot open what they were called to, and on an undisclosed finding
+// the mention itself says that a finding exists — which is the disclosure the
+// visibility rule is there to prevent.
+//
+// Administrators are included because they reach everything. Inactive grants
+// are read past entirely, the same way every other question about what
+// somebody holds reads past them (ACC-37).
+//
+// There is no such thing as a deactivated person here — an account is recorded
+// or it is not (ACC-43) — so nothing filters on one.
+func (s *Store) WhoCanRead(ctx context.Context, productID int64, visibility Visibility,
+	limit int) ([]Mentionable, error) {
+
+	if limit <= 0 || limit > 100 {
+		limit = 25
+	}
+
+	// Which roles are enough to read at this visibility. Asked of the same
+	// rule every query uses rather than spelled again here: triage implies
+	// reading at the same visibility, and reading what is undisclosed implies
+	// reading what is not.
+	var enough []Role
+	for _, role := range Roles() {
+		if NewPerson(0, "", false, map[int64][]Role{productID: {role}}).Reads(visibility, productID) {
+			enough = append(enough, role)
+		}
+	}
+	if len(enough) == 0 {
+		return nil, nil
+	}
+
+	var found []Mentionable
+	err := s.db.NewSelect().
+		TableExpr("person AS p").
+		ColumnExpr("p.identity AS identity").
+		ColumnExpr("COALESCE(NULLIF(p.display_name, ''), p.identity) AS name").
+		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.WhereOr("p.is_admin = ?", true).
+				WhereOr(`EXISTS (SELECT 1 FROM "role_grant" AS g
+					WHERE g.person_id = p.id AND g.active = ?
+					  AND g.product_id = ? AND g.role IN (?))`,
+					true, productID, bun.In(enough))
+		}).
+		OrderExpr("p.identity").
+		Limit(limit).
+		Scan(ctx, &found)
+	if err != nil {
+		return nil, fmt.Errorf("read who may be mentioned: %w", err)
+	}
+	return found, nil
+}

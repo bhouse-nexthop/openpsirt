@@ -7,6 +7,7 @@ const places = [
   { to: "/", label: "Home", end: true },
   { to: "/products", label: "Products", end: false },
   { to: "/review-queue", label: "Review queue", end: false },
+  { to: "/unassigned", label: "Unassigned", end: false },
 ];
 
 // The frame every screen sits in. Deliberately thin: where you are, who you

@@ -1192,6 +1192,25 @@ components:
       required:
         - items
       type: object
+    ListBodyMentionableBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyMentionableBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/MentionableBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
     ListBodyNeighbourBody:
       additionalProperties: false
       properties:
@@ -1400,6 +1419,19 @@ components:
         - stream
         - variant
         - places
+      type: object
+    MentionableBody:
+      additionalProperties: false
+      properties:
+        identity:
+          description: What to write after the @
+          type: string
+        name:
+          description: What to show while choosing
+          type: string
+      required:
+        - identity
+        - name
       type: object
     ModeBody:
       additionalProperties: false
@@ -2979,6 +3011,57 @@ paths:
       summary: Compare two builds
       tags:
         - Findings
+  /v1/products/{product}/mentionable:
+    get:
+      description: |-
+        Returns the people who can already read findings of this visibility in this product, so an editor can offer them.
+
+        Only people who can already see the thing. An autocomplete listing everybody teaches somebody to name a colleague who then cannot open what they were called to — and on an undisclosed finding, the mention itself says a finding exists, which is the disclosure the visibility rule prevents.
+
+        `visibility` says which kind of finding the text is about. Asking about undisclosed findings requires being able to read them.
+      operationId: list-mentionable
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - description: Which kind of finding the text is about
+          explode: false
+          in: query
+          name: visibility
+          schema:
+            default: public
+            description: Which kind of finding the text is about
+            enum:
+              - public
+              - private
+            type: string
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 25
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyMentionableBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List who may be mentioned here
+      tags:
+        - Triage
   /v1/products/{product}/streams:
     get:
       operationId: list-streams

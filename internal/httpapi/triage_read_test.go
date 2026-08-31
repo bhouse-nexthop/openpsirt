@@ -1079,3 +1079,59 @@ func TestTheCallerIsToldWhatTheyMayDoRatherThanFindingOut(t *testing.T) {
 		}
 	})
 }
+
+func TestOnlyPeopleWhoCanAlreadySeeItAreOfferedAsMentions(t *testing.T) {
+	// An autocomplete listing everybody teaches somebody to name a colleague
+	// who then cannot open what they were called to. On an undisclosed finding
+	// it is worse than unhelpful: the mention itself says a finding exists,
+	// which is the disclosure the visibility rule is there to prevent.
+	eachReach(t, func(t *testing.T, r *reach) {
+		type person struct {
+			Identity string `json:"identity"`
+			Name     string `json:"name"`
+		}
+		type list struct {
+			Items []person `json:"items"`
+		}
+		has := func(items []person, who string) bool {
+			for _, each := range items {
+				if each.Identity == who {
+					return true
+				}
+			}
+			return false
+		}
+
+		// Everybody who can read what has been disclosed.
+		var public list
+		read(t, r, "triager", "/v1/products/mine/mentionable", &public)
+		if !has(public.Items, "reader") {
+			t.Errorf("somebody who can read the product is not offered: %+v", public.Items)
+		}
+		if has(public.Items, "nothing") {
+			t.Error("somebody granted nothing here is offered as a mention")
+		}
+
+		// And undisclosed findings are a narrower set. Somebody trusted only
+		// with what has been disclosed must not be offered for one that has
+		// not — naming them would call them to something they cannot open.
+		var private list
+		read(t, r, "private-triage", "/v1/products/mine/mentionable?visibility=private", &private)
+		if has(private.Items, "reader") {
+			t.Errorf("somebody who reads only disclosed findings is offered on an undisclosed one: %+v",
+				private.Items)
+		}
+		if len(private.Items) == 0 {
+			t.Error("nobody at all may be mentioned on an undisclosed finding")
+		}
+
+		// Asking who may be told about an undisclosed finding is itself a
+		// question about undisclosed findings, so somebody who cannot read
+		// them is answered as though the product were not there.
+		if got := asPerson(t, r, "triager", http.MethodGet,
+			"/v1/products/mine/mentionable?visibility=private", ""); got.Code != http.StatusNotFound {
+			t.Errorf("a public triager asked about undisclosed mentions and got %d: %s",
+				got.Code, got.Body.String())
+		}
+	})
+}
