@@ -518,3 +518,75 @@ func narrowedBy(query *bun.SelectQuery, subject access.Subject, column string,
 		return q
 	})
 }
+
+// Together records the same judgment against many issues at one component.
+//
+// The transpose of grouping. One issue across many places is what a decision
+// already covers; a component carrying thousands of issues — a kernel, most of
+// them in drivers a given image never builds — has no answer at all, and
+// without one the choices are answering two thousand findings individually,
+// which nobody does, or hiding them, which is refused.
+//
+// One outcome, one justification, one reasoning, one approval, and a separate
+// record per issue. Each is keyed and expires on its own, which is what makes
+// one action across many findings defensible rather than a blanket claim.
+//
+// Bounded, because one action writing an unbounded number of rows is a denial
+// of service somebody triggers by accident.
+func (s *Store) Together(ctx context.Context, subject access.Subject, at []Place, p Proposal,
+	cap int) ([]int64, error) {
+
+	if len(at) == 0 {
+		return nil, fmt.Errorf("nothing was selected, so there is nothing to claim")
+	}
+	if cap > 0 && len(at) > cap {
+		return nil, fmt.Errorf("that is %d findings and the limit here is %d: narrow the "+
+			"selection, or raise the limit deliberately", len(at), cap)
+	}
+	if p.By != subject.ID {
+		return nil, fmt.Errorf("a decision is recorded as made by whoever made it")
+	}
+
+	db, ok := s.db.(*bun.DB)
+	if !ok {
+		return nil, fmt.Errorf("this store is already inside a transaction")
+	}
+
+	var recorded []int64
+	err := database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+		// Cleared on every attempt. A retry re-runs this against a database
+		// that has moved, and carrying identifiers over from the attempt that
+		// failed would report claims that no longer exist.
+		recorded = recorded[:0]
+		within := &Store{db: tx, now: s.now}
+
+		for _, place := range at {
+			if !mayDecide(subject, place.ProductID, visibilityOf(place)) {
+				return ErrNotTheirs
+			}
+			each := p
+			each.Place = place
+			if err := each.valid(); err != nil {
+				return err
+			}
+			made, err := within.propose(ctx, each)
+			if err != nil {
+				// One live claim per combination of code holds here too. A
+				// selection covering something already decided is a selection
+				// somebody should look at again rather than one to write
+				// around.
+				if errors.Is(err, ErrAlreadyDecided) {
+					return fmt.Errorf("%w: something in this selection is already decided",
+						ErrAlreadyDecided)
+				}
+				return err
+			}
+			recorded = append(recorded, made.ID)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return recorded, nil
+}

@@ -247,3 +247,123 @@ func (s *Store) Lapse(ctx context.Context, targetID int64) (int64, error) {
 	}
 	return moved, nil
 }
+
+// Carried is what a new line would inherit from an existing one.
+//
+// Four buckets, because they need four different things from a person. What
+// already applies needs nothing. What moved needs a fresh answer, and gets the
+// old reasoning to start from. A postponement is a scheduling judgment about a
+// release rather than a claim about code, so it is offered separately. And
+// what covers nothing there is left behind.
+type Carried struct {
+	// Applying reach the new line by matching. Nothing to choose.
+	Applying int
+	// Moved held a claim at a version the new line does not have. Each comes
+	// across as a proposal carrying the old words — never as a decision,
+	// because the version moved and the old conclusion is not a conclusion
+	// about the new code.
+	Moved []Inherited
+	// Postponed were deferrals. "Not this sprint" was about that sprint, and
+	// carrying it silently gives a new line expiry dates nobody chose.
+	Postponed []Inherited
+	// Absent is how many cover nothing in the new line at all.
+	Absent int
+}
+
+// Inherited is one claim a new line could take on.
+type Inherited struct {
+	DecisionID    int64
+	Vulnerability string
+	Component     string
+	Outcome       Outcome
+	Was           string
+	Now           string
+	Reasoning     string
+	// DeferredDays is how long this has already been put off, across every
+	// line it has been carried through. The number that decides whether
+	// carrying it again is reasonable.
+	DeferredDays int
+}
+
+// WouldCarry reports what a new line would inherit from an existing one,
+// without changing anything.
+//
+// Asked before a line is created, because the answer is what somebody is
+// agreeing to — and a carry that happened silently is the one nobody reviews.
+func (s *Store) WouldCarry(ctx context.Context, subject access.Subject,
+	fromTarget, toTarget int64) (*Carried, error) {
+
+	if subject.Kind != access.Person {
+		return nil, ErrNotTheirs
+	}
+
+	var rows []struct {
+		DecisionID    int64  `bun:"decision_id"`
+		Vulnerability string `bun:"vulnerability"`
+		Component     string `bun:"component"`
+		Outcome       string `bun:"outcome"`
+		Was           string `bun:"was"`
+		Now           string `bun:"now_at"`
+		Reasoning     string `bun:"reasoning"`
+		StillThere    bool   `bun:"still_there"`
+	}
+	err := s.db.NewSelect().
+		TableExpr("decision AS de").
+		Join("JOIN vulnerability AS v ON v.id = de.vulnerability_id").
+		Join("LEFT JOIN decision_revision AS dr ON dr.id = de.revision_id").
+		ColumnExpr("de.id AS decision_id").
+		ColumnExpr("v.identifier AS vulnerability").
+		ColumnExpr("COALESCE(de.component_upstream_version, '') AS was").
+		ColumnExpr("de.outcome AS outcome").
+		ColumnExpr("COALESCE(dr.body, '') AS reasoning").
+		// What the new line has at that place, if anything.
+		ColumnExpr(`COALESCE((SELECT MIN(c.name) FROM "finding" AS f
+			JOIN "component" AS c ON c.id = f.component_id
+			WHERE f.target_id = ? AND f.vulnerability_id = de.vulnerability_id
+			  AND f.place_identity = de.place_identity AND f.closed_run_id IS NULL), '')
+			AS component`, toTarget).
+		ColumnExpr(`COALESCE((SELECT MIN(`+finding.ComponentUpstreamExpr+`) FROM "finding" AS f
+			JOIN "component" AS c ON c.id = f.component_id
+			LEFT JOIN "component" AS uc ON uc.id = f.consumer_id
+			WHERE f.target_id = ? AND f.vulnerability_id = de.vulnerability_id
+			  AND f.place_identity = de.place_identity AND f.closed_run_id IS NULL), '')
+			AS now_at`, toTarget).
+		ColumnExpr(`EXISTS (SELECT 1 FROM "finding" AS f
+			WHERE f.target_id = ? AND f.vulnerability_id = de.vulnerability_id
+			  AND f.place_identity = de.place_identity AND f.closed_run_id IS NULL)
+			AS still_there`, toTarget).
+		Where("de.live_key IS NOT NULL").
+		Where(`EXISTS (SELECT 1 FROM "finding" AS g
+			WHERE g.target_id = ? AND g.vulnerability_id = de.vulnerability_id
+			  AND g.place_identity = de.place_identity)`, fromTarget).
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("read what a new line would inherit: %w", err)
+	}
+
+	carried := &Carried{}
+	for _, row := range rows {
+		if !row.StillThere {
+			carried.Absent++
+			continue
+		}
+		if row.Was == row.Now {
+			// The versions match, so it reaches the new line by matching.
+			// Offering it would ask somebody to agree to something that has
+			// already happened.
+			carried.Applying++
+			continue
+		}
+		one := Inherited{
+			DecisionID: row.DecisionID, Vulnerability: row.Vulnerability,
+			Component: row.Component, Outcome: Outcome(row.Outcome),
+			Was: row.Was, Now: row.Now, Reasoning: row.Reasoning,
+		}
+		if Outcome(row.Outcome) == Deferred {
+			carried.Postponed = append(carried.Postponed, one)
+			continue
+		}
+		carried.Moved = append(carried.Moved, one)
+	}
+	return carried, nil
+}

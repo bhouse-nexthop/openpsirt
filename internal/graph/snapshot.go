@@ -233,3 +233,102 @@ func (s *Store) ComponentAt(ctx context.Context, targetID int64, name string) (i
 	// requests would be worse than an arbitrary answer that does not.
 	return ids[0], nil
 }
+
+// Neighbour is one component next to another in the graph.
+type Neighbour struct {
+	ComponentID int64  `bun:"component_id"`
+	Name        string `bun:"name"`
+	Version     string `bun:"version"`
+	Findings    int    `bun:"findings"`
+	Children    int    `bun:"children"`
+}
+
+// Around reports what sits directly above and below one component in a build.
+//
+// A neighbourhood rather than a tree. Eight thousand components will not draw
+// and would not be readable if they did, so what is asked for is one step at a
+// time — and the counts come with it, because descending a graph without them
+// is exploring rather than following anything.
+//
+// Naming a component rather than an identifier: it is what a findings list
+// gives out and what somebody composing a request has.
+func (s *Store) Around(ctx context.Context, targetID int64, name string) ([]Neighbour, []Neighbour, error) {
+	componentID, err := s.ComponentAt(ctx, targetID, name)
+	if err != nil {
+		return nil, nil, err
+	}
+	below, err := s.step(ctx, targetID, componentID, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	above, err := s.step(ctx, targetID, componentID, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	return above, below, nil
+}
+
+// Roots reports what the build itself pulls in directly.
+func (s *Store) Roots(ctx context.Context, targetID int64) ([]Neighbour, error) {
+	var rootID int64
+	err := s.db.NewSelect().
+		TableExpr("graph_node AS n").
+		ColumnExpr("n.component_id").
+		Where("n.target_id = ?", targetID).
+		Where("n.closed_scan_id IS NULL").
+		Where("n.is_root = ?", true).
+		Limit(1).Scan(ctx, &rootID)
+	if database.IsNoRows(err) {
+		// A build whose document named no root of its own. Nothing is wrong
+		// and there is simply nothing above the components.
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("look up what this build is: %w", err)
+	}
+	return s.step(ctx, targetID, rootID, true)
+}
+
+// step walks one edge, downward or upward.
+//
+// Edges join *nodes* rather than components — a node is a component's presence
+// in one build — so both ends go through the node table. Reading the edge
+// columns as component identifiers is the mistake this comment exists to stop
+// somebody making twice.
+func (s *Store) step(ctx context.Context, targetID, componentID int64, down bool) ([]Neighbour, error) {
+	near, far := "parent_id", "child_id"
+	if !down {
+		near, far = far, near
+	}
+
+	var rows []Neighbour
+	err := s.db.NewSelect().
+		TableExpr("graph_edge AS e").
+		Join("JOIN graph_node AS nn ON nn.id = e."+near).
+		Join("JOIN graph_node AS fn ON fn.id = e."+far).
+		Join("JOIN component AS c ON c.id = fn.component_id").
+		ColumnExpr("c.id AS component_id").
+		ColumnExpr("c.name AS name").
+		ColumnExpr("c.version AS version").
+		// What is open against it here, so descending follows the findings
+		// rather than being exploration.
+		ColumnExpr(`(SELECT COUNT(*) FROM "finding" AS f
+			WHERE f.target_id = ? AND f.component_id = c.id
+			  AND f.closed_run_id IS NULL) AS findings`, targetID).
+		// Whether anything is under it, so a node that opens can be told from
+		// one that does not before somebody clicks it.
+		ColumnExpr(`(SELECT COUNT(*) FROM "graph_edge" AS d
+			JOIN "graph_node" AS dp ON dp.id = d.parent_id
+			WHERE d.target_id = ? AND dp.component_id = c.id
+			  AND d.closed_scan_id IS NULL) AS children`, targetID).
+		Where("e.target_id = ?", targetID).
+		Where("nn.component_id = ?", componentID).
+		Where("e.closed_scan_id IS NULL").
+		GroupExpr("c.id, c.name, c.version").
+		OrderExpr("findings DESC, c.name").
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("walk the graph: %w", err)
+	}
+	return rows, nil
+}

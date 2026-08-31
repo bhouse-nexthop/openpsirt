@@ -649,3 +649,110 @@ func TestHowFarADecisionWouldReachComesBackInThreeParts(t *testing.T) {
 		}
 	})
 }
+
+func TestTheNewEndpointsAnswerRatherThanExist(t *testing.T) {
+	// Each of these was added to close a gap the interface work found, and
+	// each one is the kind of thing that can be registered, return an empty
+	// shape, and look finished. This drives them against a build that has
+	// something in it.
+	eachReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+
+		// Walking the graph, one step at a time.
+		var top struct {
+			Items []struct {
+				Component string `json:"component"`
+				Findings  int    `json:"findings"`
+				Children  int    `json:"children"`
+			} `json:"items"`
+		}
+		read(t, r, "reader", "/v1/products/mine/streams/master/variants/broadcom/components", &top)
+		if len(top.Items) == 0 {
+			t.Fatal("the build reports pulling nothing in")
+		}
+		var around struct {
+			Above []struct {
+				Component string `json:"component"`
+			} `json:"above"`
+			Below []struct {
+				Component string `json:"component"`
+			} `json:"below"`
+		}
+		read(t, r, "reader", "/v1/products/mine/streams/master/variants/broadcom"+
+			"/components/libnl-3-200/around", &around)
+		if len(around.Above) == 0 {
+			t.Errorf("nothing pulls libnl-3-200 in, which cannot be true: %+v", around)
+		}
+
+		// The issues at a component, which is what a bulk claim narrows.
+		var issues struct {
+			Items []struct {
+				Vulnerability string `json:"vulnerability"`
+			} `json:"items"`
+			Total int `json:"total"`
+		}
+		read(t, r, "triager", "/v1/products/mine/streams/master/variants/broadcom"+
+			"/components/libnl-3-200/issues", &issues)
+		if issues.Total != 1 || len(issues.Items) != 1 {
+			t.Fatalf("%d issues at the component, want 1", issues.Total)
+		}
+
+		// One claim across a named set.
+		got := asPerson(t, r, "triager", http.MethodPost,
+			"/v1/products/mine/streams/master/variants/broadcom"+
+				"/components/libnl-3-200/decisions",
+			`{"vulnerabilities":["CVE-2026-9999"],"outcome":"not-applicable",`+
+				`"justification":"vulnerable_code_not_in_execute_path",`+
+				`"reasoning":"These are in drivers absent from our kernel config."}`)
+		if got.Code != http.StatusCreated {
+			t.Fatalf("deciding a set together answered %d: %s", got.Code, got.Body.String())
+		}
+		var recorded struct {
+			Recorded int `json:"recorded"`
+		}
+		if err := json.Unmarshal(got.Body.Bytes(), &recorded); err != nil {
+			t.Fatal(err)
+		}
+		if recorded.Recorded != 1 {
+			t.Errorf("recorded %d decisions, want one per issue named", recorded.Recorded)
+		}
+
+		// The trend, worked out rather than stored.
+		var trend struct {
+			Items []struct {
+				At   string `json:"at"`
+				Open int    `json:"open"`
+			} `json:"items"`
+		}
+		read(t, r, "reader", "/v1/trend?weeks=4", &trend)
+		if len(trend.Items) != 4 {
+			t.Errorf("asked for four weeks and got %d points", len(trend.Items))
+		}
+		if trend.Items[len(trend.Items)-1].Open == 0 {
+			t.Error("the trend ends with nothing open, but something is")
+		}
+
+		// Settings, which had no way to be set at all.
+		var settings struct {
+			Items []struct {
+				Name    string `json:"name"`
+				Value   string `json:"value"`
+				Default bool   `json:"default"`
+			} `json:"items"`
+		}
+		read(t, r, "admin", "/v1/settings", &settings)
+		if len(settings.Items) == 0 {
+			t.Fatal("no settings are listed")
+		}
+		if got := asPerson(t, r, "admin", http.MethodPut,
+			"/v1/settings/remediation.due.critical",
+			`{"value":"nonsense"}`); got.Code != http.StatusUnprocessableEntity {
+			t.Errorf("an unreadable duration was accepted: %d", got.Code)
+		}
+		if got := asPerson(t, r, "admin", http.MethodPut,
+			"/v1/settings/remediation.due.critical",
+			`{"value":"48h"}`); got.Code != http.StatusNoContent {
+			t.Errorf("setting a deadline answered %d: %s", got.Code, got.Body.String())
+		}
+	})
+}

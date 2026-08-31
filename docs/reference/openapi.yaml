@@ -44,6 +44,34 @@ components:
           description: Name a batch to agree to many at once, so it can be undone as one
           type: string
       type: object
+    AroundBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/AroundBody.json
+          format: uri
+          readOnly: true
+          type: string
+        above:
+          description: What pulls this in — usually short, and the direction people use
+          items:
+            $ref: "#/components/schemas/NeighbourBody"
+          type:
+            - array
+            - "null"
+        below:
+          description: What it pulls in
+          items:
+            $ref: "#/components/schemas/NeighbourBody"
+          type:
+            - array
+            - "null"
+      required:
+        - above
+        - below
+      type: object
     Assign-findingRequest:
       additionalProperties: false
       properties:
@@ -59,6 +87,23 @@ components:
           type: string
       required:
         - person
+      type: object
+    AtComponentBody:
+      additionalProperties: false
+      properties:
+        fixed_in:
+          type: string
+        places:
+          description: How many places in this build it sits at
+          format: int64
+          type: integer
+        severity:
+          type: string
+        vulnerability:
+          type: string
+      required:
+        - vulnerability
+        - places
       type: object
     BindingBody:
       additionalProperties: false
@@ -92,6 +137,66 @@ components:
       required:
         - group
         - role
+      type: object
+    CarriedBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/CarriedBody.json
+          format: uri
+          readOnly: true
+          type: string
+        absent:
+          description: Cover nothing in the new line
+          format: int64
+          type: integer
+        applying:
+          description: Reach it by matching. Nothing to choose
+          format: int64
+          type: integer
+        moved:
+          description: The version differs, so each needs a fresh answer
+          items:
+            $ref: "#/components/schemas/InheritedBody"
+          type:
+            - array
+            - "null"
+        postponed:
+          description: Deferrals, offered separately and never carried by default
+          items:
+            $ref: "#/components/schemas/InheritedBody"
+          type:
+            - array
+            - "null"
+      required:
+        - applying
+        - moved
+        - postponed
+        - absent
+      type: object
+    ChangedBody:
+      additionalProperties: false
+      properties:
+        because:
+          description: Why it went. Only on fixed entries
+          enum:
+            - removed
+            - upgraded
+            - revised
+            - superseded
+            - unexplained
+          type: string
+        component:
+          type: string
+        severity:
+          type: string
+        vulnerability:
+          type: string
+      required:
+        - vulnerability
+        - component
       type: object
     Comment-on-decisionRequest:
       additionalProperties: false
@@ -149,6 +254,100 @@ components:
         - body
         - written_by
         - written_at
+      type: object
+    Compare-releasesResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Compare-releasesResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        fixed:
+          items:
+            $ref: "#/components/schemas/ChangedBody"
+          type:
+            - array
+            - "null"
+        newly_present:
+          items:
+            $ref: "#/components/schemas/ChangedBody"
+          type:
+            - array
+            - "null"
+        still_present:
+          items:
+            $ref: "#/components/schemas/ChangedBody"
+          type:
+            - array
+            - "null"
+      required:
+        - fixed
+        - newly_present
+        - still_present
+      type: object
+    Decide-togetherRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Decide-togetherRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        justification:
+          description: Required when it does not apply
+          type: string
+        outcome:
+          enum:
+            - affected
+            - not-applicable
+            - deferred
+            - wont-fix
+          type: string
+        reasoning:
+          description: Why this holds for every issue named
+          minLength: 1
+          type: string
+        vulnerabilities:
+          description: The issues this claim covers, by name
+          items:
+            type: string
+          minItems: 1
+          type:
+            - array
+            - "null"
+      required:
+        - vulnerabilities
+        - outcome
+        - reasoning
+      type: object
+    Decide-togetherResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Decide-togetherResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        ids:
+          items:
+            format: int64
+            type: integer
+          type:
+            - array
+            - "null"
+        recorded:
+          format: int64
+          type: integer
+      required:
+        - recorded
+        - ids
       type: object
     DecisionBody:
       additionalProperties: false
@@ -664,6 +863,36 @@ components:
         - date
         - go
       type: object
+    InheritedBody:
+      additionalProperties: false
+      properties:
+        component:
+          type: string
+        decision:
+          format: int64
+          type: integer
+        now:
+          description: What the new line has
+          type: string
+        outcome:
+          type: string
+        reasoning:
+          description: The old words, to start from rather than start without
+          type: string
+        vulnerability:
+          type: string
+        was:
+          description: The version the claim was made against
+          type: string
+      required:
+        - decision
+        - vulnerability
+        - component
+        - outcome
+        - was
+        - now
+        - reasoning
+      type: object
     KeyBody:
       additionalProperties: false
       properties:
@@ -737,6 +966,29 @@ components:
         - variant
         - due
         - days_left
+      type: object
+    List-issues-at-componentResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/List-issues-at-componentResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/AtComponentBody"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
       type: object
     List-unassignedResponse:
       additionalProperties: false
@@ -875,6 +1127,25 @@ components:
       required:
         - items
       type: object
+    ListBodyNeighbourBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyNeighbourBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/NeighbourBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
     ListBodyPersonBody:
       additionalProperties: false
       properties:
@@ -888,6 +1159,25 @@ components:
         items:
           items:
             $ref: "#/components/schemas/PersonBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyPointBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyPointBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/PointBody"
           type:
             - array
             - "null"
@@ -926,6 +1216,25 @@ components:
         items:
           items:
             $ref: "#/components/schemas/RevisionBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodySettingBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodySettingBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/SettingBody"
           type:
             - array
             - "null"
@@ -1027,6 +1336,27 @@ components:
       required:
         - mode
       type: object
+    NeighbourBody:
+      additionalProperties: false
+      properties:
+        children:
+          description: How many components it pulls in. Zero means nothing to open
+          format: int64
+          type: integer
+        component:
+          type: string
+        findings:
+          description: Open findings against it in this build
+          format: int64
+          type: integer
+        version:
+          type: string
+      required:
+        - component
+        - version
+        - findings
+        - children
+      type: object
     PersonBody:
       additionalProperties: false
       properties:
@@ -1087,6 +1417,35 @@ components:
         - product
         - vulnerability
         - place
+      type: object
+    PointBody:
+      additionalProperties: false
+      properties:
+        at:
+          description: The end of this step, as a date
+          type: string
+        by_severity:
+          additionalProperties:
+            format: int64
+            type: integer
+          type: object
+        open:
+          format: int64
+          type: integer
+        opened:
+          description: Findings that appeared during this step
+          format: int64
+          type: integer
+        resolved:
+          description: Findings that went away during this step
+          format: int64
+          type: integer
+      required:
+        - at
+        - open
+        - opened
+        - resolved
+        - by_severity
       type: object
     ProductBody:
       additionalProperties: false
@@ -1349,6 +1708,40 @@ components:
           type: string
       required:
         - because
+      type: object
+    Set-settingRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Set-settingRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        value:
+          minLength: 1
+          type: string
+      required:
+        - value
+      type: object
+    SettingBody:
+      additionalProperties: false
+      properties:
+        default:
+          description: Nobody has set this; the shipped value is in use
+          type: boolean
+        means:
+          description: What it decides
+          type: string
+        name:
+          type: string
+        value:
+          type: string
+      required:
+        - name
+        - value
+        - means
       type: object
     SignInBody:
       additionalProperties: false
@@ -2369,6 +2762,74 @@ paths:
       summary: Create a product
       tags:
         - Catalog
+  /v1/products/{product}/comparison:
+    get:
+      description: |-
+        Returns what was fixed, what is newly present, and what is still there between two builds of one product.
+
+        Between **any** two, not only adjacent ones: what a release note has to answer is usually about the last release a customer has, which is rarely the previous one.
+
+        Each fixed entry says why it went, because "fixed by upgrading" and "fixed by a carried patch" are different sentences to a reader. `superseded` is the one to read carefully — it means the version moved and the issue came with it, so it was not fixed at all.
+
+        **Public findings only unless you ask otherwise.** Its destination is usually a public document, so including something undisclosed should be deliberate rather than something pasted in without noticing.
+      operationId: compare-releases
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - description: The earlier build, as stream/variant
+          explode: false
+          in: query
+          name: from
+          required: true
+          schema:
+            description: The earlier build, as stream/variant
+            type: string
+        - explode: false
+          in: query
+          name: from_variant
+          required: true
+          schema:
+            type: string
+        - description: The later build's stream
+          explode: false
+          in: query
+          name: to
+          required: true
+          schema:
+            description: The later build's stream
+            type: string
+        - explode: false
+          in: query
+          name: to_variant
+          required: true
+          schema:
+            type: string
+        - description: Include findings nobody has disclosed
+          explode: false
+          in: query
+          name: include_undisclosed
+          schema:
+            description: Include findings nobody has disclosed
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Compare-releasesResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Compare two builds
+      tags:
+        - Findings
   /v1/products/{product}/streams:
     get:
       operationId: list-streams
@@ -2456,6 +2917,277 @@ paths:
       summary: List the variants a release was built as
       tags:
         - Catalog
+  /v1/products/{product}/streams/{stream}/variants/{variant}/carried:
+    get:
+      description: |-
+        Returns what an existing line's decisions would mean for this one, without changing anything. Ask before creating a line, because the answer is what somebody is agreeing to — a carry that happens silently is one nobody reviews.
+
+        Four groups, because they need four different things:
+
+        `applying` reach this line by matching. Nothing to choose; a decision is a claim about a combination of code rather than about a release.
+
+        `moved` held a claim at a version this line does not have. Each would come across as a **proposal carrying the old reasoning** — never as a decision, because the version moved and the old conclusion is not a conclusion about the new code. Making somebody start from a blank page, having thrown away what was written last time, is how a tool teaches people to stop writing reasoning at all.
+
+        `postponed` were deferrals. "Not this sprint" was about that sprint, so carrying one silently gives a new line expiry dates nobody chose.
+
+        `absent` cover nothing here and are left behind.
+      operationId: preview-carried-decisions
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - description: The line to inherit from
+          explode: false
+          in: query
+          name: from
+          required: true
+          schema:
+            description: The line to inherit from
+            type: string
+        - explode: false
+          in: query
+          name: from_variant
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CarriedBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Show what triage a new line would inherit
+      tags:
+        - Triage
+  /v1/products/{product}/streams/{stream}/variants/{variant}/components:
+    get:
+      description: |-
+        Returns the components the build itself depends on, most findings first.
+
+        The starting point for walking the graph. A full render is not offered and would not be useful: a real image holds thousands of components and tens of thousands of edges, which neither draws nor reads. Ask for one step at a time.
+
+        Every entry carries how many findings are open against it and how many components it pulls in, so descending follows something rather than being exploration.
+      operationId: list-top-level-components
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyNeighbourBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List what a build pulls in directly
+      tags:
+        - Findings
+  /v1/products/{product}/streams/{stream}/variants/{variant}/components/{component}/around:
+    get:
+      description: |-
+        Returns what pulls this component in, and what it pulls in.
+
+        `above` is the direction people actually use. Somebody arrives from a finding and asks why the component is here, which is walking up — and up is short. Walking down is where the size lives.
+
+        A component reached several ways appears once with several parents. It is a graph rather than a tree, so anything drawing it has to expect the same component under many places.
+      operationId: get-component-neighbours
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - description: The component's name, as the findings list gives it
+          in: path
+          name: component
+          required: true
+          schema:
+            description: The component's name, as the findings list gives it
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AroundBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Show what is directly above and below a component
+      tags:
+        - Findings
+  /v1/products/{product}/streams/{stream}/variants/{variant}/components/{component}/decisions:
+    post:
+      description: |-
+        Records the same claim against every issue you name: one outcome, one justification, one reasoning, and a **separate decision per issue**, each keyed and expiring on its own.
+
+        That separateness is what makes one action across many findings defensible. It is not a blanket claim: a decision lapses when the code it was about moves, and these lapse one at a time as they should.
+
+        You name the issues. Nothing here selects them for you, and how you narrowed the list is not the claim — the reasoning has to hold for every issue in it, since "these matched a word" is not a defence anybody would accept.
+
+        Bounded: one action may cover at most 2000 findings, because an unbounded write is something somebody triggers by accident.
+      operationId: decide-together
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: component
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Decide-togetherRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Decide-togetherResponse"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Record one judgment about several issues at once
+      tags:
+        - Triage
+  /v1/products/{product}/streams/{stream}/variants/{variant}/components/{component}/issues:
+    get:
+      description: |-
+        Returns the distinct issues open against this component in this build, most urgent first.
+
+        The set somebody narrows before claiming something about all of it. `contains` matches the text of a report — it is how a candidate is found, never why a claim is true, and nothing here knows a kernel from a font library.
+      operationId: list-issues-at-component
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: component
+          required: true
+          schema:
+            type: string
+        - description: Match the report's text. A way to narrow, not a judgment
+          explode: false
+          in: query
+          name: contains
+          schema:
+            description: Match the report's text. A way to narrow, not a judgment
+            type: string
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            format: int64
+            maximum: 500
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: offset
+          schema:
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/List-issues-at-componentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the issues open against one component
+      tags:
+        - Triage
   /v1/products/{product}/streams/{stream}/variants/{variant}/findings:
     get:
       description: |-
@@ -3267,6 +3999,60 @@ paths:
       summary: Sign out
       tags:
         - Access
+  /v1/settings:
+    get:
+      description: |-
+        Returns every setting an operator may change, its value, and what it decides. `default` means nobody has set it and the shipped value is in use.
+
+        The shipped numbers are a starting point rather than a recommendation. What a deployment can hold to is a question about that deployment, and a deadline nobody agreed to produces an estate that is permanently late and a signal everybody ignores.
+      operationId: list-settings
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodySettingBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List what this deployment has decided
+      tags:
+        - Administration
+  /v1/settings/{name}:
+    put:
+      description: |-
+        Sets one value for everybody here. Durations are written the way Go writes them — `72h`, `30m` — and a value that cannot be read is refused rather than stored, since a setting nothing can parse is a policy silently reverting to the shipped one.
+
+        Only the settings this deployment recognizes may be set. A name it does not know is refused, because storing it would create something nothing ever reads.
+      operationId: set-setting
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Set-settingRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Change something for this deployment
+      tags:
+        - Administration
   /v1/tokens:
     get:
       description: Yours alone. A token is a live reference to you rather than a copy of what you could do when it was made, so what it reaches shrinks the moment your roles do.
@@ -3334,6 +4120,43 @@ paths:
       summary: Revoke one of your API tokens
       tags:
         - Access
+  /v1/trend:
+    get:
+      description: |-
+        Returns the three counts per step, with open split by severity, across every product you can see.
+
+        Three series rather than one, because separately they are three numbers and together they say whether the team is keeping pace: new consistently outrunning resolved is a growing backlog.
+
+        Split by severity because a total that barely moves while its critical share rises is getting worse, and a single line hides exactly that.
+
+        Worked out when it is asked for. Nothing is precomputed or refreshed on a schedule until a measurement says it has to be.
+      operationId: get-trend
+      parameters:
+        - explode: false
+          in: query
+          name: weeks
+          schema:
+            default: 12
+            format: int64
+            maximum: 104
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyPointBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Show new, resolved and open over time
+      tags:
+        - Findings
   /v1/unassigned:
     get:
       description: |-

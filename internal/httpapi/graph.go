@@ -1,0 +1,117 @@
+package httpapi
+
+import (
+	"context"
+	"net/http"
+
+	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
+)
+
+// NeighbourBody is one component next to another.
+type NeighbourBody struct {
+	Component string `json:"component"`
+	Version   string `json:"version"`
+	Findings  int    `json:"findings" doc:"Open findings against it in this build"`
+	Children  int    `json:"children" doc:"How many components it pulls in. Zero means nothing to open"`
+}
+
+// AroundBody is what sits above and below one component.
+type AroundBody struct {
+	Above []NeighbourBody `json:"above" doc:"What pulls this in — usually short, and the direction people use"`
+	Below []NeighbourBody `json:"below" doc:"What it pulls in"`
+}
+
+func registerGraph(api huma.API, in Ingest) {
+	huma.Register(api, huma.Operation{
+		OperationID: "list-top-level-components", Method: http.MethodGet,
+		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/components",
+		Summary: "List what a build pulls in directly",
+		Description: "Returns the components the build itself depends on, most findings first.\n\n" +
+			"The starting point for walking the graph. A full render is not offered and would " +
+			"not be useful: a real image holds thousands of components and tens of thousands of " +
+			"edges, which neither draws nor reads. Ask for one step at a time.\n\n" +
+			"Every entry carries how many findings are open against it and how many components " +
+			"it pulls in, so descending follows something rather than being exploration.",
+		Tags: []string{"Findings"},
+	}, func(ctx context.Context, input *struct {
+		Product string `path:"product"`
+		Stream  string `path:"stream"`
+		Variant string `path:"variant"`
+	}) (*listOutput[NeighbourBody], error) {
+		target, err := browsing(ctx, in, input.Product, input.Stream, input.Variant)
+		if err != nil {
+			return nil, err
+		}
+		roots, err := graph.NewStore(in.DB.DB).Roots(ctx, target)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "the build's contents could not be read", err)
+		}
+		out := &listOutput[NeighbourBody]{}
+		out.Body.Items = neighbours(roots)
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-component-neighbours", Method: http.MethodGet,
+		Path: "/v1/products/{product}/streams/{stream}/variants/{variant}" +
+			"/components/{component}/around",
+		Summary: "Show what is directly above and below a component",
+		Description: "Returns what pulls this component in, and what it pulls in.\n\n" +
+			"`above` is the direction people actually use. Somebody arrives from a finding and " +
+			"asks why the component is here, which is walking up — and up is short. Walking down " +
+			"is where the size lives.\n\n" +
+			"A component reached several ways appears once with several parents. It is a graph " +
+			"rather than a tree, so anything drawing it has to expect the same component under " +
+			"many places.",
+		Tags: []string{"Findings"},
+	}, func(ctx context.Context, input *struct {
+		Product   string `path:"product"`
+		Stream    string `path:"stream"`
+		Variant   string `path:"variant"`
+		Component string `path:"component" doc:"The component's name, as the findings list gives it"`
+	}) (*struct{ Body AroundBody }, error) {
+		target, err := browsing(ctx, in, input.Product, input.Stream, input.Variant)
+		if err != nil {
+			return nil, err
+		}
+		above, below, err := graph.NewStore(in.DB.DB).Around(ctx, target, input.Component)
+		if err != nil {
+			return nil, noSuchFinding()
+		}
+		return &struct{ Body AroundBody }{Body: AroundBody{
+			Above: neighbours(above), Below: neighbours(below),
+		}}, nil
+	})
+}
+
+func neighbours(rows []graph.Neighbour) []NeighbourBody {
+	out := make([]NeighbourBody, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, NeighbourBody{
+			Component: row.Name, Version: row.Version,
+			Findings: row.Findings, Children: row.Children,
+		})
+	}
+	return out
+}
+
+// browsing resolves a build somebody may look at.
+func browsing(ctx context.Context, in Ingest, product, stream, variant string) (int64, error) {
+	subject, err := reading(ctx)
+	if err != nil {
+		return 0, err
+	}
+	names := catalog.NewStore(in.DB.DB)
+	named, err := names.LocateVisible(ctx, subject, product, stream, variant)
+	if err != nil {
+		return 0, noSuchProduct()
+	}
+	target, err := names.ExistingTarget(ctx, named.StreamID, named.VariantID)
+	if err != nil {
+		return 0, nothingScannedThere()
+	}
+	return target.ID, nil
+}

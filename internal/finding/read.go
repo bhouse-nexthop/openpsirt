@@ -464,3 +464,86 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 	}
 	return evidence, nil
 }
+
+// AtComponent lists the open issues against one component of a build, as
+// places a decision can be made about.
+//
+// The set somebody narrows before claiming something about all of it. What
+// narrows it is theirs — a text match on what a report says is how a candidate
+// is found, never why a claim is true.
+func (s *Store) AtComponent(ctx context.Context, subject access.Subject, targetID,
+	componentID int64, contains string, limit, offset int) ([]Deciding, int, error) {
+
+	productID, err := productOf(ctx, s.db, targetID)
+	if err != nil {
+		return nil, 0, err
+	}
+	visible := visibleTo(subject, productID)
+	if !subject.Sees(productID) || len(visible) == 0 {
+		return nil, 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 50
+	}
+
+	narrow := func(q *bun.SelectQuery) *bun.SelectQuery {
+		q = q.TableExpr("finding AS f").
+			Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+			Where("f.target_id = ?", targetID).
+			Where("f.component_id = ?", componentID).
+			Where("f.closed_run_id IS NULL").
+			Where("f.visibility IN (?)", bun.List(visible))
+		if contains != "" {
+			// Matched against what a report says, which is all that is held
+			// about where a flaw lives. Nothing here knows a kernel from a
+			// font library.
+			q = q.Where("LOWER(v.description) LIKE ?", "%"+strings.ToLower(contains)+"%")
+		}
+		return q
+	}
+
+	total, err := narrow(s.db.NewSelect()).
+		ColumnExpr("COUNT(DISTINCT f.vulnerability_id)").Count(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count what is open against this component: %w", err)
+	}
+
+	var rows []struct {
+		VulnerabilityID   int64  `bun:"vulnerability_id"`
+		PlaceIdentity     string `bun:"place_identity"`
+		Visibility        string `bun:"visibility"`
+		ComponentUpstream string `bun:"component_upstream"`
+		ConsumerUpstream  string `bun:"consumer_upstream"`
+		Severity          int    `bun:"severity_centi"`
+		Places            int    `bun:"places"`
+	}
+	err = narrow(s.db.NewSelect()).
+		Join("JOIN component AS c ON c.id = f.component_id").
+		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
+		ColumnExpr("f.vulnerability_id AS vulnerability_id").
+		ColumnExpr("MIN(f.place_identity) AS place_identity").
+		ColumnExpr("MIN(f.visibility) AS visibility").
+		ColumnExpr("MIN("+ComponentUpstreamExpr+") AS component_upstream").
+		ColumnExpr("MIN("+ConsumerUpstreamExpr+") AS consumer_upstream").
+		ColumnExpr("MIN(COALESCE(v.score_centi, 0)) AS severity_centi").
+		ColumnExpr("COUNT(*) AS places").
+		GroupExpr("f.vulnerability_id").
+		OrderExpr("MAX(f.urgency) DESC, f.vulnerability_id").
+		Limit(limit).Offset(offset).
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, 0, fmt.Errorf("read what is open against this component: %w", err)
+	}
+
+	at := make([]Deciding, 0, len(rows))
+	for _, row := range rows {
+		at = append(at, Deciding{
+			ProductID: productID, VulnerabilityID: row.VulnerabilityID,
+			PlaceIdentity:     row.PlaceIdentity,
+			Visibility:        access.AsVisibility(row.Visibility),
+			ComponentUpstream: row.ComponentUpstream, ConsumerUpstream: row.ConsumerUpstream,
+			SeverityCenti: row.Severity, Places: row.Places,
+		})
+	}
+	return at, total, nil
+}
