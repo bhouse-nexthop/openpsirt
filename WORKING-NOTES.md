@@ -93,8 +93,9 @@ here.
 
 | | |
 |---|---|
-| **`TRI-39`** | Dismissing something because a mitigation stops it requires naming the mitigation. The tool still will not notice its removal — that gap is accepted, not closed |
-| **`TRI-40` to `TRI-42`** | What we think of an issue, recorded against the issue rather than a place, applying everywhere and surviving a version change. It changes the order: rating something **worse** takes effect at once, rating it **milder** needs a second person, because severity sets the deadline and a downgrade pushes it out by months. The published rating stays on screen beside ours, and the deadline follows the assessment |
+| **`TRI-39`** | ~~Built.~~ Dismissing something because a mitigation stops it requires naming the mitigation, on both decision forms. The tool still will not notice its removal — that gap is accepted, not closed |
+| **`TRI-40` to `TRI-42`** | ~~Built.~~ Verified end to end on the demo build: a high rated critical takes effect at once and moves the order; rated low it waits, moves nothing, and once a second person agrees it drops the order and takes all 86 of that issue's findings off the clock entirely — which is the danger that made approval the answer. The published rating is never overwritten |
+| **`TRI-43`, `TRI-44`, `REM-27`** | ~~Built.~~ What a product considers worth triaging, with what it hides counted and named. Nothing below it is on a clock, and nothing known to be exploited is ever below it |
 | **`ING-41`** | Whether a dependency has a newer version, and when that version shipped, read from the public index for its ecosystem. The one thing here that reaches the network, so it is off unless a deployment turns it on and it fails quietly |
 | **`UIX-42`** | ~~Already true.~~ Home leads with the work and puts the trends underneath, and always did — the audit finding that prompted this was a misreading |
 

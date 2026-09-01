@@ -327,3 +327,81 @@ func (f *fixture) deadlineOrZero(t *testing.T, identifier string) time.Time {
 	}
 	return *due
 }
+
+// urgency reads where an issue's findings sit in the order.
+func (f *fixture) urgency(t *testing.T, identifier string) int64 {
+	t.Helper()
+	var rank int64
+	err := f.db.DB.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+		ColumnExpr("MAX(f.urgency)").
+		Where("v.identifier = ?", identifier).
+		Where("f.closed_run_id IS NULL").
+		Scan(t.Context(), &rank)
+	if err != nil {
+		t.Fatalf("read where %s sits: %v", identifier, err)
+	}
+	return rank
+}
+
+// ratings reads what was published about an issue and what we say instead.
+func (f *fixture) ratings(t *testing.T, identifier string) (string, string) {
+	t.Helper()
+	var row struct {
+		Published string `bun:"published"`
+		Assessed  string `bun:"assessed"`
+	}
+	err := f.db.DB.NewSelect().
+		TableExpr("vulnerability AS v").
+		ColumnExpr("COALESCE(v.severity, '') AS published").
+		ColumnExpr("COALESCE(v.assessed_severity, '') AS assessed").
+		Where("v.identifier = ?", identifier).
+		Scan(t.Context(), &row)
+	if err != nil {
+		t.Fatalf("read the ratings for %s: %v", identifier, err)
+	}
+	return row.Published, row.Assessed
+}
+
+// issue resolves an identifier to what it is stored as.
+func (f *fixture) issue(t *testing.T, identifier string) int64 {
+	t.Helper()
+	var id int64
+	err := f.db.DB.NewSelect().
+		TableExpr("vulnerability AS v").
+		ColumnExpr("v.id").
+		Where("v.identifier = ?", identifier).
+		Scan(t.Context(), &id)
+	if err != nil {
+		t.Fatalf("read what %s is: %v", identifier, err)
+	}
+	return id
+}
+
+// recorded makes sure a person exists to hang a claim on.
+//
+// An assessment names whoever made it, and that is a real reference rather
+// than a number in a column — the subjects these tests hold are made up, so
+// the row has to be put there for them.
+func (f *fixture) recorded(t *testing.T, id int64, identity string) {
+	t.Helper()
+	n, err := f.db.DB.NewSelect().Table("person").Where("id = ?", id).Count(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n > 0 {
+		return
+	}
+	_, err = f.db.DB.NewInsert().
+		Model(&map[string]interface{}{
+			"id": id, "identity": identity, "display_name": identity,
+			"is_admin": false, "is_bootstrap": false, "admin_derived": false,
+			"created_at": time.Now().UTC().Truncate(time.Microsecond),
+		}).
+		TableExpr("person").
+		Exec(t.Context())
+	if err != nil {
+		t.Fatalf("record a person to hang a claim on: %v", err)
+	}
+}

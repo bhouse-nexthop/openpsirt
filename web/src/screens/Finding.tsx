@@ -108,9 +108,22 @@ export function Finding() {
               {it.vector}
             </p>
           )}
+          {/* Both, always. Ours is what ranks; the world's is what anybody
+              checking against the public record will see, and a rating of ours
+              standing where theirs goes reads as theirs (TRI-42). */}
           <p className="hint">
-            <Severity word={it.severity} /> — being exploited is a fact
-            about the world rather than a judgment, and it outranks the score.
+            {it.assessed ? (
+              <>
+                <Severity word={it.assessed} /> — <b>our rating</b>. Published as{" "}
+                <Severity word={it.severity} />. Ours is what orders this list and sets how long
+                it has.
+              </>
+            ) : (
+              <>
+                <Severity word={it.severity} /> — being exploited is a fact about the world
+                rather than a judgment, and it outranks the score.
+              </>
+            )}
           </p>
         </div>
 
@@ -138,6 +151,11 @@ export function Finding() {
       </div>
 
       <div className="deciding">
+        <Assess
+          vulnerability={at.vulnerability}
+          published={it.severity ?? ""}
+          assessed={it.assessed ?? ""}
+        />
         <Decide
           at={at}
           component={it.component ?? ""}
@@ -162,6 +180,125 @@ export function Finding() {
 // Every place the component sits at. A place is the component and what
 // directly pulled it in — the pair, not the route — and it is what a decision
 // is recorded against.
+const RATINGS = ["low", "medium", "high", "critical"] as const;
+
+// What we think of the issue itself, as against what was published.
+//
+// About the issue rather than about where it sits, so it holds wherever the
+// issue appears and does not lapse when a version moves (TRI-40). It changes
+// the order, which is what makes it worth having rather than a note nobody
+// acts on — and because it does, rating something milder waits for a second
+// person while rating it worse takes effect at once (TRI-41).
+function Assess({
+  vulnerability,
+  published,
+  assessed,
+}: {
+  vulnerability: string;
+  published: string;
+  assessed: string;
+}) {
+  const queries = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [severity, setSeverity] = useState<string>(published || "medium");
+  const [reasoning, setReasoning] = useState("");
+
+  const assess = useMutation({
+    mutationFn: async () =>
+      unwrap(
+        await api.POST("/v1/issues/{vulnerability}/assessment", {
+          params: { path: { vulnerability } },
+          body: {
+            severity: severity as (typeof RATINGS)[number],
+            reasoning,
+          },
+        }),
+      ),
+    onSuccess: () => {
+      setOpen(false);
+      setReasoning("");
+      void queries.invalidateQueries({ queryKey: ["finding"] });
+    },
+  });
+
+  const milder = RATINGS.indexOf(severity as (typeof RATINGS)[number]) <
+    RATINGS.indexOf((published || "medium") as (typeof RATINGS)[number]);
+
+  if (assessed) {
+    return (
+      <div className="card">
+        <h3>What we think of this issue</h3>
+        <p className="reading" style={{ margin: 0 }}>
+          We rate this <Severity word={assessed} />, against a published{" "}
+          <Severity word={published} />. That is what orders it and what sets how long it has,
+          everywhere this issue appears — including in products it has not reached yet.
+        </p>
+      </div>
+    );
+  }
+
+  if (!open) {
+    return (
+      <div className="card">
+        <h3>What we think of this issue</h3>
+        <p className="reading" style={{ margin: "0 0 10px" }}>
+          Published as <Severity word={published} />. If that is wrong, say so here rather than
+          in a decision: it is one statement about the issue, and it holds wherever the issue
+          turns up rather than needing repeating at each place.
+        </p>
+        <button type="button" className="linkish" onClick={() => setOpen(true)}>
+          We rate this differently
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card">
+      <h3>What we think of this issue</h3>
+      {assess.error != null && (
+        <Failed error={assess.error} what="That could not be recorded." />
+      )}
+      <div className="field">
+        <label htmlFor="rating">Our rating</label>
+        <select id="rating" value={severity} onChange={(event) => setSeverity(event.target.value)}>
+          {RATINGS.map((each) => (
+            <option key={each} value={each}>
+              {each}
+            </option>
+          ))}
+        </select>
+        <span className="hint">
+          {milder
+            ? "Milder than published, so somebody else has to agree before it takes effect — a lower rating pushes the deadline out and can take this off the list entirely."
+            : "At or above what was published, so it takes effect at once."}
+        </span>
+      </div>
+      <div className="field">
+        <label htmlFor="why">Why</label>
+        <textarea
+          id="why"
+          rows={4}
+          value={reasoning}
+          placeholder="What makes the published rating wrong for this issue, anywhere it appears?"
+          onChange={(event) => setReasoning(event.target.value)}
+        />
+      </div>
+      <button
+        type="button"
+        className="btn"
+        disabled={reasoning.trim() === "" || assess.isPending}
+        onClick={() => assess.mutate()}
+      >
+        Record it
+      </button>
+      <button type="button" className="linkish" style={{ marginLeft: 10 }} onClick={() => setOpen(false)}>
+        Cancel
+      </button>
+    </div>
+  );
+}
+
 type Sitting = {
   place: string;
   consumer?: string;

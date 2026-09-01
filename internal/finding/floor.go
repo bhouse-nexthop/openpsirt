@@ -25,11 +25,17 @@ var ranked = []string{"low", "medium", "high", "critical"}
 // rating should cause. Every bug in this project's identity and expiry rules
 // came from letting one fact into two rules; this is that lesson arriving in a
 // third place.
+// Ours where we have stated one, the published one otherwise (TRI-41): being
+// able to say a published rating is wrong is pointless if everything that
+// ranks and filters then ignores us.
 const BandExpr = `CASE
-	WHEN COALESCE(v.severity, '') = 'critical' THEN 'critical'
-	WHEN COALESCE(v.severity, '') = 'high' THEN 'high'
-	WHEN COALESCE(v.severity, '') IN ('low', 'negligible', 'none') THEN 'low'
+	WHEN COALESCE(v.assessed_severity, v.severity, '') = 'critical' THEN 'critical'
+	WHEN COALESCE(v.assessed_severity, v.severity, '') = 'high' THEN 'high'
+	WHEN COALESCE(v.assessed_severity, v.severity, '') IN ('low', 'negligible', 'none') THEN 'low'
 	ELSE 'medium' END`
+
+// EffectiveSeverityExpr is the rating in force, as a word.
+const EffectiveSeverityExpr = `COALESCE(v.assessed_severity, v.severity, '')`
 
 // Band folds a severity word the same way BandExpr does.
 func Band(severity string) string {

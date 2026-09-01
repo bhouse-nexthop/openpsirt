@@ -72,6 +72,50 @@ components:
         - above
         - below
       type: object
+    AssessmentBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/AssessmentBody.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          format: int64
+          type: integer
+        needs_approval:
+          description: Whether a second person has to agree before it takes effect
+          type: boolean
+        published:
+          description: What was published when this was made, kept so a reader can see what we disagreed with
+          type: string
+        reasoning:
+          description: Why. It outlives the version it was made about, so the next person needs the argument
+          minLength: 1
+          type: string
+        severity:
+          description: What we rate it
+          enum:
+            - low
+            - medium
+            - high
+            - critical
+          type: string
+        state:
+          enum:
+            - proposed
+            - live
+            - withdrawn
+          type: string
+        vulnerability:
+          description: The issue this is about
+          type: string
+      required:
+        - severity
+        - reasoning
+      type: object
     Assign-findingRequest:
       additionalProperties: false
       properties:
@@ -802,6 +846,9 @@ components:
         arrived_from:
           description: The version this was bumped from, where the bump did not resolve it
           type: string
+        assessed:
+          description: What we rate it, where we have said something. This is what ranks; severity is what was published
+          type: string
         component:
           type: string
         description:
@@ -1246,6 +1293,25 @@ components:
         items:
           items:
             $ref: "#/components/schemas/ApprovalBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyAssessmentBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyAssessmentBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/AssessmentBody"
           type:
             - array
             - "null"
@@ -2397,6 +2463,97 @@ paths:
       summary: Undo a bulk approval
       tags:
         - Triage
+  /v1/assessments:
+    get:
+      description: Every claim, or those in one state. The ones waiting are milder ratings somebody has proposed and nobody has agreed to yet, which are the ones not yet affecting anything.
+      operationId: list-assessments
+      parameters:
+        - description: Limit to one state
+          explode: false
+          in: query
+          name: state
+          schema:
+            description: Limit to one state
+            enum:
+              - proposed
+              - live
+              - withdrawn
+            type: string
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyAssessmentBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List what we have said about issues
+      tags:
+        - Triage
+  /v1/assessments/{id}:
+    delete:
+      description: The rating in force returns to the published one, and everything that reads it — where a finding sits in the list, how long it has, whether it is above the line a product triages — follows it back.
+      operationId: withdraw-assessment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Withdraw an assessment, and take the published rating back
+      tags:
+        - Triage
+  /v1/assessments/{id}/agreement:
+    post:
+      description: "Only a milder rating waits for this. Somebody other than whoever proposed it, for the same reason every other second person here is somebody else: a control one person can complete alone is not a control."
+      operationId: agree-assessment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssessmentBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Agree to a milder rating so it takes effect
+      tags:
+        - Triage
   /v1/assignments:
     get:
       description: |-
@@ -2811,6 +2968,45 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Send a decision back for more
+      tags:
+        - Triage
+  /v1/issues/{vulnerability}/assessment:
+    post:
+      description: |-
+        Recorded against the **issue**, not against a place. A published rating being wrong, or a report being disputed, is one statement about the vulnerability — true wherever it appears, including in products it has not reached yet, and it does not stop being true because somebody rebuilt something.
+
+        It changes the order, which is what makes it worth having rather than a note nobody acts on. Rating something **worse** than published takes effect at once: nobody needs protecting from being told something is worse than the world says. Rating it **milder** waits for a second person, because that is the direction that hides things — and it hides more than a position in a list. Severity sets the deadline, so calling a high a low pushes its deadline out by months, and where a product has said what is worth triaging at all, a downgrade below that line takes the finding off the working list and off any clock entirely.
+
+        The published rating is never overwritten. Ours is what ranks; the world's stays beside it, because a rating of ours shown where the world's goes reads as the world's.
+      operationId: assess-issue
+      parameters:
+        - description: The issue, by any name it is known under
+          in: path
+          name: vulnerability
+          required: true
+          schema:
+            description: The issue, by any name it is known under
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssessmentBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssessmentBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Record what we think of an issue, as against what was published
       tags:
         - Triage
   /v1/keys:

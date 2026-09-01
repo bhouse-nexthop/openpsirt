@@ -510,6 +510,10 @@ type Evidence struct {
 	// happen when a thousand findings are waiting.
 	References []Reference
 
+	// Assessed is what we say instead of the published rating, where somebody
+	// has said something. Both are carried, because showing only ours would
+	// read as the world's (TRI-42).
+	Assessed  string
 	Component string
 	Version   string
 	Upstream  string
@@ -648,6 +652,12 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 
 	evidence := &Evidence{
 		Vulnerability: issue.Identifier, Severity: issue.Severity,
+		Assessed: func() string {
+			if issue.AssessedSeverity == nil {
+				return ""
+			}
+			return *issue.AssessedSeverity
+		}(),
 		Vector: issue.Vector, Exploited: issue.Exploited,
 		Description: issue.Description, Advisory: issue.Advisory,
 		References: references,

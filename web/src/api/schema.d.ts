@@ -26,6 +26,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/assessments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List what we have said about issues
+         * @description Every claim, or those in one state. The ones waiting are milder ratings somebody has proposed and nobody has agreed to yet, which are the ones not yet affecting anything.
+         */
+        get: operations["list-assessments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/assessments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw an assessment, and take the published rating back
+         * @description The rating in force returns to the published one, and everything that reads it — where a finding sits in the list, how long it has, whether it is above the line a product triages — follows it back.
+         */
+        delete: operations["withdraw-assessment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/assessments/{id}/agreement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Agree to a milder rating so it takes effect
+         * @description Only a milder rating waits for this. Somebody other than whoever proposed it, for the same reason every other second person here is somebody else: a control one person can complete alone is not a control.
+         */
+        post: operations["agree-assessment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/assignments": {
         parameters: {
             query?: never;
@@ -260,6 +320,30 @@ export interface paths {
          *     Needs no approval of its own: it puts risk back on the table rather than taking it off. You cannot send back a claim whose current words are your own — that is yours to revise.
          */
         post: operations["send-decision-back"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/issues/{vulnerability}/assessment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record what we think of an issue, as against what was published
+         * @description Recorded against the **issue**, not against a place. A published rating being wrong, or a report being disputed, is one statement about the vulnerability — true wherever it appears, including in products it has not reached yet, and it does not stop being true because somebody rebuilt something.
+         *
+         *     It changes the order, which is what makes it worth having rather than a note nobody acts on. Rating something **worse** than published takes effect at once: nobody needs protecting from being told something is worse than the world says. Rating it **milder** waits for a second person, because that is the direction that hides things — and it hides more than a position in a list. Severity sets the deadline, so calling a high a low pushes its deadline out by months, and where a product has said what is worth triaging at all, a downgrade below that line takes the finding off the working list and off any clock entirely.
+         *
+         *     The published rating is never overwritten. Ours is what ranks; the world's stays beside it, because a rating of ours shown where the world's goes reads as the world's.
+         */
+        post: operations["assess-issue"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1340,6 +1424,31 @@ export interface components {
             /** @description What it pulls in */
             below: components["schemas"]["NeighbourBody"][] | null;
         };
+        AssessmentBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AssessmentBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            id?: number;
+            /** @description Whether a second person has to agree before it takes effect */
+            needs_approval?: boolean;
+            /** @description What was published when this was made, kept so a reader can see what we disagreed with */
+            published?: string;
+            /** @description Why. It outlives the version it was made about, so the next person needs the argument */
+            reasoning: string;
+            /**
+             * @description What we rate it
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high" | "critical";
+            /** @enum {string} */
+            state?: "proposed" | "live" | "withdrawn";
+            /** @description The issue this is about */
+            vulnerability?: string;
+        };
         "Assign-findingRequest": {
             /**
              * Format: uri
@@ -1756,6 +1865,8 @@ export interface components {
             aliases?: string[] | null;
             /** @description The version this was bumped from, where the bump did not resolve it */
             arrived_from?: string;
+            /** @description What we rate it, where we have said something. This is what ranks; severity is what was published */
+            assessed?: string;
             component: string;
             description?: string;
             /** @description Somebody is known to be exploiting this */
@@ -2009,6 +2120,15 @@ export interface components {
              */
             readonly $schema?: string;
             items: components["schemas"]["ApprovalBody"][] | null;
+        };
+        ListBodyAssessmentBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListBodyAssessmentBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["AssessmentBody"][] | null;
         };
         ListBodyBindingBody: {
             /**
@@ -2656,6 +2776,99 @@ export interface operations {
             };
         };
     };
+    "list-assessments": {
+        parameters: {
+            query?: {
+                /** @description Limit to one state */
+                state?: "proposed" | "live" | "withdrawn";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListBodyAssessmentBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "withdraw-assessment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "agree-assessment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssessmentBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "list-holdings": {
         parameters: {
             query?: never;
@@ -3033,6 +3246,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "assess-issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The issue, by any name it is known under */
+                vulnerability: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssessmentBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssessmentBody"];
+                };
             };
             /** @description Error */
             default: {
