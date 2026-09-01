@@ -20,6 +20,19 @@ import (
 // indexes for an answer that had not moved.
 const StaleAfter = 24 * time.Hour
 
+// UnknownAfter is how long we leave alone a package the index has never heard
+// of.
+//
+// Much longer, because the answer almost never changes. A component an index
+// does not know is a private module, an internal fork, or something vendored
+// from a git URL, and none of those becomes published next week. Asking daily
+// would put thousands of permanently unanswerable questions at free services
+// run by other people, which is how a caller ends up rate-limited and deserves
+// to be. A month still notices the rare package that does get published, and
+// still recovers from an index that was having a bad day in a way that looked
+// like "never heard of it".
+const UnknownAfter = 30 * 24 * time.Hour
+
 // mostPerPass bounds one cycle.
 //
 // A first run against a real image has thousands of components in these
@@ -49,7 +62,9 @@ type Refresher struct {
 	// Pause is how long to wait between one request and the next. A field so a
 	// test does not spend a real second being polite to a fake.
 	Pause time.Duration
-	now   func() time.Time
+	// Now is the clock, so a test can ask what happens a month from now
+	// without waiting a month.
+	Now func() time.Time
 }
 
 // NewRefresher returns a refresher over db, asking the real public indexes.
@@ -57,7 +72,7 @@ func NewRefresher(db bun.IDB, logger *slog.Logger) *Refresher {
 	client := New()
 	return &Refresher{
 		db: db, Index: client.For, logger: logger,
-		Pause: betweenAsks, now: time.Now,
+		Pause: betweenAsks, Now: time.Now,
 	}
 }
 
@@ -181,9 +196,15 @@ func (r *Refresher) due(ctx context.Context) ([]stale, error) {
 		// nothing about the age of the software inside it — Debian shipping a
 		// security update today does not mean upstream is moving.
 		Where("c.purl NOT LIKE 'pkg:deb/%'").
+		// Never asked, or asked long enough ago — where "long enough" depends
+		// on whether we got an answer. A version we have goes stale in a day;
+		// a package the index has never heard of is left for a month.
 		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 			return q.WhereOr("c.latest_checked_at IS NULL").
-				WhereOr("c.latest_checked_at < ?", r.now().Add(-StaleAfter).UTC())
+				WhereOr("c.latest_version IS NOT NULL AND c.latest_checked_at < ?",
+					r.Now().Add(-StaleAfter).UTC()).
+				WhereOr("c.latest_version IS NULL AND c.latest_checked_at < ?",
+					r.Now().Add(-UnknownAfter).UTC())
 		}).
 		OrderExpr("c.latest_checked_at IS NULL DESC").
 		OrderExpr("c.latest_checked_at ASC").
@@ -205,7 +226,7 @@ func (r *Refresher) due(ctx context.Context) ([]stale, error) {
 func (r *Refresher) record(ctx context.Context, id int64, latest Latest) error {
 	q := r.db.NewUpdate().
 		Table("component").
-		Set("latest_checked_at = ?", r.now().UTC()).
+		Set("latest_checked_at = ?", r.Now().UTC()).
 		Set("latest_version = ?", nullable(latest.Version)).
 		Where("id = ?", id)
 	if latest.Released.IsZero() {

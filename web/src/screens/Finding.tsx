@@ -157,9 +157,10 @@ export function Finding() {
               project is abandoned — nothing here knows that. */}
           {it.nothing_since && (
             <p className="alert">
-              Nothing has been released upstream since {it.vulnerability.split("-")[1]}, the
-              year this was named, and there is no fix. Waiting for one is unlikely to
-              end — replacing or patching the component is the response available.
+              Nothing has been released upstream since{" "}
+              {it.latest_released_at ?? "well before"}, which is over a year before this
+              issue was named, and there is no fix. Waiting for one is unlikely to end —
+              replacing or patching the component is the response available.
             </p>
           )}
         </div>

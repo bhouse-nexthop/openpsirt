@@ -40,6 +40,10 @@ func (a answers) Latest(_ context.Context, name string) (currency.Latest, error)
 type component struct {
 	purl    string
 	checked *time.Time
+	// version is what a previous pass stored. Its presence is what tells a
+	// stale answer apart from a question the index could not answer, which
+	// are left alone for very different lengths of time.
+	version *string
 }
 
 // seed puts components in the graph and returns a refresher over them.
@@ -56,6 +60,7 @@ func seed(t *testing.T, db *database.DB, of []component,
 			Version:         "1.0",
 			FirstSeenAt:     time.Now().UTC(),
 			LatestCheckedAt: each.checked,
+			LatestVersion:   each.version,
 		}
 		if _, insert := db.DB.NewInsert().Model(row).Exec(ctx); insert != nil {
 			t.Fatalf("seed component %d: %v", i, insert)
@@ -168,7 +173,7 @@ func TestADistributionPackageIsNotAskedAbout(t *testing.T) {
 // A private module and a vendored fork both look like a package the index has
 // never heard of. Recording that we asked is what stops it being asked again
 // tomorrow, and every day after, forever.
-func TestAPackageNobodyPublishesIsNotAskedAboutForever(t *testing.T) {
+func TestAPackageNobodyPublishesIsLeftAloneForAMonth(t *testing.T) {
 	each(t, func(t *testing.T, db *database.DB) {
 		r, _ := seed(t, db, []component{
 			{purl: "pkg:golang/github.com/example/private@v1.0.0"},
@@ -185,14 +190,29 @@ func TestAPackageNobodyPublishesIsNotAskedAboutForever(t *testing.T) {
 			t.Errorf("a version was stored for a package nobody publishes: %v", *got.Version)
 		}
 
-		// And it is not due again, which is the point.
-		second, _ := seed(t, db, nil, nil, nil)
-		asked, err := second.Once(t.Context())
-		if err != nil {
-			t.Fatalf("second pass: %v", err)
-		}
-		if asked != 0 {
-			t.Errorf("asked again immediately about %d components", asked)
+		// And it is left alone for a month rather than asked again daily,
+		// which is the point: this question has no answer and asking it every
+		// day is thousands of pointless requests at somebody else's free
+		// service.
+		for _, when := range []struct {
+			what  string
+			later time.Duration
+			due   int
+		}{
+			{"a day later", currency.StaleAfter + time.Hour, 0},
+			{"a week later", 7 * 24 * time.Hour, 0},
+			{"a month later", currency.UnknownAfter + time.Hour, 1},
+		} {
+			second, _ := seed(t, db, nil, nil, nil)
+			at := time.Now().Add(when.later)
+			second.Now = func() time.Time { return at }
+			asked, err := second.Once(t.Context())
+			if err != nil {
+				t.Fatalf("%s: %v", when.what, err)
+			}
+			if asked != when.due {
+				t.Errorf("%s: asked about %d, expected %d", when.what, asked, when.due)
+			}
 		}
 	})
 }
@@ -223,9 +243,10 @@ func TestOnlyWhatIsStaleIsAskedAgain(t *testing.T) {
 	each(t, func(t *testing.T, db *database.DB) {
 		recent := time.Now().UTC().Add(-time.Hour)
 		old := time.Now().UTC().Add(-2 * currency.StaleAfter)
+		had := "1.0.0"
 		r, asked := seed(t, db, []component{
-			{purl: "pkg:cargo/fresh@1.0.0", checked: &recent},
-			{purl: "pkg:cargo/stale@1.0.0", checked: &old},
+			{purl: "pkg:cargo/fresh@1.0.0", checked: &recent, version: &had},
+			{purl: "pkg:cargo/stale@1.0.0", checked: &old, version: &had},
 		}, map[string]currency.Latest{
 			"fresh": {Version: "9"}, "stale": {Version: "9"},
 		}, nil)
@@ -260,6 +281,39 @@ func TestTheNameAskedComesFromTheIdentifier(t *testing.T) {
 		if ok != c.ok || ecosystem != c.ecosystem || name != c.name {
 			t.Errorf("Asked(%q) = %q, %q, %v; expected %q, %q, %v",
 				c.purl, ecosystem, name, ok, c.ecosystem, c.name, c.ok)
+		}
+	}
+}
+
+// The message this drives tells somebody that waiting for a fix is unlikely to
+// work, so the evidence for it has to be a real silence rather than an
+// artefact of comparing two year-numbers.
+func TestUpstreamIsOnlyCalledSilentAfterAClearYear(t *testing.T) {
+	for _, c := range []struct {
+		what       string
+		identifier string
+		released   time.Time
+		silent     bool
+	}{
+		{"released weeks before it was named",
+			"CVE-2026-31431", time.Date(2025, 12, 20, 0, 0, 0, 0, time.UTC), false},
+		{"released the same year",
+			"CVE-2026-31431", time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC), false},
+		{"released the whole year before",
+			"CVE-2026-31431", time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), false},
+		{"silent for a clear year",
+			"CVE-2026-31431", time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC), true},
+		{"silent for years",
+			"CVE-2021-44228", time.Date(2017, 6, 1, 0, 0, 0, 0, time.UTC), true},
+		// An identifier that names no year says nothing either way, and
+		// guessing would invent the fact this exists to supply.
+		{"no year in the identifier",
+			"GHSA-jfh8-c2jp-5v3q", time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC), false},
+		{"nothing known about upstream", "CVE-2026-31431", time.Time{}, false},
+	} {
+		if got := currency.NothingSince(c.identifier, c.released); got != c.silent {
+			t.Errorf("%s: NothingSince(%q, %s) = %v, expected %v",
+				c.what, c.identifier, c.released.Format(time.DateOnly), got, c.silent)
 		}
 	}
 }

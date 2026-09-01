@@ -37,10 +37,34 @@ decision:
    nothing, so it is retried — the two are different and are stored
    differently.
 5. The no-fix signal compares the year in the identifier against the newest
-   release, which is what `ING-41` says and why `REJ-11` is not needed: a gap
-   worth reporting is measured in years. It is deliberately phrased as *why
-   there is no fix* rather than as a claim that a project is abandoned —
-   nothing here knows that, and `REJ-13` rejected saying so.
+   release, which is what `ING-41` says and why `REJ-11` is not needed. It is
+   deliberately phrased as *why there is no fix* rather than as a claim that a
+   project is abandoned — nothing here knows that, and `REJ-13` rejected
+   saying so.
+
+**Two things settled on 2026-09-01, both found by re-reading rather than by a
+test failing.** Neither would have shown up as a bug.
+
+*A clear year of silence, not merely an earlier year.* The first version asked
+whether the newest release was from an earlier calendar year than the
+identifier — so an issue named in January 2026 against a release the previous
+December got "waiting for a fix is unlikely to end", on a five-week gap. The
+code and the comment above it disagreed, and the comment was right. Now it
+takes a full year. **The general shape: where a stand-in is only precise to a
+year, comparing two year-numbers makes a five-week gap look identical to a
+five-year one.** The screen states the release date rather than a year parsed
+out of the identifier, which was also brittle for identifiers that carry no
+year.
+
+*A package the index has never heard of is left for a month, not a day.* Every
+other answer goes stale in a day. This one almost never changes — a private
+module, an internal fork, something vendored from a git URL — and on a real
+image a large share of components are exactly that, so the daily rule meant
+thousands of permanently unanswerable questions at free services run by other
+people. A month still notices the rare package that does get published, and
+still recovers from an index that was having a bad day in a way that looked
+like "never heard of it". The two are told apart by whether a version was
+stored, which the data already recorded.
 
 **Four things learned by asking the real indexes**, which are in the code and
 worth not rediscovering: crates.io refuses a request that does not identify

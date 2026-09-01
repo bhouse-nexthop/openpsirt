@@ -84,24 +84,29 @@ func Identified(identifier string) int {
 	return 0
 }
 
-// NothingSince reports whether upstream's newest release predates the year the
-// issue was identified in.
+// NothingSince reports whether upstream has been silent since well before the
+// issue was named.
 //
 // The reason there is no fix, reached by comparing two dates rather than by
-// rating anybody's project (ING-41). If the newest thing upstream has shipped
-// came out before the year the flaw was named, then upstream has shipped
-// nothing since it became known — which is arithmetic, and says nothing about
-// whether the project is abandoned, busy, or disagrees that it is a flaw.
+// rating anybody's project (ING-41): if the newest thing upstream has shipped
+// long predates the flaw being named, then upstream has shipped nothing since
+// it became known. That is arithmetic, and says nothing about whether the
+// project is abandoned, busy, or disagrees that it is a flaw.
 //
-// A disclosure date would be more precise and we do not have one (REJ-11).
-// The year is enough because the gap this is worth reporting is measured in
-// years: an issue named in 2021 against a component last released in 2019 is
-// the case, and one named in January against a release the previous December
-// is not.
+// **A clear year of silence, not merely an earlier year.** We have no
+// disclosure date (REJ-11) and the year in the identifier stands in for one,
+// so the comparison is only as precise as a year — and comparing two
+// year-numbers makes a five-week gap look identical to a five-year one. An
+// issue named in January 2026 against a release the previous December is a
+// project that shipped six weeks ago, and telling somebody that waiting for a
+// fix is unlikely to work is a strong claim to make on that. Requiring a full
+// year to have passed makes the message rarer and leaves it worth believing,
+// which is the trade ING-41 already implied by saying the gap that matters is
+// measured in years.
 func NothingSince(identifier string, released time.Time) bool {
 	year := Identified(identifier)
 	if year == 0 || released.IsZero() {
 		return false
 	}
-	return released.UTC().Year() < year
+	return released.UTC().Year() < year-1
 }
