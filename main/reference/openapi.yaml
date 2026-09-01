@@ -1517,6 +1517,25 @@ components:
       required:
         - items
       type: object
+    ListBodyReleaseBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyReleaseBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/ReleaseBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
     ListBodyRevisionBody:
       additionalProperties: false
       properties:
@@ -1630,6 +1649,23 @@ components:
         - stream
         - variant
         - places
+      type: object
+    MeasuredBody:
+      additionalProperties: false
+      properties:
+        database_version:
+          description: The vulnerability database it read
+          type: string
+        ran_at:
+          description: When that run finished
+          type: string
+        scanner:
+          description: Which scanner produced the findings
+          type: string
+        scanner_version:
+          type: string
+      required:
+        - scanner
       type: object
     MentionableBody:
       additionalProperties: false
@@ -1939,6 +1975,9 @@ components:
           type:
             - array
             - "null"
+        measured_against:
+          $ref: "#/components/schemas/MeasuredBody"
+          description: What the last completed run was measured with
         total:
           format: int64
           type: integer
@@ -1992,6 +2031,33 @@ components:
           type: integer
       required:
         - moved
+      type: object
+    ReleaseBody:
+      additionalProperties: false
+      properties:
+        by_severity:
+          additionalProperties:
+            format: int64
+            type: integer
+          description: That total split by the rating in force
+          type: object
+        kind:
+          description: Whether that is a branch or a tag
+          type: string
+        open:
+          description: Every open finding at this build
+          format: int64
+          type: integer
+        stream:
+          description: The branch or tag
+          type: string
+        variant:
+          type: string
+      required:
+        - stream
+        - kind
+        - variant
+        - open
       type: object
     Revise-decisionRequest:
       additionalProperties: false
@@ -3464,6 +3530,37 @@ paths:
       summary: List who may be mentioned here
       tags:
         - Triage
+  /v1/products/{product}/releases:
+    get:
+      description: |-
+        One number per build, which is what a release-over-release chart is drawn from. The comparison endpoint says what changed between **two** builds; this says whether the estate is getting better or worse across all of them.
+
+        Counted before any triage line is applied, so it agrees with the findings list rather than with whatever a product has decided is worth working on — a line is about what to spend an afternoon on, not about what exists.
+
+        Severities are folded the same four ways everything else here ranks by, through the one expression the working list and the deadline also read, so a chart cannot disagree with a list about what counts as high.
+      operationId: list-releases
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyReleaseBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: How much is open against each build of a product
+      tags:
+        - Findings
   /v1/products/{product}/streams:
     get:
       operationId: list-streams
