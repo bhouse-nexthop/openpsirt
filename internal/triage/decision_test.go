@@ -882,3 +882,56 @@ func TestAnApprovalKeepsWhatItCoveredAtTheTime(t *testing.T) {
 		}
 	})
 }
+
+func TestAClaimThatSomethingElseStopsItMustSayWhat(t *testing.T) {
+	// TRI-39. Every other reason for something not applying is a claim about
+	// code, and code is what makes a claim lapse: the version moves and
+	// somebody is asked again. This one is a claim about configuration, which
+	// can be removed with nothing moving at all, so nothing here will notice.
+	// Naming the control does not close that gap — it makes the claim
+	// something the next person can go and check.
+	each(t, func(t *testing.T, f *fixture) {
+		_, err := f.store.Propose(t.Context(), f.triager, triage.Proposal{
+			Place: f.at(), Outcome: triage.NotApplicable,
+			Justification: triage.MitigationsExist,
+			Reasoning:     "Something else stops it.",
+			By:            f.proposer, NeedsApproval: true,
+		})
+		if err == nil {
+			t.Fatal("a claim that mitigations exist was recorded without saying what they are")
+		}
+
+		decision, err := f.store.Propose(t.Context(), f.triager, triage.Proposal{
+			Place: f.at(), Outcome: triage.NotApplicable,
+			Justification: triage.MitigationsExist,
+			Mitigation:    "the management interface is not exposed on this platform",
+			Reasoning:     "Something else stops it.",
+			By:            f.proposer, NeedsApproval: true,
+		})
+		if err != nil {
+			t.Fatalf("naming what stops it should have been enough: %v", err)
+		}
+		if decision.Mitigation == nil ||
+			*decision.Mitigation != "the management interface is not exposed on this platform" {
+			t.Errorf("what stops it was not kept: %v", decision.Mitigation)
+		}
+	})
+}
+
+func TestNamingWhatStopsItBelongsToThatReasonAlone(t *testing.T) {
+	// Meaningless on the others, which are claims about the code rather than
+	// about anything standing in front of it. Refused rather than dropped, so
+	// nobody records a control they believe is being relied on.
+	each(t, func(t *testing.T, f *fixture) {
+		_, err := f.store.Propose(t.Context(), f.triager, triage.Proposal{
+			Place: f.at(), Outcome: triage.NotApplicable,
+			Justification: triage.CodeNotInExecutePath,
+			Mitigation:    "a firewall rule nobody asked about",
+			Reasoning:     "The parser is never reached.",
+			By:            f.proposer, NeedsApproval: true,
+		})
+		if err == nil {
+			t.Fatal("what stops it was accepted alongside a reason that does not claim anything stops it")
+		}
+	})
+}

@@ -197,6 +197,7 @@ function Decide({
   const [covering, setCovering] = useState<Set<string> | null>(null);
   const [outcome, setOutcome] = useState("not-applicable");
   const [justification, setJustification] = useState(JUSTIFICATIONS[0]?.value ?? "");
+  const [mitigation, setMitigation] = useState("");
   const [until, setUntil] = useState("");
   const [reasoning, setReasoning] = useState("");
 
@@ -250,6 +251,9 @@ function Decide({
     reasoning.trim() !== "" &&
     chosen.size > 0 &&
     (!needsJustification || justification) &&
+    (!needsJustification ||
+      justification !== "inline_mitigations_already_exist" ||
+      mitigation.trim() !== "") &&
     (!needsDate || until);
 
   if (open.length === 0) {
@@ -300,6 +304,27 @@ function Decide({
               </option>
             ))}
           </select>
+        </div>
+      )}
+
+      {/* The one reason that rests on configuration rather than on code, and
+          so the one nothing here will notice going away. Naming it does not
+          fix that — it makes the claim something the next person can check
+          (TRI-39). */}
+      {needsJustification && justification === "inline_mitigations_already_exist" && (
+        <div className="field">
+          <label htmlFor="mitigation">What stops it</label>
+          <input
+            id="mitigation"
+            type="text"
+            value={mitigation}
+            placeholder="the firewall rule, the setting, the service that is not exposed"
+            onChange={(event) => setMitigation(event.target.value)}
+          />
+          <span className="hint">
+            Nothing here watches configuration, so this claim will not lapse when the thing that
+            stops it is removed. Say what to go and check.
+          </span>
         </div>
       )}
 

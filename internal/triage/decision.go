@@ -30,11 +30,15 @@ type Decision struct {
 	// The versions the claim was made against. Absent where nothing states
 	// one, and absent for the consumer where the thing above is the product
 	// itself — whose version changes every build and is excluded from expiry.
-	ComponentUpstreamVersion *string    `bun:"component_upstream_version"`
-	ConsumerUpstreamVersion  *string    `bun:"consumer_upstream_version"`
-	Outcome                  Outcome    `bun:"outcome,notnull"`
-	Justification            *string    `bun:"justification"`
-	DeferredUntil            *time.Time `bun:"deferred_until"`
+	ComponentUpstreamVersion *string `bun:"component_upstream_version"`
+	ConsumerUpstreamVersion  *string `bun:"consumer_upstream_version"`
+	Outcome                  Outcome `bun:"outcome,notnull"`
+	Justification            *string `bun:"justification"`
+	// Mitigation is what actually stops it, where the claim is that something
+	// already does. Required with that justification and meaningless with any
+	// other (TRI-39).
+	Mitigation    *string    `bun:"mitigation"`
+	DeferredUntil *time.Time `bun:"deferred_until"`
 	// SeverityCenti is how bad this was judged to be when the claim was made,
 	// in hundredths. Kept with the decision rather than read from the issue
 	// later, because what a re-affirmation asks is whether severity has risen
@@ -192,6 +196,12 @@ type Proposal struct {
 	Place         Place
 	Outcome       Outcome
 	Justification Justification
+	// Mitigation names the thing that stops it — the rule, the setting, the
+	// service that is not exposed. Required where the justification is that
+	// mitigations already exist, because that claim rests on configuration
+	// rather than on code, and configuration can be removed with no version
+	// moving and nothing asking again (TRI-39).
+	Mitigation    string
 	DeferredUntil *time.Time
 	Reasoning     string
 	By            int64
@@ -342,6 +352,10 @@ func (s *Store) propose(ctx context.Context, p Proposal) (*Decision, error) {
 		LiveKey:                  liveKey,
 		ProposedBy:               p.By, ProposedAt: now,
 	}
+	if strings.TrimSpace(p.Mitigation) != "" {
+		named := strings.TrimSpace(p.Mitigation)
+		decision.Mitigation = &named
+	}
 	if p.Outcome == NotApplicable {
 		stated := string(p.Justification)
 		decision.Justification = &stated
@@ -408,6 +422,23 @@ func (p Proposal) valid() error {
 		if !p.Justification.Valid() {
 			return fmt.Errorf("%q is not a recognized reason for something not applying", p.Justification)
 		}
+		// Named, because the tool cannot notice this one going away. Every
+		// other reason is a claim about code and lapses when the code moves;
+		// this one is a claim about configuration, which can be removed with
+		// nothing moving at all (TRI-39).
+		if p.Justification == MitigationsExist && strings.TrimSpace(p.Mitigation) == "" {
+			return errors.New(
+				"say what stops it — a claim that mitigations already exist is about " +
+					"configuration rather than code, so nothing here will notice it being " +
+					"removed and the next person needs to know what to go and check")
+		}
+	}
+	if p.Justification != MitigationsExist && strings.TrimSpace(p.Mitigation) != "" {
+		return fmt.Errorf("naming what stops it belongs to %q and no other reason",
+			MitigationsExist)
+	}
+	switch p.Outcome {
+	case NotApplicable:
 	default:
 		if p.Justification != "" {
 			return fmt.Errorf("%q states why something does not apply, which %q does not claim",

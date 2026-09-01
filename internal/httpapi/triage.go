@@ -26,6 +26,10 @@ type DecisionBody struct {
 	// the claim that something does not affect us is which of the recognized
 	// reasons applies.
 	Justification string `json:"justification,omitempty" enum:"component_not_present,vulnerable_code_not_present,vulnerable_code_not_in_execute_path,vulnerable_code_cannot_be_controlled_by_adversary,inline_mitigations_already_exist" doc:"Why it does not apply. Required when it does not"`
+	// Mitigation is the one claim here that rests on configuration rather
+	// than on code, so it is the one thing nothing will notice going away.
+	// Naming it does not fix that; it makes the claim checkable (TRI-39).
+	Mitigation    string `json:"mitigation,omitempty" doc:"What actually stops it — the rule, the setting, the service that is not exposed. Required when the reason is that mitigations already exist, and refused with any other"`
 	DeferredUntil string `json:"deferred_until,omitempty" doc:"When a deferral returns, as a date. Required for a deferral"`
 	Reasoning     string `json:"reasoning" minLength:"1" doc:"Why, in markdown. Somebody else has to agree with this"`
 	State         string `json:"state,omitempty" enum:"proposed,approved,withdrawn,lapsed" doc:"Where it has got to"`
@@ -332,6 +336,7 @@ func registerProposing(api huma.API, in Ingest) {
 			},
 			Outcome:       triage.Outcome(input.Body.Outcome),
 			Justification: triage.Justification(input.Body.Justification),
+			Mitigation:    input.Body.Mitigation,
 			Reasoning:     input.Body.Reasoning,
 			By:            subject.ID,
 			SeverityCenti: at.SeverityCenti,
@@ -382,6 +387,7 @@ func registerProposing(api huma.API, in Ingest) {
 type FindingDecisionBody struct {
 	Outcome       string `json:"outcome" enum:"affected,not-applicable,deferred,wont-fix"`
 	Justification string `json:"justification,omitempty" enum:"component_not_present,vulnerable_code_not_present,vulnerable_code_not_in_execute_path,vulnerable_code_cannot_be_controlled_by_adversary,inline_mitigations_already_exist" doc:"Why it does not apply. Required when it does not"`
+	Mitigation    string `json:"mitigation,omitempty" doc:"What actually stops it — the rule, the setting, the service that is not exposed. Required when the reason is that mitigations already exist, and refused with any other"`
 	DeferredUntil string `json:"deferred_until,omitempty" doc:"Required when it is deferred. A date, as 2026-03-31"`
 	Reasoning     string `json:"reasoning" minLength:"1" doc:"Why this holds"`
 	// Places is the deliberate narrowing. Absent means every place, which is
@@ -495,6 +501,7 @@ func registerFindingDecision(api huma.API, in Ingest) {
 				},
 				Outcome:       triage.Outcome(input.Body.Outcome),
 				Justification: triage.Justification(input.Body.Justification),
+				Mitigation:    input.Body.Mitigation,
 				Reasoning:     input.Body.Reasoning,
 				By:            subject.ID,
 				SeverityCenti: place.SeverityCenti,
@@ -729,6 +736,9 @@ func refusedText(faults markdown.Faults) error {
 func decisionBody(d triage.Decision) DecisionBody {
 	body := DecisionBody{
 		ID: d.ID, Outcome: string(d.Outcome), State: string(d.State),
+	}
+	if d.Mitigation != nil {
+		body.Mitigation = *d.Mitigation
 	}
 	if d.Justification != nil {
 		body.Justification = *d.Justification

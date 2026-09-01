@@ -34,6 +34,7 @@ export function PlaceDecision() {
     mutationFn: async (body: {
       outcome: string;
       justification?: string;
+      mitigation?: string;
       deferred_until?: string;
       reasoning: string;
     }) =>
@@ -268,7 +269,13 @@ function Decide({
   draftKey,
   mentions,
 }: {
-  onDecide: (body: { outcome: string; justification?: string; deferred_until?: string; reasoning: string }) => void;
+  onDecide: (body: {
+    outcome: string;
+    justification?: string;
+    mitigation?: string;
+    deferred_until?: string;
+    reasoning: string;
+  }) => void;
   pending: boolean;
   error: unknown;
   draftKey: string;
@@ -276,13 +283,21 @@ function Decide({
 }) {
   const [outcome, setOutcome] = useState("not-applicable");
   const [justification, setJustification] = useState(JUSTIFICATIONS[0]?.value ?? "");
+  const [mitigation, setMitigation] = useState("");
   const [until, setUntil] = useState("");
   const [reasoning, setReasoning] = useState("");
 
   const needsJustification = outcome === "not-applicable";
+  // The one reason that rests on configuration rather than on code, and so
+  // the one nothing here will notice going away (TRI-39).
+  const needsMitigation =
+    needsJustification && justification === "inline_mitigations_already_exist";
   const needsDate = outcome === "deferred";
   const ready =
-    reasoning.trim() !== "" && (!needsJustification || justification) && (!needsDate || until);
+    reasoning.trim() !== "" &&
+    (!needsJustification || justification) &&
+    (!needsMitigation || mitigation.trim() !== "") &&
+    (!needsDate || until);
 
   return (
     <section>
@@ -319,6 +334,23 @@ function Decide({
                 </option>
               ))}
             </select>
+          </label>
+        )}
+
+        {needsMitigation && (
+          <label className="text-sm">
+            <span className="mb-1 block text-[var(--muted)]">What stops it</span>
+            <input
+              type="text"
+              value={mitigation}
+              placeholder="the firewall rule, the setting, the service that is not exposed"
+              onChange={(event) => setMitigation(event.target.value)}
+              className="w-full rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1.5"
+            />
+            <span className="mt-1 block text-[var(--muted)]">
+              Nothing here watches configuration, so this claim will not lapse when the thing
+              that stops it is removed. Say what to go and check.
+            </span>
           </label>
         )}
 
@@ -361,6 +393,7 @@ function Decide({
               onDecide({
                 outcome,
                 ...(needsJustification ? { justification } : {}),
+                ...(needsMitigation ? { mitigation } : {}),
                 ...(needsDate ? { deferred_until: until } : {}),
                 reasoning,
               })

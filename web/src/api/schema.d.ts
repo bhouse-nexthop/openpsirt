@@ -1575,6 +1575,8 @@ export interface components {
              * @enum {string}
              */
             justification?: "component_not_present" | "vulnerable_code_not_present" | "vulnerable_code_not_in_execute_path" | "vulnerable_code_cannot_be_controlled_by_adversary" | "inline_mitigations_already_exist";
+            /** @description What actually stops it — the rule, the setting, the service that is not exposed. Required when the reason is that mitigations already exist, and refused with any other */
+            mitigation?: string;
             /** @description Whether a second person has to agree before it takes effect */
             needs_approval?: boolean;
             /**
@@ -1842,6 +1844,8 @@ export interface components {
              * @enum {string}
              */
             justification?: "component_not_present" | "vulnerable_code_not_present" | "vulnerable_code_not_in_execute_path" | "vulnerable_code_cannot_be_controlled_by_adversary" | "inline_mitigations_already_exist";
+            /** @description What actually stops it — the rule, the setting, the service that is not exposed. Required when the reason is that mitigations already exist, and refused with any other */
+            mitigation?: string;
             /** @enum {string} */
             outcome: "affected" | "not-applicable" | "deferred" | "wont-fix";
             /** @description Which places this covers, as the finding names them. Omit for all of them */

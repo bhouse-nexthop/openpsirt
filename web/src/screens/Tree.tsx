@@ -10,10 +10,16 @@ import { Crumbs } from "../ui/Crumbs";
 type At = { product: string; stream: string; variant: string };
 type Node = { component: string; version: string; findings: number; children: number };
 
-// How many children of a wide node are drawn before it says how many more
+// How many of a wide node's leaves are drawn before it says how many more
 // there are. A build's root has thousands, and drawing them all is how a tree
 // stops being readable at the first step.
-const SHOWN = 5;
+const LEAVES = 5;
+
+// How many of its branches are drawn. Everything that opens is structure
+// rather than contents, and hiding structure behind "show all" is what made
+// this a list: the root has 96 children that open and 5,174 that do not, so a
+// truncation that does not tell them apart shows none of the 96.
+const BRANCHES = 15;
 
 // A count past this is emphasised, so the branch worth descending is visible
 // without reading every number on the way down.
@@ -352,9 +358,17 @@ function Branches({
       return;
     }
 
-    // A node with dozens of children shows a few and says how many there are.
-    const wide = kids.length > SHOWN && !widened.has(name);
-    if (wide) {
+    // Branches and leaves are truncated separately, because they answer
+    // different questions: what this is made of, and what is wrong inside it.
+    // One limit over both hides the first at the second's expense.
+    const branches = kids.filter((kid) => kid.children > 0);
+    const leaves = kids.filter((kid) => kid.children === 0);
+    const all = widened.has(name);
+    const shown = all
+      ? kids
+      : [...branches.slice(0, BRANCHES), ...leaves.slice(0, LEAVES)];
+    const hidden = kids.length - shown.length;
+    if (hidden > 0) {
       rows.push(
         <button
           key={`${path}/more`}
@@ -363,13 +377,12 @@ function Branches({
           style={{ marginLeft: (depth + 1) * 20 }}
           onClick={() => onWiden(name)}
         >
-          Show all {kids.length.toLocaleString()} under {name} — {SHOWN} shown
+          Show the other {hidden.toLocaleString()} under {name} — {shown.length} of{" "}
+          {kids.length.toLocaleString()} shown
         </button>,
       );
     }
-    (wide ? kids.slice(0, SHOWN) : kids).forEach((kid, i) =>
-      walk(kid, depth + 1, `${path}/${i}:${kid.component}`),
-    );
+    shown.forEach((kid, i) => walk(kid, depth + 1, `${path}/${i}:${kid.component}`));
   }
 
   walk(root, 0, root.component);

@@ -433,7 +433,16 @@ func (s *Store) step(ctx context.Context, subject access.Subject, targetID, comp
 		// will not take a column from a joined subquery on the strength of a
 		// primary key belonging to a different table.
 		GroupExpr("c.id, c.name, c.version, kids.n").
-		OrderExpr("findings DESC, c.name").
+		// What opens comes before what does not, and within each the most
+		// findings first.
+		//
+		// Ordering by findings alone buries the structure: a container holds
+		// no findings of its own, so on a real image the root's 5,270
+		// children put the first thing that opens at position 546 and every
+		// one of the 37 containers below that. A tree whose first screen
+		// contains no branches is a list, and the reader never learns the
+		// build has containers in it at all.
+		OrderExpr("CASE WHEN COALESCE(kids.n, 0) > 0 THEN 0 ELSE 1 END, findings DESC, c.name").
 		Scan(ctx, &rows)
 	if err != nil {
 		return nil, fmt.Errorf("walk the graph: %w", err)
