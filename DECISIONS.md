@@ -163,6 +163,7 @@ inputs.
 | ING-38 | **Two descriptions of one component are combined, not deduplicated.** The first statement of anything stands; anything it did not state is taken from the next description that does | Deriving identity from what an identifier says (ING-36) turns duplicate entries into one component, and the naive form of that keeps whichever arrived first and discards the rest. The two are not the same description: in the measured image one half of each pair carries the vulnerability-database identifier and what the package was built from, and the other carries neither — so discarding lost 204 identifiers a scanner matches on, arbitrarily, depending on which half the producer happened to emit first. Nothing already stated is overwritten, because two producers disagreeing is not something a reader can settle, and the first answer is at least the one everything downstream has already been given |
 | ING-39 | **Everything a scan report says about an issue is kept** — its description, where it is written up, everywhere else it points, whether it is known to be exploited, the published likelihood that it will be, the severity as a number and the vector that number assumed, and when a fixing version became available. References are classified by the shape of the address, so a patch can be told from a write-up | There may be thousands of findings and very few people to work them, so what decides whether a queue gets worked is whether a finding carries its own evidence or sends somebody to a search engine. Measured on a public switch operating-system image: of 7,917 findings, **5 are known to be exploited** — that is the number that turns an impossible queue into an afternoon, and it was being discarded. Also discarded: 7,917 advisory links (every one), 7,879 descriptions, 7,835 likelihood estimates, 6,136 scores, 5,390 fix dates and 11,593 references of which 420 are patches. Reading all of it costs one pass over output already parsed, and none of it is recoverable later — a report is not kept once read, so what is dropped is dropped for good. Classifying references is a guess from the address, and it errs toward saying less: an unrecognized reference is reported as discussion rather than asserted to be a patch |
 | ING-40 | **What a later report knows and an earlier one did not is filled in, not overwritten.** Two things are not descriptions and do not work that way: known-exploited moves forward and never back, and a **score or a likelihood keeps the worst anybody claimed** | Reports disagree and arrive in an order nobody controls, so overwriting would make what is stored depend on which scan happened to run last. Known-exploited is different in kind: it is a claim about the world rather than a description of an issue, and a later report not mentioning it is a gap in that report rather than the exploitation having stopped. Scores are the same shape and were the case this got wrong — they were overwritten outright, which is precisely the dependence on which scan ran last that the rest of this forbids. Filling only the gap would have been no better, just dependent on which report arrived *first*. The maximum is the only answer that is the same whatever the order, and it is the safe direction: a report claiming something is worse is news, and one claiming it is milder is a gap in that report |
+| ING-41 | **Whether a dependency has a newer version, and when that version shipped, is read from the public index for its ecosystem — over the network, off unless a deployment turns it on** | Two facts, not a judgment about a project's health: the first says whether we are behind, the second says whether the thing is still moving. Together they answer the question neither does alone — an issue disclosed *after* a component's newest release and still unfixed says upstream has shipped nothing since the flaw became known, which is the reason there is no fix, reached by comparing two dates rather than by rating anybody's project. It needs no disclosure date (REJ-11): the year in the identifier is enough, because a gap that matters is measured in years. **This is the one thing here that reaches the network**, and it is the exception rather than the rule — every other outside answer arrives as a file somebody imports, so it is off by default, and a deployment that cannot reach out loses this and nothing else. It applies to what we build ourselves and not to distribution packages, where the distribution is the maintainer and its release date says nothing about the software inside: 6,933 of 7,859 components on a real image name an upstream, and 200 of those carry findings |
 
 ### 3.4 What we track — `MDL`
 
@@ -254,6 +255,10 @@ inputs.
 | TRI-36 | **A bulk judgment always needs a second person**, whatever the outcome | The exception that lets a short deferral stand alone is about one finding somebody is putting off for a fortnight. One person answering hundreds of findings in a single action is precisely the case a second pair of eyes exists for, so the exception does not travel here |
 | TRI-37 | **A judgment is made on the finding and covers every place it sits at by default.** The places are listed and ticked; unticking one leaves that place open, and nothing is asked about the places left out | TRI-29 recorded this and nothing implemented it: the only action a finding offered was per place, so covering thirty places meant thirty judgments or knowing that a differently-scoped screen existed. Making somebody act thirty times guarantees they stop reading, which is the whole reason TRI-29 exists. The narrow case stays deliberate — a component used unsafely in one consumer and not another is what per-place findings are for — and a place left out is left **open** rather than made to carry a second claim, because demanding a justification for the places you did not answer is the tool arguing with a judgment it asked for |
 | TRI-38 | **Covering many places does not by itself require a second person.** The ordinary thresholds apply however many places one judgment reaches | TRI-36 makes a bulk judgment always need approval, and that exception is about **several issues** sharing one claim, where the reasoning has to hold for a set nobody read one by one. One issue at one component is a single claim whatever its reach, so routing it through the bulk path would have made every decision need approval — a change to how triage works, arrived at as a side effect of where a button was wired |
+| TRI-39 | **A dismissal resting on a mitigation names the mitigation.** Choosing `inline_mitigations_already_exist` requires saying what actually stops it — the rule, the setting, the thing that is switched off — separately from the reasoning | Every other justification is a claim about code, and code is what makes a decision lapse: the version moves, the key changes, and somebody is asked again. This one is a claim about configuration, which can be removed with no version moving at all, so the claim can go quietly false while the tool still believes it. It is also the justification an auditor asks about first, because the protection lives outside the software. Naming the control does not make the tool notice its removal — **that gap is accepted and recorded here rather than closed** — but it is the difference between a claim somebody can go and check and one nobody can |
+| TRI-40 | **What we think of an issue is recorded against the issue, not against a place.** It applies wherever that issue appears, including in products it has not reached yet, and does not lapse when a version moves | A published rating being wrong, or a report being disputed, is one statement about the vulnerability rather than a statement about where it sits. Keyed to a place it would have to be repeated at each one and would lapse on a version change that had nothing to do with it — the rating did not stop being wrong because somebody rebuilt. This is deliberately a second kind of judgment, with the audit questions that implies, and TRI-41 answers the one that matters |
+| TRI-41 | **An assessment changes the order. Rating something worse takes effect at once; rating it milder needs a second person to agree** | The order is what the list is for, so an assessment that did not reach it would be a note nobody acts on — the criticals you believe are noise would still sit at the top. But a downgrade is not merely a reordering. **Severity sets the deadline**: a high must be answered in thirty days and a low in a hundred and eighty, so calling something Low pushes its deadline out by five months and drops it off what is running out (REM-25, REM-26). Where a deployment later sets a floor for what is worth triaging at all, a downgrade below it removes the finding from the working set entirely. That is the same shape as every other act that hides risk, and it is gated the same way. Raising is not gated, because nobody needs protecting from being told something is worse than published |
+| TRI-42 | **An assessed rating never replaces the published one on screen, and the deadline follows the assessment** | Two halves of the same honesty. A rating of ours shown where the world's rating goes reads as the world's, and the first person to check against the public record finds a discrepancy nobody declared. And a finding displayed as Low while its clock runs at High's thirty days is a third answer nobody chose — whichever way the deadline went, it has to be the one on screen |
 ### 3.7 Carrying decisions between releases — `REL`
 
 | # | Decision | Why |
@@ -530,6 +535,7 @@ somebody could point at.
 | UIX-39 | **A screen that needs a build cannot be given a partial scope.** On those, the levels that would go to "all" are disabled and say why, rather than moving somebody somewhere the scope does make sense | Six screens are built-scoped by construction — the findings list, a finding, deciding a place, the dependency tree, deciding several together, and scans — because their data exists for one build and no other. There is no dependency graph across branches. The alternative was to accept the partial scope and navigate away, which makes a filter into a jump nobody asked for: the least surprising control is one that declines rather than one that relocates you |
 | UIX-40 | **A finding says how many of its places have been decided** | Follows TRI-37: once a judgment can cover a chosen subset, a finding half answered has to look different from one nobody has touched. The findings list already carries a count of what the **build** argued away through its own VEX documents, which is a different claim by a different author, so it cannot stand in for this one |
 | UIX-41 | **A findings row says what upstream has done and how old the issue is** | Both are already stored and neither is shown. "No fix, and the identifier says 2019" and "no fix, published last month" are different situations needing different responses, and today they are the same row. The year comes out of the identifier at no cost, which is why this does not wait on anything being ingested |
+| UIX-42 | **Home leads with the work and puts the shape of things underneath** — what is waiting, what is being worked on, what stopped applying, then the trends | UIX-06 left the order as something needing deliberate design, on the grounds that the risk is a page trying to be everything. This is that choice. Somebody opening this most days wants to know what to do next; the trends answer a question asked occasionally, or asked by somebody about to report upward. The charts are also the slowest part of the page, so the half that is wanted first is also the half that arrives first |
 
 ### 3.16 Application security — `SEC`
 
@@ -590,64 +596,20 @@ home page, whether trends belong above work, whether previewing a row is worth
 its own control. Listed here rather than treated as settled, so the first
 release is read as evidence rather than as confirmation.
 
-**An assessment of the issue itself, separate from triage.** Proposed and not
-agreed: a place to record that we rate a vulnerability differently from the
-published score, or that the report is disputed. It would be attached to the
-issue rather than to a finding, so it applies wherever the issue appears and
-does not lapse when a version moves. The argument for it is that it collapses a
-claim somebody would otherwise repeat at forty-one places; the argument against
-is that it is a second kind of judgment with its own audit questions, and the
-tool does not obviously need one yet.
+**What happens to a mitigation-backed dismissal when the mitigation goes.**
+TRI-39 requires the control to be named and accepts that the tool will not
+notice its removal, because a mitigation is configuration and nothing here
+watches configuration. Two ways out were considered and neither taken: a shelf
+life on that kind of claim, and refusing the justification outright. It is the
+one place the "ask again when the code moves" rule does not reach, and it is
+the claim an auditor asks about first.
 
-**Whether we are behind upstream, for the components we build ourselves.** A
-distro package's currency is Debian's problem and Debian answers it. Everything
-else is ours: a Go module, a Rust crate, an npm package, something pulled from
-a repository and compiled. Two facts would be worth holding, and they come from
-the same place: **what the newest version is, and when it was released.**
-
-Neither is a judgment about a project's health, which is why they are worth
-having. The first says whether we are behind. The second answers the question
-REJ-13 rejected, and answers it better: a newest release four years old says a
-dependency may need replacing with something maintained, without anybody having
-to rate a project as alive or dead. Together they separate "we have not
-upgraded" from "there is nothing to upgrade to", which are different problems
-with different owners.
-
-**The two of them together answer a third question, which is the one worth
-having.** Issues disclosed *after* a component's newest release, still carrying
-no fix, say that upstream has shipped nothing since the flaw became known —
-which is the reason there is no fix, arrived at by arithmetic rather than by
-anybody judging a project. That is the case REJ-13 was reaching for and could
-not get to, because asking "is this maintained" needs an opinion and this needs
-two dates.
-
-It does not need a disclosure date, which REJ-11 declined to store: the year in
-the identifier is enough, since a gap that matters is measured in years and a
-few months either way changes nothing.
-
-**On the product in hand it would fire rarely, and that is not an argument
-against it.** Of 1,125 findings with no fix, twelve are on components outside
-the distro — nine Go, three Python — and for a Debian package the comparison
-means nothing, since the distro ships constantly and its release date says
-nothing about the software inside. The signal is for products that carry more
-of their own dependencies, which is what this tool is meant to serve beyond the
-one it was built against.
-
-The scale says it is worth asking. Of 7,859 components, **6,933 carry an
-identifier naming an upstream** — 1,668 Go modules, 593 npm packages, 573 Rust
-crates, 176 Python packages, 16 repositories we build from source. **Two
-hundred of them carry open findings**, against 164 distro packages, so this is
-not a long tail. Nothing in the model records what the newest version is, and
-nothing asks.
-
-What is not settled is where the answer comes from. Every ecosystem has a
-registry that will say, and every one of them is a network call this deployment
-is built not to need — the vulnerability database is imported deliberately for
-that reason, and this would have to arrive the same way or be optional. Nor is
-it settled what a newer version *means* here: for a dependency vendored into
-something we build, "behind upstream" is a fact about our own source tree
-rather than about the image, which makes it a different screen from anything
-that exists.
+**Whether a downgrade below a triage floor should be called out.** TRI-41 gates
+a downgrade on a second person because it pushes the deadline out. Where a
+deployment later sets a floor for what is worth triaging at all, a downgrade
+that crosses it does something different in kind — the finding stops being work
+rather than becoming later work. Worth naming at the moment of approval; not
+built, because the floor is not built either.
 
 **A year of nightly scans has never been measured.** Scan files are deleted
 once read, and the interval storage was shaped so that a rebuild changing
@@ -858,6 +820,10 @@ themselves.
 | Home unbound from "across products" (2026-09-01) | UIX-08 had the home page always summarizing across every product, which reads as answering a question nobody asked once a product is selected in the picker. The picker becomes the narrowing for the whole interface, with "all" offered explicitly at each level rather than being the only option (UIX-38, UIX-39) |
 | Deciding moved onto the finding (2026-09-01) | TRI-29 recorded that covering every place should be one click and the default, and the interface offered only a per-place judgment, so the default it describes was unreachable. Recorded properly as TRI-37, with TRI-38 stopping the fix from dragging in the bulk path's approval rule |
 | A deadline became stored rather than derived (2026-09-01) | Computing it per request cost a pass over every open finding per urgency band, measured at eight seconds. REM-26 stores it at ingest like urgency, and — unlike urgency — recomputes when the policy changes, because people edit deadlines and nobody edits the ranking |
+
+| An assessment of the issue became a decision (2026-09-01) | Open since the document was written, and the argument for it had quietly changed: it rested on somebody repeating an opinion at forty-one places, which TRI-37 had just made a single action. Agreed anyway on the narrower case that survives — an opinion should outlive the version it was formed about and reach products it has not met yet (TRI-40 to TRI-42) |
+| One thing reaches the network (2026-09-01) | Everything outside arrives as a file somebody imports, deliberately. Whether a dependency has a newer version is the exception: read from the public index for its ecosystem, off unless a deployment turns it on, and losing it costs that answer and nothing else (ING-41) |
+| Home's panel order chosen (2026-09-01) | UIX-06 left it as something needing deliberate design. Work first, the shape of things underneath (UIX-42) |
 
 **Recurring lesson:** every bug in the identity and expiry rules came from
 letting one fact into two rules. Versions belong to expiry. The variant belongs

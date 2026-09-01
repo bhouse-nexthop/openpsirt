@@ -89,12 +89,17 @@ here.
 | **`REM-26`** | ~~Built.~~ A deadline is computed at ingest and stored, and recomputed when the policy changes. Eight seconds became 1.35 s. The rewrite itself is sliced by identifier range and runs off the request: as one statement it took nineteen seconds and, on SQLite's single connection, that is the whole process answering nothing — the outage this document already diagnosed once. Sliced, other requests stay under a second while it runs. It is **not** on the job queue, so a restart mid-rewrite leaves some findings on the old deadline until the next scan or the next edit |
 | **`UIX-41`** | ~~Built.~~ A findings row says what upstream has done — "declined" and "none yet" were the same blank — and how old the issue is, from the year in its identifier |
 
-**All four are built.** What is left from this stretch: the SBOM reload, and
-one thing found while building — a `not-applicable` claim justified by
-`inline_mitigations_already_exist` expires when the component's upstream
-version changes, but a mitigation is a *configuration* that can be removed with
-no code change, so that claim can go quietly false while the tool believes it.
-Everything else in the model expires correctly.
+**All four are built.** Five more were decided on 2026-09-01 and are not:
+
+| | |
+|---|---|
+| **`TRI-39`** | Dismissing something because a mitigation stops it requires naming the mitigation. The tool still will not notice its removal — that gap is accepted, not closed |
+| **`TRI-40` to `TRI-42`** | What we think of an issue, recorded against the issue rather than a place, applying everywhere and surviving a version change. It changes the order: rating something **worse** takes effect at once, rating it **milder** needs a second person, because severity sets the deadline and a downgrade pushes it out by months. The published rating stays on screen beside ours, and the deadline follows the assessment |
+| **`ING-41`** | Whether a dependency has a newer version, and when that version shipped, read from the public index for its ecosystem. The one thing here that reaches the network, so it is off unless a deployment turns it on and it fails quietly |
+| **`UIX-42`** | Home leads with the work and puts the trends underneath |
+
+The largest of those is the assessment: it is a second kind of judgment and
+wants the same care the first one got.
 
 Also worth doing while in there: **check what the scanner knows about *why*
 there is no fix.** `none` currently conflates "the distro considered it and
