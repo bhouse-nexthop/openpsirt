@@ -51,6 +51,53 @@ built.**
 something was disclosed was asked about; nothing stores it. That is ingest work
 rather than a screen.
 
+## Issues seen in the running interface
+
+Reported from clicking around the demo. Each one is checked against the mockup
+and against `DECISIONS.md` before it is written down, because the interface was
+built once already from decision text alone and came out wrong.
+
+**"Where it sits" shows one flat row, not the chain.** `UIX-14` says it plainly:
+*opening a finding shows the complete chain, root to component, with the version
+at each step*. The mockup draws exactly that — `sonic-broadcom 202411.0`, then
+`docker-sonic-mgmt-framework 1.0.0` indented under it, then `openssh` indented
+under that, and the whole chain repeated for the second route through
+`docker-platform-monitor`. What `web/src/screens/Finding.tsx:150` builds is one
+row per place holding the direct consumer's **name only**: no root, no
+intermediate steps, no versions. `UIX-12` is unimplemented the same way — the
+findings row is meant to show both ends of the chain and shows only the
+immediate parent (`web/src/screens/Findings.tsx:324`).
+
+**"The product itself" is most of what you see, and it is not a fallback.** It
+renders whenever `finding.consumer_id` is null. In the demo database that is
+**284 of the 450 components** that carry findings — so on a component picked at
+random it is the likely answer, which is what makes it read as the screen giving
+up. It is not wrong: the SBOM's edges are mostly *containment* (image → container
+→ package), so a host package genuinely has the image as its only parent, and
+4,818 of 8,374 components in the fixture have exactly that and nothing else.
+Naming something more useful there needs richer edges from the producer, not a
+change here. The phrase is also borrowed from the wrong screen — in the mockup
+it belongs to the tree's "What pulls this in" panel, for a node with no parents.
+
+**Two places can render as the same row.** 207,606 findings have two places
+whose consumer name is identical. It is not version drift — no consumer name in
+the database exists at two versions — it is the duplicate-component bug below:
+`opennsl-modules` interned twice from one artifact, so one place is listed twice
+with nothing to tell the two apart. Most of this should dissolve when the
+rebuilt SBOM lands. What will not dissolve is that the row has no ancestry to
+distinguish it by, which is the first item.
+
+**"What was decided →" is the wrong affordance on that panel.** The mockup ends
+"Where it sits" with a single **"Show where this sits in the build →"** that
+opens the tree. The built panel instead hangs a per-place "What was decided →"
+link off every row, which is a different question from the one the panel asks
+and puts a decision route where the design put an orientation route.
+
+Worth saying once: none of these is a case of the design being unclear. The
+panel was specified, drawn, and cited, and the implementation went its own way —
+the same failure the note at the top of this document records about the palette,
+caught then by comparing against the mockup rather than the decision text.
+
 ## The split, and the reload it needs
 
 **Resolved upstream, not here.** The 156 deb packages that appeared twice —
