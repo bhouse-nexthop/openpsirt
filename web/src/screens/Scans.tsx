@@ -37,6 +37,26 @@ export function Scans() {
         <p>{product} · {stream} · {variant} — newest first.</p>
       </div>
 
+      {/* What the numbers on every other screen were arrived at with. Without
+          it, a build with nothing wrong and a build last measured against a
+          months-old vulnerability database read identically. */}
+      {scans.data?.measured_against && (
+        <p className="hint" style={{ marginTop: -6 }}>
+          Last measured by <span className="id">{scans.data.measured_against.scanner}</span>
+          {scans.data.measured_against.scanner_version && (
+            <> {scans.data.measured_against.scanner_version}</>
+          )}
+          {scans.data.measured_against.database_version && (
+            <>, against vulnerability data{" "}
+              <span className="id">{scans.data.measured_against.database_version}</span></>
+          )}
+          {scans.data.measured_against.ran_at && (
+            <>, on {scans.data.measured_against.ran_at.slice(0, 10)}</>
+          )}
+          .
+        </p>
+      )}
+
       {items.length === 0 ? (
         <Empty
           title="Nothing has been sent here."

@@ -17,6 +17,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
@@ -375,11 +376,27 @@ type ReceiptBody struct {
 	Failure string `json:"failure,omitempty" doc:"Why it could not be used, where it could not"`
 }
 
+// MeasuredBody is what the numbers on a build were arrived at with.
+//
+// Not decoration. A build reporting nothing wrong and a build last measured
+// against a vulnerability database from March look identical on every screen
+// without this, and they are not the same statement at all.
+type MeasuredBody struct {
+	Scanner         string `json:"scanner" doc:"Which scanner produced the findings"`
+	ScannerVersion  string `json:"scanner_version,omitempty"`
+	DatabaseVersion string `json:"database_version,omitempty" doc:"The vulnerability database it read"`
+	RanAt           string `json:"ran_at,omitempty" doc:"When that run finished"`
+}
+
 // ReceiptsOutput is a page of what has been filed against a build.
 type ReceiptsOutput struct {
 	Body struct {
 		Items []ReceiptBody `json:"items"`
 		Total int           `json:"total"`
+		// MeasuredAgainst describes the build's last finished run rather than
+		// any one upload, which is why it sits beside the page instead of on
+		// each row.
+		MeasuredAgainst *MeasuredBody `json:"measured_against,omitempty" doc:"What the last completed run was measured with"`
 	}
 }
 
@@ -453,6 +470,24 @@ func registerReceipts(api huma.API, in Ingest) {
 			})
 		}
 		out.Body.Total = total
+
+		// What those numbers were arrived at with. Read separately because it
+		// describes the build rather than any upload, and absent rather than
+		// invented where nothing has finished running yet.
+		last, err := finding.NewStore(in.DB.DB).LatestRun(ctx, subject, target.ID)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "the last run could not be read", err)
+		}
+		if last != nil {
+			out.Body.MeasuredAgainst = &MeasuredBody{
+				Scanner:         last.Scanner,
+				ScannerVersion:  last.ScannerVersion,
+				DatabaseVersion: last.DatabaseVersion,
+			}
+			if last.FinishedAt != nil {
+				out.Body.MeasuredAgainst.RanAt = stamp(*last.FinishedAt)
+			}
+		}
 		return out, nil
 	})
 }

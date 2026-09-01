@@ -168,6 +168,68 @@ in the brand colour has nothing left that means "act on this". Being exploited
 outranks whatever the score says, which is the ordering everywhere else in this
 tool.
 
+**Filtering is the server's, not the browser's.** A list narrowed after it
+arrives is narrowed within one page of it, so "hide the kernel" would hide the
+kernel from the twenty rows already fetched and from nothing else. The filters
+are query parameters, which also puts them in the URL where a link carries
+them.
+
+**The findings list has a second view: by component.** The default asks "what
+is wrong", grouped by issue; this asks "what is wrong *with this thing*", which
+is the question somebody upgrading a package has. Same data, different subject.
+
+**A triage line is announced where it applies, never silently.** Where a
+product or the deployment has said what is worth triaging (TRI-43), the list
+says so and says how many it is not showing. A list that quietly omits things
+is a list that lies about how much there is.
+
+**The dependency tree is a tree, and its counts are cumulative.** Each row
+carries what is open beneath it as well as on it, so a container reads as the
+sum of what it holds rather than as zero — which is what it reported before,
+and what made the screen useless for punching down. Those totals are worked out
+when the tree is read rather than stored after a scan, because they are derived
+from findings and findings move: something dismissed, something assigned, a
+rating reconsidered. A stored total is right at the moment a scan ends and
+drifts from the screen beside it thereafter.
+
+Branches are ordered by name rather than by that total. Ordering by it was
+tried and reverted: an edge means "contains *or* depends on" and the document
+does not distinguish them, so forty kernel-module packages each depending on
+the one kernel all reported its total and filled the first screen — putting the
+containers out of sight again, which is the same fault arrived at from the
+other side.
+
+**The finding screen is where deciding happens**, not a screen that links to
+deciding. It carries what the issue is, how bad, what upstream has done, where
+it sits in the build, the evidence, and both the Decide and the Assess cards.
+Deciding reuses the same outcome, editor and reach components the standalone
+decision screen uses, rather than a second form that drifts from the first.
+
+**Where it sits shows the chain, not the immediate parent.** The same parent
+can be reached by several routes, and a screen naming only the nearest one
+cannot tell them apart. Where nothing records what pulls a component in, it
+says that — rather than claiming the product itself does, which was a
+comfortable sentence and not a true one.
+
+**"Who is working on what" is three tabs, and the third is somewhere else.**
+Nobody-assigned already had its own entry in the rail, so the tab links across
+rather than drawing the same list twice.
+
+**Release comparison carries a chart across every build**, not only the two
+being compared: the comparison answers what changed between two, and the chart
+answers whether it is getting better or worse. It is bars rather than a line,
+because these are separate builds and a line between two releases draws a trend
+through a gap where nothing happened.
+
+**A setting whose value is one of a few words is a select, not a text box.**
+A free field invites a value the server then refuses — and for a switch it
+invites "true", "yes" and "1", none of which are what it takes.
+
+**The scans screen says what the numbers were measured against** — which
+scanner, at which version, reading which vulnerability database. Without it a
+build with nothing wrong and a build last measured against a months-old
+database read identically.
+
 ## Choices the decisions did not cover
 
 **Colour and the brand mark resolve through tokens in one place.** How an
@@ -319,17 +381,46 @@ and "critical" under v3. Two rows tied at 10.0 with different words look
 mis-sorted until the number is there. Genuine disagreement between word and
 number is rare, measured at 3 of 2,645; the vocabulary difference is not.
 
+**Where we have rated something ourselves, that is what orders the list** —
+and both ratings are shown (TRI-42). Ours is what ranks, because being able to
+say a published rating is wrong is pointless if everything that sorts and
+filters then ignores us. The world's stays beside it, because a rating of ours
+standing where the world's goes reads as the world's, and the first person to
+check against the public record finds a discrepancy nobody declared.
+
+Rating something **worse** takes effect at once; rating it **milder** waits for
+a second person. That is not evenness for its own sake — milder is the
+direction that hides things, and it hides more than a position in a list.
+Severity sets the deadline, so calling a high a low pushes its deadline out by
+months, and where a product has said what is worth triaging at all, a downgrade
+across that line takes the finding off the working list and off any clock
+entirely.
+
 ## Not built yet
 
 Named so that what is missing is a plan rather than something rediscovered by
-clicking: editing a comment after it is written, undoing a bulk approval as a
-batch, the release comparison and the carry-forward preview, and the
-administration screens for people, roles, keys and settings — all of which have
-endpoints and no interface.
+clicking.
 
-**A mention currently links nobody.** The editor offers the right candidates
-and writes `@name` into the text, but the renderer treats it as ordinary words:
-UIX-24 wants a mention and a finding reference to become links, and that is
-resolution the server has to do because it needs to know what the reader may
-see. Notifying somebody who was mentioned is a notification (Stage 6) rather
-than a screen.
+**Editing a comment after it is written.** The endpoint exists; nothing calls
+it, so a typo stands.
+
+**Undoing a bulk approval as a batch.** Each claim can be revised on its own,
+which is the slow way to undo sixty.
+
+**A mention links nobody.** The editor offers the right candidates and writes
+`@name` into the text, but the renderer treats it as ordinary words. UIX-24
+wants a mention and a finding reference to become links, and that is resolution
+the server has to do, because it needs to know what the reader may see.
+Notifying somebody who was mentioned is a notification (Stage 6) rather than a
+screen.
+
+**The carry-forward preview.** What a decision will cover when a build moves is
+a hint sentence rather than the panel the mockup draws.
+
+**"How the reasoning changed" and "what has been said" are only on the decision
+screen**, and are not reachable from the finding that led to them.
+
+What is *no longer* here is worth stating, because this section claimed it for
+a while after it stopped being true: release comparison, people and access, and
+the settings screen are all built, and the catalogue screens can declare as
+well as list.

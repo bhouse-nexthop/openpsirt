@@ -6,6 +6,7 @@ import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
 import { Severity } from "../ui/Severity";
+import { Across } from "../ui/Charts";
 
 // How many of each column are shown before it says how many more there are.
 const SHOWN = 8;
@@ -56,6 +57,17 @@ export function Compare() {
     enabled: ready,
   });
 
+  // Every build, not the two being compared. The comparison answers "what
+  // changed between these two"; this answers "is it getting better or worse",
+  // which is the question a release note cannot.
+  const releases = useQuery({
+    queryKey: ["releases", product],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/products/{product}/releases", { params: { path: { product } } }),
+      ),
+  });
+
   function set(key: string, value: string) {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value);
@@ -72,6 +84,19 @@ export function Compare() {
         <h2>Release comparison</h2>
         <p>{product} — what was fixed, what is newly present, and what is still there</p>
       </div>
+
+      {(releases.data?.items ?? []).length > 1 && (
+        <div className="card">
+          <header>
+            <h3>Open across every build</h3>
+          </header>
+          <Across releases={releases.data?.items ?? []} />
+          <p className="hint">
+            Every open finding at each build, before any triage line — so it agrees with the
+            findings list rather than with what a product has decided is worth working on.
+          </p>
+        </div>
+      )}
 
       <div className="card">
         <header

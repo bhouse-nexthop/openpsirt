@@ -1139,3 +1139,117 @@ func (f *fixture) byState(t *testing.T) (closed, opened []finding.Finding) {
 	}
 	return closed, opened
 }
+
+// The number a release-over-release chart is drawn from. Nothing reported it
+// before, so the comparison screen could say what changed between two builds
+// and not whether the estate was getting better or worse across all of them.
+func TestWhatIsOpenIsReportedPerBuild(t *testing.T) {
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t), []finding.Reported{
+			found("CVE-2026-1", libnl),
+			found("CVE-2026-2", libnl),
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		releases, err := f.store.Releases(t.Context(), f.holding(t, access.PublicRead), f.productID)
+		if err != nil {
+			t.Fatalf("releases: %v", err)
+		}
+		if len(releases) != 1 {
+			t.Fatalf("reported %d builds, expected 1", len(releases))
+		}
+		open := f.open(t)
+		if releases[0].Open != len(open) {
+			t.Errorf("counted %d open, but %d findings are open — a chart that "+
+				"disagrees with the list is worse than no chart",
+				releases[0].Open, len(open))
+		}
+		// The split has to add up to the total, or the chart's segments and its
+		// height are two different numbers.
+		summed := 0
+		for _, n := range releases[0].BySeverity {
+			summed += n
+		}
+		if summed != releases[0].Open {
+			t.Errorf("the severity split adds to %d, the total says %d", summed, releases[0].Open)
+		}
+		if releases[0].Stream == "" || releases[0].Variant == "" {
+			t.Errorf("a build with no name: %+v", releases[0])
+		}
+	})
+}
+
+// A count nobody may read is not a smaller count, and a total is as much a
+// disclosure as a row: "there are six here" tells a reader there are six.
+func TestWhatIsOpenPerBuildIsNarrowedToWhatSomebodyMayRead(t *testing.T) {
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.db.DB.NewUpdate().Model((*finding.Finding)(nil)).
+			Set("visibility = ?", access.Private).
+			Where("target_id = ?", f.target).Exec(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+
+		releases, err := f.store.Releases(t.Context(), f.holding(t, access.PublicRead), f.productID)
+		if err != nil {
+			t.Fatalf("releases: %v", err)
+		}
+		for _, r := range releases {
+			if r.Open != 0 {
+				t.Errorf("a reader who may not see it was told there are %d", r.Open)
+			}
+		}
+	})
+}
+
+// A build reporting nothing wrong and a build last measured against a database
+// from March look identical on every screen without this.
+func TestTheLastRunSaysWhatItWasMeasuredWith(t *testing.T) {
+	each(t, func(t *testing.T, f *fixture) {
+		who := f.holding(t, access.PublicRead)
+
+		// Nothing has finished, so there is nothing to say — absent rather
+		// than invented.
+		before, err := f.store.LatestRun(t.Context(), who, f.target)
+		if err != nil {
+			t.Fatalf("latest run: %v", err)
+		}
+		if before != nil {
+			t.Fatalf("a run was reported before any had finished: %+v", before)
+		}
+
+		f.shipped(t, twoConsumers())
+		runID := f.run(t)
+		if _, err := f.store.Apply(t.Context(), f.target, runID,
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.store.Finish(t.Context(), runID, "0.100.1", "2026-08-29", nil); err != nil {
+			t.Fatal(err)
+		}
+
+		last, err := f.store.LatestRun(t.Context(), who, f.target)
+		if err != nil {
+			t.Fatalf("latest run: %v", err)
+		}
+		if last == nil {
+			t.Fatal("nothing reported after a run finished")
+		}
+		if last.Scanner != "grype" {
+			t.Errorf("scanner is %q, expected grype", last.Scanner)
+		}
+		if last.DatabaseVersion != "2026-08-29" {
+			t.Errorf("database version is %q, expected the one the run finished with",
+				last.DatabaseVersion)
+		}
+		if last.FinishedAt == nil {
+			t.Error("a finished run with no finishing time")
+		}
+	})
+}

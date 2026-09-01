@@ -610,6 +610,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product}/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How much is open against each build of a product
+         * @description One number per build, which is what a release-over-release chart is drawn from. The comparison endpoint says what changed between **two** builds; this says whether the estate is getting better or worse across all of them.
+         *
+         *     Counted before any triage line is applied, so it agrees with the findings list rather than with whatever a product has decided is worth working on — a line is about what to spend an afternoon on, not about what exists.
+         *
+         *     Severities are folded the same four ways everything else here ranks by, through the one expression the working list and the deadline also read, so a chart cannot disagree with a list about what counts as high.
+         */
+        get: operations["list-releases"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product}/streams": {
         parameters: {
             query?: never;
@@ -2226,6 +2250,15 @@ export interface components {
             readonly $schema?: string;
             items: components["schemas"]["ProviderBody"][] | null;
         };
+        ListBodyReleaseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListBodyReleaseBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ReleaseBody"][] | null;
+        };
         ListBodyRevisionBody: {
             /**
              * Format: uri
@@ -2281,6 +2314,15 @@ export interface components {
             variant: string;
             /** @description The upstream version that build has, which differs from this one */
             version?: string;
+        };
+        MeasuredBody: {
+            /** @description The vulnerability database it read */
+            database_version?: string;
+            /** @description When that run finished */
+            ran_at?: string;
+            /** @description Which scanner produced the findings */
+            scanner: string;
+            scanner_version?: string;
         };
         MentionableBody: {
             /** @description What to write after the @ */
@@ -2455,6 +2497,8 @@ export interface components {
              */
             readonly $schema?: string;
             items: components["schemas"]["ReceiptBody"][] | null;
+            /** @description What the last completed run was measured with */
+            measured_against?: components["schemas"]["MeasuredBody"];
             /** Format: int64 */
             total: number;
         };
@@ -2485,6 +2529,22 @@ export interface components {
             readonly $schema?: string;
             /** Format: int64 */
             moved: number;
+        };
+        ReleaseBody: {
+            /** @description That total split by the rating in force */
+            by_severity?: {
+                [key: string]: number;
+            };
+            /** @description Whether that is a branch or a tag */
+            kind: string;
+            /**
+             * Format: int64
+             * @description Every open finding at this build
+             */
+            open: number;
+            /** @description The branch or tag */
+            stream: string;
+            variant: string;
         };
         "Revise-decisionRequest": {
             /**
@@ -3740,6 +3800,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListBodyMentionableBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListBodyReleaseBody"];
                 };
             };
             /** @description Error */

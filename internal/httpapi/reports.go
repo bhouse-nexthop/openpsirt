@@ -75,6 +75,46 @@ func registerReports(api huma.API, in Ingest) {
 	})
 
 	huma.Register(api, huma.Operation{
+		OperationID: "list-releases", Method: http.MethodGet,
+		Path:    "/v1/products/{product}/releases",
+		Summary: "How much is open against each build of a product",
+		Description: "One number per build, which is what a release-over-release chart is " +
+			"drawn from. The comparison endpoint says what changed between **two** builds; " +
+			"this says whether the estate is getting better or worse across all of them.\n\n" +
+			"Counted before any triage line is applied, so it agrees with the findings list " +
+			"rather than with whatever a product has decided is worth working on — a line is " +
+			"about what to spend an afternoon on, not about what exists.\n\n" +
+			"Severities are folded the same four ways everything else here ranks by, through " +
+			"the one expression the working list and the deadline also read, so a chart cannot " +
+			"disagree with a list about what counts as high.",
+		Tags: []string{"Findings"},
+	}, func(ctx context.Context, input *struct {
+		Product string `path:"product"`
+	}) (*listOutput[ReleaseBody], error) {
+		subject, err := reading(ctx)
+		if err != nil {
+			return nil, err
+		}
+		named, err := catalog.NewStore(in.DB.DB).ProductByName(ctx, input.Product)
+		if err != nil {
+			return nil, noSuchProduct()
+		}
+		releases, err := finding.NewStore(in.DB.DB).Releases(ctx, subject, named.ID)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "what is open per build could not be read", err)
+		}
+		out := &listOutput[ReleaseBody]{}
+		out.Body.Items = make([]ReleaseBody, 0, len(releases))
+		for _, r := range releases {
+			out.Body.Items = append(out.Body.Items, ReleaseBody{
+				Stream: r.Stream, Kind: r.Kind, Variant: r.Variant,
+				Open: r.Open, BySeverity: r.BySeverity,
+			})
+		}
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
 		OperationID: "compare-releases", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/comparison",
 		Summary: "Compare two builds",
@@ -258,4 +298,13 @@ func inherited(rows []triage.Inherited) []InheritedBody {
 		})
 	}
 	return out
+}
+
+// ReleaseBody is one build and how much stands open against it.
+type ReleaseBody struct {
+	Stream     string         `json:"stream" doc:"The branch or tag"`
+	Kind       string         `json:"kind" doc:"Whether that is a branch or a tag"`
+	Variant    string         `json:"variant"`
+	Open       int            `json:"open" doc:"Every open finding at this build"`
+	BySeverity map[string]int `json:"by_severity,omitempty" doc:"That total split by the rating in force"`
 }

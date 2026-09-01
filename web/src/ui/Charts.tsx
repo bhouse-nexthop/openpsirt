@@ -1,6 +1,8 @@
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
   Cell,
   Line,
@@ -180,5 +182,52 @@ export function Ring({ point }: { point?: Point }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+export type Release = {
+  stream?: string;
+  kind?: string;
+  variant?: string;
+  open?: number;
+  by_severity?: Record<string, number>;
+};
+
+// What is open at each build, side by side.
+//
+// Bars rather than a line: these are separate builds, not one thing measured
+// over time, and a line between two releases draws a trend through a gap where
+// nothing happened. Ordering is the server's, so the bars do not move between
+// requests.
+export function Across({ releases }: { releases: Release[] }) {
+  const data = releases.map((r) => {
+    const by = r.by_severity ?? {};
+    return {
+      at: [r.stream, r.variant].filter(Boolean).join(" · "),
+      critical: by.critical ?? 0,
+      high: by.high ?? 0,
+      medium: by.medium ?? 0,
+      low: by.low ?? 0,
+    };
+  });
+  if (data.length === 0) return null;
+  return (
+    <ResponsiveContainer width="100%" height={200}>
+      <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+        <CartesianGrid strokeOpacity={0.14} vertical={false} />
+        <XAxis dataKey="at" tick={axis} tickLine={false} axisLine={false} interval={0} />
+        <YAxis
+          tick={axis}
+          tickLine={false}
+          axisLine={false}
+          width={46}
+          tickFormatter={brief}
+        />
+        <Tooltip contentStyle={tip} />
+        {BANDS.map((band) => (
+          <Bar key={band.key} dataKey={band.key} stackId="1" fill={band.colour} />
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
   );
 }
