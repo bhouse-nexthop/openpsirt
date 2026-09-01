@@ -48,10 +48,13 @@ tab kept re-requesting. To settle it: reproduce with a deliberately slow
 statement, leave the tab open, and watch per-thread CPU rather than the
 process total.
 
-*One thing to fix regardless.* `SIGTERM` did not stop it and `SIGKILL` was
-needed, because shutdown waits on in-flight requests and those were the
-problem. A shutdown that cannot be completed by the signal meant for it is a
-shutdown with no deadline.
+*Fixed: `SIGTERM` did not stop it and `SIGKILL` was needed.* The cause was not
+where I first guessed. The HTTP server already had a fifteen-second grace; what
+had none was `workers.Wait()`, the wait for the background readers. Those wait
+on the same single SQLite connection the runaway requests were holding, so a
+worker could not get a connection, could not notice it had been asked to stop,
+and the wait had no end. It now has the same bound as the server's, and says so
+in the log when it gives up. Measured after: `SIGTERM` stops it in **0.20 s**.
 
 **The mockup is the approved design** and is the reference for anything
 visual. It is published at

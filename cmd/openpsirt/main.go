@@ -284,8 +284,6 @@ func serve(cfg config.Config, logger *slog.Logger, handler http.Handler, reader 
 			runner.Run(ctx, readInterval)
 		}()
 	}
-	defer workers.Wait()
-
 	srv := &http.Server{
 		Addr:    cfg.Addr,
 		Handler: handler,
@@ -318,11 +316,51 @@ func serve(cfg config.Config, logger *slog.Logger, handler http.Handler, reader 
 	logger.Info("shutting down", "grace", cfg.ShutdownGrace)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownGrace)
 	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown: %w", err)
+	shutdownErr := srv.Shutdown(shutdownCtx)
+
+	// And give the workers the same bound, rather than none.
+	//
+	// This wait used to be unbounded, on the reasoning above — a worker
+	// mid-query should not have the database pulled from under it. That
+	// reasoning holds and the wait stays; what it lacked was an end. On SQLite
+	// the pool is one connection by design, so an HTTP handler running a slow
+	// statement blocks every worker behind it, and a worker that cannot get a
+	// connection cannot notice it has been asked to stop. Waiting for it then
+	// waits for the request, and shutting down takes as long as the slowest
+	// thing in the process.
+	//
+	// Observed: a query that should have taken milliseconds ran for over an
+	// hour, SIGTERM did nothing, and the process had to be killed. A shutdown
+	// that cannot be completed by the signal meant for it is not a shutdown.
+	if !waitFor(&workers, cfg.ShutdownGrace) {
+		logger.Warn("stopped without waiting for background work to finish",
+			"grace", cfg.ShutdownGrace,
+			"why", "a worker did not stop in time, most likely blocked on a slow query")
+	}
+	if shutdownErr != nil {
+		return fmt.Errorf("shutdown: %w", shutdownErr)
 	}
 	logger.Info("stopped")
 	return nil
+}
+
+// waitFor waits for a group, and reports whether it finished in time.
+//
+// The goroutine it leaks where the wait times out is deliberate and bounded by
+// the process: it ends when the process does, which is a moment later, and the
+// alternative is a shutdown with no end at all.
+func waitFor(group *sync.WaitGroup, grace time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		group.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(grace):
+		return false
+	}
 }
 
 // signInProviders builds the ways somebody may sign in.
