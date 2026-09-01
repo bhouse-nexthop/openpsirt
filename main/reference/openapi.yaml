@@ -513,6 +513,9 @@ components:
             - vulnerable_code_cannot_be_controlled_by_adversary
             - inline_mitigations_already_exist
           type: string
+        mitigation:
+          description: What actually stops it — the rule, the setting, the service that is not exposed. Required when the reason is that mitigations already exist, and refused with any other
+          type: string
         needs_approval:
           description: Whether a second person has to agree before it takes effect
           type: boolean
@@ -938,6 +941,9 @@ components:
             - vulnerable_code_not_in_execute_path
             - vulnerable_code_cannot_be_controlled_by_adversary
             - inline_mitigations_already_exist
+          type: string
+        mitigation:
+          description: What actually stops it — the rule, the setting, the service that is not exposed. Required when the reason is that mitigations already exist, and refused with any other
           type: string
         outcome:
           enum:
