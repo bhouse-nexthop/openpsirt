@@ -24,14 +24,6 @@ type AtComponentBody struct {
 	FixedIn       string `json:"fixed_in,omitempty" doc:"The version the report says fixes it, where it names one"`
 }
 
-// namedCap is how many issues a request may name.
-//
-// Names rather than findings: each name may resolve to several places, so this
-// bounds the request and the cap on findings bounds the write. Both exist —
-// without this, a request naming a million issues is a million-row resolution
-// before anything is refused.
-const namedCap = 2000
-
 func registerBulk(api huma.API, in Ingest) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-issues-at-component", Method: http.MethodGet,

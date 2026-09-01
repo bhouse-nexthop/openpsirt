@@ -179,19 +179,3 @@ func (s *Store) Trend(ctx context.Context, subject access.Subject, since time.Ti
 
 	return points, nil
 }
-
-// resolving says whether a finding closing means the issue went away.
-//
-// Superseded does not. The component's version moved and the issue came with
-// it: this row closed and the same issue reopened against the new version, so
-// counting it as resolved draws a line saying work was completed while the
-// same chart's new-findings line rises by exactly as much. Unexplained does
-// not either — the scanner stopped saying it, which is not the same as
-// somebody having fixed it.
-func resolving(because Closure) bool {
-	switch because {
-	case Superseded, Unexplained:
-		return false
-	}
-	return true
-}

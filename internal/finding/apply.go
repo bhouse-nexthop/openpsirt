@@ -102,6 +102,24 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 		// covering nothing the build ships has not.
 		applied.ClaimsReaching, applied.ClaimsReachingNothing = claimsReaching(claims, present)
 
+		// The two halves of a deadline (REM-26): how long each kind of thing
+		// may stay open, and when this run started. Read once for the whole
+		// apply rather than per finding, and read here rather than by the
+		// caller so that what is stored and what the screen later compares
+		// against come from the same place.
+		windows, err := LoadWindows(ctx, tx)
+		if err != nil {
+			return err
+		}
+		var startedAt time.Time
+		if err := tx.NewSelect().
+			TableExpr("scan_run AS r").
+			ColumnExpr("r.started_at").
+			Where("r.id = ?", runID).
+			Scan(ctx, &startedAt); err != nil {
+			return fmt.Errorf("read when this run started: %w", err)
+		}
+
 		wanted := map[key]Finding{}
 		for _, r := range reported {
 			component, held := present.byIdentity[r.Component.Identity()]
@@ -144,6 +162,12 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 				entry := wanted[key{vulnerabilityID, at}]
 				entry.Urgency = int64(ranked.Rank())
 				entry.RankExploited, entry.RankShipped = ranked.Exploited, ranked.Shipped
+				// Counted from this run only where the finding is new. A
+				// finding already open keeps the deadline it was given, which
+				// the update below leaves alone — a deadline that restarted
+				// every night would never arrive.
+				due := startedAt.Add(windows.For(r.Issue.Exploited, r.Issue.Severity))
+				entry.DueAt = &due
 				wanted[key{vulnerabilityID, at}] = entry
 			}
 		}

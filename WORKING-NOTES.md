@@ -86,7 +86,7 @@ here.
 |---|---|
 | **`TRI-37`, `TRI-38`, `UIX-40`** | Deciding moves onto the finding and covers every place by default, with them listed and untickable. Needs a new per-finding endpoint taking an optional set of places — **not** the bulk one, which would drag in its always-needs-approval rule. A place left out stays open, and the finding says how many are decided |
 | **`UIX-38`, `UIX-39`** | The picker narrows the whole interface with an explicit "all" at each level; product "all" leaves branch and variant unselectable; the six build-scoped screens disable "all" rather than moving anybody. Needs product, branch and variant filters on `running-out`, `trend` and `unassigned`, which take no scope at all today |
-| **`REM-26`** | A deadline is computed at ingest and stored, and recomputed for open findings when the policy changes. Turns an eight-second query into an indexed lookup |
+| **`REM-26`** | ~~Built.~~ A deadline is computed at ingest and stored, and recomputed when the policy changes. Eight seconds became 1.35 s. The rewrite itself is sliced by identifier range and runs off the request: as one statement it took nineteen seconds and, on SQLite's single connection, that is the whole process answering nothing — the outage this document already diagnosed once. Sliced, other requests stay under a second while it runs. It is **not** on the job queue, so a restart mid-rewrite leaves some findings on the old deadline until the next scan or the next edit |
 | **`UIX-41`** | A findings row shows what upstream has done and how old the issue is. Both are already stored; this is a column, not ingest work |
 
 Also worth doing while in there: **check what the scanner knows about *why*

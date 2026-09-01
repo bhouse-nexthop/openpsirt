@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 	"github.com/bhouse-nexthop/openpsirt/internal/triage"
 )
@@ -137,8 +138,62 @@ func registerSettings(api huma.API, in Ingest) {
 		if err := setting.NewStore(in.DB.DB).Set(ctx, input.Name, input.Body.Value); err != nil {
 			return nil, wentWrong(in.Logger, "that setting could not be recorded", err)
 		}
+
+		// A deadline is stored on the finding when it is first seen, so
+		// changing how long something may stay open makes every stored one
+		// wrong (REM-26). Rewritten here rather than left until the next scan:
+		// a number somebody just typed that moves nothing is worse than a slow
+		// screen, and it is the difference between this and urgency, which
+		// nobody edits.
+		if deadline(input.Name) {
+			windows, err := dueWindows(ctx, in)
+			if err != nil {
+				return nil, wentWrong(in.Logger, "cannot tell when things are due", err)
+			}
+			// Off the request. The rewrite is bounded by how much is open
+			// rather than by anything the caller sent — measured at nineteen
+			// seconds against 441,108 findings — and a write that long is a
+			// request no proxy will wait for. It is not on the queue either,
+			// which would survive a restart: what a half-finished rewrite
+			// costs is some findings keeping the old deadline until the next
+			// scan or the next edit, which is the state they were already in
+			// a moment ago.
+			logger, name, value := in.Logger, input.Name, input.Body.Value
+			store := finding.NewStore(in.DB.DB)
+			go func() {
+				at := context.WithoutCancel(ctx)
+				at, stop := context.WithTimeout(at, recomputeLimit)
+				defer stop()
+				started := time.Now()
+				changed, err := store.Recompute(at, windows)
+				if err != nil {
+					logger.Error("deadlines could not be rewritten",
+						"setting", name, "value", value, "rewritten", changed, "error", err)
+					return
+				}
+				logger.Info("deadlines rewritten after a policy change",
+					"setting", name, "value", value, "findings", changed,
+					"took", time.Since(started).Round(time.Millisecond).String())
+			}()
+		}
 		return &struct{}{}, nil
 	})
+}
+
+// recomputeLimit bounds the rewrite that follows a policy change. Long enough
+// for a large estate, short enough that a rewrite which has stopped making
+// progress does not sit there for the life of the process.
+const recomputeLimit = 30 * time.Minute
+
+// deadline reports whether this setting decides how long something may stay
+// open, and therefore whether changing it invalidates what is stored.
+func deadline(name string) bool {
+	switch name {
+	case setting.DueExploited, setting.DueCritical, setting.DueHigh,
+		setting.DueMedium, setting.DueLow:
+		return true
+	}
+	return false
 }
 
 // shipped is the value in force when nobody has set one.

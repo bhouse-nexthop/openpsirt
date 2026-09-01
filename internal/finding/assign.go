@@ -178,7 +178,7 @@ type Holding struct {
 // The number that matters is not how many findings exist but how many are
 // stuck behind somebody: an idle account holding nothing is harmless, and work
 // waiting on a person who is not here is the thing worth surfacing.
-func (s *Store) HeldBy(ctx context.Context, subject access.Subject, w Windows) ([]Holding, error) {
+func (s *Store) HeldBy(ctx context.Context, subject access.Subject) ([]Holding, error) {
 	products, all := subject.Products()
 	if subject.Kind != access.Person || (!all && len(products) == 0) {
 		return nil, nil
@@ -210,30 +210,28 @@ func (s *Store) HeldBy(ctx context.Context, subject access.Subject, w Windows) (
 		return nil, fmt.Errorf("read who is holding what: %w", err)
 	}
 
-	// How much of it is late, band by band. The deadline is the first sighting
-	// plus a window that differs per band, so each band is asked with its own
-	// cutoff — the arithmetic happens here and the statement compares
-	// timestamps, which every engine spells the same way (DAT-02).
-	now := s.now().UTC()
+	// How much of it is late. One pass, against the deadline stored on the
+	// finding (REM-26) — it used to be a pass per urgency band, each with its
+	// own cutoff, because the deadline was derived. Overdue has to mean the
+	// same thing here as on the screen that lists what is running out, and the
+	// surest way to keep two answers equal is for there to be one of them.
+	var counted []struct {
+		PersonID int64 `bun:"person_id"`
+		Overdue  int   `bun:"overdue"`
+	}
+	err := mine().
+		ColumnExpr("f.assigned_to AS person_id").
+		ColumnExpr("COUNT(*) AS overdue").
+		Where("f.due_at IS NOT NULL").
+		Where("f.due_at < ?", s.now().UTC()).
+		GroupExpr("f.assigned_to").
+		Scan(ctx, &counted)
+	if err != nil {
+		return nil, fmt.Errorf("read how much of it is late: %w", err)
+	}
 	overdue := map[int64]int{}
-	for _, each := range bands(w) {
-		var counted []struct {
-			PersonID int64 `bun:"person_id"`
-			Overdue  int   `bun:"overdue"`
-		}
-		query := each.where(mine().
-			Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
-			Join("JOIN scan_run AS o ON o.id = f.opened_run_id").
-			ColumnExpr("f.assigned_to AS person_id").
-			ColumnExpr("COUNT(*) AS overdue").
-			Where("o.started_at < ?", now.Add(-each.window)).
-			GroupExpr("f.assigned_to"))
-		if err := query.Scan(ctx, &counted); err != nil {
-			return nil, fmt.Errorf("read how much of it is late: %w", err)
-		}
-		for _, row := range counted {
-			overdue[row.PersonID] += row.Overdue
-		}
+	for _, row := range counted {
+		overdue[row.PersonID] += row.Overdue
 	}
 	for i := range held {
 		held[i].Overdue = overdue[held[i].PersonID]

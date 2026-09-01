@@ -10,7 +10,6 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
-	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 )
 
 // LateBody is a finding running out of time with nobody having decided.
@@ -52,12 +51,7 @@ func registerDue(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
-		windows, err := dueWindows(ctx, in)
-		if err != nil {
-			return nil, wentWrong(in.Logger, "cannot tell when things are due", err)
-		}
-
-		rows, err := finding.NewStore(in.DB.DB).RunningOut(ctx, subject, windows,
+		rows, err := finding.NewStore(in.DB.DB).RunningOut(ctx, subject,
 			time.Duration(input.Days)*24*time.Hour, input.Limit)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "what is running out of time could not be read", err)
@@ -100,36 +94,12 @@ func registerDue(api huma.API, in Ingest) {
 
 // dueWindows reads how long a finding may stay open, by how urgent it is.
 //
-// The shipped numbers are a starting point rather than a recommendation: what
-// a deployment can actually hold to is a question about that deployment, and a
-// deadline nobody agreed to produces an estate that is permanently late and a
-// signal everybody ignores.
+// One reader for it, in the finding package, because ingest writes a deadline
+// with these numbers and anything reading one has to agree about what they
+// are (REM-26).
 func dueWindows(ctx context.Context, in Ingest) (finding.Windows, error) {
-	const day = 24 * time.Hour
-	windows := finding.Windows{
-		Exploited: 3 * day, Critical: 7 * day, High: 30 * day,
-		Medium: 90 * day, Low: 180 * day,
-	}
 	if in.DB == nil {
-		return windows, nil
+		return finding.DefaultWindows(), nil
 	}
-
-	settings := setting.NewStore(in.DB.DB)
-	for _, each := range []struct {
-		name string
-		at   *time.Duration
-	}{
-		{setting.DueExploited, &windows.Exploited},
-		{setting.DueCritical, &windows.Critical},
-		{setting.DueHigh, &windows.High},
-		{setting.DueMedium, &windows.Medium},
-		{setting.DueLow, &windows.Low},
-	} {
-		held, err := settings.Duration(ctx, each.name, *each.at)
-		if err != nil {
-			return finding.Windows{}, err
-		}
-		*each.at = held
-	}
-	return windows, nil
+	return finding.LoadWindows(ctx, in.DB.DB)
 }

@@ -445,7 +445,7 @@ func (s *Store) WhoCanRead(ctx context.Context, productID int64, visibility Visi
 				WhereOr(`EXISTS (SELECT 1 FROM "role_grant" AS g
 					WHERE g.person_id = p.id AND g.active = ?
 					  AND g.product_id = ? AND g.role IN (?))`,
-					true, productID, bun.In(enough))
+					true, productID, bun.List(enough))
 		}).
 		OrderExpr("p.identity").
 		Limit(limit).

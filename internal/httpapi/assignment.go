@@ -148,11 +148,7 @@ func registerAssignment(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
-		windows, err := dueWindows(ctx, in)
-		if err != nil {
-			return nil, wentWrong(in.Logger, "cannot tell when things are due", err)
-		}
-		held, err := finding.NewStore(in.DB.DB).HeldBy(ctx, subject, windows)
+		held, err := finding.NewStore(in.DB.DB).HeldBy(ctx, subject)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "who is holding what could not be read", err)
 		}

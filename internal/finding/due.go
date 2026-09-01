@@ -3,12 +3,12 @@ package finding
 import (
 	"context"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 )
 
 // Windows is how long a finding may stay open before it is late, by how urgent
@@ -25,18 +25,83 @@ type Windows struct {
 	Low       time.Duration
 }
 
+// DefaultWindows are the shipped numbers, a starting point rather than a
+// recommendation: what a deployment can hold to is a question about that
+// deployment, and a deadline nobody agreed to produces an estate that is
+// permanently late and a signal everybody ignores.
+func DefaultWindows() Windows {
+	const day = 24 * time.Hour
+	return Windows{
+		Exploited: 3 * day, Critical: 7 * day, High: 30 * day,
+		Medium: 90 * day, Low: 180 * day,
+	}
+}
+
+// LoadWindows reads how long a finding may stay open, by how urgent it is.
+//
+// Read here rather than by the caller because ingest needs the same answer as
+// the screen does: a deadline is computed once, when a finding is first seen
+// (REM-26), so the two have to agree about what the policy says or a finding
+// would be stored with one deadline and read against another.
+func LoadWindows(ctx context.Context, db bun.IDB) (Windows, error) {
+	windows := DefaultWindows()
+	settings := setting.NewStore(db)
+	for _, each := range []struct {
+		name string
+		at   *time.Duration
+	}{
+		{setting.DueExploited, &windows.Exploited},
+		{setting.DueCritical, &windows.Critical},
+		{setting.DueHigh, &windows.High},
+		{setting.DueMedium, &windows.Medium},
+		{setting.DueLow, &windows.Low},
+	} {
+		held, err := settings.Duration(ctx, each.name, *each.at)
+		if err != nil {
+			return Windows{}, err
+		}
+		*each.at = held
+	}
+	return windows, nil
+}
+
+// For returns how long something of this urgency may stay open.
+//
+// Being exploited sets its own clock whatever the severity says, because
+// severity is how bad the flaw is and being exploited is a fact about the
+// world — and it is the one that decides how long you have. Anything rated in
+// a word nobody recognizes falls to the middle band rather than the longest:
+// an unrated issue is unknown, not harmless.
+func (w Windows) For(exploited bool, severity string) time.Duration {
+	if exploited {
+		return w.Exploited
+	}
+	switch severity {
+	case "critical":
+		return w.Critical
+	case "high":
+		return w.High
+	case "low", "negligible", "none":
+		return w.Low
+	default:
+		return w.Medium
+	}
+}
+
 // Late is a finding whose time is running out with nobody having decided about
 // it.
 type Late struct {
-	Vulnerability string    `bun:"vulnerability"`
-	Component     string    `bun:"component"`
-	Severity      string    `bun:"severity"`
-	Exploited     bool      `bun:"exploited"`
-	Product       string    `bun:"product"`
-	Stream        string    `bun:"stream"`
-	Variant       string    `bun:"variant"`
-	AssignedTo    *int64    `bun:"assigned_to"`
-	FirstSeen     time.Time `bun:"first_seen"`
+	Vulnerability string `bun:"vulnerability"`
+	Component     string `bun:"component"`
+	Severity      string `bun:"severity"`
+	Exploited     bool   `bun:"exploited"`
+	Product       string `bun:"product"`
+	Stream        string `bun:"stream"`
+	Variant       string `bun:"variant"`
+	AssignedTo    *int64 `bun:"assigned_to"`
+	// Due is the earliest deadline among the places this row covers — the one
+	// that makes the whole group late.
+	Due time.Time `bun:"due"`
 	// Places is how many places this issue sits at in this component. One row
 	// covers all of them, because they are one thing to answer.
 	Places int `bun:"places"`
@@ -44,54 +109,6 @@ type Late struct {
 	// for the group. They are read and then discarded.
 	AssignedHigh  *int64 `bun:"assigned_high"`
 	AssignedCount int    `bun:"assigned_count"`
-	// Due is worked out from FirstSeen and the window this finding gets, and
-	// is not stored: a window is a setting somebody changes, and a stored date
-	// would be the answer under whatever it used to be.
-	Due time.Time
-}
-
-// band is one window and the findings it applies to.
-//
-// The list is asked band by band, because within a band the oldest finding is
-// the most overdue and one query per band answers in the right order. Asked as
-// one query it cannot be: the deadline is the first sighting plus a window
-// that differs per band, and expressing that as a sort key means date
-// arithmetic spelled four ways for four engines (DAT-02).
-type band struct {
-	window time.Duration
-	where  func(*bun.SelectQuery) *bun.SelectQuery
-}
-
-// bands orders exploited first and then downwards, and each rules out the ones
-// above it, so no finding is counted in two.
-//
-// Anything the reports did not rate falls in with the mediums, not with the
-// lows. Nobody having scored it is not a claim that it is mild, and giving it
-// the longest window is the one reading of silence that cannot be defended —
-// it puts the findings least is known about at the back of the queue.
-func bands(w Windows) []band {
-	rated := func(severity string) func(*bun.SelectQuery) *bun.SelectQuery {
-		return func(q *bun.SelectQuery) *bun.SelectQuery {
-			return q.Where("f.urgency_exploited = ?", false).Where("v.severity = ?", severity)
-		}
-	}
-	return []band{
-		{w.Exploited, func(q *bun.SelectQuery) *bun.SelectQuery {
-			return q.Where("f.urgency_exploited = ?", true)
-		}},
-		{w.Critical, rated("critical")},
-		{w.High, rated("high")},
-		{w.Low, func(q *bun.SelectQuery) *bun.SelectQuery {
-			return q.Where("f.urgency_exploited = ?", false).
-				Where("v.severity IN (?)", bun.In([]string{"low", "negligible", "none"}))
-		}},
-		// Everything else, which is medium and anything nobody rated.
-		{w.Medium, func(q *bun.SelectQuery) *bun.SelectQuery {
-			return q.Where("f.urgency_exploited = ?", false).
-				Where("COALESCE(v.severity, '') NOT IN (?)",
-					bun.In([]string{"critical", "high", "low", "negligible", "none"}))
-		}},
-	}
 }
 
 // RunningOut reports findings whose deadline is within this many days and
@@ -107,13 +124,18 @@ func bands(w Windows) []band {
 // at sixty places is one thing somebody has to answer, and sixty rows of it is
 // a list with one entry in it.
 //
-// The window is not applied after the rows are read. It used to be, and that
-// is a different list than the one it claims to be: the statement took the
-// oldest findings and the loop then discarded whatever was not due, so an
-// exploited finding first seen yesterday and due tomorrow lost its place to a
-// low from two years ago. Each band is now asked for its own, with the window
-// turned into a first-sighting cutoff before the statement runs.
-func (s *Store) RunningOut(ctx context.Context, subject access.Subject, w Windows,
+// The deadline is read rather than derived. It used to be worked out per
+// request, which meant a pass over every open finding **per urgency band** —
+// each band allows a different number of days, and the window has to narrow
+// the rows before they are read rather than after. Measured at about eight
+// seconds over 441,108 findings. REM-26 stores it instead, so this is one
+// range over an index.
+//
+// A finding with no deadline is left out. That is a row recorded before the
+// deadline was stored, and it will have one the next time a scan reopens it —
+// which is honestly "not known yet" rather than "not due", and either way not
+// something to interrupt anybody about.
+func (s *Store) RunningOut(ctx context.Context, subject access.Subject,
 	within time.Duration, limit int) ([]Late, error) {
 
 	products, all := subject.Products()
@@ -124,80 +146,171 @@ func (s *Store) RunningOut(ctx context.Context, subject access.Subject, w Window
 		limit = 50
 	}
 
-	cutoff := s.now().UTC().Add(within)
-	var late []Late
-	for _, each := range bands(w) {
-		// Due within the window means first seen at or before this instant.
-		// The arithmetic happens here, and the statement compares timestamps —
-		// which every engine spells the same way.
-		seenBy := cutoff.Add(-each.window)
-
-		query := s.db.NewSelect().
-			TableExpr("finding AS f").
-			Join("JOIN target AS tg ON tg.id = f.target_id").
-			Join("JOIN stream AS st ON st.id = tg.stream_id").
-			Join("JOIN variant AS va ON va.id = tg.variant_id").
-			Join("JOIN product AS p ON p.id = st.product_id").
-			Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
-			Join("JOIN component AS c ON c.id = f.component_id").
-			Join("JOIN scan_run AS o ON o.id = f.opened_run_id").
-			ColumnExpr("v.identifier AS vulnerability").
-			ColumnExpr("c.name AS component").
-			ColumnExpr("MIN(COALESCE(v.severity, '')) AS severity").
-			ColumnExpr("f.urgency_exploited AS exploited").
-			ColumnExpr("p.display_name AS product").
-			ColumnExpr("st.display_name AS stream").
-			ColumnExpr("va.display_name AS variant").
-			// The earliest place, because that is the one the deadline runs
-			// from and the one that makes the whole group late.
-			ColumnExpr("MIN(o.started_at) AS first_seen").
-			ColumnExpr("COUNT(*) AS places").
-			// Named only where every place has the same person. Reporting one
-			// of several would tell somebody a finding is being dealt with
-			// when most of it is not.
-			ColumnExpr("MIN(f.assigned_to) AS assigned_to").
-			ColumnExpr("MAX(f.assigned_to) AS assigned_high").
-			ColumnExpr("COUNT(f.assigned_to) AS assigned_count").
-			Where("f.closed_run_id IS NULL").
-			Where("o.started_at <= ?", seenBy).
-			// Nothing the build already argued away, and nothing a person has
-			// answered. A decision standing here means the clock is not running.
-			Where("f.suppressed_by IS NULL").
-			Where(`NOT EXISTS (SELECT 1 FROM "decision" AS de
-				WHERE de.product_id = st.product_id
-				  AND de.vulnerability_id = f.vulnerability_id
-				  AND de.place_identity = f.place_identity
-				  AND de.live_key IS NOT NULL)`).
-			GroupExpr("v.identifier, c.name, f.urgency_exploited, p.display_name, " +
-				"st.display_name, va.display_name, f.target_id, f.vulnerability_id, f.component_id").
-			OrderExpr("MIN(o.started_at)").
-			Limit(limit)
-		query = each.where(query)
-
-		if !all {
-			query = query.Where("st.product_id IN (?)", bun.List(products))
-		}
-		query = onlyVisible(query, subject, products, all)
-
-		var rows []Late
-		if err := query.Scan(ctx, &rows); err != nil {
-			return nil, fmt.Errorf("read what is running out of time: %w", err)
-		}
-		for _, row := range rows {
-			row.Due = row.FirstSeen.Add(each.window)
-			if row.AssignedCount != row.Places || row.AssignedTo == nil ||
-				row.AssignedHigh == nil || *row.AssignedTo != *row.AssignedHigh {
-				row.AssignedTo = nil
-			}
-			late = append(late, row)
-		}
+	query := s.db.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN target AS tg ON tg.id = f.target_id").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		Join("JOIN variant AS va ON va.id = tg.variant_id").
+		Join("JOIN product AS p ON p.id = st.product_id").
+		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+		Join("JOIN component AS c ON c.id = f.component_id").
+		ColumnExpr("v.identifier AS vulnerability").
+		ColumnExpr("c.name AS component").
+		ColumnExpr("MIN(COALESCE(v.severity, '')) AS severity").
+		ColumnExpr("f.urgency_exploited AS exploited").
+		ColumnExpr("p.display_name AS product").
+		ColumnExpr("st.display_name AS stream").
+		ColumnExpr("va.display_name AS variant").
+		// The earliest of the places this row covers, because that is the one
+		// that makes the whole group late.
+		ColumnExpr("MIN(f.due_at) AS due").
+		ColumnExpr("COUNT(*) AS places").
+		// Named only where every place has the same person. Reporting one of
+		// several would tell somebody a finding is being dealt with when most
+		// of it is not.
+		ColumnExpr("MIN(f.assigned_to) AS assigned_to").
+		ColumnExpr("MAX(f.assigned_to) AS assigned_high").
+		ColumnExpr("COUNT(f.assigned_to) AS assigned_count").
+		Where("f.closed_run_id IS NULL").
+		Where("f.due_at IS NOT NULL").
+		Where("f.due_at <= ?", s.now().UTC().Add(within)).
+		// Nothing the build already argued away, and nothing a person has
+		// answered. A decision standing here means the clock is not running.
+		Where("f.suppressed_by IS NULL").
+		Where(`NOT EXISTS (SELECT 1 FROM "decision" AS de
+			WHERE de.product_id = st.product_id
+			  AND de.vulnerability_id = f.vulnerability_id
+			  AND de.place_identity = f.place_identity
+			  AND de.live_key IS NOT NULL)`).
+		GroupExpr("v.identifier, c.name, f.urgency_exploited, p.display_name, " +
+			"st.display_name, va.display_name, f.target_id, f.vulnerability_id, f.component_id").
+		OrderExpr("due, v.identifier, c.name").
+		Limit(limit)
+	if !all {
+		query = query.Where("st.product_id IN (?)", bun.List(products))
 	}
+	query = onlyVisible(query, subject, products, all)
 
-	// Merged across the bands. Each list arrived ordered, and what somebody
-	// wants to see is the whole estate by deadline rather than five lists.
-	sort.SliceStable(late, func(i, j int) bool { return late[i].Due.Before(late[j].Due) })
-	if len(late) > limit {
-		late = late[:limit]
+	var late []Late
+	if err := query.Scan(ctx, &late); err != nil {
+		return nil, fmt.Errorf("read what is running out of time: %w", err)
+	}
+	for i := range late {
+		if late[i].AssignedCount != late[i].Places || late[i].AssignedTo == nil ||
+			late[i].AssignedHigh == nil || *late[i].AssignedTo != *late[i].AssignedHigh {
+			late[i].AssignedTo = nil
+		}
 	}
 	return late, nil
 }
+
+// Recompute rewrites the deadline on every open finding.
+//
+// The one event that makes a stored deadline wrong is somebody changing the
+// policy that sets it (REM-26). Urgency has the same shape and is left stale
+// until the next scan, which is tolerable because nobody edits the ranking —
+// but people will edit deadlines, and a deadline that ignores the number you
+// just typed is worse than a slow query.
+//
+// Written as one statement per run and band rather than one per finding.
+// A deadline is the run's start plus a fixed number of days, so every finding
+// opened by one run and rated the same way lands on the same instant: the
+// arithmetic happens here, in Go, and the statement writes a constant. That
+// keeps it portable — no engine agrees on how to add days to a timestamp —
+// and it is a handful of statements rather than hundreds of thousands.
+func (s *Store) Recompute(ctx context.Context, windows Windows) (int, error) {
+	var runs []struct {
+		ID        int64     `bun:"id"`
+		StartedAt time.Time `bun:"started_at"`
+	}
+	err := s.db.NewSelect().
+		TableExpr("scan_run AS r").
+		ColumnExpr("r.id AS id").
+		ColumnExpr("r.started_at AS started_at").
+		Where(`EXISTS (SELECT 1 FROM "finding" AS f
+			WHERE f.opened_run_id = r.id AND f.closed_run_id IS NULL)`).
+		Scan(ctx, &runs)
+	if err != nil {
+		return 0, fmt.Errorf("read which runs opened what is still open: %w", err)
+	}
+
+	// Bands as predicates on the rating, in the same order For() decides them,
+	// so a finding lands in exactly one.
+	type band struct {
+		window time.Duration
+		where  func(*bun.UpdateQuery) *bun.UpdateQuery
+	}
+	rated := func(words ...string) func(*bun.UpdateQuery) *bun.UpdateQuery {
+		return func(q *bun.UpdateQuery) *bun.UpdateQuery {
+			return q.Where("urgency_exploited = ?", false).
+				Where(`vulnerability_id IN (SELECT id FROM "vulnerability" WHERE severity IN (?))`,
+					bun.List(words))
+		}
+	}
+	bands := []band{
+		{windows.Exploited, func(q *bun.UpdateQuery) *bun.UpdateQuery {
+			return q.Where("urgency_exploited = ?", true)
+		}},
+		{windows.Critical, rated("critical")},
+		{windows.High, rated("high")},
+		{windows.Low, rated("low", "negligible", "none")},
+		// Everything else: medium, and anything nobody rated.
+		{windows.Medium, func(q *bun.UpdateQuery) *bun.UpdateQuery {
+			return q.Where("urgency_exploited = ?", false).
+				Where(`vulnerability_id NOT IN (SELECT id FROM "vulnerability"
+					WHERE severity IN (?))`,
+					bun.List([]string{"critical", "high", "low", "negligible", "none"}))
+		}},
+	}
+
+	// Written in slices of the identifier range rather than as one statement
+	// per band. SQLite is held to a single connection on purpose — it has one
+	// writer, and more connections add contention rather than concurrency — so
+	// a statement rewriting four hundred thousand rows is not merely slow, it
+	// is the whole process answering nothing until it finishes. Measured at
+	// nineteen seconds, which is the outage this project already diagnosed
+	// once. A slice at a time takes the same total and gives the connection
+	// back between them.
+	var highest int64
+	if err := s.db.NewSelect().Model((*Finding)(nil)).
+		ColumnExpr("COALESCE(MAX(id), 0)").Scan(ctx, &highest); err != nil {
+		return 0, fmt.Errorf("read how far the findings run: %w", err)
+	}
+
+	changed := 0
+	for _, run := range runs {
+		for _, each := range bands {
+			due := run.StartedAt.Add(each.window)
+			for from := int64(0); from <= highest; from += recomputeSlice {
+				query := s.db.NewUpdate().
+					Model((*Finding)(nil)).
+					Set("due_at = ?", due).
+					Where("id > ?", from).
+					Where("id <= ?", from+recomputeSlice).
+					Where("opened_run_id = ?", run.ID).
+					Where("closed_run_id IS NULL")
+				result, err := each.where(query).Exec(ctx)
+				if err != nil {
+					return changed, fmt.Errorf("rewrite deadlines: %w", err)
+				}
+				if n, err := result.RowsAffected(); err == nil {
+					changed += int(n)
+				}
+				// Cancellation is honoured between slices rather than only at
+				// the end, so shutting down during a rewrite stops promptly
+				// and leaves the rest for the next scan or the next edit.
+				if err := ctx.Err(); err != nil {
+					return changed, err
+				}
+			}
+		}
+	}
+	return changed, nil
+}
+
+// recomputeSlice is how many identifiers one rewriting statement covers.
+//
+// Large enough that the statement count stays small, small enough that no one
+// of them holds the connection long. Twenty thousand rows is well under a
+// second on every engine here.
+const recomputeSlice = 20_000

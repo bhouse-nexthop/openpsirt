@@ -60,7 +60,7 @@ func TestWhatIsRunningOutIsOrderedByDeadlineNotByAge(t *testing.T) {
 		// Ninety days ahead, so both are in range and the order is the thing
 		// being tested. The low was seen first and is due last.
 		who := f.holding(t, access.PublicTriage)
-		late, err := f.store.RunningOut(t.Context(), who, testWindows, 90*24*time.Hour, 50)
+		late, err := f.store.RunningOut(t.Context(), who, 90*24*time.Hour, 50)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -73,7 +73,7 @@ func TestWhatIsRunningOutIsOrderedByDeadlineNotByAge(t *testing.T) {
 		}
 
 		// And a fortnight ahead the low is not in range at all.
-		soon, err := f.store.RunningOut(t.Context(), who, testWindows, 14*24*time.Hour, 50)
+		soon, err := f.store.RunningOut(t.Context(), who, 14*24*time.Hour, 50)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -101,7 +101,7 @@ func TestWhatIsRunningOutIsOneRowPerIssueAtAComponent(t *testing.T) {
 		}
 
 		late, err := f.store.RunningOut(t.Context(), f.holding(t, access.PublicTriage),
-			testWindows, 14*24*time.Hour, 50)
+			14*24*time.Hour, 50)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -132,7 +132,7 @@ func TestAnUnratedFindingDoesNotGetTheLongestDeadline(t *testing.T) {
 		// A hundred days in: past the ninety-day medium window, well inside
 		// the hundred-and-eighty-day low one.
 		late, err := f.store.RunningOut(t.Context(), f.holding(t, access.PublicTriage),
-			testWindows, 0, 50)
+			0, 50)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -160,7 +160,7 @@ func TestOverdueIsCountedAgainstWhoeverIsHoldingIt(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		held, err := f.store.HeldBy(t.Context(), triager, testWindows)
+		held, err := f.store.HeldBy(t.Context(), triager)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -173,6 +173,74 @@ func TestOverdueIsCountedAgainstWhoeverIsHoldingIt(t *testing.T) {
 		// A high at a hundred days is seventy days past its thirty-day window.
 		if held[0].Overdue != 2 {
 			t.Errorf("%d of what they hold is overdue, want 2", held[0].Overdue)
+		}
+	})
+}
+
+// deadline reads the stored deadline for one issue, which is the thing a
+// policy change has to move.
+func (f *fixture) deadline(t *testing.T, identifier string) time.Time {
+	t.Helper()
+	var due time.Time
+	err := f.db.DB.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+		ColumnExpr("f.due_at").
+		Where("v.identifier = ?", identifier).
+		Where("f.closed_run_id IS NULL").
+		Limit(1).Scan(t.Context(), &due)
+	if err != nil {
+		t.Fatalf("read the stored deadline for %s: %v", identifier, err)
+	}
+	return due
+}
+
+func TestChangingHowLongSomethingMayStayOpenMovesTheDeadline(t *testing.T) {
+	// REM-26. The deadline is worked out when a finding is first seen and
+	// stored, so the one event that makes it wrong is somebody changing the
+	// policy that set it. A number an administrator just typed that moves
+	// nothing is worse than a slow screen — which is the difference between
+	// this and urgency, stale until the next scan because nobody edits it.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+
+		run := f.run(t)
+		seen := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Microsecond)
+		f.seenAt(t, run, seen)
+		high := found("CVE-2026-HIGH", swss)
+		high.Issue.Severity = "high"
+		if _, err := f.store.Apply(t.Context(), f.target, run,
+			[]finding.Reported{high}); err != nil {
+			t.Fatal(err)
+		}
+
+		// Stored at ingest, as the first sighting plus the window for its
+		// rating rather than as anything derived at read time.
+		was := f.deadline(t, "CVE-2026-HIGH")
+		want := seen.Add(testWindows.High)
+		if was.Sub(want).Abs() > time.Second {
+			t.Fatalf("stored deadline is %s, want the first sighting plus the high window, %s",
+				was, want)
+		}
+
+		shorter := testWindows
+		shorter.High = 15 * 24 * time.Hour
+		changed, err := f.store.Recompute(t.Context(), shorter)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed == 0 {
+			t.Fatal("the policy changed and nothing was rewritten")
+		}
+
+		now := f.deadline(t, "CVE-2026-HIGH")
+		if now.Sub(seen.Add(shorter.High)).Abs() > time.Second {
+			t.Errorf("deadline after halving the window is %s, want %s",
+				now, seen.Add(shorter.High))
+		}
+		if !now.Before(was) {
+			t.Errorf("the window was halved and the deadline did not move earlier: %s then %s",
+				was, now)
 		}
 	})
 }

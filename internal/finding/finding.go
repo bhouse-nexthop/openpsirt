@@ -104,6 +104,20 @@ type Finding struct {
 	// existed is a different question from which version carries it, and it is
 	// the one that says whether an upgrade is overdue or fresh.
 	FixedAt *time.Time `bun:"fixed_at"`
+	// DueAt is when this has to be answered by: when it was first seen, plus
+	// how long something of this urgency may stay open (REM-25). Stored rather
+	// than derived (REM-26) — derived, it costs a pass over every open finding
+	// per urgency band, since each band allows a different number of days.
+	//
+	// It is set once, when the finding opens, and does not move while the
+	// finding stays open. Nothing else would be a deadline. It is recomputed
+	// only when the policy that sets it changes, which is the one event that
+	// makes a stored answer wrong.
+	//
+	// Null on a finding recorded before this was stored, which reads as "not
+	// known" rather than "not due" — a finding with no deadline is left out of
+	// what is running out rather than treated as overdue.
+	DueAt *time.Time `bun:"due_at"`
 	// SuppressedBy is the claim the build made that covers this, where it made
 	// one. A covered finding is kept and marked rather than dropped: a finding
 	// that simply stopped appearing is indistinguishable from a scanner fault,
