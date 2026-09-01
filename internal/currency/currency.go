@@ -21,6 +21,7 @@ package currency
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -50,13 +51,36 @@ type Asker interface {
 // the log with things nobody can act on.
 var ErrUnknown = fmt.Errorf("nothing upstream to ask")
 
+// ErrUnaskable is returned where a name cannot be turned into a request at
+// all — a package identifier carrying something that is not a name.
+//
+// Told apart from an index having a bad day, because the two want opposite
+// treatment: a bad day should be retried, and this never will succeed. Left
+// as a retryable failure it is also a denial of service, since one uploaded
+// document full of such names keeps the whole pass busy failing.
+var ErrUnaskable = fmt.Errorf("this name cannot be asked about")
+
 // Client asks the public index for an ecosystem.
 type Client struct {
 	HTTP *http.Client
 	// Agent identifies us to the indexes. crates.io refuses a request that
 	// does not say who is asking, and it is right to.
 	Agent string
+	// Where each index lives. Fields rather than constants so a test can point
+	// them at a local server: without this the only way to exercise any of
+	// this code is to call somebody else's service, whose answers change, so
+	// in practice it was not exercised at all.
+	GoProxy, NPM, PyPI, Crates string
 }
+
+// The public indexes, which is what a deployment talks to unless a test says
+// otherwise.
+const (
+	DefaultGoProxy = "https://proxy.golang.org"
+	DefaultNPM     = "https://registry.npmjs.org"
+	DefaultPyPI    = "https://pypi.org"
+	DefaultCrates  = "https://crates.io"
+)
 
 // New returns a client with sensible bounds.
 //
@@ -65,8 +89,10 @@ type Client struct {
 // rather than the whole pass.
 func New() *Client {
 	return &Client{
-		HTTP:  &http.Client{Timeout: 15 * time.Second},
-		Agent: "openpsirt (+https://github.com/bhouse-nexthop/openpsirt)",
+		HTTP:    &http.Client{Timeout: 15 * time.Second},
+		Agent:   "openpsirt (+https://github.com/bhouse-nexthop/openpsirt)",
+		GoProxy: DefaultGoProxy, NPM: DefaultNPM,
+		PyPI: DefaultPyPI, Crates: DefaultCrates,
 	}
 }
 
@@ -102,7 +128,11 @@ func (c *Client) get(ctx context.Context, at string, into any) error {
 func (c *Client) getAs(ctx context.Context, at, accept string, into any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, at, nil)
 	if err != nil {
-		return err
+		// The name could not be made into a request. That is a fact about the
+		// component and will not come right on a retry, so it is reported as
+		// such rather than as a transient failure the caller keeps returning
+		// to.
+		return fmt.Errorf("%w: %s: %w", ErrUnaskable, at, err)
 	}
 	req.Header.Set("User-Agent", c.Agent)
 	req.Header.Set("Accept", accept)
@@ -133,7 +163,13 @@ func (g goProxy) Latest(ctx context.Context, name string) (Latest, error) {
 		Version string    `json:"Version"`
 		Time    time.Time `json:"Time"`
 	}
-	at := "https://proxy.golang.org/" + escapeModule(name) + "/@latest"
+	// Escaped per segment, like every other asker here. This was the one that
+	// interpolated the name raw, and a package identifier is somebody else's
+	// input: `pkg:golang/foo%3Fx=1` decodes to a name carrying a `?`, which
+	// turned the path into a query string and let an uploaded document choose
+	// part of the request. The separators that belong are kept because the
+	// split happens first.
+	at := g.c.GoProxy + "/" + escapePath(escapeModule(name)) + "/@latest"
 	if err := g.c.get(ctx, at, &answer); err != nil {
 		return Latest{}, err
 	}
@@ -148,6 +184,16 @@ func (g goProxy) Latest(ctx context.Context, name string) (Latest, error) {
 // An uppercase letter becomes "!" and its lowercase, because the proxy serves
 // from a case-insensitive filesystem and would otherwise confuse two modules
 // whose paths differ only in case.
+// escapePath escapes each segment of a module path, keeping the separators
+// between them.
+func escapePath(name string) string {
+	segments := strings.Split(name, "/")
+	for i, segment := range segments {
+		segments[i] = url.PathEscape(segment)
+	}
+	return strings.Join(segments, "/")
+}
+
 func escapeModule(name string) string {
 	var out strings.Builder
 	for _, r := range name {
@@ -171,8 +217,14 @@ func (n npmRegistry) Latest(ctx context.Context, name string) (Latest, error) {
 	// A scoped name keeps its slash escaped. "@types/node" is one package
 	// rather than a package inside a directory, and unescaping it asks the
 	// registry for something else entirely.
-	at := "https://registry.npmjs.org/" + url.PathEscape(name)
+	at := n.c.NPM + "/" + url.PathEscape(name)
 	if err := n.c.get(ctx, at, &answer); err != nil {
+		// A definite "no such package" is already the answer. Asking the
+		// abbreviated document for the same name returns the same 404, which
+		// doubles the load on a free service for nothing.
+		if errors.Is(err, ErrUnknown) {
+			return Latest{}, err
+		}
 		// The full document is the only one npm dates each version in, and
 		// for a heavily published package it is tens of megabytes. Where it
 		// will not come back, the abbreviated one still says which version is
@@ -221,7 +273,7 @@ func (p pyPI) Latest(ctx context.Context, name string) (Latest, error) {
 			Uploaded string `json:"upload_time_iso_8601"`
 		} `json:"urls"`
 	}
-	at := "https://pypi.org/pypi/" + url.PathEscape(name) + "/json"
+	at := p.c.PyPI + "/pypi/" + url.PathEscape(name) + "/json"
 	if err := p.c.get(ctx, at, &answer); err != nil {
 		return Latest{}, err
 	}
@@ -256,7 +308,7 @@ func (r cratesIO) Latest(ctx context.Context, name string) (Latest, error) {
 			Created string `json:"created_at"`
 		} `json:"versions"`
 	}
-	at := "https://crates.io/api/v1/crates/" + url.PathEscape(name)
+	at := r.c.Crates + "/api/v1/crates/" + url.PathEscape(name)
 	if err := r.c.get(ctx, at, &answer); err != nil {
 		return Latest{}, err
 	}

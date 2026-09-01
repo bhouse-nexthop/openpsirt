@@ -40,7 +40,7 @@ const UnknownAfter = 30 * 24 * time.Hour
 // burst at somebody else's index that looks exactly like abuse, so a pass takes
 // a slice and the next pass takes the next — a backlog drains over hours, and
 // nothing here needs it sooner.
-const mostPerPass = 200
+const MostPerPass = 200
 
 // betweenAsks is the pause between one index request and the next.
 //
@@ -137,21 +137,35 @@ func (r *Refresher) Once(ctx context.Context) (int, error) {
 	}
 	asked := 0
 	for _, component := range due {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return asked, nil
-		default:
+		}
+		// Read every time round rather than once per cycle. A pass is up to
+		// 200 requests with a timeout each, so reading it only at the top
+		// leaves an operator who has just turned this off waiting the better
+		// part of an hour while it keeps talking to the network — which is the
+		// one thing the setting exists to stop.
+		on, err := r.enabled(ctx)
+		if err != nil || !on {
+			return asked, nil
 		}
 
+		// **A question with nowhere to send it is still answered.** Not
+		// recording here is what made this feature do nothing: a component
+		// whose ecosystem has no index stayed due forever, and `due` takes the
+		// oldest 200 with never-asked first — so on a real image, where 3,929
+		// components are `generic`, `oci`, `github` or `maven` against 3,010
+		// that are askable, the window filled with rows nothing ever wrote and
+		// the pass asked upstream about nothing at all, every cycle, forever.
 		ecosystem, name, ok := Asked(component.Purl)
-		if !ok {
+		if !ok || r.Index(ecosystem) == nil {
+			if err := r.record(ctx, component.ID, Latest{}); err != nil {
+				return asked, err
+			}
 			continue
 		}
-		index := r.Index(ecosystem)
-		if index == nil {
-			continue
-		}
-		latest, err := index.Latest(ctx, name)
+
+		latest, err := r.Index(ecosystem).Latest(ctx, name)
 		switch {
 		case err == nil:
 		case errors.Is(err, ErrUnknown):
@@ -160,6 +174,14 @@ func (r *Refresher) Once(ctx context.Context) (int, error) {
 			// asked again tomorrow and every day after: an answer we will
 			// never get is still an answer about this component.
 			latest = Latest{}
+		case errors.Is(err, ErrUnaskable):
+			// The name cannot be turned into a request at all. That is a fact
+			// about this component rather than a bad day at the index, so it
+			// is recorded — left unrecorded it starves the queue exactly as
+			// above, and one uploaded document full of them stops the worker.
+			r.logger.Warn("a component's name cannot be asked about",
+				"ecosystem", ecosystem, "package", name, "error", err)
+			latest = Latest{}
 		case ctx.Err() != nil:
 			return asked, nil
 		default:
@@ -167,7 +189,7 @@ func (r *Refresher) Once(ctx context.Context) (int, error) {
 			// so it stays due and the next pass tries again.
 			r.logger.Warn("an index did not answer",
 				"ecosystem", ecosystem, "package", name, "error", err)
-			time.Sleep(r.Pause)
+			r.pause(ctx)
 			continue
 		}
 
@@ -175,9 +197,25 @@ func (r *Refresher) Once(ctx context.Context) (int, error) {
 			return asked, err
 		}
 		asked++
-		time.Sleep(r.Pause)
+		r.pause(ctx)
 	}
 	return asked, nil
+}
+
+// pause waits between requests, and stops waiting if we are shutting down.
+//
+// A bare time.Sleep in a worker driven by a context is a worker ignoring the
+// signal it was given; the wait is short, but short is not cancellable.
+func (r *Refresher) pause(ctx context.Context) {
+	if r.Pause <= 0 {
+		return
+	}
+	timer := time.NewTimer(r.Pause)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+	case <-timer.C:
+	}
 }
 
 // due reads the components whose answer is missing or old.
@@ -195,7 +233,12 @@ func (r *Refresher) due(ctx context.Context) ([]stale, error) {
 		// distribution is the maintainer, and the date it released says
 		// nothing about the age of the software inside it — Debian shipping a
 		// security update today does not mean upstream is moving.
-		Where("c.purl NOT LIKE 'pkg:deb/%'").
+		// Lowercased, because `Asked` lowercases the ecosystem and these two
+		// have to agree. They did not: `pkg:DEB/...` is excluded by SQLite's
+		// case-insensitive LIKE and kept by PostgreSQL's and MariaDB's, so the
+		// same document behaved differently per engine — and the row that got
+		// through then had no index and stuck.
+		Where("LOWER(c.purl) NOT LIKE 'pkg:deb/%'").
 		// Never asked, or asked long enough ago — where "long enough" depends
 		// on whether we got an answer. A version we have goes stale in a day;
 		// a package the index has never heard of is left for a month.
@@ -208,7 +251,7 @@ func (r *Refresher) due(ctx context.Context) ([]stale, error) {
 		}).
 		OrderExpr("c.latest_checked_at IS NULL DESC").
 		OrderExpr("c.latest_checked_at ASC").
-		Limit(mostPerPass).
+		Limit(MostPerPass).
 		Scan(ctx, &rows)
 	if err != nil {
 		return nil, fmt.Errorf("read what has not been asked about lately: %w", err)
@@ -227,8 +270,21 @@ func (r *Refresher) record(ctx context.Context, id int64, latest Latest) error {
 	q := r.db.NewUpdate().
 		Table("component").
 		Set("latest_checked_at = ?", r.Now().UTC()).
-		Set("latest_version = ?", nullable(latest.Version)).
 		Where("id = ?", id)
+	if latest.Version == "" {
+		// An empty answer records that we asked and leaves any previous answer
+		// alone. Overwriting it would let one 404 — which npm and crates.io
+		// return for a renamed package and for some transient conditions —
+		// destroy a version we had, and then sit on the hole for a month.
+		// Keeping it also means the row goes stale in a day rather than in
+		// thirty, so a package that has stopped answering is looked at again
+		// soon rather than written off.
+		if _, err := q.Exec(ctx); err != nil {
+			return fmt.Errorf("record that we asked: %w", err)
+		}
+		return nil
+	}
+	q = q.Set("latest_version = ?", latest.Version)
 	if latest.Released.IsZero() {
 		q = q.Set("latest_released_at = NULL")
 	} else {
@@ -238,14 +294,4 @@ func (r *Refresher) record(ctx context.Context, id int64, latest Latest) error {
 		return fmt.Errorf("record what upstream has released: %w", err)
 	}
 	return nil
-}
-
-// nullable keeps an absent answer out of the column as null rather than as an
-// empty string, so a reader does not have to know which of the two this build
-// happened to write.
-func nullable(text string) any {
-	if text == "" {
-		return nil
-	}
-	return text
 }

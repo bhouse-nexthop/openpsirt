@@ -2,6 +2,7 @@ package currency_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/dbtest"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/schema"
+	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 )
 
 // answers is an index that says what a test tells it to, so none of this
@@ -65,6 +67,12 @@ func seed(t *testing.T, db *database.DB, of []component,
 		if _, insert := db.DB.NewInsert().Model(row).Exec(ctx); insert != nil {
 			t.Fatalf("seed component %d: %v", i, insert)
 		}
+	}
+	// Asking is off unless a deployment turns it on, and `Once` enforces that
+	// on every component rather than trusting `Run` to have checked — a guard
+	// beside the work cannot be skipped by calling the work another way.
+	if err := setting.NewStore(db.DB).Set(ctx, setting.UpstreamCurrency, setting.On); err != nil {
+		t.Fatalf("turn asking on: %v", err)
 	}
 	asked := &[]string{}
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -316,4 +324,130 @@ func TestUpstreamIsOnlyCalledSilentAfterAClearYear(t *testing.T) {
 				c.what, c.identifier, c.released.Format(time.DateOnly), got, c.silent)
 		}
 	}
+}
+
+// The defect this exists to prevent: a component whose ecosystem has no index
+// used to be skipped without recording that we had looked, so it stayed due
+// forever. `due` takes the oldest 200 with never-asked first, so on a real
+// image — 3,929 components in ecosystems nothing asks against 3,010 that are
+// askable — the window filled with rows nothing ever wrote and the feature
+// asked upstream about nothing at all, every cycle, for good.
+func TestEcosystemsWithNoIndexDoNotStarveTheQueue(t *testing.T) {
+	each(t, func(t *testing.T, db *database.DB) {
+		var of []component
+		for i := 0; i < currency.MostPerPass; i++ {
+			of = append(of, component{purl: fmt.Sprintf("pkg:generic/thing-%03d@1.0", i)})
+		}
+		of = append(of, component{purl: "pkg:cargo/serde@1.0.0"})
+		r, asked := seed(t, db, of, map[string]currency.Latest{
+			"serde": {Version: "1.0.230"},
+		}, nil)
+
+		// However the unaskable ones are ordered, they must be got through
+		// rather than sat on. Two passes is more than enough for one slice.
+		for range 2 {
+			if _, err := r.Once(t.Context()); err != nil {
+				t.Fatalf("once: %v", err)
+			}
+		}
+		if len(*asked) == 0 {
+			t.Fatal("nothing upstream was ever asked: the unaskable components " +
+				"filled the window and were never recorded, so they stayed due")
+		}
+		unasked := 0
+		for _, row := range read(t, db) {
+			if row.Checked == nil {
+				unasked++
+			}
+		}
+		if unasked != 0 {
+			t.Errorf("%d components still have no record of being looked at", unasked)
+		}
+	})
+}
+
+// A name that cannot be made into a request will never come right, so it is
+// recorded rather than retried. Left retryable it starves the queue the same
+// way, and one uploaded document full of such names stops the worker.
+func TestANameThatCannotBeAskedAboutIsNotRetriedForever(t *testing.T) {
+	each(t, func(t *testing.T, db *database.DB) {
+		r, _ := seed(t, db, []component{{purl: "pkg:golang/example.com/m@v1"}},
+			nil, currency.ErrUnaskable)
+
+		if _, err := r.Once(t.Context()); err != nil {
+			t.Fatalf("once: %v", err)
+		}
+		got := read(t, db)["pkg:golang/example.com/m@v1"]
+		if got.Checked == nil {
+			t.Error("a name that cannot be asked about was left due forever, " +
+				"so it will fill the window on every pass from now on")
+		}
+	})
+}
+
+// Turning it off has to take effect without a redeploy, which is the reason
+// the setting is read per cycle rather than at startup. A pass is up to 200
+// requests with a timeout each, so reading it only at the top of a pass leaves
+// an operator who has just turned it off waiting the better part of an hour.
+func TestTurningItOffStopsTheCurrentPass(t *testing.T) {
+	each(t, func(t *testing.T, db *database.DB) {
+		var of []component
+		for i := 0; i < 10; i++ {
+			of = append(of, component{purl: fmt.Sprintf("pkg:cargo/crate-%d@1.0", i)})
+		}
+		r, asked := seed(t, db, of, map[string]currency.Latest{}, nil)
+
+		// Off again after the first component is asked about.
+		settings := setting.NewStore(db.DB)
+		r.Index = func(string) currency.Asker {
+			return stopping{t: t, settings: settings, asked: asked}
+		}
+		if _, err := r.Once(t.Context()); err != nil {
+			t.Fatalf("once: %v", err)
+		}
+		if len(*asked) > 2 {
+			t.Errorf("asked about %d components after it was turned off: %v",
+				len(*asked), *asked)
+		}
+	})
+}
+
+// stopping answers once and turns the setting off while the pass is running.
+type stopping struct {
+	t        *testing.T
+	settings *setting.Store
+	asked    *[]string
+}
+
+func (s stopping) Latest(ctx context.Context, name string) (currency.Latest, error) {
+	*s.asked = append(*s.asked, name)
+	if err := s.settings.Set(ctx, setting.UpstreamCurrency, setting.Off); err != nil {
+		s.t.Fatalf("turn asking off: %v", err)
+	}
+	return currency.Latest{Version: "1.0.0"}, nil
+}
+
+// An answer we already had is not thrown away because the index said 404 once.
+// npm and crates.io return one for a renamed package and for some transient
+// conditions, and overwriting would destroy a version we had and then sit on
+// the hole for a month.
+func TestAnIndexSayingNoDoesNotDestroyWhatWeAlreadyKnew(t *testing.T) {
+	each(t, func(t *testing.T, db *database.DB) {
+		had := "1.0.0"
+		long := time.Now().UTC().Add(-2 * currency.StaleAfter)
+		r, _ := seed(t, db, []component{
+			{purl: "pkg:cargo/serde@1.0.0", checked: &long, version: &had},
+		}, map[string]currency.Latest{}, nil)
+
+		if _, err := r.Once(t.Context()); err != nil {
+			t.Fatalf("once: %v", err)
+		}
+		got := read(t, db)["pkg:cargo/serde@1.0.0"]
+		if got.Version == nil || *got.Version != had {
+			t.Errorf("the stored version became %v; one 404 must not destroy it", got.Version)
+		}
+		if got.Checked == nil || !got.Checked.After(long) {
+			t.Error("the time of asking was not moved on")
+		}
+	})
 }
