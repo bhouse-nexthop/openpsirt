@@ -977,6 +977,13 @@ components:
           format: uri
           readOnly: true
           type: string
+        floor:
+          description: The line they are below
+          type: string
+        hidden:
+          description: Findings this product does not consider worth triaging, kept out of the list. Still recorded and still counted
+          format: int64
+          type: integer
         items:
           items:
             $ref: "#/components/schemas/FindingBody"
@@ -3683,6 +3690,13 @@ paths:
           schema:
             description: Keep only issues where an upstream fixed version is known
             type: boolean
+        - description: Include what this product does not consider worth triaging. Those are always recorded and counted; this asks to see them in the list
+          explode: false
+          in: query
+          name: below_floor
+          schema:
+            description: Include what this product does not consider worth triaging. Those are always recorded and counted; this asks to see them in the list
+            type: boolean
         - description: Keep only what is open against components of this name, whatever version
           explode: false
           in: query
@@ -3787,6 +3801,13 @@ paths:
           name: fixable
           schema:
             description: Keep only issues where an upstream fixed version is known
+            type: boolean
+        - description: Include what this product does not consider worth triaging
+          explode: false
+          in: query
+          name: below_floor
+          schema:
+            description: Include what this product does not consider worth triaging
             type: boolean
         - description: Drop components of these names
           explode: false
