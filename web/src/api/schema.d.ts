@@ -2298,13 +2298,18 @@ export interface components {
         NeighbourBody: {
             /**
              * Format: int64
+             * @description Open findings in everything under it, including on it. A container holds none of its own, so this is the number that says whether a branch is worth opening
+             */
+            beneath: number;
+            /**
+             * Format: int64
              * @description How many components it pulls in. Zero means nothing to open
              */
             children: number;
             component: string;
             /**
              * Format: int64
-             * @description Open findings against it in this build
+             * @description Open findings against this component itself
              */
             findings: number;
             version: string;

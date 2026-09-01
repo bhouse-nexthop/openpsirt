@@ -16,7 +16,8 @@ import (
 type NeighbourBody struct {
 	Component string `json:"component"`
 	Version   string `json:"version"`
-	Findings  int    `json:"findings" doc:"Open findings against it in this build"`
+	Findings  int    `json:"findings" doc:"Open findings against this component itself"`
+	Beneath   int    `json:"beneath" doc:"Open findings in everything under it, including on it. A container holds none of its own, so this is the number that says whether a branch is worth opening"`
 	Children  int    `json:"children" doc:"How many components it pulls in. Zero means nothing to open"`
 }
 
@@ -148,7 +149,7 @@ func neighbours(rows []graph.Neighbour) []NeighbourBody {
 	for _, row := range rows {
 		out = append(out, NeighbourBody{
 			Component: row.Name, Version: row.Version,
-			Findings: row.Findings, Children: row.Children,
+			Findings: row.Findings, Beneath: row.Beneath, Children: row.Children,
 		})
 	}
 	return out

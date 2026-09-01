@@ -8,7 +8,16 @@ import { Failed } from "../ui/Failed";
 import { Crumbs } from "../ui/Crumbs";
 
 type At = { product: string; stream: string; variant: string };
-type Node = { component: string; version: string; findings: number; children: number };
+type Node = {
+  component: string;
+  version: string;
+  // What is open against this component itself, and what is open in everything
+  // under it. A container holds none of its own, so the second is the number
+  // that says whether a branch is worth opening.
+  findings: number;
+  beneath: number;
+  children: number;
+};
 
 // How many of a wide node's leaves are drawn before it says how many more
 // there are. A build's root has thousands, and drawing them all is how a tree
@@ -209,7 +218,7 @@ export function Tree() {
             <p className="mt-3 text-xs text-[var(--faint)]">
               {searching
                 ? "Matches anywhere in the build, most findings first. Selecting one shows what pulls it in."
-                : "Children load when a node is opened, and a count sits on every node so descending has a direction — you are following the findings, not exploring."}
+                : "Children load when a node is opened, and the count on a node is what is open in everything under it — a container holds none of its own, so counting only itself would say every container is clean."}
             </p>
           </div>
         </div>
@@ -267,9 +276,9 @@ function Matches({
           </span>
           <span className="ver">{node.version}</span>
           <span
-            className={`count${node.findings > HOT ? " hot" : node.findings === 0 ? " none" : ""}`}
+            className={`count${node.beneath > HOT ? " hot" : node.beneath === 0 ? " none" : ""}`}
           >
-            {node.findings.toLocaleString()}
+            {node.beneath.toLocaleString()}
           </span>
         </div>
       ))}
@@ -338,10 +347,18 @@ function Branches({
         </span>
         <span className="ver">{node.version}</span>
         {repeated && <span className="repeat">shown above</span>}
+        {/* What is open in everything under it, not only on it. A container
+            holds none of its own, so counting only itself said every one of
+            them was clean while the packages inside held thousands. */}
         <span
-          className={`count${node.findings > HOT ? " hot" : node.findings === 0 ? " none" : ""}`}
+          className={`count${node.beneath > HOT ? " hot" : node.beneath === 0 ? " none" : ""}`}
+          title={
+            node.children > 0
+              ? `${node.beneath.toLocaleString()} open in here, ${node.findings.toLocaleString()} against this component itself`
+              : undefined
+          }
         >
-          {node.findings.toLocaleString()}
+          {node.beneath.toLocaleString()}
         </span>
       </div>,
     );
@@ -481,8 +498,14 @@ function Pane({
         <div className="block">
           <h4>Open here</h4>
           <p className="text-2xl font-semibold tracking-tight">
-            {node ? node.findings.toLocaleString() : "—"}
+            {node ? node.beneath.toLocaleString() : "—"}
           </p>
+          {node && node.children > 0 && (
+            <p className="hint">
+              in everything under it. {node.findings.toLocaleString()} against this component
+              itself.
+            </p>
+          )}
         </div>
 
         <div className="block">

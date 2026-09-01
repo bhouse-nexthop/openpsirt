@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/uptrace/bun"
@@ -265,10 +266,21 @@ func (s *Store) ComponentVersionAt(ctx context.Context, targetID int64, name, ve
 
 // Neighbour is one component next to another in the graph.
 type Neighbour struct {
-	Name     string `bun:"name"`
-	Version  string `bun:"version"`
-	Findings int    `bun:"findings"`
-	Children int    `bun:"children"`
+	Name    string `bun:"name"`
+	Version string `bun:"version"`
+	// Findings is what is open against this component itself, and Beneath is
+	// that plus everything under it.
+	//
+	// Both, because they answer different questions and a container answers
+	// zero to the first: it holds no findings of its own, so a tree showing
+	// only that says every container is clean while the packages inside them
+	// hold thousands. What makes a branch worth opening is what is in it.
+	Findings int `bun:"findings"`
+	Beneath  int `bun:"beneath,scanonly"`
+	Children int `bun:"children"`
+	// ComponentID is what the rollup is worked out from. Read rather than
+	// shown.
+	ComponentID int64 `bun:"component_id"`
 }
 
 // Around reports what sits directly above and below one component in a build.
@@ -348,7 +360,7 @@ func (s *Store) describe(ctx context.Context, subject access.Subject, targetID, 
 		return nil, err
 	}
 
-	row := &Neighbour{Children: children}
+	row := &Neighbour{Children: children, ComponentID: componentID}
 	err = s.db.NewSelect().
 		TableExpr("component AS c").
 		ColumnExpr("c.name AS name").
@@ -368,6 +380,11 @@ func (s *Store) describe(ctx context.Context, subject access.Subject, targetID, 
 	if err != nil {
 		return nil, fmt.Errorf("read what this build is: %w", err)
 	}
+	totals, err := s.beneath(ctx, targetID, readable, []int64{componentID})
+	if err != nil {
+		return nil, err
+	}
+	row.Beneath = totals[componentID]
 	return row, nil
 }
 
@@ -400,6 +417,7 @@ func (s *Store) step(ctx context.Context, subject access.Subject, targetID, comp
 			JOIN "graph_node" AS dp ON dp.id = d.parent_id
 			WHERE d.target_id = ? AND d.closed_scan_id IS NULL
 			GROUP BY dp.component_id) AS kids ON kids.cid = c.id`, targetID).
+		ColumnExpr("c.id AS component_id").
 		ColumnExpr("c.name AS name").
 		ColumnExpr("c.version AS version").
 		// What is open against it here, so descending follows the findings
@@ -447,6 +465,46 @@ func (s *Store) step(ctx context.Context, subject access.Subject, targetID, comp
 	if err != nil {
 		return nil, fmt.Errorf("walk the graph: %w", err)
 	}
+
+	// What is in each of them, not only what is on it. A container holds no
+	// findings of its own, so without this every one of them reads zero while
+	// the packages inside hold thousands — and a tree whose counts cannot tell
+	// a full branch from an empty one is not something anybody can descend by.
+	ids := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ComponentID)
+	}
+	totals, err := s.beneath(ctx, targetID, readable, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		rows[i].Beneath = totals[rows[i].ComponentID]
+	}
+
+	// What opens comes first, then leaves by what is open against them.
+	//
+	// **Branches are ordered by name, not by what is beneath them**, and that
+	// is deliberate. Ordering by the rollup was tried and made the screen
+	// worse: an edge here means "contains or depends on", the two are not
+	// distinguished in the document, and forty kernel-module packages each
+	// depend on the one kernel — so every one of them reported the kernel's
+	// 425,098 and they filled the first screen, putting the containers back
+	// out of sight. That is the defect this ordering was changed to fix,
+	// arriving from the other side.
+	//
+	// A leaf has nothing under it, so for leaves the rollup and the count are
+	// the same number and ordering by it follows the findings as it should.
+	sort.SliceStable(rows, func(i, j int) bool {
+		a, b := rows[i], rows[j]
+		if (a.Children > 0) != (b.Children > 0) {
+			return a.Children > 0
+		}
+		if a.Children == 0 && a.Findings != b.Findings {
+			return a.Findings > b.Findings
+		}
+		return a.Name < b.Name
+	})
 	return rows, nil
 }
 
