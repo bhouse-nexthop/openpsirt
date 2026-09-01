@@ -448,6 +448,45 @@ components:
         - recorded
         - ids
       type: object
+    DecidedBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DecidedBody.json
+          format: uri
+          readOnly: true
+          type: string
+        covered:
+          description: How many findings those places hold
+          format: int64
+          type: integer
+        ids:
+          items:
+            format: int64
+            type: integer
+          type:
+            - array
+            - "null"
+        left:
+          description: Places of this finding left open, because they were not named
+          format: int64
+          type: integer
+        needs_approval:
+          description: Whether a second person has to agree
+          type: boolean
+        recorded:
+          description: How many places it was written against
+          format: int64
+          type: integer
+      required:
+        - recorded
+        - covered
+        - left
+        - needs_approval
+        - ids
+      type: object
     DecisionBody:
       additionalProperties: false
       properties:
@@ -877,6 +916,50 @@ components:
         - component
         - version
         - places
+      type: object
+    FindingDecisionBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/FindingDecisionBody.json
+          format: uri
+          readOnly: true
+          type: string
+        deferred_until:
+          description: Required when it is deferred. A date, as 2026-03-31
+          type: string
+        justification:
+          description: Why it does not apply. Required when it does not
+          enum:
+            - component_not_present
+            - vulnerable_code_not_present
+            - vulnerable_code_not_in_execute_path
+            - vulnerable_code_cannot_be_controlled_by_adversary
+            - inline_mitigations_already_exist
+          type: string
+        outcome:
+          enum:
+            - affected
+            - not-applicable
+            - deferred
+            - wont-fix
+          type: string
+        places:
+          description: Which places this covers, as the finding names them. Omit for all of them
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        reasoning:
+          description: Why this holds
+          minLength: 1
+          type: string
+      required:
+        - outcome
+        - reasoning
       type: object
     FindingsOutputBody:
       additionalProperties: false
@@ -1971,6 +2054,9 @@ components:
         consumer:
           description: What pulls the component in here. Absent under the product itself
           type: string
+        decided:
+          description: A claim already stands here. Not the same as suppressed, which is the build's own argument
+          type: boolean
         place:
           description: Name this when recording a decision about it
           type: string
@@ -3857,6 +3943,76 @@ paths:
       summary: Assign a finding to somebody
       tags:
         - Findings
+  /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/decision:
+    post:
+      description: |-
+        Records the same claim against every place this issue occupies in this component. Naming `places` narrows it; leaving it out covers all of them, which is the default a judgment should have — a kernel flaw reaches sixty modules and the answer is almost always the same for all of them, so asking sixty times guarantees somebody stops reading.
+
+        A place left out stays **open**. Nothing is recorded against it and nothing is asked about it: a component used unsafely in one consumer and not another is exactly what per-place findings exist to capture, and demanding a justification for the places you did not answer is the tool arguing with a judgment it asked for.
+
+        One action still writes one record per place, each keyed and expiring on its own (REL-02), so a place that later diverges is not silently covered by a decision nobody made about it.
+
+        The ordinary approval rules apply however many places this reaches. Always needing a second person is about a claim covering **several issues** nobody read one by one; this is one claim about one issue (TRI-38).
+      operationId: decide-finding
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - description: The issue, by any name it is known under
+          in: path
+          name: vulnerability
+          required: true
+          schema:
+            description: The issue, by any name it is known under
+            type: string
+        - description: The component, as the findings list gives it
+          in: path
+          name: component
+          required: true
+          schema:
+            description: The component, as the findings list gives it
+            type: string
+        - description: Which version, where the build ships more than one under that name
+          explode: false
+          in: query
+          name: version
+          schema:
+            description: Which version, where the build ships more than one under that name
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FindingDecisionBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecidedBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Record one judgment about a finding, covering its places
+      tags:
+        - Triage
   /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision:
     get:
       description: |-

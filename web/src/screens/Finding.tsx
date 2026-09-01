@@ -1,5 +1,5 @@
-import { Fragment } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { Fragment, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
@@ -132,6 +132,13 @@ export function Finding() {
 
         <Places at={at} places={it.places ?? []} />
 
+        <Decide
+          at={at}
+          component={it.component ?? ""}
+          version={it.version ?? ""}
+          places={it.places ?? []}
+        />
+
         {(it.aliases ?? []).length > 0 && (
           <div className="block">
             <h4>Also known as</h4>
@@ -149,6 +156,240 @@ export function Finding() {
 // Every place the component sits at. A place is the component and what
 // directly pulled it in — the pair, not the route — and it is what a decision
 // is recorded against.
+const OUTCOMES = [
+  ["affected", "Affected — will fix"],
+  ["not-applicable", "Not applicable"],
+  ["deferred", "Defer to a date"],
+  ["wont-fix", "Won't fix"],
+] as const;
+
+const JUSTIFICATIONS = [
+  "vulnerable_code_not_in_execute_path",
+  "vulnerable_code_not_present",
+  "component_not_present",
+  "vulnerable_code_cannot_be_controlled_by_adversary",
+  "inline_mitigations_already_exist",
+] as const;
+
+type Sitting = { place: string; consumer?: string; decided?: boolean };
+
+// One judgment about this finding, covering every place it sits at.
+//
+// All of them is the default and the places are listed beside it, so nobody
+// discovers afterwards that they answered for thirty containers — and nobody
+// has to answer thirty times, which is what TRI-29 exists to prevent and what
+// deciding a place at a time made unavoidable.
+//
+// Unticking one leaves that place open and nothing is recorded against it. A
+// component used unsafely in one consumer and not another is exactly what
+// per-place findings capture, and asking somebody to justify the places they
+// deliberately left out is the tool arguing with a judgment it asked for.
+function Decide({
+  at,
+  component,
+  version,
+  places,
+}: {
+  at: { product: string; stream: string; variant: string; vulnerability: string };
+  component: string;
+  version: string;
+  places: Sitting[];
+}) {
+  const queries = useQueryClient();
+  const open = places.filter((place) => !place.decided);
+  const [covering, setCovering] = useState<Set<string> | null>(null);
+  const [outcome, setOutcome] = useState<string>("");
+  const [justification, setJustification] = useState<string>(JUSTIFICATIONS[0]);
+  const [until, setUntil] = useState("");
+  const [reasoning, setReasoning] = useState("");
+
+  // Everything still open, until somebody says otherwise.
+  const chosen = covering ?? new Set(open.map((place) => place.place));
+  const all = chosen.size === open.length;
+
+  const decide = useMutation({
+    mutationFn: async () =>
+      unwrap(
+        await api.POST(
+          "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/decision",
+          {
+            params: {
+              path: { ...at, component },
+              query: version ? { version } : {},
+            },
+            body: {
+              outcome: outcome as (typeof OUTCOMES)[number][0],
+              reasoning,
+              ...(outcome === "not-applicable"
+                ? { justification: justification as (typeof JUSTIFICATIONS)[number] }
+                : {}),
+              ...(outcome === "deferred" ? { deferred_until: until } : {}),
+              // Sent only when it is a narrowing. Absent means all of them,
+              // which is the default the server has too — saying it twice
+              // invites the two to disagree.
+              ...(all ? {} : { places: [...chosen] }),
+            },
+          },
+        ),
+      ),
+    onSuccess: () => {
+      setCovering(null);
+      setOutcome("");
+      setReasoning("");
+      void queries.invalidateQueries({ queryKey: ["finding"] });
+      void queries.invalidateQueries({ queryKey: ["queue"] });
+    },
+  });
+
+  const decided = places.length - open.length;
+  const ready =
+    outcome !== "" &&
+    reasoning.trim() !== "" &&
+    chosen.size > 0 &&
+    (outcome !== "deferred" || until !== "");
+
+  if (open.length === 0) {
+    return (
+      <div className="card">
+        <h3>Decide</h3>
+        <p className="reading" style={{ margin: 0 }}>
+          Every place this sits at has been answered. Revising one of those claims is done from
+          the decision itself, so a second claim about the same code cannot stand beside the
+          first.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card">
+      <h3>Decide</h3>
+      {decided > 0 && (
+        <p className="hint" style={{ margin: "-4px 0 10px" }}>
+          {decided} of {places.length} places already answered. This covers what is left.
+        </p>
+      )}
+      {decide.error != null && (
+        <Failed error={decide.error} what="That judgment could not be recorded." />
+      )}
+      {decide.data && (
+        <div className="alert" style={{ marginBottom: 12 }}>
+          <strong>
+            Recorded against {decide.data.recorded}{" "}
+            {decide.data.recorded === 1 ? "place" : "places"}
+          </strong>
+          <br />
+          <span>
+            {decide.data.needs_approval
+              ? "Waiting for a second person to agree."
+              : "In force now."}
+            {(decide.data.left ?? 0) > 0 && (
+              <>
+                {" "}
+                {decide.data.left} {decide.data.left === 1 ? "place is" : "places are"} still open,
+                because they were not covered.
+              </>
+            )}
+          </span>
+        </div>
+      )}
+
+      <div className="field">
+        <label>Outcome</label>
+        <div className="outcomes">
+          {OUTCOMES.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className="outcome"
+              aria-pressed={outcome === value}
+              onClick={() => setOutcome(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {outcome === "not-applicable" && (
+        <div className="field">
+          <label htmlFor="justification">Why it does not apply</label>
+          <select
+            id="justification"
+            value={justification}
+            onChange={(event) => setJustification(event.target.value)}
+          >
+            {JUSTIFICATIONS.map((each) => (
+              <option key={each} value={each}>
+                {each}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {outcome === "deferred" && (
+        <div className="field">
+          <label htmlFor="until">Returns on</label>
+          <input
+            id="until"
+            type="date"
+            value={until}
+            onChange={(event) => setUntil(event.target.value)}
+          />
+        </div>
+      )}
+
+      <div className="field">
+        <label htmlFor="reasoning">Why this holds</label>
+        <textarea
+          id="reasoning"
+          rows={4}
+          value={reasoning}
+          onChange={(event) => setReasoning(event.target.value)}
+        />
+      </div>
+
+      <div className="field">
+        <label>
+          What this covers — {chosen.size} of {open.length}{" "}
+          {open.length === 1 ? "place" : "places"}
+        </label>
+        <p className="hint" style={{ margin: "0 0 6px" }}>
+          All of them unless you say otherwise. A place you untick stays open, and nothing is
+          recorded against it.
+        </p>
+        <div className="tree">
+          {open.map((place) => (
+            <label key={place.place} className="node" style={{ cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={chosen.has(place.place)}
+                onChange={(event) => {
+                  const next = new Set(chosen);
+                  if (event.target.checked) next.add(place.place);
+                  else next.delete(place.place);
+                  setCovering(next);
+                }}
+              />
+              <span className="id">{place.consumer || "the product itself"}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        className="btn"
+        disabled={!ready || decide.isPending}
+        onClick={() => decide.mutate()}
+      >
+        Record this
+      </button>
+    </div>
+  );
+}
+
 function Places({
   at,
   places,

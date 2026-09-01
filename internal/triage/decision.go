@@ -258,6 +258,73 @@ func (s *Store) Propose(ctx context.Context, subject access.Subject, p Proposal)
 	return recorded, err
 }
 
+// ProposeMany records the same claim at several places as one action.
+//
+// One judgment about a finding covers every place it sits at unless somebody
+// narrows it (TRI-37), and a finding on shared code reaches many: on a real
+// image a kernel issue averages eighty-six. Written one at a time that is
+// eighty-six transactions, each with its own commit, and on SQLite — held to a
+// single connection because it has one writer — that is the whole process
+// waiting while somebody presses a button.
+//
+// Atomic for a better reason than speed. REL-02 has one action writing one
+// record per place; half of them written and the rest abandoned is not that,
+// and it leaves a finding that is neither answered nor open with nothing
+// saying which places were which.
+func (s *Store) ProposeMany(ctx context.Context, subject access.Subject, proposals []Proposal) ([]*Decision, error) {
+	if len(proposals) == 0 {
+		return nil, nil
+	}
+	// Every one of them checked before any of them is written. Refusing
+	// halfway is the failure this exists to avoid.
+	for _, p := range proposals {
+		if !mayDecide(subject, p.Place.ProductID, visibilityOf(p.Place)) {
+			return nil, ErrNotTheirs
+		}
+		if err := p.valid(); err != nil {
+			return nil, err
+		}
+		if p.By != subject.ID {
+			return nil, fmt.Errorf("a decision is recorded as made by whoever made it")
+		}
+	}
+
+	db, ok := s.db.(*bun.DB)
+	if !ok {
+		return nil, fmt.Errorf("this store is already inside a transaction")
+	}
+
+	var recorded []*Decision
+	err := database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+		within := &Store{db: tx, now: s.now}
+		recorded = recorded[:0]
+		for _, p := range proposals {
+			one, err := within.propose(ctx, p)
+			if err != nil {
+				return err
+			}
+			recorded = append(recorded, one)
+		}
+		return nil
+	})
+	if err != nil {
+		// Named the same way one at a time names it: which claim to go and
+		// read, rather than which constraint was violated.
+		if errors.Is(err, ErrAlreadyDecided) {
+			for _, p := range proposals {
+				if standing, found := s.liveAt(ctx, liveKeyFor(p.Place)); found {
+					return nil, fmt.Errorf(
+						"%w: decision %d is already %s at one of these places — revise that one "+
+							"rather than recording a second claim about the same code",
+						ErrAlreadyDecided, standing.ID, standing.State)
+				}
+			}
+		}
+		return nil, err
+	}
+	return recorded, nil
+}
+
 func (s *Store) propose(ctx context.Context, p Proposal) (*Decision, error) {
 	now := s.now().Truncate(time.Microsecond)
 	key := liveKeyFor(p.Place)

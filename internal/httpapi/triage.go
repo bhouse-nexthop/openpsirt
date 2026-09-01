@@ -12,6 +12,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/markdown"
 	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 	"github.com/bhouse-nexthop/openpsirt/internal/triage"
@@ -374,6 +375,188 @@ func registerProposing(api huma.API, in Ingest) {
 		body.Places, body.Versions = at.Places, at.Versions()
 		return &struct{ Body DecisionBody }{Body: body}, nil
 	})
+}
+
+// FindingDecisionBody is one judgment about a finding, and which of its places
+// it covers.
+type FindingDecisionBody struct {
+	Outcome       string `json:"outcome" enum:"affected,not-applicable,deferred,wont-fix"`
+	Justification string `json:"justification,omitempty" enum:"component_not_present,vulnerable_code_not_present,vulnerable_code_not_in_execute_path,vulnerable_code_cannot_be_controlled_by_adversary,inline_mitigations_already_exist" doc:"Why it does not apply. Required when it does not"`
+	DeferredUntil string `json:"deferred_until,omitempty" doc:"Required when it is deferred. A date, as 2026-03-31"`
+	Reasoning     string `json:"reasoning" minLength:"1" doc:"Why this holds"`
+	// Places is the deliberate narrowing. Absent means every place, which is
+	// the default TRI-29 asks for.
+	Places []string `json:"places,omitempty" doc:"Which places this covers, as the finding names them. Omit for all of them"`
+}
+
+// DecidedBody is what one judgment about a finding recorded.
+type DecidedBody struct {
+	Recorded      int     `json:"recorded" doc:"How many places it was written against"`
+	Covered       int     `json:"covered" doc:"How many findings those places hold"`
+	Left          int     `json:"left" doc:"Places of this finding left open, because they were not named"`
+	NeedsApproval bool    `json:"needs_approval" doc:"Whether a second person has to agree"`
+	IDs           []int64 `json:"ids"`
+}
+
+func registerFindingDecision(api huma.API, in Ingest) {
+	huma.Register(api, huma.Operation{
+		OperationID: "decide-finding", Method: http.MethodPost,
+		Path: "/v1/products/{product}/streams/{stream}/variants/{variant}" +
+			"/findings/{vulnerability}/components/{component}/decision",
+		Summary: "Record one judgment about a finding, covering its places",
+		Description: "Records the same claim against every place this issue occupies in this " +
+			"component. Naming `places` narrows it; leaving it out covers all of them, which " +
+			"is the default a judgment should have — a kernel flaw reaches sixty modules and " +
+			"the answer is almost always the same for all of them, so asking sixty times " +
+			"guarantees somebody stops reading.\n\n" +
+			"A place left out stays **open**. Nothing is recorded against it and nothing is " +
+			"asked about it: a component used unsafely in one consumer and not another is " +
+			"exactly what per-place findings exist to capture, and demanding a justification " +
+			"for the places you did not answer is the tool arguing with a judgment it asked " +
+			"for.\n\n" +
+			"One action still writes one record per place, each keyed and expiring on its own " +
+			"(REL-02), so a place that later diverges is not silently covered by a decision " +
+			"nobody made about it.\n\n" +
+			"The ordinary approval rules apply however many places this reaches. Always " +
+			"needing a second person is about a claim covering **several issues** nobody read " +
+			"one by one; this is one claim about one issue (TRI-38).",
+		Tags: []string{"Triage"}, DefaultStatus: http.StatusCreated,
+	}, func(ctx context.Context, input *struct {
+		Product       string `path:"product"`
+		Stream        string `path:"stream"`
+		Variant       string `path:"variant"`
+		Vulnerability string `path:"vulnerability" doc:"The issue, by any name it is known under"`
+		Component     string `path:"component" doc:"The component, as the findings list gives it"`
+		Version       string `query:"version" doc:"Which version, where the build ships more than one under that name"`
+		Body          FindingDecisionBody
+	}) (*struct{ Body DecidedBody }, error) {
+		subject, store, err := triaging(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+
+		target, issue, component, err := findingAbout(ctx, in, subject,
+			input.Product, input.Stream, input.Variant,
+			input.Vulnerability, input.Component, input.Version)
+		if err != nil {
+			return nil, err
+		}
+		all, err := finding.NewStore(in.DB.DB).PlacesFor(ctx, subject, target, issue, component)
+		if err != nil || len(all) == 0 {
+			return nil, noSuchFinding()
+		}
+
+		// Narrowed to what was named, and a name nothing matches is refused
+		// rather than ignored: somebody who meant to cover six places and
+		// mistyped one should not quietly cover five.
+		places := all
+		if len(input.Body.Places) > 0 {
+			wanted := map[string]bool{}
+			for _, name := range input.Body.Places {
+				wanted[name] = true
+			}
+			places = make([]finding.Deciding, 0, len(wanted))
+			for _, place := range all {
+				if wanted[place.PlaceIdentity] {
+					places = append(places, place)
+					delete(wanted, place.PlaceIdentity)
+				}
+			}
+			if len(wanted) > 0 {
+				return nil, huma.Error422UnprocessableEntity(
+					"this finding does not sit at every place you named")
+			}
+		}
+
+		var until *time.Time
+		if input.Body.DeferredUntil != "" {
+			when, err := time.Parse(time.DateOnly, input.Body.DeferredUntil)
+			if err != nil {
+				return nil, huma.Error422UnprocessableEntity(
+					"a deferral returns on a date, written as YYYY-MM-DD")
+			}
+			until = &when
+		}
+
+		threshold, err := deferralThreshold(ctx, in)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "cannot tell whether that needs agreement", err)
+		}
+
+		out := &struct{ Body DecidedBody }{}
+		proposals := make([]triage.Proposal, 0, len(places))
+		for _, place := range places {
+			proposal := triage.Proposal{
+				Place: triage.Place{
+					ProductID: place.ProductID, VulnerabilityID: place.VulnerabilityID,
+					PlaceIdentity: place.PlaceIdentity, Visibility: place.Visibility,
+					ComponentUpstream: place.ComponentUpstream,
+					ConsumerUpstream:  place.ConsumerUpstream,
+				},
+				Outcome:       triage.Outcome(input.Body.Outcome),
+				Justification: triage.Justification(input.Body.Justification),
+				Reasoning:     input.Body.Reasoning,
+				By:            subject.ID,
+				SeverityCenti: place.SeverityCenti,
+				DeferredUntil: until,
+			}
+			// Asked per place rather than once for the set. The threshold
+			// reads the claim, and two places of one finding can differ in
+			// what they carry — one answer for all of them would report a
+			// control that did not run on some.
+			needs, err := store.NeedsApproval(ctx, proposal, threshold)
+			if err != nil {
+				return nil, wentWrong(in.Logger, "cannot tell whether that needs agreement", err)
+			}
+			proposal.NeedsApproval = needs
+			out.Body.NeedsApproval = out.Body.NeedsApproval || needs
+			out.Body.Covered += place.Places
+			proposals = append(proposals, proposal)
+		}
+
+		// One action, one transaction. Half the places written and the rest
+		// abandoned leaves a finding neither answered nor open, with nothing
+		// saying which places were which.
+		recorded, err := store.ProposeMany(ctx, subject, proposals)
+		if err != nil {
+			return nil, refusedDecision(err)
+		}
+		for _, decision := range recorded {
+			out.Body.IDs = append(out.Body.IDs, decision.ID)
+		}
+		out.Body.Recorded = len(recorded)
+		out.Body.Left = len(all) - out.Body.Recorded
+		return out, nil
+	})
+}
+
+// findingAbout resolves the names in a path to one finding: the build, the
+// issue and the component it is open against, authorized on the way.
+//
+// Name and version together, because a name alone is not unique — a real image
+// ships three vendored versions of one library, and resolving the name on its
+// own answers about whichever was interned first.
+func findingAbout(ctx context.Context, in Ingest, subject access.Subject,
+	product, stream, variant, vulnerability, component, version string) (int64, int64, int64, error) {
+
+	names := catalog.NewStore(in.DB.DB)
+	named, err := names.LocateVisible(ctx, subject, product, stream, variant)
+	if err != nil {
+		return 0, 0, 0, noSuchProduct()
+	}
+	target, err := names.ExistingTarget(ctx, named.StreamID, named.VariantID)
+	if err != nil {
+		return 0, 0, 0, nothingScannedThere()
+	}
+	issue, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, vulnerability)
+	if err != nil {
+		return 0, 0, 0, noSuchIssue()
+	}
+	at, err := graph.NewStore(in.DB.DB).ComponentVersionAt(ctx, target.ID, component, version)
+	if err != nil {
+		return 0, 0, 0, ambiguousOrMissing(err)
+	}
+	return target.ID, issue, at, nil
 }
 
 // decidingAbout resolves the names in a path to the place a decision is made

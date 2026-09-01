@@ -795,6 +795,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record one judgment about a finding, covering its places
+         * @description Records the same claim against every place this issue occupies in this component. Naming `places` narrows it; leaving it out covers all of them, which is the default a judgment should have — a kernel flaw reaches sixty modules and the answer is almost always the same for all of them, so asking sixty times guarantees somebody stops reading.
+         *
+         *     A place left out stays **open**. Nothing is recorded against it and nothing is asked about it: a component used unsafely in one consumer and not another is exactly what per-place findings exist to capture, and demanding a justification for the places you did not answer is the tool arguing with a judgment it asked for.
+         *
+         *     One action still writes one record per place, each keyed and expiring on its own (REL-02), so a place that later diverges is not silently covered by a decision nobody made about it.
+         *
+         *     The ordinary approval rules apply however many places this reaches. Always needing a second person is about a claim covering **several issues** nobody read one by one; this is one claim about one issue (TRI-38).
+         */
+        post: operations["decide-finding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision": {
         parameters: {
             query?: never;
@@ -1504,6 +1530,32 @@ export interface components {
             /** Format: int64 */
             recorded: number;
         };
+        DecidedBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DecidedBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description How many findings those places hold
+             */
+            covered: number;
+            ids: number[] | null;
+            /**
+             * Format: int64
+             * @description Places of this finding left open, because they were not named
+             */
+            left: number;
+            /** @description Whether a second person has to agree */
+            needs_approval: boolean;
+            /**
+             * Format: int64
+             * @description How many places it was written against
+             */
+            recorded: number;
+        };
         DecisionBody: {
             /**
              * Format: uri
@@ -1775,6 +1827,27 @@ export interface components {
             version: string;
             /** @description The issue, under the name it is most widely known by */
             vulnerability: string;
+        };
+        FindingDecisionBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FindingDecisionBody.json
+             */
+            readonly $schema?: string;
+            /** @description Required when it is deferred. A date, as 2026-03-31 */
+            deferred_until?: string;
+            /**
+             * @description Why it does not apply. Required when it does not
+             * @enum {string}
+             */
+            justification?: "component_not_present" | "vulnerable_code_not_present" | "vulnerable_code_not_in_execute_path" | "vulnerable_code_cannot_be_controlled_by_adversary" | "inline_mitigations_already_exist";
+            /** @enum {string} */
+            outcome: "affected" | "not-applicable" | "deferred" | "wont-fix";
+            /** @description Which places this covers, as the finding names them. Omit for all of them */
+            places?: string[] | null;
+            /** @description Why this holds */
+            reasoning: string;
         };
         FindingsOutputBody: {
             /**
@@ -2356,6 +2429,8 @@ export interface components {
             chain?: components["schemas"]["StepBody"][] | null;
             /** @description What pulls the component in here. Absent under the product itself */
             consumer?: string;
+            /** @description A claim already stands here. Not the same as suppressed, which is the build's own argument */
+            decided?: boolean;
             /** @description Name this when recording a decision about it */
             place: string;
             /** @description The build has already argued this place away */
@@ -3849,6 +3924,50 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "decide-finding": {
+        parameters: {
+            query?: {
+                /** @description Which version, where the build ships more than one under that name */
+                version?: string;
+            };
+            header?: never;
+            path: {
+                product: string;
+                stream: string;
+                variant: string;
+                /** @description The issue, by any name it is known under */
+                vulnerability: string;
+                /** @description The component, as the findings list gives it */
+                component: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FindingDecisionBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecidedBody"];
+                };
             };
             /** @description Error */
             default: {

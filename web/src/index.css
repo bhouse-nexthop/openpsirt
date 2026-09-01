@@ -714,6 +714,26 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: now
 .hint { color: var(--muted); font-size: var(--step--1); }
 .card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 14px; }
 
+/* The outcome buttons on the decide card. Missing from the first extraction
+   with everything else in this block. */
+.outcomes { display: flex; flex-wrap: wrap; gap: 6px; }
+.outcome {
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: var(--step--1);
+  color: var(--muted);
+}
+.outcome:hover { border-color: var(--accent-line); }
+.outcome[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* Tabs within a screen, for views of one question rather than separate
    screens. Lifted from the mockup with the rest of this block. */
 .tabs2 { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 14px; flex-wrap: wrap; }

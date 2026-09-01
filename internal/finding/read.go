@@ -481,6 +481,15 @@ type Sitting struct {
 	Consumer      string
 	Suppressed    bool
 	Urgency       int64
+	// Decided says a live claim already stands here. Once one judgment can
+	// cover a chosen subset of places (TRI-37), a finding half answered has to
+	// look different from one nobody has touched — otherwise the places left
+	// open are invisible and somebody answers them twice or not at all
+	// (UIX-40).
+	//
+	// Not the same as Suppressed, which is the build's own argument in its VEX
+	// documents: a different claim by a different author.
+	Decided bool
 	// Chain is the way down to here, the build first and this component last,
 	// with a version at every step.
 	//
@@ -514,6 +523,7 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		PlaceIdentity string     `bun:"place_identity"`
 		Consumer      string     `bun:"consumer"`
 		ConsumerID    *int64     `bun:"consumer_id"`
+		Decided       bool       `bun:"decided"`
 		Suppressed    bool       `bun:"suppressed"`
 		Urgency       int64      `bun:"urgency"`
 		FixState      string     `bun:"fix_state"`
@@ -527,6 +537,14 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		ColumnExpr("f.place_identity AS place_identity").
 		ColumnExpr("COALESCE(uc.name, '') AS consumer").
 		ColumnExpr("f.consumer_id AS consumer_id").
+		// A live claim standing at this place, whatever its state. Proposed
+		// and waiting counts: it is answered as far as the person looking at
+		// it is concerned, and showing it as untouched invites a second claim
+		// about the same code.
+		ColumnExpr(`(CASE WHEN EXISTS (SELECT 1 FROM "decision" AS de
+			WHERE de.vulnerability_id = f.vulnerability_id
+			  AND de.place_identity = f.place_identity
+			  AND de.live_key IS NOT NULL) THEN ? ELSE ? END) AS decided`, true, false).
 		ColumnExpr("CASE WHEN f.suppressed_by IS NULL THEN ? ELSE ? END AS suppressed", false, true).
 		ColumnExpr("f.urgency AS urgency").
 		ColumnExpr("f.fix_state AS fix_state").
@@ -617,7 +635,7 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 	for _, row := range rows {
 		place := Sitting{
 			PlaceIdentity: row.PlaceIdentity, Consumer: row.Consumer,
-			Suppressed: row.Suppressed, Urgency: row.Urgency,
+			Suppressed: row.Suppressed, Decided: row.Decided, Urgency: row.Urgency,
 		}
 		// Down to the consumer, then this component under it. Where the build
 		// pulls the component in directly there is no consumer, and the chain
