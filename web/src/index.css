@@ -714,6 +714,44 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: now
 .hint { color: var(--muted); font-size: var(--step--1); }
 .card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 14px; }
 
+/* The three columns a comparison reads as. Lifted from the mockup with the
+   rest of this block, which the first extraction also missed. */
+.cmp { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 900px) { .cmp { grid-template-columns: 1fr; } }
+
+.col > header {
+  display: flex; align-items: baseline; gap: 8px;
+  padding-bottom: 7px; margin-bottom: 9px;
+  border-bottom: 2px solid var(--line);
+}
+.col.fixed > header  { border-bottom-color: var(--ok); }
+.col.newly > header  { border-bottom-color: var(--sev-exploited); }
+.col.still > header  { border-bottom-color: var(--line-strong); }
+.col h4 { margin: 0; font-size: var(--step-0); letter-spacing: -0.01em; }
+.col .n {
+  margin-left: auto; font-size: var(--step-1); font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.col.fixed .n { color: var(--ok); }
+.col.newly .n { color: var(--sev-exploited); }
+.col ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.col li { display: flex; flex-direction: column; gap: 2px; font-size: var(--step--1); }
+.col li .top { display: flex; gap: 7px; align-items: baseline; }
+.col li .why { color: var(--muted); }
+.col li .why .mark {
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em;
+  border-radius: 3px; padding: 0 4px; margin-right: 5px;
+  background: var(--raised); border: 1px solid var(--line); color: var(--muted);
+}
+.col li .why .mark.upgraded { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.col li .why .mark.revised  { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.col li .why .mark.removed  { background: var(--raised); }
+/* Superseded is not a kind of fixed. The version moved and the issue came
+   with it, so it is marked the way a warning is rather than the way the other
+   two are. */
+.col li .why .mark.superseded { background: var(--sev-high-bg); color: var(--sev-high); border-color: transparent; }
+.col .more { color: var(--faint); font-size: var(--step--1); padding-top: 2px; }
+
 /* Two rules the first extraction from the mockup missed, both wanted by the
    dependency screen: the tree beside the pane that describes what is selected
    in it, and the pane's "what pulls this in" panel. */

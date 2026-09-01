@@ -1,0 +1,309 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useParams, useSearchParams } from "react-router-dom";
+import { api } from "../api/client";
+import { unwrap } from "../api/queries";
+import { Empty } from "../ui/Empty";
+import { Failed } from "../ui/Failed";
+import { Severity } from "../ui/Severity";
+
+// How many of each column are shown before it says how many more there are.
+const SHOWN = 8;
+
+// What changed between two builds of one product.
+//
+// Between any two, not only adjacent ones: what a release note has to answer is
+// usually about the last release a customer has, which is rarely the previous
+// one (RPT-05).
+export function Compare() {
+  const { product = "" } = useParams();
+  const [params, setParams] = useSearchParams();
+  const from = params.get("from") ?? "";
+  const fromVariant = params.get("from_variant") ?? "";
+  const to = params.get("to") ?? "";
+  const toVariant = params.get("to_variant") ?? "";
+  const undisclosed = params.get("undisclosed") === "yes";
+
+  const streams = useQuery({
+    queryKey: ["streams", product],
+    queryFn: async () =>
+      unwrap(await api.GET("/v1/products/{product}/streams", { params: { path: { product } } })),
+  });
+  const variants = useQuery({
+    queryKey: ["variants", product],
+    queryFn: async () =>
+      unwrap(await api.GET("/v1/products/{product}/variants", { params: { path: { product } } })),
+  });
+
+  const ready = from !== "" && fromVariant !== "" && to !== "" && toVariant !== "";
+  const comparison = useQuery({
+    queryKey: ["comparison", product, from, fromVariant, to, toVariant, undisclosed],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/products/{product}/comparison", {
+          params: {
+            path: { product },
+            query: {
+              from,
+              from_variant: fromVariant,
+              to,
+              to_variant: toVariant,
+              ...(undisclosed ? { include_undisclosed: true } : {}),
+            },
+          },
+        }),
+      ),
+    enabled: ready,
+  });
+
+  function set(key: string, value: string) {
+    const next = new URLSearchParams(params);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    setParams(next);
+  }
+
+  const streamNames = (streams.data?.items ?? []).map((each) => each.name ?? "");
+  const variantNames = (variants.data?.items ?? []).map((each) => each.name ?? "");
+
+  return (
+    <>
+      <div className="screen-head">
+        <h2>Release comparison</h2>
+        <p>{product} — what was fixed, what is newly present, and what is still there</p>
+      </div>
+
+      <div className="card">
+        <header
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+            marginBottom: 12,
+          }}
+        >
+          <h3 style={{ margin: 0 }}>Compare</h3>
+          <Pick
+            label="Earlier build"
+            stream={from}
+            variant={fromVariant}
+            streams={streamNames}
+            variants={variantNames}
+            onStream={(value) => set("from", value)}
+            onVariant={(value) => set("from_variant", value)}
+          />
+          <span style={{ color: "var(--faint)" }}>to</span>
+          <Pick
+            label="Later build"
+            stream={to}
+            variant={toVariant}
+            streams={streamNames}
+            variants={variantNames}
+            onStream={(value) => set("to", value)}
+            onVariant={(value) => set("to_variant", value)}
+          />
+          <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+            <button
+              type="button"
+              className="chip"
+              aria-pressed={undisclosed}
+              onClick={() => set("undisclosed", undisclosed ? "" : "yes")}
+            >
+              Include undisclosed
+            </button>
+          </span>
+        </header>
+
+        {/* Its destination is usually a public document, so including
+            something embargoed should be a deliberate act rather than a paste
+            nobody checked (RPT-06). */}
+        <p className="reading" style={{ marginBottom: 12 }}>
+          Public findings only, unless you say otherwise — this ends up in a public document, so
+          including something embargoed should be a deliberate act rather than a paste nobody
+          checked.
+        </p>
+
+        {!ready ? (
+          <Empty
+            title="Pick two builds."
+            detail="Any two compare, not only adjacent ones — a release note usually answers about the last release a customer has, which is rarely the previous one."
+          />
+        ) : comparison.isPending ? (
+          <p className="hint">Loading…</p>
+        ) : comparison.isError ? (
+          <Failed error={comparison.error} what="Those two could not be compared." />
+        ) : (
+          <Columns
+            fixed={comparison.data?.fixed ?? []}
+            newly={comparison.data?.newly_present ?? []}
+            still={comparison.data?.still_present ?? []}
+          />
+        )}
+      </div>
+    </>
+  );
+}
+
+// A build is a stream and a variant together, never one of them: the same
+// branch built two ways is two builds, and comparing across the pair without
+// saying so is how a release note reports the wrong hardware.
+function Pick({
+  label,
+  stream,
+  variant,
+  streams,
+  variants,
+  onStream,
+  onVariant,
+}: {
+  label: string;
+  stream: string;
+  variant: string;
+  streams: string[];
+  variants: string[];
+  onStream: (value: string) => void;
+  onVariant: (value: string) => void;
+}) {
+  return (
+    <span style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+      <select
+        aria-label={`${label} stream`}
+        style={{ width: "auto" }}
+        value={stream}
+        onChange={(event) => onStream(event.target.value)}
+      >
+        <option value="">stream</option>
+        {streams.map((name) => (
+          <option key={name} value={name}>
+            {name}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label={`${label} variant`}
+        style={{ width: "auto" }}
+        value={variant}
+        onChange={(event) => onVariant(event.target.value)}
+      >
+        <option value="">variant</option>
+        {variants.map((name) => (
+          <option key={name} value={name}>
+            {name}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
+}
+
+type Changed = {
+  vulnerability?: string;
+  component?: string;
+  severity?: string;
+  because?: string;
+  arrived_from?: string;
+};
+
+// Marks read as sentences rather than as field values, because a reader of a
+// release note is being told what happened rather than shown a column.
+const WENT: Record<string, string> = {
+  upgraded: "Upgraded",
+  revised: "Patched",
+  removed: "Removed",
+  superseded: "Superseded",
+  unexplained: "Unexplained",
+};
+
+function Columns({
+  fixed,
+  newly,
+  still,
+}: {
+  fixed: Changed[];
+  newly: Changed[];
+  still: Changed[];
+}) {
+  return (
+    <div className="cmp">
+      <Column
+        kind="fixed"
+        title="Fixed"
+        rows={fixed}
+        note="Each says why it went. Superseded is the one to read carefully: the version moved and the issue came with it, so it was not fixed at all."
+      />
+      <Column kind="newly" title="Newly present" rows={newly} />
+      <Column
+        kind="still"
+        title="Still present"
+        rows={still}
+        note="An entry carrying a version it arrived from is the same failure from the other side: somebody moved that version and the issue came with it, so the bump did not reach the fix."
+      />
+    </div>
+  );
+}
+
+function Column({
+  kind,
+  title,
+  rows,
+  note,
+}: {
+  kind: string;
+  title: string;
+  rows: Changed[];
+  note?: string;
+}) {
+  const [all, setAll] = useState(false);
+  const shown = all ? rows : rows.slice(0, SHOWN);
+
+  return (
+    <div className={`col ${kind}`}>
+      <header>
+        <h4>{title}</h4>
+        <span className="n">{rows.length.toLocaleString()}</span>
+      </header>
+      {rows.length === 0 ? (
+        <p className="hint" style={{ margin: 0 }}>
+          Nothing.
+        </p>
+      ) : (
+        <ul>
+          {shown.map((row) => (
+            <li key={`${row.vulnerability} ${row.component}`}>
+              <span className="top">
+                <span className="id">{row.vulnerability}</span>
+                {row.severity && <Severity word={row.severity} />}
+              </span>
+              <span className="why">
+                {row.because && (
+                  <span className={`mark ${row.because}`}>{WENT[row.because] ?? row.because}</span>
+                )}
+                <span className="id">{row.component}</span>
+                {row.arrived_from && (
+                  <>
+                    {" — bumped from "}
+                    <span className="id">{row.arrived_from}</span>
+                    {", and the issue came with it"}
+                  </>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {rows.length > SHOWN && (
+        <p className="more">
+          <button type="button" className="linkish" onClick={() => setAll(!all)}>
+            {all ? "Show fewer" : `Show the other ${(rows.length - SHOWN).toLocaleString()}`}
+          </button>
+        </p>
+      )}
+      {note && (
+        <p className="reading" style={{ marginTop: 8 }}>
+          {note}
+        </p>
+      )}
+    </div>
+  );
+}

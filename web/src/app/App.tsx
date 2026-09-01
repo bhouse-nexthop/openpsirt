@@ -18,6 +18,10 @@ const PlaceDecision = lazy(() =>
   import("../screens/PlaceDecision").then((m) => ({ default: m.PlaceDecision })),
 );
 const Tree = lazy(() => import("../screens/Tree").then((m) => ({ default: m.Tree })));
+const Compare = lazy(() =>
+  import("../screens/Compare").then((m) => ({ default: m.Compare })),
+);
+const People = lazy(() => import("../screens/People").then((m) => ({ default: m.People })));
 const Queue = lazy(() => import("../screens/Queue").then((m) => ({ default: m.Queue })));
 const Decision = lazy(() =>
   import("../screens/Decision").then((m) => ({ default: m.Decision })),
@@ -59,6 +63,8 @@ export function App() {
         <Route path={`${build}/components`} element={<Tree />} />
         <Route path={`${build}/components/:component/decide`} element={<Together />} />
         <Route path={`${build}/scans`} element={<Scans />} />
+        <Route path="/products/:product/comparison" element={<Compare />} />
+        <Route path="/people" element={<People />} />
         <Route path="/settings" element={<Settings />} />
         {/* A path the page does not know either. Sending somebody home is
             better than a dead end, and the address bar already told them

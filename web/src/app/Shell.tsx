@@ -74,11 +74,16 @@ export function Shell({
                 to={`/products/${product}/streams/${stream}/variants/${variant}/scans`}
                 label="Scans"
               />
+              {/* Comparison belongs to the product rather than to one build —
+                  it is the screen for picking two of them — but it is reached
+                  from here because this is where somebody already is. */}
+              <Rail to={`/products/${product}/comparison`} label="Release comparison" />
             </>
           )}
 
           <span className="group">Manage</span>
           <Rail to="/products" end label="Products" />
+          {who.admin && <Rail to="/people" label="People and access" />}
           {who.admin && <Rail to="/settings" label="Settings" />}
         </nav>
 
