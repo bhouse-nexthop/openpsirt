@@ -27,11 +27,6 @@ type Scope struct {
 	VariantID *int64
 }
 
-// Everything reports whether this narrows nothing.
-func (s Scope) Everything() bool {
-	return s.ProductID == nil && s.StreamID == nil && s.VariantID == nil
-}
-
 // narrow applies the scope to a query over finding AS f that already joins
 // target AS tg and stream AS st.
 //

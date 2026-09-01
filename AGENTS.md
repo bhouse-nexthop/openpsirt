@@ -290,13 +290,47 @@ same command and the same pinned versions.
 | | |
 |---|---|
 | `make check` | Everything CI checks, except the container and chart |
+| `make check-engines` | That all four engines actually ran, rather than skipped |
 | `make check-packaging` | The container image and the Helm chart. Needs docker and helm |
 | `make build` | The binary, with version information injected |
 | `make openapi` | Regenerates the API document from the code |
 
-Tests run against SQLite alone by default. To exercise the production engines,
-point these at real servers — CI does, and a change that only ran on SQLite has
-tested none of the portability traps:
+**Before committing, run `make check && make check-engines`.** Not `make lint`
+and a bare `go test`: those two pass on work that CI rejects, because `check`
+also runs `unreachable`, the OpenAPI drift check and the frontend, and because
+a bare `go test` drops the race detector and the `-p 1` that keeps packages
+from tearing down each other's tables.
 
-    OPENPSIRT_TEST_POSTGRES_URL   OPENPSIRT_TEST_MYSQL_URL
-    OPENPSIRT_TEST_MARIADB_URL    OPENPSIRT_TEST_TOO_OLD_URL
+### Why the second command exists
+
+Tests run against SQLite alone unless pointed at real servers, and **a skipped
+engine passes**. So a green suite does not mean four engines agreed; it means
+nothing failed, which is also what running almost nothing looks like. CI greps
+its own output for each engine by name for exactly this reason. `check-engines`
+runs those same greps, and refuses rather than passing when no engine is
+configured. `make check` prints a warning in that case rather than letting a
+one-engine pass read as a four-engine pass.
+
+This is not hypothetical: a table added with a foreign key to `person` was
+missing from the test cleanup, and SQLite alone never noticed. It failed 40
+tests on the other three the first time they were run.
+
+Set the URLs in `local.mk`, which is git-ignored and included if present, so a
+machine is configured once instead of once per command:
+
+    OPENPSIRT_TEST_POSTGRES_URL ?= postgres://postgres:test@127.0.0.1:5432/openpsirt?sslmode=disable
+    OPENPSIRT_TEST_MYSQL_URL    ?= mysql://root:test@127.0.0.1:3306/openpsirt
+    OPENPSIRT_TEST_MARIADB_URL  ?= mariadb://root:test@127.0.0.1:3307/openpsirt
+    OPENPSIRT_TEST_TOO_OLD_URL  ?= postgres://postgres:test@127.0.0.1:5433/openpsirt?sslmode=disable
+
+`?=` rather than `:=`, so setting one in the environment for a single run still
+wins. A makefile assignment beats an environment variable; the conditional form
+does not.
+
+The last one is a server *below* the supported floor, so the refusal to run
+against it is exercised instead of skipped. CI runs a postgres:13 for it.
+
+### Adding a table
+
+Add it to `tables` in `internal/dbtest`, ahead of everything it points at.
+Nothing enforces this and SQLite will not catch it.

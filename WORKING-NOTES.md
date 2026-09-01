@@ -481,6 +481,56 @@ query.
 cache) which intercepts `curl` to the local hostname and answers 403. Every
 local request needs `--noproxy '*'`.
 
+### Running the wrong gate, and calling it green
+
+CI failed on work reported as passing, twice over, because the gate being run
+was `make lint` plus a bare `go test` rather than `make check`. Those are not
+the same command and the difference is not cosmetic:
+
+- `check` also runs `unreachable`, the OpenAPI drift check and the frontend.
+  `Scope.Everything` sat exported with nothing calling it, and only
+  `unreachable` says so.
+- A bare `go test` drops `-race` and `-p 1`, and it runs SQLite alone.
+
+The SQLite part was the expensive one, and migration 00016 was wrong twice over
+in ways only a real server states.
+
+Its table has a foreign key to `person` and was never added to `tables` in
+`internal/dbtest`, so the cleanup deleted people out from under it. SQLite let
+that pass. PostgreSQL, MySQL and MariaDB all refused, and **40 tests failed**
+the first time they were pointed at a real server. The comment directly beneath
+that list already warns that a new table with a foreign key silently breaks the
+cleanup of every package predating it; it was right, and it was not read.
+
+Its rollback then dropped the table's indexes before the table. Every other
+migration here just drops the table and lets the indexes go with it; this one
+did not, and MySQL and MariaDB refuse to drop an index a foreign key needs to
+enforce itself — `assessment_issue_idx` leads with `vulnerability_id`, which is
+constrained. PostgreSQL and SQLite allowed it, so the rollback test was green
+on half the engines and had never run on the other half.
+
+Fixing that then exposed the same rule in 00013, which the failure at 16 had
+been hiding: the rollback walks down from the top and stops at the first
+migration that refuses, so one broken "down" masks every one beneath it.
+`finding_due_idx` leads with `closed_run_id` and is the only index on `finding`
+that does, so InnoDB adopted it to enforce `finding_closed_run_id_fk` and then
+would not let it go. InnoDB *picks* an index for a constraint rather than
+owning one, so an index can acquire that duty simply by being created. That
+rollback now drops the constraint, drops the index, and puts the constraint
+back.
+
+All three are the same shape: **SQLite is permissive about foreign keys, so it
+cannot be the engine a schema change is judged on.**
+
+Now mechanical rather than remembered: `make check-engines` runs the same greps
+CI does, `make check` says out loud when it has tested one engine of four, and
+the URLs live in a git-ignored `local.mk` so the machine is set up once. The
+below-floor server CI uses is a local container too (`g-pg13`), so the refusal
+is exercised rather than skipped. AGENTS.md carries all of this.
+
+**Why greps rather than trusting the suite:** a skipped engine passes. Green
+means nothing failed, which is also what running almost nothing looks like.
+
 ## Not yet true
 
 `DESIGN-interface.md` is now behind the code rather than ahead of it. It still

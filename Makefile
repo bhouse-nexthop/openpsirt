@@ -1,7 +1,25 @@
 # Everything CI runs is reachable from here, so a developer can reproduce any
 # failure with one command using the same versions.
 
+# Machine-local settings, chiefly the database URLs below. Ignored by git, so
+# a checkout with one is not different from a checkout without one. Absent is
+# fine: the dash means "if it exists".
+-include local.mk
+
 GO           ?= go
+# The engines the suite runs against. Set in local.mk or in the environment;
+# exported so they reach the test process either way, since a make variable is
+# not an environment variable and the suite reads the environment.
+#
+# Unset means SQLite alone, which passes every portability trap the design is
+# written around by never reaching one. "check" says so rather than letting a
+# one-engine pass read as a four-engine pass; "check-engines" refuses.
+export OPENPSIRT_TEST_POSTGRES_URL
+export OPENPSIRT_TEST_MYSQL_URL
+export OPENPSIRT_TEST_MARIADB_URL
+export OPENPSIRT_TEST_TOO_OLD_URL
+ENGINES_SET := $(strip $(OPENPSIRT_TEST_POSTGRES_URL)$(OPENPSIRT_TEST_MYSQL_URL)$(OPENPSIRT_TEST_MARIADB_URL))
+
 BIN          := bin/openpsirt
 VERSION      ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT       ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -54,7 +72,7 @@ DEMO_DIR  ?= $(HOME)/openpsirt-dev
 DEMO_DB   ?= $(DEMO_DIR)/dev.db
 DEMO_URL  := http://$(DEMO_HOST):$(DEMO_PORT)
 
-.PHONY: unreachable all build test vet lint fmt openapi openapi-current run clean check check-packaging tools govulncheck licenses sbom web web-deps web-api web-check demo demo-up demo-down demo-seed demo-reset demo-status
+.PHONY: unreachable all build test vet lint fmt openapi openapi-current run clean check check-packaging check-engines tools govulncheck licenses sbom web web-deps web-api web-check demo demo-up demo-down demo-seed demo-reset demo-status
 
 all: check build
 
@@ -104,6 +122,11 @@ openapi:
 # are included because CI runs them; omitting them meant four of nine jobs
 # could not be reproduced locally.
 check: build vet lint unreachable test govulncheck licenses openapi-current sbom web-check
+ifeq ($(ENGINES_SET),)
+	@echo
+	@echo "PASSED ON SQLITE ONLY. The other three engines were not configured,"
+	@echo "so nothing here tested them. Run 'make check-engines' before committing."
+endif
 
 # The interface, built into the directory the binary embeds. Kept out of
 # "build" so a checkout with no node toolchain still produces a working
@@ -151,6 +174,42 @@ unreachable:
 openapi-current: openapi
 	@git diff --exit-code -- docs/reference/openapi.yaml \
 	  || { echo "docs/reference/openapi.yaml is stale: commit the regenerated file"; exit 1; }
+
+# Everything CI's test job asserts beyond the suite passing.
+#
+# A skipped test passes, so "go test" being green does not mean an engine ran —
+# it means nothing failed, which is also what a skip looks like. CI greps its
+# own output for each engine by name; without the same check locally, "the
+# suite is green" and "the suite ran" are two different facts with one command
+# behind them. This is the command to run before committing.
+check-engines:
+ifeq ($(ENGINES_SET),)
+	@echo "No engine URLs set. See local.mk in AGENTS.md — SQLite alone tests"
+	@echo "none of the portability traps, so this refuses rather than passing."
+	@exit 1
+endif
+	$(GO) test ./internal/schema/ -count=1 -v -run TestMigrationsApplyOnEveryEngine \
+	  | tee /tmp/openpsirt-engines.txt >/dev/null
+	@for engine in sqlite postgres mysql mariadb; do \
+	  grep -q "PASS: TestMigrationsApplyOnEveryEngine/$$engine" /tmp/openpsirt-engines.txt \
+	    || { echo "$$engine did not run"; exit 1; }; \
+	done
+	$(GO) test ./internal/database/migrate/ -count=1 -v -run TestLockExcludes \
+	  | tee /tmp/openpsirt-lock.txt >/dev/null
+	@for engine in postgres mysql mariadb; do \
+	  grep -q "PASS: TestLockExcludesAnotherConnection/$$engine" /tmp/openpsirt-lock.txt \
+	    || { echo "the migration lock was not exercised on $$engine"; exit 1; }; \
+	done
+ifneq ($(strip $(OPENPSIRT_TEST_TOO_OLD_URL)),)
+	$(GO) test ./internal/database/ -count=1 -v -run TestOpenRefuses \
+	  | tee /tmp/openpsirt-floor.txt >/dev/null
+	@grep -q "PASS: TestOpenRefusesAServerBelowTheFloor" /tmp/openpsirt-floor.txt \
+	  || { echo "the version floor test did not run"; exit 1; }
+else
+	@echo "note: OPENPSIRT_TEST_TOO_OLD_URL unset, so the version floor refusal"
+	@echo "      was not exercised here. CI runs it against postgres:13."
+endif
+	@echo "every engine ran"
 
 # Requires docker and helm. Skipped by "check" so that a machine without them
 # can still run everything else.

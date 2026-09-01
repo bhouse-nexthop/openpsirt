@@ -102,6 +102,8 @@ var tables = []string{
 	"decision_approval",
 	"decision_revision",
 	"decision",
+	// Before person and vulnerability, which it points at.
+	"assessment",
 	"personal_token",
 	"person_identity",
 	"group_admin",

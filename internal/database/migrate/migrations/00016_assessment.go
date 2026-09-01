@@ -7,7 +7,6 @@ import (
 
 	"github.com/pressly/goose/v3"
 
-	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/database/migrate"
 )
 
@@ -87,16 +86,15 @@ func upAssessment(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
+// The indexes go with the table and are not dropped separately.
+//
+// Dropping them first is what every other migration here avoids, and this one
+// did it anyway: MySQL and MariaDB refuse to drop an index a foreign key needs
+// to enforce itself, so "assessment_issue_idx" — which leads with
+// vulnerability_id — cannot go while the constraint on that column stands. The
+// rollback failed on two engines and passed on the other two.
 func downAssessment(ctx context.Context, tx *sql.Tx) error {
-	drop := `DROP INDEX "assessment_issue_idx"`
-	waiting := `DROP INDEX "assessment_waiting_idx"`
-	switch migrate.EngineFrom(ctx) {
-	case database.MySQL, database.MariaDB:
-		drop += ` ON "assessment"`
-		waiting += ` ON "assessment"`
-	}
 	for _, stmt := range []string{
-		drop, waiting,
 		`DROP TABLE "assessment"`,
 		`ALTER TABLE "vulnerability" DROP COLUMN "assessed_severity"`,
 	} {

@@ -20,6 +20,9 @@ dist/
 # Local
 *.local
 .env
+# Machine-local make settings: the database URLs for the engines the suite
+# runs against. Ignored because the ports are whoever's containers these are.
+local.mk
 .DS_Store
 
 # Docs build

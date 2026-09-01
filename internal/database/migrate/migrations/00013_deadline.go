@@ -52,13 +52,36 @@ func upDeadline(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
+// Going back needs the foreign key out of the way on MySQL and MariaDB.
+//
+// InnoDB insists every foreign key has an index it can enforce itself with,
+// and it picks one rather than owning one: no other index on "finding" leads
+// with closed_run_id, so making this one made it the constraint's. Dropping it
+// is then refused, and the refusal is what a rollback runs into rather than
+// anything a reader of the "up" would expect.
+//
+// So the constraint comes off, the index goes, and the constraint goes back —
+// at which point InnoDB creates its own index for it again, which is the state
+// this migration found. PostgreSQL and SQLite have no such rule and drop the
+// index as asked.
 func downDeadline(ctx context.Context, tx *sql.Tx) error {
-	drop := `DROP INDEX "finding_due_idx"`
+	var statements []string
 	switch migrate.EngineFrom(ctx) {
 	case database.MySQL, database.MariaDB:
-		drop += ` ON "finding"`
+		statements = []string{
+			`ALTER TABLE "finding" DROP FOREIGN KEY "finding_closed_run_id_fk"`,
+			`DROP INDEX "finding_due_idx" ON "finding"`,
+			`ALTER TABLE "finding" ADD CONSTRAINT "finding_closed_run_id_fk"
+				FOREIGN KEY ("closed_run_id") REFERENCES "scan_run"("id")`,
+			`ALTER TABLE "finding" DROP COLUMN "due_at"`,
+		}
+	default:
+		statements = []string{
+			`DROP INDEX "finding_due_idx"`,
+			`ALTER TABLE "finding" DROP COLUMN "due_at"`,
+		}
 	}
-	for _, stmt := range []string{drop, `ALTER TABLE "finding" DROP COLUMN "due_at"`} {
+	for _, stmt := range statements {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return fmt.Errorf("%s: %w", firstLine(stmt), err)
 		}
