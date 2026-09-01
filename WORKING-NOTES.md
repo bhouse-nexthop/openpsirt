@@ -464,23 +464,45 @@ carrying `30c832ea4`.
 A count in a test is what caught this. A package quietly losing its source
 package still scans, still resolves and still looks right.
 
-### Lockfile attribution is placing 36 of 952
+### The self-review before the rebuild
 
-The root attribution is fixed, but most lockfile dependencies are attached to
-nothing rather than to the wrong thing. Three classes:
+Run by replaying the merge over the previous document — which is the previous
+merge's own output, so a real 8,374-component input — and comparing every
+field, property and package-URL qualifier either side of it. Four faults, three
+of them introduced by this branch's dedupe. All fixed in `957a4266e`.
 
-- **658 inside a distribution package.** Lockfiles shipped *within* Debian
-  packages — `usr/share/go-1.26/src/cmd/vendor/golang.org/x/telemetry/`, a
-  vscode extension inside a ruby gem, pprof's `third_party/d3flamegraph`.
-  These have no `sonic:src_path` because SONiC did not build them. They belong
-  to the Debian package owning that path, and many are vendored test fixtures
-  that are not installed dependencies at all. This is what put
-  `golang.org/x/net` under the product root with nothing above it.
-- **49 that a longest-prefix match would place.** `src/sonic-sysmgr/gnoi/go.sum`
-  against a `src/sonic-sysmgr` source path. The matching is exact today.
-- **160 whose owner is not in this image** — `platform/alpinevs/...` in a
-  broadcom build. Deps from a platform that was never installed, which looks
-  like a scoping bug rather than an attribution one.
+**Lockfile attribution matched 0 of 952, not 36.** The earlier figure recorded
+here was wrong: those 36 were placed by other edge classes. Harvested lockfile
+paths are rooted at the source tree (`sonic/src/sonic-gnmi/go.sum`) and the
+source trees recipes record are repository-relative (`src/sonic-gnmi`), so the
+comparison could never be true. Nothing reported it, because *nothing matched*
+and *nothing to match* produce the same empty result. Now 60, including
+sonic-gnmi's Go dependencies attaching to sonic-gnmi — the case that showed up
+in the interface as `golang.org/x/net` sitting under the product with nothing
+above it.
+
+**Nine packages stated a version that was not installed.** `openssh-server`
+read as stock `10.0p1-7` where the image carries `1:10.0p1-7+fips`, and eight
+others dropped a Debian epoch. These records merge because their versions
+normalize equal, and the recipe-emit winner's filename version was then the
+only one stated. The more specific spelling now wins.
+
+**577 lost `publisher` and 35 lost `pedigree`** — bash, frr and flashrom among
+them, and pedigree is what this reads as "built from".
+
+**A Rust crate and the .deb built from it merged into one component**, because
+the dedupe key had name and version and nothing about the ecosystem.
+
+Still unattributed: 892 lockfile dependencies, 658 of them shipped *inside* an
+installed package (`usr/share/go-1.26/...`, a vscode extension inside a ruby
+gem) which have no source tree in the repository, and ~234 under
+`platform/alpinevs/...` whose owner is not in a broadcom image at all — that
+one looks like a scoping bug rather than an attribution one.
+
+**The lesson worth keeping:** every one of these was found by counting a
+property either side of the merge, not by reading the diff. A merge that drops
+a field states nothing about having dropped it, and code that never matches
+looks exactly like code with nothing to match.
 
 ## Traps found the hard way
 
