@@ -1219,25 +1219,6 @@ components:
       required:
         - items
       type: object
-    ListBodyNeighbourBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/schemas/ListBodyNeighbourBody.json
-          format: uri
-          readOnly: true
-          type: string
-        items:
-          items:
-            $ref: "#/components/schemas/NeighbourBody"
-          type:
-            - array
-            - "null"
-      required:
-        - items
-      type: object
     ListBodyPersonBody:
       additionalProperties: false
       properties:
@@ -1825,6 +1806,28 @@ components:
         - body
         - written_by
         - written_at
+      type: object
+    RootsBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/RootsBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/NeighbourBody"
+          type:
+            - array
+            - "null"
+        root:
+          $ref: "#/components/schemas/NeighbourBody"
+          description: The build itself, which everything below descends from. Absent where the inventory named no root of its own
+      required:
+        - items
       type: object
     Send-decision-backRequest:
       additionalProperties: false
@@ -3226,7 +3229,7 @@ paths:
   /v1/products/{product}/streams/{stream}/variants/{variant}/components:
     get:
       description: |-
-        Returns the components the build itself depends on, most findings first.
+        Returns the build's own component and what it depends on, most findings first. The root is named separately from the list because it is what the list hangs from rather than a member of it.
 
         The starting point for walking the graph. A full render is not offered and would not be useful: a real image holds thousands of components and tens of thousands of edges, which neither draws nor reads. Ask for one step at a time.
 
@@ -3253,7 +3256,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListBodyNeighbourBody"
+                $ref: "#/components/schemas/RootsBody"
           description: OK
         default:
           content:
