@@ -1231,6 +1231,9 @@ components:
           type: string
         variant:
           type: string
+        version:
+          description: Which version, so a link to the finding can name it — a build ships a name at more than one version often enough that a link without it cannot be resolved
+          type: string
         vulnerability:
           type: string
       required:
