@@ -144,6 +144,24 @@ export function Finding() {
               <>No fix has been published.</>
             )}
           </p>
+          {it.latest_version && (
+            <p className="hint">
+              The newest version {it.component} has published is{" "}
+              <span className="id">{it.latest_version}</span>
+              {it.latest_released_at && <>, which shipped {it.latest_released_at}</>}.
+            </p>
+          )}
+          {/* Two dates compared, and worth a sentence rather than a badge: it
+              says why there is no fix, and the reason somebody needs it is to
+              stop waiting for one. It is deliberately not a claim that the
+              project is abandoned — nothing here knows that. */}
+          {it.nothing_since && (
+            <p className="alert">
+              Nothing has been released upstream since {it.vulnerability.split("-")[1]}, the
+              year this was named, and there is no fix. Waiting for one is unlikely to
+              end — replacing or patching the component is the response available.
+            </p>
+          )}
         </div>
 
         <Places at={at} places={it.places ?? []} />

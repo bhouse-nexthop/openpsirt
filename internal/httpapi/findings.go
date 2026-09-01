@@ -310,6 +310,13 @@ type EvidenceBody struct {
 	// rather than whoever triages.
 	ArrivedFrom string `json:"arrived_from,omitempty" doc:"The version this was bumped from, where the bump did not resolve it"`
 
+	// What upstream has released (ING-41). Absent unless this deployment has
+	// turned asking on, which is off by default because it is the only thing
+	// here that reaches the network.
+	LatestVersion    string `json:"latest_version,omitempty" doc:"The newest version the ecosystem's own index knows of"`
+	LatestReleasedAt string `json:"latest_released_at,omitempty" doc:"When that version shipped"`
+	NothingSince     bool   `json:"nothing_since,omitempty" doc:"Upstream has released nothing since the year this issue was named, and there is no fix. Two dates compared — it says why there is no fix, not that the project is abandoned"`
+
 	Places []SittingBody `json:"places"`
 }
 
@@ -384,7 +391,11 @@ func evidenceBody(e finding.Evidence) EvidenceBody {
 		Weaknesses: e.Weaknesses, Description: e.Description, Advisory: e.Advisory,
 		Component: e.Component, Version: e.Version, Upstream: e.Upstream,
 		FixState: string(e.FixState), FixedIn: e.FixedIn, ArrivedFrom: e.ArrivedFrom,
+		LatestVersion: e.LatestVersion, NothingSince: e.NothingSince,
 		Places: make([]SittingBody, 0, len(e.Places)),
+	}
+	if e.LatestReleasedAt != nil {
+		body.LatestReleasedAt = e.LatestReleasedAt.Format(time.DateOnly)
 	}
 	if e.FixedAt != nil {
 		body.FixedAt = e.FixedAt.Format(time.DateOnly)

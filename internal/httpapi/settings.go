@@ -44,7 +44,14 @@ var settable = []struct {
 	{setting.MaxTokenLifetime, "The longest a personal token may be valid for"},
 	{setting.TogetherCap, "How many findings one action may claim about at once. A whole number, not a length of time"},
 	{setting.TriageFloor, "What counts as worth triaging: everything, or a severity word below which findings are still recorded and counted but kept out of the working list. A product may state its own instead"},
+	{setting.UpstreamCurrency, "Whether to ask public package indexes what the newest version of a component is. Off unless turned on: it is the only thing here that reaches the network, and a deployment that cannot reach out loses this answer and nothing else"},
 }
+
+// aSwitch is the settings that are on or off. The fourth kind.
+func aSwitch(name string) bool { return name == setting.UpstreamCurrency }
+
+// theSwitch is what one may be set to.
+var theSwitch = []string{setting.On, setting.Off}
 
 // theFloor is the words the triage line may be set to. \"everything\" is not a
 // severity — it is the absence of a line, and it is what a deployment starts
@@ -128,7 +135,13 @@ func registerSettings(api huma.API, in Ingest) {
 		// every caller falling back to the shipped one, which is a policy that
 		// quietly stopped applying — and every reader here treats zero and
 		// negative as unset, so those would do the same while looking set.
-		if aSeverity(input.Name) {
+		if aSwitch(input.Name) {
+			if !slices.Contains(theSwitch, input.Body.Value) {
+				return nil, huma.Error422UnprocessableEntity(
+					fmt.Sprintf("%q is not on or off — write one of %s",
+						input.Body.Value, strings.Join(theSwitch, ", ")))
+			}
+		} else if aSeverity(input.Name) {
 			if !slices.Contains(theFloor, input.Body.Value) {
 				return nil, huma.Error422UnprocessableEntity(
 					fmt.Sprintf("%q is not a line to triage from — write one of %s",
@@ -245,6 +258,9 @@ func shipped(name string) string {
 	case setting.TriageFloor:
 		// Nothing hidden until somebody decides to hide it.
 		return "everything"
+	case setting.UpstreamCurrency:
+		// Nobody talked to until somebody says to.
+		return setting.Off
 	}
 	return ""
 }

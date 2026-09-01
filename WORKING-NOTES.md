@@ -14,24 +14,33 @@ order it would be picked up:
 | | |
 |---|---|
 | **Waiting on you** | The rebuilt SBOM. The fixture, the demo database and the counts `ING-36`/`ING-37` argue from are all still from the pre-fix generator. Steps are under "The split, and the reload it needs" |
-| **Half built** | `ING-41`. The client is done and verified against the live indexes (`internal/currency`), and the columns exist (migration 00017). **Not** built: the setting that turns it on, the pass that walks components and fills the columns, and anything showing it. See below |
+| **Built** | `ING-41`, end to end: the `upstream.currency` setting (off by default), the pass that fills the columns, a third worker beside the reader and the runner, and the finding screen showing both what upstream has released and why there is no fix |
 | **Not started** | `DESIGN-interface.md` is behind the code and is the thing most likely to be lost, because this document is temporary and it is not |
 
-**What `ING-41` still needs**, so it can be picked up cold:
+**How `ING-41` ended up built**, since the shape is not obvious from the
+decision:
 
-1. A setting — `upstream.currency`, off by default, in `settable` beside the
-   others in `internal/httpapi/settings.go`.
-2. A pass that walks components whose `latest_checked_at` is null or old,
-   asks `currency.Client.For(ecosystem)`, and writes the three columns. Only
-   for what we build ourselves: for a distribution package the distribution is
-   the maintainer and its release date says nothing about the software inside.
-   Skip `deb` and anything with no purl.
-3. Somewhere to run it. The two existing workers are started in `serve()` in
-   `cmd/openpsirt/main.go`; a third of the same shape is the obvious place,
-   and the bounded shutdown now covers it.
-4. Showing it: whether we are behind, and the derived signal — an issue
-   disclosed after the newest release and still unfixed says upstream has
-   shipped nothing since the flaw became known.
+1. `upstream.currency`, off by default, and the fourth kind of setting — a
+   switch. The value is read **each cycle** rather than at startup, so turning
+   it *off* takes effect without a redeploy, which matters more than turning it
+   on does.
+2. A pass over components whose answer is missing or older than a day, 200 at a
+   time with a quarter-second between requests. These are free public services
+   and a tool that walks them as fast as it can is the reason they end up
+   needing a rate limit. A first run drains over hours; nothing needs it sooner.
+3. Distribution packages are skipped, because the distribution is the
+   maintainer and its release date says nothing about the software inside.
+4. **A question we cannot answer is still recorded as asked.** A private module
+   and a vendored fork both look like a package the index has never heard of,
+   and without writing the time of asking they would be asked about again
+   tomorrow and every day after, forever. A request that *failed* records
+   nothing, so it is retried — the two are different and are stored
+   differently.
+5. The no-fix signal compares the year in the identifier against the newest
+   release, which is what `ING-41` says and why `REJ-11` is not needed: a gap
+   worth reporting is measured in years. It is deliberately phrased as *why
+   there is no fix* rather than as a claim that a project is abandoned —
+   nothing here knows that, and `REJ-13` rejected saying so.
 
 **Four things learned by asking the real indexes**, which are in the code and
 worth not rediscovering: crates.io refuses a request that does not identify
@@ -188,12 +197,12 @@ with nothing to tell the two apart. Most of this should dissolve when the
 rebuilt SBOM lands. What will not dissolve is that the row has no ancestry to
 distinguish it by, which is the first item.
 
-**Half-fixed — "What was decided →" is the wrong affordance on that panel.**
-The mockup's single **"Show where this sits in the build →"** is now there and
-opens the tree. The per-place decision link had to stay, because deciding lives
-on its own screen and this panel is the only route to it — the real fix is the
-Decide card the mockup puts on the finding itself, which the audit below
-records as the largest gap left.
+**Fixed — "What was decided →" was the wrong affordance on that panel.**
+The mockup's single **"Show where this sits in the build →"** is there and
+opens the tree. The per-place link stayed only because deciding lived on its
+own screen and this panel was the only route to it; the Decide card is now on
+the finding itself, so the panel is an orientation link again and links to a
+claim only where one stands.
 
 **"Dependencies" in the left rail never loads, and wedges the whole server.**
 Not a UI bug: `GET .../variants/{variant}/components` never returns.
@@ -353,7 +362,7 @@ the declare forms on the catalogue screens rather than a screen of its own.
 |---|---|---|
 | home | `Home.tsx` | All eight panels, in the mockup's order. "Assigned to you" reads as "Being worked on". An earlier version of this audit said the charts came first: that was **wrong**, and wrong in a way worth remembering — it read the order the panels are *defined* in, which for a page assembled from components is not the order they are drawn in |
 | findings | `Findings.tsx` | Built, and now goes further than the mockup: filters are the server's, and a by-component view the mockup does not have |
-| finding detail | `Finding.tsx` | **Partial — the largest gap left.** See below |
+| finding detail | `Finding.tsx` | Deciding and assessing are both on it now. What remains is smaller — see below |
 | review queue | `Queue.tsx` | Built |
 | release comparison | `Compare.tsx` | Built this stretch. The mockup's release-over-release chart is not: it needs a per-release open count that nothing reports |
 | people and access | `People.tsx` | Built this stretch |
@@ -371,14 +380,11 @@ upstream, also known as, where it sits, and the evidence — plus the bumped-and
 came-with-it banner, which the mockup also has. What is missing is everything
 about *deciding*:
 
-- **The Decide card (`TRI-01`) is not on it.** Deciding happens on
-  `PlaceDecision`, one place at a time, reached by a link per row. That is why
-  the "what was decided" link had to stay on the "where it sits" panel where
-  the mockup has only an orientation link — a panel cannot be the only route to
-  a screen and also pretend it is not.
-- **A decision already made is invisible here.** The mockup shows "recorded,
-  now waiting for approval" on the finding. The built one shows nothing, so
-  the finding gives no sign that somebody has already answered it.
+- ~~The Decide card is not on it~~ — **built.** `Assess` and `Decide` are both
+  on the finding now, reusing `ui/Outcome`, `ui/Editor` and `ui/Reach` rather
+  than a second form that drifts from the first.
+- ~~A decision already made is invisible here~~ — **built.** It reports how
+  many of the places have been answered, and links to a claim where one stands.
 - **"How the reasoning changed" and "what has been said"** live on
   `Decision.tsx` and are not reachable from the finding.
 - **"What this decision covers"** (`REL-06`, `REL-07`, `TRI-29`) is a hint

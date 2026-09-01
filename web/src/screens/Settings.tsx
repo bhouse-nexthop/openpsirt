@@ -102,6 +102,16 @@ function label(name?: string): string {
   return last.replace(/-/g, " ");
 }
 
+// The settings whose value is one of a few words rather than a length of time.
+//
+// A select rather than a text box, because a free field invites a value the
+// server then refuses — and for a switch it invites "true", "yes" and "1",
+// none of which are what it takes.
+const choices: Record<string, string[]> = {
+  "triage.floor": ["everything", "low", "medium", "high", "critical"],
+  "upstream.currency": ["off", "on"],
+};
+
 function Field({
   setting,
   onSet,
@@ -111,6 +121,7 @@ function Field({
 }) {
   const [value, setValue] = useState(setting.value ?? "");
   const changed = value !== (setting.value ?? "");
+  const words = choices[setting.name ?? ""];
 
   return (
     <div className="field" style={{ margin: 0, maxWidth: 240 }}>
@@ -119,13 +130,28 @@ function Field({
         {setting.default && <span className="hint"> · shipped default</span>}
       </label>
       <div style={{ display: "flex", gap: 6 }}>
-        <input
-          id={setting.name}
-          type="text"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          title={setting.means}
-        />
+        {words ? (
+          <select
+            id={setting.name}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            title={setting.means}
+          >
+            {words.map((word) => (
+              <option key={word} value={word}>
+                {word}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            id={setting.name}
+            type="text"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            title={setting.means}
+          />
+        )}
         {changed && (
           <button type="button" className="btn" onClick={() => onSet(value)}>
             Save

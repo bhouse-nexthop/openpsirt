@@ -69,6 +69,24 @@ const (
 	// generous it should be is a judgment about a product — a kernel's list is
 	// long — so it is tuned here rather than compiled in.
 	TogetherCap = "triage.together-cap"
+	// UpstreamCurrency is whether this deployment asks public package indexes
+	// what the newest version of a component is (ING-41).
+	//
+	// Off unless somebody turns it on, and the only setting here that decides
+	// whether we talk to anyone. Every other outside answer arrives as a file
+	// somebody imported deliberately, so that a deployment can run somewhere
+	// sealed off; a deployment that cannot reach out loses this answer and
+	// nothing else.
+	UpstreamCurrency = "upstream.currency"
+)
+
+// On and Off are what a setting that is a switch may be set to.
+//
+// Words rather than true/false, because every setting is stored and returned
+// as text and "on" reads the same in the store, in the API and on the screen.
+const (
+	On  = "on"
+	Off = "off"
 )
 
 // Store reads and writes settings.

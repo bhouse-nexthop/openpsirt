@@ -9,6 +9,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/currency"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 )
 
@@ -528,6 +529,17 @@ type Evidence struct {
 	// and the bump did not resolve it — which is aimed at whoever did the
 	// bump rather than at whoever triages.
 	ArrivedFrom string
+
+	// What the ecosystem's own index says is newest, and when it shipped
+	// (ING-41). Empty where asking is turned off, where nothing has asked yet,
+	// and where the index has never heard of the component.
+	LatestVersion    string
+	LatestReleasedAt *time.Time
+	// NothingSince says upstream has shipped nothing since the year this issue
+	// was named, and there is no fix. Two dates compared, not a judgment about
+	// anybody's project: it is the reason there is no fix rather than a claim
+	// that the project is dead.
+	NothingSince bool
 	// Places is where it sits here — the consumer that pulls the component in,
 	// and whether the build has already argued that place away.
 	Places []Sitting
@@ -664,6 +676,14 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		Component:  component.Name, Version: component.Version,
 		FixState: FixState(rows[0].FixState), FixedIn: rows[0].FixedIn, FixedAt: rows[0].FixedAt,
 		ArrivedFrom: rows[0].ArrivedFrom,
+	}
+	if component.LatestVersion != nil {
+		evidence.LatestVersion = *component.LatestVersion
+	}
+	evidence.LatestReleasedAt = component.LatestReleasedAt
+	if component.LatestReleasedAt != nil && FixState(rows[0].FixState) != FixedUpstream {
+		evidence.NothingSince = currency.NothingSince(
+			issue.Identifier, *component.LatestReleasedAt)
 	}
 	if issue.ScoreCenti != nil {
 		evidence.ScoreCenti = *issue.ScoreCenti

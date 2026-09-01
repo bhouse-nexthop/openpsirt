@@ -1877,11 +1877,17 @@ export interface components {
             fixed_at?: string;
             /** @description The version that resolves it */
             fixed_in?: string;
+            /** @description When that version shipped */
+            latest_released_at?: string;
+            /** @description The newest version the ecosystem's own index knows of */
+            latest_version?: string;
             /**
              * Format: double
              * @description Published probability of exploitation, 0 to 1
              */
             likelihood?: number;
+            /** @description Upstream has released nothing since the year this issue was named, and there is no fix. Two dates compared — it says why there is no fix, not that the project is abandoned */
+            nothing_since?: boolean;
             places: components["schemas"]["SittingBody"][] | null;
             references?: components["schemas"]["ReferenceBody"][] | null;
             /**

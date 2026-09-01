@@ -16,6 +16,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/config"
+	"github.com/bhouse-nexthop/openpsirt/internal/currency"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/httpapi"
 	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
@@ -165,7 +166,12 @@ func run(args []string, stdout, stderr *os.File) error {
 	name := workerName()
 	reader := ingest.NewReader(db, work, sbom.Limits{}, logger, name)
 	runner := scanner.NewRunner(db, work, scanner.Grype{Path: cfg.ScannerPath}, logger, name)
-	return serve(cfg, logger, handler, reader, runner)
+	// Asks public indexes what upstream has released (ING-41). Started
+	// whatever the setting says and does nothing until it is turned on: the
+	// setting is read each cycle, so turning this off takes effect without a
+	// redeploy, which matters more than turning it on does.
+	upstream := currency.NewRefresher(db.DB, logger)
+	return serve(cfg, logger, handler, reader, runner, upstream)
 }
 
 // readInterval is how long an idle reader waits before asking for work again.
@@ -174,6 +180,14 @@ func run(args []string, stdout, stderr *os.File) error {
 // is watching a clock for, and a queue that is not empty drains without
 // waiting for it.
 const readInterval = 5 * time.Second
+
+// askInterval is how long the upstream pass waits between slices.
+//
+// Slower than the readers by a long way, and deliberately so. It bounds how
+// fast we walk somebody else's free public index, and the answer it collects
+// is one that changes on the order of days — a minute between slices drains a
+// first run over a few hours and is invisible thereafter.
+const askInterval = time.Minute
 
 // workerName identifies this process in a claim, so a job held by something
 // that has since died can be told apart from one being worked on.
@@ -258,7 +272,8 @@ func newLogger(cfg config.Config, w *os.File) *slog.Logger {
 	return slog.New(slog.NewTextHandler(w, opts))
 }
 
-func serve(cfg config.Config, logger *slog.Logger, handler http.Handler, reader *ingest.Reader, runner *scanner.Runner) error {
+func serve(cfg config.Config, logger *slog.Logger, handler http.Handler,
+	reader *ingest.Reader, runner *scanner.Runner, upstream *currency.Refresher) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -284,6 +299,11 @@ func serve(cfg config.Config, logger *slog.Logger, handler http.Handler, reader 
 			runner.Run(ctx, readInterval)
 		}()
 	}
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		upstream.Run(ctx, askInterval)
+	}()
 	srv := &http.Server{
 		Addr:    cfg.Addr,
 		Handler: handler,
