@@ -868,10 +868,19 @@ components:
         fixed_in:
           description: The version that resolves it
           type: string
+        latest_released_at:
+          description: When that version shipped
+          type: string
+        latest_version:
+          description: The newest version the ecosystem's own index knows of
+          type: string
         likelihood:
           description: Published probability of exploitation, 0 to 1
           format: double
           type: number
+        nothing_since:
+          description: Upstream has released nothing since the year this issue was named, and there is no fix. Two dates compared — it says why there is no fix, not that the project is abandoned
+          type: boolean
         places:
           items:
             $ref: "#/components/schemas/SittingBody"
