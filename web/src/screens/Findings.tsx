@@ -8,6 +8,35 @@ import { Failed } from "../ui/Failed";
 import { Exploited, Severity } from "../ui/Severity";
 
 const PAGE = 50;
+
+// How old the issue is, from the year in its identifier.
+//
+// Not a disclosure date and not called one — REJ-11 declined to store one, and
+// the identifier's year is the year it was assigned. It is enough for the
+// question the column answers: an unfixed issue from years ago and one from
+// last month are different situations, and at that distance a few months
+// either way changes nothing.
+function yearsOld(identifier: string | undefined): number | null {
+  const year = /^(?:CVE|GHSA-[^-]*)-(\d{4})-/.exec(identifier ?? "")?.[1];
+  if (!year) return null;
+  const age = new Date().getUTCFullYear() - Number(year);
+  return age >= 0 ? age : null;
+}
+
+// What upstream has done, said rather than left to be inferred from a blank.
+// "No fix" and "upstream declined" are different answers and only one of them
+// means somebody is still waiting.
+function upstreamSays(state: string | undefined, fixedIn: string | undefined) {
+  if (fixedIn) return { text: fixedIn, kind: "id" as const };
+  switch (state) {
+    case "wont-fix":
+      return { text: "declined", kind: "note" as const };
+    case "none":
+      return { text: "none yet", kind: "note" as const };
+    default:
+      return { text: "—", kind: "faint" as const };
+  }
+}
 const FLOORS = ["low", "medium", "high", "critical"] as const;
 
 // One row per issue in a component, not per place. A real image produced
@@ -324,6 +353,17 @@ export function Findings() {
                             above an unexploited critical is correct and looks
                             like nothing at all. */}
                         <Exploited when={row.exploited} />
+                        {/* How long it has been unanswered. Shown only where
+                            it is worth reacting to: everything is at least a
+                            few months old and saying so on every row is noise. */}
+                        {(() => {
+                          const age = yearsOld(row.vulnerability);
+                          return age !== null && age >= 2 ? (
+                            <span className="hint" style={{ marginLeft: 6 }}>
+                              {age} years old
+                            </span>
+                          ) : null;
+                        })()}
                       </td>
                       <td>
                         <span className="id">{row.component}</span>
@@ -333,7 +373,19 @@ export function Findings() {
                       <td className="num hint">
                         {row.likelihood ? row.likelihood.toFixed(3) : "—"}
                       </td>
-                      <td className="id">{row.fixed_in || "—"}</td>
+                      <td>
+                        {(() => {
+                          const said = upstreamSays(row.fix_state, row.fixed_in);
+                          return (
+                            <span
+                              className={said.kind === "id" ? "id" : "hint"}
+                              style={said.kind === "faint" ? { color: "var(--faint)" } : undefined}
+                            >
+                              {said.text}
+                            </span>
+                          );
+                        })()}
+                      </td>
                       <td className="num">
                         {row.places}
                         {(row.answered ?? 0) > 0 && (
