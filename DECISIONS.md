@@ -613,6 +613,26 @@ to rate a project as alive or dead. Together they separate "we have not
 upgraded" from "there is nothing to upgrade to", which are different problems
 with different owners.
 
+**The two of them together answer a third question, which is the one worth
+having.** Issues disclosed *after* a component's newest release, still carrying
+no fix, say that upstream has shipped nothing since the flaw became known —
+which is the reason there is no fix, arrived at by arithmetic rather than by
+anybody judging a project. That is the case REJ-13 was reaching for and could
+not get to, because asking "is this maintained" needs an opinion and this needs
+two dates.
+
+It does not need a disclosure date, which REJ-11 declined to store: the year in
+the identifier is enough, since a gap that matters is measured in years and a
+few months either way changes nothing.
+
+**On the product in hand it would fire rarely, and that is not an argument
+against it.** Of 1,125 findings with no fix, twelve are on components outside
+the distro — nine Go, three Python — and for a Debian package the comparison
+means nothing, since the distro ships constantly and its release date says
+nothing about the software inside. The signal is for products that carry more
+of their own dependencies, which is what this tool is meant to serve beyond the
+one it was built against.
+
 The scale says it is worth asking. Of 7,859 components, **6,933 carry an
 identifier naming an upstream** — 1,668 Go modules, 593 npm packages, 573 Rust
 crates, 176 Python packages, 16 repositories we build from source. **Two
