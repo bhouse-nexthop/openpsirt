@@ -34,7 +34,7 @@ func TestABumpThatFixedNothingIsNotCountedAsResolved(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		points, err := f.store.Trend(t.Context(), f.holding(t, access.PublicTriage),
+		points, err := f.store.Trend(t.Context(), f.holding(t, access.PublicTriage), finding.Scope{},
 			time.Now().UTC().Add(-30*24*time.Hour), 24*time.Hour, 30)
 		if err != nil {
 			t.Fatal(err)
@@ -76,7 +76,7 @@ func TestAnUpgradeThatFixedSomethingIsCountedAsResolved(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		points, err := f.store.Trend(t.Context(), f.holding(t, access.PublicTriage),
+		points, err := f.store.Trend(t.Context(), f.holding(t, access.PublicTriage), finding.Scope{},
 			time.Now().UTC().Add(-30*24*time.Hour), 24*time.Hour, 30)
 		if err != nil {
 			t.Fatal(err)
@@ -114,7 +114,7 @@ func TestATrendCountsNothingFromOutsideTheRangeItDraws(t *testing.T) {
 		}
 
 		// A fortnight's window, a year after all of that ended.
-		points, err := f.store.Trend(t.Context(), f.holding(t, access.PublicTriage),
+		points, err := f.store.Trend(t.Context(), f.holding(t, access.PublicTriage), finding.Scope{},
 			time.Now().UTC().Add(-14*24*time.Hour), 24*time.Hour, 14)
 		if err != nil {
 			t.Fatal(err)
@@ -140,7 +140,7 @@ func TestATrendWithNoStepStillDrawsARange(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		points, err := f.store.Trend(t.Context(), f.holding(t, access.PublicTriage),
+		points, err := f.store.Trend(t.Context(), f.holding(t, access.PublicTriage), finding.Scope{},
 			time.Time{}, 0, 4)
 		if err != nil {
 			t.Fatal(err)

@@ -4351,6 +4351,12 @@ export interface operations {
     "list-running-out": {
         parameters: {
             query?: {
+                /** @description Limit to one product, by name. Empty means every product you can see */
+                product?: string;
+                /** @description Limit to one branch or tag. Only meaningful with a product */
+                stream?: string;
+                /** @description Limit to one variant. Only meaningful with a product, and independent of the branch */
+                variant?: string;
                 /** @description How far ahead to look */
                 days?: number;
                 limit?: number;
@@ -4623,6 +4629,12 @@ export interface operations {
     "get-trend": {
         parameters: {
             query?: {
+                /** @description Limit to one product, by name. Empty means every product you can see */
+                product?: string;
+                /** @description Limit to one branch or tag. Only meaningful with a product */
+                stream?: string;
+                /** @description Limit to one variant. Only meaningful with a product, and independent of the branch */
+                variant?: string;
                 weeks?: number;
             };
             header?: never;
@@ -4654,6 +4666,12 @@ export interface operations {
     "list-unassigned": {
         parameters: {
             query?: {
+                /** @description Limit to one product, by name. Empty means every product you can see */
+                product?: string;
+                /** @description Limit to one branch or tag. Only meaningful with a product */
+                stream?: string;
+                /** @description Limit to one variant. Only meaningful with a product, and independent of the branch */
+                variant?: string;
                 limit?: number;
                 offset?: number;
             };

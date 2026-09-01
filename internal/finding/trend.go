@@ -32,7 +32,7 @@ type Point struct {
 // they say whether the team is keeping pace, and new consistently outrunning
 // resolved is a growing backlog that should be visible before somebody works
 // it out from a chart of open alone.
-func (s *Store) Trend(ctx context.Context, subject access.Subject, since time.Time,
+func (s *Store) Trend(ctx context.Context, subject access.Subject, scope Scope, since time.Time,
 	step time.Duration, steps int) ([]Point, error) {
 
 	products, all := subject.Products()
@@ -92,7 +92,7 @@ func (s *Store) Trend(ctx context.Context, subject access.Subject, since time.Ti
 	if !all {
 		query = query.Where("st.product_id IN (?)", bun.List(products))
 	}
-	query = onlyVisible(query, subject, products, all)
+	query = scope.narrow(onlyVisible(query, subject, products, all))
 
 	if err := query.Scan(ctx, &rows); err != nil {
 		return nil, fmt.Errorf("read what changed over time: %w", err)

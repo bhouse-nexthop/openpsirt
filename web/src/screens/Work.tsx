@@ -5,6 +5,7 @@ import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
 import { Exploited, Severity } from "../ui/Severity";
+import { scopeQuery, useScope } from "../app/scope";
 
 // Two questions about work in flight, across every product somebody can see.
 //
@@ -17,10 +18,15 @@ export function Work() {
   const tab = params.get("tab") ?? "due";
   const days = Number(params.get("days") ?? 30);
 
+  const scope = scopeQuery(useScope());
   const due = useQuery({
-    queryKey: ["running-out", days],
+    queryKey: ["running-out", days, scope],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/running-out", { params: { query: { days, limit: 200 } } })),
+      unwrap(
+        await api.GET("/v1/running-out", {
+          params: { query: { days, limit: 200, ...scope } },
+        }),
+      ),
   });
   const holdings = useQuery({
     queryKey: ["holdings"],
@@ -41,7 +47,11 @@ export function Work() {
     <>
       <div className="screen-head">
         <h2>Who is working on what</h2>
-        <p>Across every product you can see</p>
+        <p>
+          {scope.product
+            ? `${scope.product}${scope.stream ? ` · ${scope.stream}` : ""}${scope.variant ? ` · ${scope.variant}` : ""}`
+            : "Across every product you can see"}
+        </p>
       </div>
 
       <div className="tabs2">

@@ -60,7 +60,7 @@ func TestWhatIsRunningOutIsOrderedByDeadlineNotByAge(t *testing.T) {
 		// Ninety days ahead, so both are in range and the order is the thing
 		// being tested. The low was seen first and is due last.
 		who := f.holding(t, access.PublicTriage)
-		late, err := f.store.RunningOut(t.Context(), who, 90*24*time.Hour, 50)
+		late, err := f.store.RunningOut(t.Context(), who, finding.Scope{}, 90*24*time.Hour, 50)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -73,7 +73,7 @@ func TestWhatIsRunningOutIsOrderedByDeadlineNotByAge(t *testing.T) {
 		}
 
 		// And a fortnight ahead the low is not in range at all.
-		soon, err := f.store.RunningOut(t.Context(), who, 14*24*time.Hour, 50)
+		soon, err := f.store.RunningOut(t.Context(), who, finding.Scope{}, 14*24*time.Hour, 50)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -100,7 +100,7 @@ func TestWhatIsRunningOutIsOneRowPerIssueAtAComponent(t *testing.T) {
 			t.Fatalf("expected one issue at two places, got %d", places)
 		}
 
-		late, err := f.store.RunningOut(t.Context(), f.holding(t, access.PublicTriage),
+		late, err := f.store.RunningOut(t.Context(), f.holding(t, access.PublicTriage), finding.Scope{},
 			14*24*time.Hour, 50)
 		if err != nil {
 			t.Fatal(err)
@@ -131,7 +131,7 @@ func TestAnUnratedFindingDoesNotGetTheLongestDeadline(t *testing.T) {
 
 		// A hundred days in: past the ninety-day medium window, well inside
 		// the hundred-and-eighty-day low one.
-		late, err := f.store.RunningOut(t.Context(), f.holding(t, access.PublicTriage),
+		late, err := f.store.RunningOut(t.Context(), f.holding(t, access.PublicTriage), finding.Scope{},
 			0, 50)
 		if err != nil {
 			t.Fatal(err)
@@ -241,6 +241,60 @@ func TestChangingHowLongSomethingMayStayOpenMovesTheDeadline(t *testing.T) {
 		if !now.Before(was) {
 			t.Errorf("the window was halved and the deadline did not move earlier: %s then %s",
 				was, now)
+		}
+	})
+}
+
+func TestWhatIsRunningOutNarrowsToWhatIsSelected(t *testing.T) {
+	// UIX-38. The screens that span products answer for whatever the picker
+	// has selected, with "all" offered at each level rather than being the
+	// only option — so the narrowing has to happen in the statement, not in
+	// whatever is drawing the result.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		run := f.run(t)
+		f.seenAt(t, run, time.Now().UTC().Add(-40*24*time.Hour))
+		high := found("CVE-2026-SCOPE", swss)
+		high.Issue.Severity = "high"
+		if _, err := f.store.Apply(t.Context(), f.target, run,
+			[]finding.Reported{high}); err != nil {
+			t.Fatal(err)
+		}
+
+		who := f.holding(t, access.PublicTriage)
+		window := 90 * 24 * time.Hour
+
+		everything, err := f.store.RunningOut(t.Context(), who, finding.Scope{}, window, 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(everything) == 0 {
+			t.Fatal("nothing is running out, so there is nothing to narrow")
+		}
+
+		here := f.productID
+		mine, err := f.store.RunningOut(t.Context(), who,
+			finding.Scope{ProductID: &here}, window, 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(mine) != len(everything) {
+			t.Errorf("narrowing to the only product there is returned %d of %d rows",
+				len(mine), len(everything))
+		}
+
+		// A product this build does not belong to. Nothing here is in it, and
+		// an empty answer is the whole point: a scoped page that quietly
+		// ignored the scope would report another product's numbers under this
+		// product's name.
+		elsewhere := here + 1000
+		none, err := f.store.RunningOut(t.Context(), who,
+			finding.Scope{ProductID: &elsewhere}, window, 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(none) != 0 {
+			t.Errorf("narrowing to another product returned %d rows, want none", len(none))
 		}
 	})
 }

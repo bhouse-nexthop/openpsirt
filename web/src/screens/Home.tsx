@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
+import { scopeQuery, useScope } from "../app/scope";
 import { unwrap } from "../api/queries";
 import { Failed } from "../ui/Failed";
 import { Pace, Mix, Ring } from "../ui/Charts";
@@ -14,9 +15,15 @@ import type { Who } from "../app/session";
 // from that is that each panel is a number, three rows, and a way through to
 // the screen that actually does the work.
 export function Home({ who }: { who: Who }) {
+  // Whatever the picker has selected, with every level offering "all"
+  // (UIX-38). Home used to summarize across every product and only that,
+  // which once a product is chosen answers a question nobody asked.
+  const at = useScope();
+  const scope = scopeQuery(at);
   const trend = useQuery({
-    queryKey: ["home", "trend"],
-    queryFn: async () => unwrap(await api.GET("/v1/trend", { params: { query: { weeks: 12 } } })),
+    queryKey: ["home", "trend", scope],
+    queryFn: async () =>
+      unwrap(await api.GET("/v1/trend", { params: { query: { weeks: 12, ...scope } } })),
   });
   const points = trend.data?.items ?? [];
 
@@ -24,7 +31,32 @@ export function Home({ who }: { who: Who }) {
     <>
       <div className="screen-head">
         <h2>{greeting()}, {who.name.replace(/^[a-z]+:/, "")}</h2>
-        <p>{holdings(who)}</p>
+        <p>
+          {holdings(who)}
+          {/* Said rather than implied. A narrowed page that looks like an
+              unnarrowed one is how two people quote different figures for the
+              same question (REJ-10). */}
+          {at.product && (
+            <>
+              {" · counting "}
+              <span className="id">{at.product}</span>
+              {at.stream ? (
+                <>
+                  {" "}
+                  <span className="id">{at.stream}</span>
+                </>
+              ) : (
+                " across every branch"
+              )}
+              {at.variant && (
+                <>
+                  {" "}
+                  <span className="id">{at.variant}</span>
+                </>
+              )}
+            </>
+          )}
+        </p>
       </div>
 
       <div className="panels">

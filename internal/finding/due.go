@@ -135,7 +135,7 @@ type Late struct {
 // deadline was stored, and it will have one the next time a scan reopens it —
 // which is honestly "not known yet" rather than "not due", and either way not
 // something to interrupt anybody about.
-func (s *Store) RunningOut(ctx context.Context, subject access.Subject,
+func (s *Store) RunningOut(ctx context.Context, subject access.Subject, scope Scope,
 	within time.Duration, limit int) ([]Late, error) {
 
 	products, all := subject.Products()
@@ -190,6 +190,7 @@ func (s *Store) RunningOut(ctx context.Context, subject access.Subject,
 		query = query.Where("st.product_id IN (?)", bun.List(products))
 	}
 	query = onlyVisible(query, subject, products, all)
+	query = scope.narrow(query)
 
 	var late []Late
 	if err := query.Scan(ctx, &late); err != nil {

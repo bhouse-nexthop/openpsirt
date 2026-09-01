@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
+import { scopeQuery, useScope } from "../app/scope";
 import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
@@ -12,11 +13,12 @@ import { Exploited, Severity } from "../ui/Severity";
 // people is invisible unless it can be listed, and it is exactly what hides
 // when every screen shows one product.
 export function Unassigned() {
+  const scope = scopeQuery(useScope());
   const queries = useQueryClient();
   const nobodys = useQuery({
-    queryKey: ["unassigned"],
+    queryKey: ["unassigned", scope],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/unassigned", { params: { query: { limit: 50 } } })),
+      unwrap(await api.GET("/v1/unassigned", { params: { query: { limit: 50, ...scope } } })),
   });
 
   const assign = useMutation({
@@ -63,7 +65,10 @@ export function Unassigned() {
       <header className="mb-4">
         <h1 className="text-lg font-semibold tracking-tight">Nobody is dealing with these</h1>
         <p className="text-sm text-[var(--muted)]">
-          Across every product you can see. {nobodys.data?.total ?? 0} in total.
+          {scope.product
+            ? `${scope.product}${scope.stream ? ` · ${scope.stream}` : ""}${scope.variant ? ` · ${scope.variant}` : ""}. `
+            : "Across every product you can see. "}
+          {nobodys.data?.total ?? 0} in total.
         </p>
       </header>
 

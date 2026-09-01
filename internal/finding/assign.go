@@ -261,7 +261,7 @@ type Owned struct {
 // Across products deliberately. Work falling between people is not a
 // per-product problem — it is exactly the thing that hides when every screen
 // is scoped to one product and nobody looks at the others.
-func (s *Store) Unassigned(ctx context.Context, subject access.Subject,
+func (s *Store) Unassigned(ctx context.Context, subject access.Subject, scope Scope,
 	limit, offset int) ([]Owned, int, error) {
 
 	products, all := subject.Products()
@@ -281,7 +281,7 @@ func (s *Store) Unassigned(ctx context.Context, subject access.Subject,
 		if !all {
 			q = q.Where("st.product_id IN (?)", bun.List(products))
 		}
-		return onlyVisible(q, subject, products, all)
+		return scope.narrow(onlyVisible(q, subject, products, all))
 	}
 
 	// Counted by grouping and counting the groups, not by a COUNT DISTINCT

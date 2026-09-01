@@ -22,6 +22,18 @@ const SHAPES = [
 
 export type Scoped = { product?: string; stream?: string; variant?: string };
 
+// Whether the screen at this path needs a whole build.
+//
+// Six of them do, and their data exists for one build and no other: a finding
+// is a row in one build's scan, and there is no dependency graph across
+// branches. So the picker cannot go partial while somebody is standing on one
+// — the levels that would say "all" are disabled there and say why, rather
+// than accepting the choice and moving somebody somewhere it makes sense,
+// which turns a filter into a jump nobody asked for (UIX-39).
+export function needsBuild(pathname: string): boolean {
+  return matchPath(`${BUILD}/*`, pathname) !== null || matchPath(BUILD, pathname) !== null;
+}
+
 const KEPT = "openpsirt.scope";
 
 // Remembered for the tab rather than the browser: it is where somebody is
@@ -42,6 +54,19 @@ function remembered(): Scoped {
   } catch {
     return {};
   }
+}
+
+// The picker's selection as query parameters, with the levels that cannot
+// stand alone dropped. A branch or a variant without a product is refused by
+// the server rather than guessed at, and sending one would only turn a
+// selection nobody can make in the interface into an error.
+export function scopeQuery(at: Scoped): Record<string, string> {
+  if (!at.product) return {};
+  return {
+    product: at.product,
+    ...(at.stream ? { stream: at.stream } : {}),
+    ...(at.variant ? { variant: at.variant } : {}),
+  };
 }
 
 export function useScope(): Scoped {

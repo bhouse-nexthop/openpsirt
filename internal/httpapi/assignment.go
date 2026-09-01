@@ -99,6 +99,7 @@ func registerAssignment(api huma.API, in Ingest) {
 			"hides when every screen shows one product and nobody looks at the others.",
 		Tags: []string{"Findings"},
 	}, func(ctx context.Context, input *struct {
+		ScopeQuery
 		Limit  int `query:"limit" default:"50" minimum:"1" maximum:"200"`
 		Offset int `query:"offset" minimum:"0"`
 	}) (*struct {
@@ -111,7 +112,12 @@ func registerAssignment(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
-		rows, total, err := finding.NewStore(in.DB.DB).Unassigned(ctx, subject, input.Limit, input.Offset)
+		scope, err := scoped(ctx, in, subject, input.ScopeQuery)
+		if err != nil {
+			return nil, err
+		}
+		rows, total, err := finding.NewStore(in.DB.DB).Unassigned(ctx, subject, scope,
+			input.Limit, input.Offset)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "what nobody is dealing with could not be read", err)
 		}

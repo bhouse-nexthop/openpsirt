@@ -45,6 +45,7 @@ func registerReports(api huma.API, in Ingest) {
 			"until a measurement says it has to be.",
 		Tags: []string{"Findings"},
 	}, func(ctx context.Context, input *struct {
+		ScopeQuery
 		Weeks int `query:"weeks" default:"12" minimum:"1" maximum:"104"`
 	}) (*listOutput[PointBody], error) {
 		subject, err := reading(ctx)
@@ -54,7 +55,11 @@ func registerReports(api huma.API, in Ingest) {
 		const week = 7 * 24 * time.Hour
 		since := time.Now().UTC().Add(-time.Duration(input.Weeks) * week)
 
-		points, err := finding.NewStore(in.DB.DB).Trend(ctx, subject, since, week, input.Weeks)
+		scope, err := scoped(ctx, in, subject, input.ScopeQuery)
+		if err != nil {
+			return nil, err
+		}
+		points, err := finding.NewStore(in.DB.DB).Trend(ctx, subject, scope, since, week, input.Weeks)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "the trend could not be worked out", err)
 		}

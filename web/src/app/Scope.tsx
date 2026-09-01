@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
-import { remember, rescoped, useScope } from "./scope";
+import { needsBuild, remember, rescoped, useScope, type Scoped } from "./scope";
 
 // What you are looking at, and how to change it.
 //
@@ -23,6 +23,8 @@ export function Scope() {
   // address so opening the panel starts where you are.
   const [product, setProduct] = useState(at.product ?? "");
   const [stream, setStream] = useState(at.stream ?? "");
+  // A build is required here, so "all" is not on offer at any level.
+  const whole = needsBuild(pathname);
 
   useEffect(() => {
     setProduct(at.product ?? "");
@@ -66,20 +68,54 @@ export function Scope() {
         }),
       ),
   });
+  // What the product is built as, rather than what one release was. A variant
+  // belongs to the product (MDL-01), so with every branch selected this is the
+  // set to choose from — the per-release list would be an arbitrary one of
+  // them.
+  const declared = useQuery({
+    queryKey: ["variants", product],
+    enabled: open && !!product && !stream,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/products/{product}/variants", { params: { path: { product } } }),
+      ),
+  });
 
-  function go(variant: string) {
+  // Applied as soon as it is chosen, at whatever level. A partial selection
+  // is a real answer now — every level offers "all" — so there is nothing to
+  // wait for (UIX-38).
+  function apply(chosen: Scoped) {
     setOpen(false);
     // Stay where you are. A screen that names a build swaps its build and
     // keeps doing whatever it was doing; anything else simply remembers the
     // choice, because changing scope is not a reason to move somebody.
-    const next = rescoped(pathname, { product, stream, variant });
-    if (next) {
-      navigate(next);
-      return;
+    if (chosen.product && chosen.stream && chosen.variant) {
+      const next = rescoped(pathname, {
+        product: chosen.product,
+        stream: chosen.stream,
+        variant: chosen.variant,
+      });
+      if (next) {
+        navigate(next);
+        return;
+      }
     }
-    remember({ product, stream, variant });
+    remember(chosen);
     // A re-render is needed for the bar to catch up with what was remembered.
     navigate(pathname, { replace: true });
+  }
+
+  // Choosing a level clears the ones below it that can no longer stand. A
+  // branch belongs to a product, and so does a variant, so "all products"
+  // cannot leave either beside it.
+  function pickProduct(name: string) {
+    setProduct(name);
+    setStream("");
+    if (!name) {
+      apply({});
+      return;
+    }
+    if (!whole) apply({ product: name });
   }
 
   return (
@@ -89,7 +125,7 @@ export function Scope() {
           chosen hides that there is a choice to make at all. */}
       <button type="button" className="scope" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span className="label">Product</span>
-        {at.product || "pick one"}
+        {at.product || (whole ? "pick one" : "all")}
         <span className="caret">▾</span>
       </button>
       <span className="sep">/</span>
@@ -99,7 +135,7 @@ export function Scope() {
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        {at.stream || (at.product ? "branch or tag" : "—")}
+        {at.stream || (at.product ? "all" : "—")}
         <span className="caret">▾</span>
       </button>
       <span className="sep">/</span>
@@ -109,25 +145,30 @@ export function Scope() {
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        {at.variant || (at.stream ? "variant" : "—")}
+        {at.variant || (at.product ? "all" : "—")}
         <span className="caret">▾</span>
       </button>
 
       <div className={open ? "picker open" : "picker"}>
         <div>
           <h5>Product</h5>
+          <button
+            type="button"
+            className="opt"
+            aria-current={!product ? "true" : undefined}
+            disabled={whole}
+            title={whole ? "This screen is about one build, so it needs all three" : undefined}
+            onClick={() => pickProduct("")}
+          >
+            Every product
+          </button>
           {(products.data?.items ?? []).map((each) => (
             <button
               key={each.name}
               type="button"
               className="opt"
               aria-current={each.name === product ? "true" : undefined}
-              onClick={() => {
-                setProduct(each.name ?? "");
-                // A branch belongs to a product, so changing the product
-                // cannot leave the one beside it standing.
-                setStream("");
-              }}
+              onClick={() => pickProduct(each.name ?? "")}
             >
               {each.display_name || each.name}
             </button>
@@ -139,14 +180,34 @@ export function Scope() {
 
         <div>
           <h5>Branch or tag</h5>
+          {/* Unselectable without a product, because neither a branch nor a
+              variant means anything without one to belong to (UIX-38). */}
           {!product && <p className="hint">Pick a product first.</p>}
+          {product && (
+            <button
+              type="button"
+              className="opt"
+              aria-current={!stream ? "true" : undefined}
+              disabled={whole}
+              title={whole ? "This screen is about one build, so it needs all three" : undefined}
+              onClick={() => {
+                setStream("");
+                if (!whole) apply({ product });
+              }}
+            >
+              Every branch and tag
+            </button>
+          )}
           {(streams.data?.items ?? []).map((each) => (
             <button
               key={each.name}
               type="button"
               className="opt"
               aria-current={each.name === stream ? "true" : undefined}
-              onClick={() => setStream(each.name ?? "")}
+              onClick={() => {
+                setStream(each.name ?? "");
+                if (!whole) apply({ product, stream: each.name });
+              }}
             >
               {each.name} <span className="hint">{each.kind}</span>
             </button>
@@ -158,14 +219,26 @@ export function Scope() {
 
         <div>
           <h5>Variant</h5>
-          {!stream && <p className="hint">Pick a branch or tag first.</p>}
-          {(variants.data?.items ?? []).map((each) => (
+          {!product && <p className="hint">Pick a product first.</p>}
+          {product && (
+            <button
+              type="button"
+              className="opt"
+              aria-current={!at.variant ? "true" : undefined}
+              disabled={whole}
+              title={whole ? "This screen is about one build, so it needs all three" : undefined}
+              onClick={() => apply({ product, stream })}
+            >
+              Every variant
+            </button>
+          )}
+          {((stream ? variants.data?.items : declared.data?.items) ?? []).map((each) => (
             <button
               key={each.name}
               type="button"
               className="opt"
               aria-current={each.name === at.variant ? "true" : undefined}
-              onClick={() => go(each.name ?? "")}
+              onClick={() => apply({ product, stream, variant: each.name })}
             >
               {each.name}
             </button>

@@ -233,7 +233,7 @@ func TestTheCountsBesideTheseListsAreAskedForOnEveryEngine(t *testing.T) {
 		}
 		who := f.holding(t, access.PublicTriage)
 
-		nobodys, total, err := f.store.Unassigned(t.Context(), who, 50, 0)
+		nobodys, total, err := f.store.Unassigned(t.Context(), who, finding.Scope{}, 50, 0)
 		if err != nil {
 			t.Fatal(err)
 		}

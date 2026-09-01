@@ -44,6 +44,7 @@ func registerDue(api huma.API, in Ingest) {
 			"negative once something is overdue.",
 		Tags: []string{"Findings"},
 	}, func(ctx context.Context, input *struct {
+		ScopeQuery
 		Days  int `query:"days" default:"14" minimum:"0" maximum:"365" doc:"How far ahead to look"`
 		Limit int `query:"limit" default:"50" minimum:"1" maximum:"200"`
 	}) (*listOutput[LateBody], error) {
@@ -51,7 +52,11 @@ func registerDue(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
-		rows, err := finding.NewStore(in.DB.DB).RunningOut(ctx, subject,
+		scope, err := scoped(ctx, in, subject, input.ScopeQuery)
+		if err != nil {
+			return nil, err
+		}
+		rows, err := finding.NewStore(in.DB.DB).RunningOut(ctx, subject, scope,
 			time.Duration(input.Days)*24*time.Hour, input.Limit)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "what is running out of time could not be read", err)
