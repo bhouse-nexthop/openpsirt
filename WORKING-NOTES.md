@@ -8,6 +8,39 @@ here.
 
 ## Where to pick up
 
+**Everything decided so far is built except one half.** The state of it, in the
+order it would be picked up:
+
+| | |
+|---|---|
+| **Waiting on you** | The rebuilt SBOM. The fixture, the demo database and the counts `ING-36`/`ING-37` argue from are all still from the pre-fix generator. Steps are under "The split, and the reload it needs" |
+| **Half built** | `ING-41`. The client is done and verified against the live indexes (`internal/currency`), and the columns exist (migration 00017). **Not** built: the setting that turns it on, the pass that walks components and fills the columns, and anything showing it. See below |
+| **Not started** | `DESIGN-interface.md` is behind the code and is the thing most likely to be lost, because this document is temporary and it is not |
+
+**What `ING-41` still needs**, so it can be picked up cold:
+
+1. A setting — `upstream.currency`, off by default, in `settable` beside the
+   others in `internal/httpapi/settings.go`.
+2. A pass that walks components whose `latest_checked_at` is null or old,
+   asks `currency.Client.For(ecosystem)`, and writes the three columns. Only
+   for what we build ourselves: for a distribution package the distribution is
+   the maintainer and its release date says nothing about the software inside.
+   Skip `deb` and anything with no purl.
+3. Somewhere to run it. The two existing workers are started in `serve()` in
+   `cmd/openpsirt/main.go`; a third of the same shape is the obvious place,
+   and the bounded shutdown now covers it.
+4. Showing it: whether we are behind, and the derived signal — an issue
+   disclosed after the newest release and still unfixed says upstream has
+   shipped nothing since the flaw became known.
+
+**Four things learned by asking the real indexes**, which are in the code and
+worth not rediscovering: crates.io refuses a request that does not identify
+itself; the Go proxy escapes an uppercase letter as `!` and its lowercase; PyPI
+dates a release by its files rather than by itself; and npm dates each version
+only in its full document, which for `@types/node` is eleven megabytes — a four
+megabyte read bound was silently truncating it into invalid JSON.
+
+
 The interface is built out and running. `make demo` brings it up; the details
 and the two settings people get wrong are in `DESIGN-interface.md` under
 "Running it locally".
@@ -365,7 +398,57 @@ against, which the scan document carries and the API does not surface.
 entry or is reached from one, which was not true at the start of this stretch —
 people and comparison existed as endpoints with nothing pointing at them.
 
+## The dependency tree, and why its counts are worked out live
+
+Reported three times and fixed three times, each a different defect. Kept
+together because the next change to that screen will meet all three.
+
+1. **It never loaded.** `finding` carried no index containing `component_id`,
+   so counting what was open against each of the root's 5,270 children scanned
+   all 441,108 open findings each time: 637 ms a row, about 56 minutes.
+   Migration 00012 and a grouped join fixed it — 1.35 s.
+2. **It was a list, not a tree.** Ordering children by findings buries the
+   structure, because a container holds none of its own: of 5,270 children only
+   96 open at all, and the first sat at position 546. What opens now comes
+   first, and branches and leaves truncate separately.
+3. **Every container read zero.** The count was what is filed against the
+   component itself. It is now what is open in everything under it.
+
+**That last one is worked out per request, not stored, and that was a
+correction.** Storing it after a scan was the first attempt and it is the wrong
+shape: the number comes from findings, and findings move between scans —
+dismissed, assigned, reconsidered — so a stored total is right the moment a
+scan ends and drifts afterwards. Live costs two queries and a walk over 19,192
+edges, and took the request from 0.16 s to 0.57 s.
+
+**Branches are ordered by name, not by the rollup.** Ordering by it was tried
+and made the screen worse: an edge means "contains or depends on", the document
+does not distinguish them, and forty kernel-module packages each depending on
+the one kernel all reported its 425,098 and filled the first screen — putting
+the containers back out of sight, which is defect 2 arriving from the other
+side. **If the producer ever distinguishes containment from dependency, this is
+the decision to revisit.**
+
+**Still open on that screen:** whether a dismissal should subtract from the
+count. Today it does not — the count is every open finding, answered or not —
+and that is the behaviour that predates this work rather than a choice made
+here.
+
 ## Traps found the hard way
+
+**A multi-edit script that stops halfway leaves the rest unapplied, silently.**
+Twice today a Python batch failed an assertion partway and never wrote, and the
+edits after the failure looked done because the ones before them were. Both
+were caught by checking the *data* rather than the diff — one had the triage
+line hiding 91,040 findings it should not have, the other had a deadline band
+matching a literal word instead of the folded one. Check the result, not the
+script's exit.
+
+**Two servers, one port.** `kill $(cat api.pid)` leaves an older process
+holding 8080, the new one fails to bind, and every check then reads the *old*
+binary while looking like it worked. It cost two wrong conclusions today.
+`pkill -f "bin/openpsirt"` before restarting, and confirm the port is free.
+
 
 Worth keeping until they are covered by a test or a rule.
 
