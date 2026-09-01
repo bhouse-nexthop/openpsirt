@@ -492,29 +492,62 @@ duplication they were measured on is fixed at the source, and `ING-37`'s "no
 overlap at all" is now 16 overlapping, because the halves carrying each
 mechanism became one component carrying both.
 
-### The one class left, and it is the one that was reported
+### The class that was reported, and what it turned out to be
 
-The complaint that started this — `golang.org/x/net` sitting under the product
-with nothing above it — is **not** the class the attribution fix addressed. It
-comes from `usr/share/go-1.19/src/go.sum`: a lockfile shipped *inside* the
-golang-1.19 Debian package, which SONiC did not build, so there is no
-`sonic:src_path` to match and nothing to attribute it to.
+`golang.org/x/net` sitting under the product with nothing above it is **not**
+a Debian package's contents, which is what these notes said first and what I
+told Brad. It is the **build container's own Go compiler**: the path is
+`usr/share/go-1.19/src/go.sum`, harvested from
+`versions/build/log-*/lockfiles.tar.gz`, and **the image ships no golang
+package at all**. No shipped scope's harvest contains a single `usr/` path —
+checked across all twenty docker and host tarballs.
 
-658 components arrive this way, carrying **489 open findings — 0.2% of the
-241,161**. Small in aggregate and disproportionately visible, because having no
-parent is exactly what makes them float to the top with nothing explaining
-them. The biggest sources are Go's own vendored trees and, less defensibly, a
-vscode extension's `package-lock.json` inside a ruby gem and pprof's
-`third_party/d3flamegraph`.
+The two situations were never conflated in the data. The x/net actually linked
+into what we ship is tracked separately and correctly: v0.55.0 under
+sonic-gnmi, v0.53.0 under sonic-mgmt-framework, v0.49.0 under
+docker-sonic-otel, v0.34.0 under sysmgr. Fifteen versions, fifteen origins,
+kept apart. What was wrong is that build tooling sat in the same list as image
+contents, and having no parent is what made it conspicuous.
 
-Two ways out, and they are a judgment call rather than a bug:
+Split by harvest path: 294 lockfile components come from `sonic/` source trees
+(legitimate — statically linked into shipped Go binaries) and **658 from
+`usr/` toolchain trees** (not shipped), carrying **216 findings, 2.9% of the
+7,546 rows** on the working list.
 
-- **Attribute them to the package that ships the path.** `usr/share/go-1.19/…`
-  is owned by an installed .deb, so the tree could say "golang-1.19 pulls this
-  in", which is true and would explain every one of them.
-- **Ask whether they belong at all.** A test fixture vendored inside a source
-  tree is not linked into anything the image runs. That is a claim about
-  reachability rather than about attribution, and it is the larger question.
+**Measured, not assumed** — and this is the part worth keeping:
+
+| where the component sits | valid CycloneDX 1.6 | grype matches |
+|---|---|---|
+| `components`, no scope | yes | 20 |
+| `components`, `scope: excluded` | yes | **20** |
+| `formulation` | yes | **0** |
+
+**grype ignores `scope` entirely**, on 0.112.0 (the version the build uses) and
+0.118.0. Marking a component excluded is correct for a human and inert for the
+scanner, so "mark it" would have changed nothing. `formulation` — the section
+CycloneDX 1.5 added for how a thing was built — is what actually works, and it
+keeps the data, so a build-chain compromise question stays answerable.
+
+**A correction worth remembering:** the first figure recorded here was 489
+findings, from matching component *names*. Names like `golang.org/x/net` are
+shared between the toolchain copy and legitimately shipped copies, so that
+over-counted by more than double. Matching on name *and version* gives 216,
+which is exactly what grype's own count dropped by. **Counting by name where
+the same name means two things is a trap this project has now hit twice.**
+
+### The build never validated its own output
+
+Found while checking that the formulation change validated:
+`cyclonedx validate --input-version v1_6` **rejects every SBOM the build has
+ever produced**. `pedigree.patches[].diff` carries `url` and `text` and nothing
+else, and the generator emitted a `hashes` array beside them; 530 components
+carry one, so a single unschema'd field invalidated the whole file.
+
+Nothing in the build runs the validator, which is why it was silent — the tools
+we happened to use are lenient. Fixed upstream by moving the digest to a
+`sonic:patch_sha256` property, with the change-detection signature reading it
+from there and still reading the old spelling, so comparing against an older
+document does not read as every patch having changed.
 
 ## Traps found the hard way
 
