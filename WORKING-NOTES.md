@@ -76,7 +76,7 @@ here only so the reasoning is findable while the work is fresh.
 | **UIX-37** | The interface is embedded in the binary; a path the router has no route for belongs to the page |
 | **One package arriving as two components was not ours to decide** | It read as a modelling question about purl namespaces and was none of the five options weighed here. The producer was emitting two records for one artifact — see "The split, and the reload it needs" below |
 
-## Decided on 2026-09-01, and waiting to be built
+## Decided on 2026-09-01, and built
 
 Talked through one at a time and written into `DECISIONS.md`. Listed here only
 so the queue is visible while the work is fresh; the reasoning is there, not
@@ -84,10 +84,17 @@ here.
 
 | | |
 |---|---|
-| **`TRI-37`, `TRI-38`, `UIX-40`** | Deciding moves onto the finding and covers every place by default, with them listed and untickable. Needs a new per-finding endpoint taking an optional set of places — **not** the bulk one, which would drag in its always-needs-approval rule. A place left out stays open, and the finding says how many are decided |
-| **`UIX-38`, `UIX-39`** | The picker narrows the whole interface with an explicit "all" at each level; product "all" leaves branch and variant unselectable; the six build-scoped screens disable "all" rather than moving anybody. Needs product, branch and variant filters on `running-out`, `trend` and `unassigned`, which take no scope at all today |
+| **`TRI-37`, `TRI-38`, `UIX-40`** | ~~Built.~~ The Decide card is on the finding, covering every place by default with them listed and untickable. Its own endpoint, not the bulk one, so the ordinary approval rules still apply. One action is one transaction: thirty places took 6.09 s written one at a time and 0.10 s together, and a failure halfway no longer leaves a finding half answered |
+| **`UIX-38`, `UIX-39`** | ~~Built.~~ The picker narrows the whole interface, `running-out`, `trend` and `unassigned` take a scope, and each narrowed screen says what it is counting. A branch or variant with no product is refused rather than guessed at |
 | **`REM-26`** | ~~Built.~~ A deadline is computed at ingest and stored, and recomputed when the policy changes. Eight seconds became 1.35 s. The rewrite itself is sliced by identifier range and runs off the request: as one statement it took nineteen seconds and, on SQLite's single connection, that is the whole process answering nothing — the outage this document already diagnosed once. Sliced, other requests stay under a second while it runs. It is **not** on the job queue, so a restart mid-rewrite leaves some findings on the old deadline until the next scan or the next edit |
-| **`UIX-41`** | A findings row shows what upstream has done and how old the issue is. Both are already stored; this is a column, not ingest work |
+| **`UIX-41`** | ~~Built.~~ A findings row says what upstream has done — "declined" and "none yet" were the same blank — and how old the issue is, from the year in its identifier |
+
+**All four are built.** What is left from this stretch: the SBOM reload, and
+one thing found while building — a `not-applicable` claim justified by
+`inline_mitigations_already_exist` expires when the component's upstream
+version changes, but a mitigation is a *configuration* that can be removed with
+no code change, so that claim can go quietly false while the tool believes it.
+Everything else in the model expires correctly.
 
 Also worth doing while in there: **check what the scanner knows about *why*
 there is no fix.** `none` currently conflates "the distro considered it and
