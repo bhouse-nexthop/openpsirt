@@ -76,17 +76,31 @@ here only so the reasoning is findable while the work is fresh.
 | **UIX-37** | The interface is embedded in the binary; a path the router has no route for belongs to the page |
 | **One package arriving as two components was not ours to decide** | It read as a modelling question about purl namespaces and was none of the five options weighed here. The producer was emitting two records for one artifact — see "The split, and the reload it needs" below |
 
+## Decided on 2026-09-01, and waiting to be built
+
+Talked through one at a time and written into `DECISIONS.md`. Listed here only
+so the queue is visible while the work is fresh; the reasoning is there, not
+here.
+
+| | |
+|---|---|
+| **`TRI-37`, `TRI-38`, `UIX-40`** | Deciding moves onto the finding and covers every place by default, with them listed and untickable. Needs a new per-finding endpoint taking an optional set of places — **not** the bulk one, which would drag in its always-needs-approval rule. A place left out stays open, and the finding says how many are decided |
+| **`UIX-38`, `UIX-39`** | The picker narrows the whole interface with an explicit "all" at each level; product "all" leaves branch and variant unselectable; the six build-scoped screens disable "all" rather than moving anybody. Needs product, branch and variant filters on `running-out`, `trend` and `unassigned`, which take no scope at all today |
+| **`REM-26`** | A deadline is computed at ingest and stored, and recomputed for open findings when the policy changes. Turns an eight-second query into an indexed lookup |
+| **`UIX-41`** | A findings row shows what upstream has done and how old the issue is. Both are already stored; this is a column, not ingest work |
+
+Also worth doing while in there: **check what the scanner knows about *why*
+there is no fix.** `none` currently conflates "the distro considered it and
+shrugged" with "nobody has fixed this yet" — 1,125 findings, of which 246 are
+older than 2023 and so are plainly not the second. `wont-fix` already separates
+427 of them, so the scanner has some of the nuance; whether it has more is
+unchecked.
+
 ## Open, and needing a decision
 
-**Should home be scoped to the selected product?** Asked for, and it reverses
-UIX-08 ("the home page panels still summarize *across* products"). Three of the
-four home endpoints — `running-out`, `trend`, `unassigned` — have no product
-filter, so it needs server work as well as the decision. **Not decided, not
-built.**
-
-**A vulnerability has no published date.** A findings list ordered by when
-something was disclosed was asked about; nothing stores it. That is ingest work
-rather than a screen.
+Nothing here now. The two that were open — scoping home, and a disclosure date
+— were settled on 2026-09-01 and are recorded as `UIX-38`, `UIX-39` and
+`REJ-11`. What is open now lives in `DECISIONS.md` Section 4, where it belongs.
 
 ## Issues seen in the running interface
 
