@@ -96,7 +96,7 @@ here.
 | **`TRI-39`** | Dismissing something because a mitigation stops it requires naming the mitigation. The tool still will not notice its removal — that gap is accepted, not closed |
 | **`TRI-40` to `TRI-42`** | What we think of an issue, recorded against the issue rather than a place, applying everywhere and surviving a version change. It changes the order: rating something **worse** takes effect at once, rating it **milder** needs a second person, because severity sets the deadline and a downgrade pushes it out by months. The published rating stays on screen beside ours, and the deadline follows the assessment |
 | **`ING-41`** | Whether a dependency has a newer version, and when that version shipped, read from the public index for its ecosystem. The one thing here that reaches the network, so it is off unless a deployment turns it on and it fails quietly |
-| **`UIX-42`** | Home leads with the work and puts the trends underneath |
+| **`UIX-42`** | ~~Already true.~~ Home leads with the work and puts the trends underneath, and always did — the audit finding that prompted this was a misreading |
 
 The largest of those is the assessment: it is a second kind of judgment and
 wants the same care the first one got.
@@ -314,7 +314,7 @@ the declare forms on the catalogue screens rather than a screen of its own.
 
 | Mockup screen | Built as | Standing |
 |---|---|---|
-| home | `Home.tsx` | All eight panels. "Assigned to you" reads as "Being worked on", and the charts come before the work rather than after it — `UIX-06` says panel order needs deliberate design and this is the deliberate part still owed |
+| home | `Home.tsx` | All eight panels, in the mockup's order. "Assigned to you" reads as "Being worked on". An earlier version of this audit said the charts came first: that was **wrong**, and wrong in a way worth remembering — it read the order the panels are *defined* in, which for a page assembled from components is not the order they are drawn in |
 | findings | `Findings.tsx` | Built, and now goes further than the mockup: filters are the server's, and a by-component view the mockup does not have |
 | finding detail | `Finding.tsx` | **Partial — the largest gap left.** See below |
 | review queue | `Queue.tsx` | Built |
