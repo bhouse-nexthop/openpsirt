@@ -16,17 +16,39 @@ and the two settings people get wrong are in `DESIGN-interface.md` under
 release comparison. Both have endpoints. `DESIGN-interface.md` lists the
 smaller gaps under "Not built yet".
 
-**To research: what a cancelled request leaves running.** When the dependency
-walk was slow, the log recorded `walk the graph: context canceled` and the
-process kept saturating three cores for another ninety minutes, so every click
-on the broken screen left a query behind that nothing stopped. Stopping it
-needed `SIGKILL`; the graceful path was waiting on the same queries. That
-particular query is fast now, which removes the symptom and not the cause —
-any slow statement can still outlive the request that asked for it, and each
-retry adds another. Worth establishing: whether the SQLite driver honours
-cancellation at all, whether the other three engines differ, whether the pool
-is the thing that starves, and whether shutdown should wait on in-flight work
-the way it does today.
+**Researched: what a slow query does to the rest of the process.** Measured
+against the real database with the driver this build uses, so two of the three
+questions are answered and the third is narrowed.
+
+*Cancellation works.* `modernc.org/sqlite` honours the context: a query
+cancelled mid-flight stopped dead — process CPU frozen at the tick it was
+cancelled on and unchanged six seconds later. So the theory that a cancelled
+walk keeps computing is **wrong**, and nothing needs fixing there.
+
+*One slow query blocks every request in the process.* `internal/database/
+pool.go:68` sets `MaxOpenConns(1)` on SQLite, for a good reason — SQLite has
+one writer and more connections add contention rather than concurrency. The
+consequence is that the pool is also the queue: with a slow query running,
+`SELECT 1` beside it waited the full three seconds it was given and never got
+a connection. That, and not cancellation, is why one broken screen stopped
+`/v1/products` from answering. It is a property of the engine rather than a
+defect, and it is worth knowing that on SQLite **any** slow statement is a
+whole-process outage. The other three engines get 25 connections and do not
+have it.
+
+*Still unexplained: the three cores.* The wedged process was burning about
+three full cores an hour and a half after the request that started it was
+cancelled, and neither finding above accounts for that — one connection runs
+one query, and cancellation stops it. The likeliest remaining candidate is the
+garbage collector, which is parallel, working over result sets that a browser
+tab kept re-requesting. To settle it: reproduce with a deliberately slow
+statement, leave the tab open, and watch per-thread CPU rather than the
+process total.
+
+*One thing to fix regardless.* `SIGTERM` did not stop it and `SIGKILL` was
+needed, because shutdown waits on in-flight requests and those were the
+problem. A shutdown that cannot be completed by the signal meant for it is a
+shutdown with no deadline.
 
 **The mockup is the approved design** and is the reference for anything
 visual. It is published at

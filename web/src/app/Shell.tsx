@@ -58,6 +58,7 @@ export function Shell({
           <Rail to="/" end label="Home" />
           <Rail to="/review-queue" label="Review queue" count={counts?.queue} />
           <Rail to="/unassigned" label="Nobody owns" count={counts?.unassigned} quiet />
+          <Rail to="/work" label="Who is working on what" />
 
           {product && stream && variant && (
             <>

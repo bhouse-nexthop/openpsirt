@@ -714,6 +714,23 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: now
 .hint { color: var(--muted); font-size: var(--step--1); }
 .card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 14px; }
 
+/* Tabs within a screen, for views of one question rather than separate
+   screens. Lifted from the mockup with the rest of this block. */
+.tabs2 { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 14px; flex-wrap: wrap; }
+.tab2 {
+  border: 0; background: none; cursor: pointer;
+  padding: 8px 14px; margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted); font-size: var(--step-0);
+}
+.tab2[aria-selected="true"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+.tab2 .n {
+  margin-left: 6px; font-size: 11px; font-variant-numeric: tabular-nums;
+  background: var(--raised); border-radius: 100px; padding: 1px 7px; color: var(--muted);
+}
+.tab2[aria-selected="true"] .n { background: var(--accent-soft); color: var(--accent); }
+.tab2.urgent .n { background: var(--sev-exploited-bg); color: var(--sev-exploited); }
+
 /* The three columns a comparison reads as. Lifted from the mockup with the
    rest of this block, which the first extraction also missed. */
 .cmp { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }

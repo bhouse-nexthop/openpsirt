@@ -1,16 +1,24 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
 import { Crumbs } from "../ui/Crumbs";
+import { Declare, Field } from "../ui/Declare";
+import { useWho } from "../app/session";
 
 // A branch and a tag are different shapes of thing — one moves and is rebuilt,
 // one never changes again — so they are labelled rather than blended into a
 // single list of names.
 export function Streams() {
   const { product = "" } = useParams();
+  const queries = useQueryClient();
+  const who = useWho();
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState<"branch" | "tag">("branch");
+  const [parent, setParent] = useState("");
   const streams = useQuery({
     queryKey: ["streams", product],
     queryFn: async () =>
@@ -19,6 +27,25 @@ export function Streams() {
           params: { path: { product } },
         }),
       ),
+  });
+
+  const declare = useMutation({
+    mutationFn: async () =>
+      unwrap(
+        await api.POST("/v1/products/{product}/streams", {
+          params: { path: { product } },
+          body: {
+            name: name.trim(),
+            kind,
+            ...(kind === "tag" && parent.trim() ? { parent: parent.trim() } : {}),
+          },
+        }),
+      ),
+    onSuccess: () => {
+      setName("");
+      setParent("");
+      void queries.invalidateQueries({ queryKey: ["streams", product] });
+    },
   });
 
   if (streams.isPending) return <p className="text-sm text-[var(--muted)]">Loading…</p>;
@@ -31,6 +58,36 @@ export function Streams() {
     <div>
       <Crumbs product={product} />
       <h1 className="mb-4 text-lg font-semibold tracking-tight">Branches and tags</h1>
+      <Declare
+        what="a branch or tag"
+        hint="A tag names the branch it was cut from, which is what lets a decision made on the branch carry into it rather than being made again."
+        onSubmit={() => declare.mutate()}
+        error={declare.error}
+        busy={declare.isPending || name.trim() === ""}
+        can={who.data?.admin ?? false}
+      >
+        <Field label="Name" value={name} onChange={setName} placeholder="202411" hint="How scans name it" />
+        <div className="field" style={{ margin: 0, minWidth: 130 }}>
+          <label htmlFor="declare-kind">Kind</label>
+          <select
+            id="declare-kind"
+            value={kind}
+            onChange={(event) => setKind(event.target.value as "branch" | "tag")}
+          >
+            <option value="branch">branch — rebuilt</option>
+            <option value="tag">tag — never changes</option>
+          </select>
+        </div>
+        {kind === "tag" && (
+          <Field
+            label="Cut from"
+            value={parent}
+            onChange={setParent}
+            placeholder="master"
+            hint="The branch it was cut from"
+          />
+        )}
+      </Declare>
       {items.length === 0 ? (
         <Empty
           title="Nothing is declared here yet."

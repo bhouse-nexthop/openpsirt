@@ -22,6 +22,7 @@ const Compare = lazy(() =>
   import("../screens/Compare").then((m) => ({ default: m.Compare })),
 );
 const People = lazy(() => import("../screens/People").then((m) => ({ default: m.People })));
+const Work = lazy(() => import("../screens/Work").then((m) => ({ default: m.Work })));
 const Queue = lazy(() => import("../screens/Queue").then((m) => ({ default: m.Queue })));
 const Decision = lazy(() =>
   import("../screens/Decision").then((m) => ({ default: m.Decision })),
@@ -65,6 +66,7 @@ export function App() {
         <Route path={`${build}/scans`} element={<Scans />} />
         <Route path="/products/:product/comparison" element={<Compare />} />
         <Route path="/people" element={<People />} />
+        <Route path="/work" element={<Work />} />
         <Route path="/settings" element={<Settings />} />
         {/* A path the page does not know either. Sending somebody home is
             better than a dead end, and the address bar already told them
