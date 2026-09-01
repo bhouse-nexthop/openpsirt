@@ -434,6 +434,54 @@ count. Today it does not — the count is every open finding, answered or not �
 and that is the behaviour that predates this work rather than a choice made
 here.
 
+## The rebuilt SBOM, and what it still needs
+
+Built 2026-09-01, at `~/git/sonic-buildimage/target/sonic-broadcom.bin.cdx.json`.
+**Not yet installed as the fixture** — see below.
+
+What the PR fixed, confirmed against the real document:
+
+| | before | after |
+|---|---:|---:|
+| duplicate package URLs | 156 | **0** |
+| merged components | 8,374 | **7,680** |
+| lockfile dependencies hung on the image root | 16 | **0** |
+
+What it exposed. Promoting only `distro=` across the dedupe cost **535
+packages their `upstream=` qualifier** — the Debian *source* package a binary
+package was built from, which is what Debian publishes advisories against.
+Three survived. Fixed upstream (`30c832ea4`) by naming the qualifiers only a
+real filesystem can know and carrying all of them; re-running the corrected
+merge over the previous document gives 8,374 → 7,680 with all 535 kept, which
+reproduces the real build's count exactly.
+
+**So the fixture is still the old one.** Swapping in a document where 535
+packages cannot be matched to their advisories would bake that into the
+expectations in `internal/sbom/fullsize_test.go`, and we would then be chasing
+finding counts that moved for a reason nobody recorded. It wants a rebuild
+carrying `30c832ea4`.
+
+A count in a test is what caught this. A package quietly losing its source
+package still scans, still resolves and still looks right.
+
+### Lockfile attribution is placing 36 of 952
+
+The root attribution is fixed, but most lockfile dependencies are attached to
+nothing rather than to the wrong thing. Three classes:
+
+- **658 inside a distribution package.** Lockfiles shipped *within* Debian
+  packages — `usr/share/go-1.26/src/cmd/vendor/golang.org/x/telemetry/`, a
+  vscode extension inside a ruby gem, pprof's `third_party/d3flamegraph`.
+  These have no `sonic:src_path` because SONiC did not build them. They belong
+  to the Debian package owning that path, and many are vendored test fixtures
+  that are not installed dependencies at all. This is what put
+  `golang.org/x/net` under the product root with nothing above it.
+- **49 that a longest-prefix match would place.** `src/sonic-sysmgr/gnoi/go.sum`
+  against a `src/sonic-sysmgr` source path. The matching is exact today.
+- **160 whose owner is not in this image** — `platform/alpinevs/...` in a
+  broadcom build. Deps from a platform that was never installed, which looks
+  like a scoping bug rather than an attribution one.
+
 ## Traps found the hard way
 
 **A multi-edit script that stops halfway leaves the rest unapplied, silently.**
