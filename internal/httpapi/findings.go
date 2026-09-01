@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -371,6 +372,19 @@ func registerFindingDetail(api huma.API, in Ingest) {
 		component, err := graph.NewStore(in.DB.DB).
 			ComponentVersionAt(ctx, target.ID, input.Component, input.Version)
 		if err != nil {
+			// Narrowed to the versions this issue is open at before it is
+			// offered. The lookup raises the ambiguity before it knows which
+			// issue is being asked about, so left alone it offers every
+			// version of the name — fifteen, of which three carry the issue,
+			// which is a list where four in five choices lead to "no such
+			// finding".
+			if errors.Is(err, graph.ErrAmbiguous) {
+				carrying, second := finding.NewStore(in.DB.DB).VersionsWithIssue(
+					ctx, subject, target.ID, issue, input.Component)
+				if second == nil && len(carrying) > 0 {
+					return nil, ambiguousAmong(input.Component, carrying)
+				}
+			}
 			return nil, ambiguousOrMissing(err)
 		}
 

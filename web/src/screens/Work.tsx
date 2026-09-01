@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
+import type { Body } from "../api/client";
 import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
@@ -100,19 +101,7 @@ function Due({
   onDays,
 }: {
   days: number;
-  rows: {
-    vulnerability?: string;
-    component?: string;
-    severity?: string;
-    exploited?: boolean;
-    product?: string;
-    stream?: string;
-    variant?: string;
-    due?: string;
-    days_left?: number;
-    places?: number;
-    assigned_to?: string;
-  }[];
+  rows: Body<"LateBody">[];
   query: Query;
   onDays: (days: number) => void;
 }) {
@@ -195,7 +184,10 @@ function Due({
                           `/streams/${encodeURIComponent(row.stream ?? "")}` +
                           `/variants/${encodeURIComponent(row.variant ?? "")}` +
                           `/findings/${encodeURIComponent(row.vulnerability ?? "")}` +
-                          `/components/${encodeURIComponent(row.component ?? "")}`
+                          `/components/${encodeURIComponent(row.component ?? "")}` +
+                          // Without the version a name that ships twice in one
+                          // build resolves to nothing, so the link dead-ends.
+                          (row.version ? `?version=${encodeURIComponent(row.version)}` : "")
                         }
                       >
                         {row.vulnerability}

@@ -18,6 +18,7 @@ type LateBody struct {
 	Severity      string `json:"severity,omitempty"`
 	Exploited     bool   `json:"exploited,omitempty"`
 	Component     string `json:"component"`
+	Version       string `json:"version,omitempty" doc:"Which version, so a link to the finding can name it — a build ships a name at more than one version often enough that a link without it cannot be resolved"`
 	Product       string `json:"product"`
 	Stream        string `json:"stream"`
 	Variant       string `json:"variant"`
@@ -79,7 +80,7 @@ func registerDue(api huma.API, in Ingest) {
 		for _, row := range rows {
 			body := LateBody{
 				Vulnerability: row.Vulnerability, Severity: row.Severity,
-				Exploited: row.Exploited, Component: row.Component,
+				Exploited: row.Exploited, Component: row.Component, Version: row.Version,
 				Product: row.Product, Stream: row.Stream, Variant: row.Variant,
 				Places: row.Places,
 				Due:    row.Due.Format(time.DateOnly),

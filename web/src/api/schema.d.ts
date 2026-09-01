@@ -2118,6 +2118,8 @@ export interface components {
             severity?: string;
             stream: string;
             variant: string;
+            /** @description Which version, so a link to the finding can name it — a build ships a name at more than one version often enough that a link without it cannot be resolved */
+            version?: string;
             vulnerability: string;
         };
         "List-issues-at-componentResponse": {

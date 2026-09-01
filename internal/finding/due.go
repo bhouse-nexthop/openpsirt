@@ -93,12 +93,16 @@ func (w Windows) For(exploited bool, severity string) time.Duration {
 type Late struct {
 	Vulnerability string `bun:"vulnerability"`
 	Component     string `bun:"component"`
-	Severity      string `bun:"severity"`
-	Exploited     bool   `bun:"exploited"`
-	Product       string `bun:"product"`
-	Stream        string `bun:"stream"`
-	Variant       string `bun:"variant"`
-	AssignedTo    *int64 `bun:"assigned_to"`
+	// Version is which one, because a build ships a name at more than one
+	// version often enough that a link without it cannot be resolved — and a
+	// screen offering a link that dead-ends is worse than one offering none.
+	Version    string `bun:"version"`
+	Severity   string `bun:"severity"`
+	Exploited  bool   `bun:"exploited"`
+	Product    string `bun:"product"`
+	Stream     string `bun:"stream"`
+	Variant    string `bun:"variant"`
+	AssignedTo *int64 `bun:"assigned_to"`
 	// Due is the earliest deadline among the places this row covers — the one
 	// that makes the whole group late.
 	Due time.Time `bun:"due"`
@@ -156,6 +160,7 @@ func (s *Store) RunningOut(ctx context.Context, subject access.Subject, scope Sc
 		Join("JOIN component AS c ON c.id = f.component_id").
 		ColumnExpr("v.identifier AS vulnerability").
 		ColumnExpr("c.name AS component").
+		ColumnExpr("c.version AS version").
 		ColumnExpr("MIN(COALESCE(v.severity, '')) AS severity").
 		ColumnExpr("f.urgency_exploited AS exploited").
 		ColumnExpr("p.display_name AS product").
@@ -182,7 +187,7 @@ func (s *Store) RunningOut(ctx context.Context, subject access.Subject, scope Sc
 			  AND de.vulnerability_id = f.vulnerability_id
 			  AND de.place_identity = f.place_identity
 			  AND de.live_key IS NOT NULL)`).
-		GroupExpr("v.identifier, c.name, f.urgency_exploited, p.display_name, " +
+		GroupExpr("v.identifier, c.name, c.version, f.urgency_exploited, p.display_name, " +
 			"st.display_name, va.display_name, f.target_id, f.vulnerability_id, f.component_id").
 		OrderExpr("due, v.identifier, c.name").
 		Limit(limit)

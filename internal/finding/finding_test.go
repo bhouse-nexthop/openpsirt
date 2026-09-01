@@ -1253,3 +1253,50 @@ func TestTheLastRunSaysWhatItWasMeasuredWith(t *testing.T) {
 		}
 	})
 }
+
+// A name that ships at several versions is answerable, and answering with
+// every version of the name is a list where most choices lead to "no such
+// finding" — which is a worse answer than the refusal it replaced.
+func TestOnlyTheVersionsCarryingTheIssueAreOffered(t *testing.T) {
+	each(t, func(t *testing.T, f *fixture) {
+		// One name at two versions, and the issue at only one of them.
+		older := graph.Described{
+			Purl: "pkg:golang/example.com/lib@v1", Name: "example.com/lib", Version: "v1",
+		}
+		newer := graph.Described{
+			Purl: "pkg:golang/example.com/lib@v2", Name: "example.com/lib", Version: "v2",
+		}
+		f.shipped(t, graph.Snapshot{
+			Root:       root,
+			Components: []graph.Described{older, newer},
+			Dependencies: []graph.Dependency{
+				{Parent: root, Child: older},
+				{Parent: root, Child: newer},
+			},
+		})
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-9", older)}); err != nil {
+			t.Fatal(err)
+		}
+
+		versions, err := f.store.VersionsWithIssue(t.Context(),
+			f.holding(t, access.PublicRead), f.target, f.issueID(t, "CVE-2026-9"),
+			"example.com/lib")
+		if err != nil {
+			t.Fatalf("versions: %v", err)
+		}
+		if len(versions) != 1 || versions[0] != "v1" {
+			t.Errorf("offered %v, expected only the version carrying it", versions)
+		}
+	})
+}
+
+// issueID resolves an issue by the name it was reported under.
+func (f *fixture) issueID(t *testing.T, identifier string) int64 {
+	t.Helper()
+	id, err := finding.NewVulnerabilities(f.db.DB).ByName(t.Context(), identifier)
+	if err != nil {
+		t.Fatalf("resolve %s: %v", identifier, err)
+	}
+	return id
+}

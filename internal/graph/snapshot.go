@@ -222,6 +222,24 @@ func (s *Store) ComponentAt(ctx context.Context, targetID int64, name string) (i
 // given to tell them apart.
 var ErrAmbiguous = errors.New("this build contains that name at more than one version")
 
+// Ambiguous carries which versions a name matched.
+//
+// The versions rather than only the fact, because "say which version" is not
+// answerable by somebody who does not know what the choices are — and this is
+// reached from a link, where whoever followed it has nothing else to go on.
+type Ambiguous struct {
+	Name     string
+	Versions []string
+}
+
+func (a *Ambiguous) Error() string {
+	return fmt.Sprintf("%s: %q at %s", ErrAmbiguous, a.Name, strings.Join(a.Versions, ", "))
+}
+
+// Is makes errors.Is(err, ErrAmbiguous) hold for this, so callers that only
+// care that it was ambiguous keep working.
+func (a *Ambiguous) Is(target error) bool { return target == ErrAmbiguous }
+
 // ComponentVersionAt resolves a component by name and, where one is given,
 // version.
 //
@@ -240,7 +258,8 @@ func (s *Store) ComponentVersionAt(ctx context.Context, targetID int64, name, ve
 	query := s.db.NewSelect().
 		TableExpr("graph_node AS n").
 		Join("JOIN component AS c ON c.id = n.component_id").
-		ColumnExpr("c.id").
+		ColumnExpr("c.id AS id").
+		ColumnExpr("c.version AS version").
 		Where("n.target_id = ?", targetID).
 		Where("n.closed_scan_id IS NULL").
 		Where("c.name = ?", name).
@@ -249,19 +268,26 @@ func (s *Store) ComponentVersionAt(ctx context.Context, targetID int64, name, ve
 		query = query.Where("c.version = ?", version)
 	}
 
-	var ids []int64
-	if err := query.Scan(ctx, &ids); err != nil {
+	var rows []struct {
+		ID      int64  `bun:"id"`
+		Version string `bun:"version"`
+	}
+	if err := query.Scan(ctx, &rows); err != nil {
 		return 0, fmt.Errorf("look up component %q: %w", name, err)
 	}
-	if len(ids) == 0 {
+	if len(rows) == 0 {
 		return 0, fmt.Errorf("this build contains no component called %q", name)
 	}
-	if len(ids) > 1 {
+	if len(rows) > 1 {
 		// Only reachable without a version: with one, the name and version
 		// together identify a component.
-		return 0, fmt.Errorf("%w: %q", ErrAmbiguous, name)
+		versions := make([]string, 0, len(rows))
+		for _, row := range rows {
+			versions = append(versions, row.Version)
+		}
+		return 0, &Ambiguous{Name: name, Versions: versions}
 	}
-	return ids[0], nil
+	return rows[0].ID, nil
 }
 
 // Neighbour is one component next to another in the graph.

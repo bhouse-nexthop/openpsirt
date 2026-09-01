@@ -5,10 +5,25 @@ import { api } from "./client";
 // ended session from a real failure, and the server's own sentence so the
 // screen shows what the server said rather than a sentence invented here.
 export class Refused extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(
+    readonly status: number,
+    message: string,
+    // What the server said was wrong, item by item, where it said so. A
+    // refusal that names fifteen versions is a paragraph as a sentence and a
+    // list of choices as a list — the screen can only offer the second.
+    readonly details: { location?: string; message?: string }[] = [],
+  ) {
     super(message);
     this.name = "Refused";
   }
+}
+
+// at returns the detail entries the server attached to one location.
+export function at(error: unknown, location: string): string[] {
+  if (!(error instanceof Refused)) return [];
+  return error.details
+    .filter((d) => d.location === location && d.message)
+    .map((d) => d.message as string);
 }
 
 type Answer<T> = { data?: T; error?: unknown; response: Response };
@@ -18,9 +33,21 @@ type Answer<T> = { data?: T; error?: unknown; response: Response };
 // one inventing its own branch.
 export function unwrap<T>({ data, error, response }: Answer<T>): T {
   if (error !== undefined || !response.ok) {
-    throw new Refused(response.status, detailOf(error) ?? response.statusText);
+    throw new Refused(response.status, detailOf(error) ?? response.statusText, detailsOf(error));
   }
   return data as T;
+}
+
+function detailsOf(error: unknown): { location?: string; message?: string }[] {
+  if (typeof error === "object" && error !== null && "errors" in error) {
+    const list = (error as { errors?: unknown }).errors;
+    if (Array.isArray(list)) {
+      return list.filter((e): e is { location?: string; message?: string } =>
+        typeof e === "object" && e !== null,
+      );
+    }
+  }
+  return [];
 }
 
 function detailOf(error: unknown): string | undefined {

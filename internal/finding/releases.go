@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/uptrace/bun"
+
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 )
 
@@ -122,4 +124,42 @@ func (s *Store) LatestRun(ctx context.Context, subject access.Subject,
 		return nil, nil
 	}
 	return &runs[0], nil
+}
+
+// VersionsWithIssue lists the versions of a named component in one build that
+// this issue is actually open against.
+//
+// The component lookup raises an ambiguity before it knows which issue is
+// being asked about, so on its own it can only offer every version of the
+// name. A real image ships one library at fifteen, of which three carry a
+// given issue — offering all fifteen is a list where four in five choices lead
+// to "no such finding", which is a worse answer than the refusal it replaced.
+func (s *Store) VersionsWithIssue(ctx context.Context, subject access.Subject,
+	targetID, vulnerabilityID int64, name string) ([]string, error) {
+
+	productID, err := productOf(ctx, s.db, targetID)
+	if err != nil {
+		return nil, err
+	}
+	visible := visibleTo(subject, productID)
+	if !subject.Sees(productID) || len(visible) == 0 {
+		return nil, nil
+	}
+
+	var versions []string
+	err = s.db.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN component AS c ON c.id = f.component_id").
+		ColumnExpr("DISTINCT c.version").
+		Where("f.target_id = ?", targetID).
+		Where("f.vulnerability_id = ?", vulnerabilityID).
+		Where("f.closed_run_id IS NULL").
+		Where("c.name = ?", name).
+		Where("f.visibility IN (?)", bun.List(visible)).
+		OrderExpr("c.version").
+		Scan(ctx, &versions)
+	if err != nil {
+		return nil, fmt.Errorf("read which versions carry this issue: %w", err)
+	}
+	return versions, nil
 }

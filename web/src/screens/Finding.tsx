@@ -2,7 +2,7 @@ import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
-import { unwrap } from "../api/queries";
+import { at as detailsAt, unwrap } from "../api/queries";
 import { Failed } from "../ui/Failed";
 import { Severity } from "../ui/Severity";
 import { JUSTIFICATIONS } from "../ui/Outcome";
@@ -32,6 +32,34 @@ export function Finding() {
 
   if (finding.isPending) return <p className="hint">Loading…</p>;
   if (finding.isError) {
+    // A name that ships at several versions is answerable, and the server says
+    // which ones — so offer them rather than showing a refusal and leaving the
+    // reader to guess. This is reached by following a link, and whoever
+    // followed it has nothing else to go on.
+    const versions = detailsAt(finding.error, "version");
+    if (versions.length > 0) {
+      return (
+        <div className="card">
+          <header>
+            <h3>Which {component}?</h3>
+          </header>
+          <p className="hint">
+            This build ships that name at more than one version and the link did not say
+            which. {vulnerability} is open at {versions.length === 1 ? "this one" :
+            `these ${versions.length}`}.
+          </p>
+          <ul className="outcomes">
+            {versions.map((v: string) => (
+              <li key={v}>
+                <Link to={`${window.location.pathname}?version=${encodeURIComponent(v)}`}>
+                  <span className="id">{component} {v}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
     return <Failed error={finding.error} what="This finding could not be read." />;
   }
   const it = finding.data;

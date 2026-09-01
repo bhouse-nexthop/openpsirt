@@ -1,5 +1,15 @@
 import createClient from "openapi-fetch";
-import type { paths } from "./schema";
+import type { components, paths } from "./schema";
+
+// A response shape, by the name the OpenAPI document gives it.
+//
+// Screens use this rather than restating the fields, which is the same rule as
+// the client itself (UIX-19) applied one level in. A hand-copied row type
+// compiles perfectly while quietly missing whatever the server grew since it
+// was written — that is not hypothetical: the running-out rows gained the
+// version a link needs, three screens kept their own copies without it, and
+// every link they drew to a component shipped at two versions dead-ended.
+export type Body<K extends keyof components["schemas"]> = components["schemas"][K];
 
 // One client for the whole application, generated from the same OpenAPI
 // document the server publishes (UIX-19). Nothing here hand-writes a path or a

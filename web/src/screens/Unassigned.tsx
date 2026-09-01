@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
+import type { Body } from "../api/client";
 import { scopeQuery, useScope } from "../app/scope";
 import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
@@ -101,17 +102,9 @@ export function Unassigned() {
   );
 }
 
-type Owned = {
-  product?: string;
-  stream?: string;
-  variant?: string;
-  vulnerability?: string;
-  component?: string;
-  version?: string;
-  severity?: string;
-  exploited?: boolean;
-  places?: number;
-};
+// The server's own shape rather than a copy of it, so a field the server grows
+// arrives here instead of being silently absent.
+type Owned = Body<"UnassignedBody">;
 
 function Row({
   row,
@@ -134,7 +127,11 @@ function Row({
             `/streams/${encodeURIComponent(row.stream ?? "")}` +
             `/variants/${encodeURIComponent(row.variant ?? "")}` +
             `/findings/${encodeURIComponent(row.vulnerability ?? "")}` +
-            `/components/${encodeURIComponent(row.component ?? "")}`
+            `/components/${encodeURIComponent(row.component ?? "")}` +
+            // A build ships a name at more than one version often enough that
+            // a link without it cannot be resolved, and the reader gets a
+            // conflict rather than the finding they clicked.
+            (row.version ? `?version=${encodeURIComponent(row.version)}` : "")
           }
           className="font-medium hover:text-[var(--accent)]"
         >
