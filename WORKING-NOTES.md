@@ -13,7 +13,7 @@ order it would be picked up:
 
 | | |
 |---|---|
-| **Waiting on you** | The rebuilt SBOM. The fixture, the demo database and the counts `ING-36`/`ING-37` argue from are all still from the pre-fix generator. Steps are under "The split, and the reload it needs" |
+| **Done** | The rebuilt SBOM is in as the fixture, the demo is reseeded from it, and `ING-36`/`ING-37` carry their new numbers |
 | **Built** | `ING-41`, end to end: the `upstream.currency` setting (off by default), the pass that fills the columns, a third worker beside the reader and the runner, and the finding screen showing both what upstream has released and why there is no fix |
 | **Not started** | `DESIGN-interface.md` is behind the code and is the thing most likely to be lost, because this document is temporary and it is not |
 
@@ -464,75 +464,57 @@ count. Today it does not — the count is every open finding, answered or not �
 and that is the behaviour that predates this work rather than a choice made
 here.
 
-## The rebuilt SBOM, and what it still needs
+## The rebuilt SBOM: what it settled, and the one class left
 
-Built 2026-09-01, at `~/git/sonic-buildimage/target/sonic-broadcom.bin.cdx.json`.
-**Not yet installed as the fixture** — see below.
+Built 2026-09-01 carrying all four generator fixes, and **in as the fixture**.
+Every prediction made from replaying the merge held against the real build:
 
-What the PR fixed, confirmed against the real document:
+| | before | after | predicted |
+|---|---:|---:|---:|
+| duplicate package URLs | 156 | **0** | 0 |
+| merged components | 8,374 | **7,693** | 7,693 |
+| `upstream=` qualifiers | 535 | **537** | ~535 |
+| `publisher` | 587 | **592** | ~587 |
+| lockfile deps on the image root | 16 | **0** | 0 |
+| lockfile deps attributed to a program | 0 | **85** | ~60 |
+| dangling references | — | **0** | — |
 
-| | before | after |
-|---|---:|---:|
-| duplicate package URLs | 156 | **0** |
-| merged components | 8,374 | **7,680** |
-| lockfile dependencies hung on the image root | 16 | **0** |
+`openssh-server` states `1:10.0p1-7+fips` again, and the eight epoch-losing
+packages have their epochs back.
 
-What it exposed. Promoting only `distro=` across the dedupe cost **535
-packages their `upstream=` qualifier** — the Debian *source* package a binary
-package was built from, which is what Debian publishes advisories against.
-Three survived. Fixed upstream (`30c832ea4`) by naming the qualifiers only a
-real filesystem can know and carrying all of them; re-running the corrected
-merge over the previous document gives 8,374 → 7,680 with all 535 kept, which
-reproduces the real build's count exactly.
+**What moved in openpsirt.** The fixture reads as 7,693 components and the
+reader now collapses nothing, because there is nothing left to collapse — which
+is the stronger statement than the one the test used to make. The findings list
+went 7,906 rows to **7,546**, and total open findings to 241,161, both because
+516 duplicate components merged upstream and took their split findings with
+them. `ING-36` and `ING-37` keep their rules and carry updated evidence: the
+duplication they were measured on is fixed at the source, and `ING-37`'s "no
+overlap at all" is now 16 overlapping, because the halves carrying each
+mechanism became one component carrying both.
 
-**So the fixture is still the old one.** Swapping in a document where 535
-packages cannot be matched to their advisories would bake that into the
-expectations in `internal/sbom/fullsize_test.go`, and we would then be chasing
-finding counts that moved for a reason nobody recorded. It wants a rebuild
-carrying `30c832ea4`.
+### The one class left, and it is the one that was reported
 
-A count in a test is what caught this. A package quietly losing its source
-package still scans, still resolves and still looks right.
+The complaint that started this — `golang.org/x/net` sitting under the product
+with nothing above it — is **not** the class the attribution fix addressed. It
+comes from `usr/share/go-1.19/src/go.sum`: a lockfile shipped *inside* the
+golang-1.19 Debian package, which SONiC did not build, so there is no
+`sonic:src_path` to match and nothing to attribute it to.
 
-### The self-review before the rebuild
+658 components arrive this way, carrying **489 open findings — 0.2% of the
+241,161**. Small in aggregate and disproportionately visible, because having no
+parent is exactly what makes them float to the top with nothing explaining
+them. The biggest sources are Go's own vendored trees and, less defensibly, a
+vscode extension's `package-lock.json` inside a ruby gem and pprof's
+`third_party/d3flamegraph`.
 
-Run by replaying the merge over the previous document — which is the previous
-merge's own output, so a real 8,374-component input — and comparing every
-field, property and package-URL qualifier either side of it. Four faults, three
-of them introduced by this branch's dedupe. All fixed in `957a4266e`.
+Two ways out, and they are a judgment call rather than a bug:
 
-**Lockfile attribution matched 0 of 952, not 36.** The earlier figure recorded
-here was wrong: those 36 were placed by other edge classes. Harvested lockfile
-paths are rooted at the source tree (`sonic/src/sonic-gnmi/go.sum`) and the
-source trees recipes record are repository-relative (`src/sonic-gnmi`), so the
-comparison could never be true. Nothing reported it, because *nothing matched*
-and *nothing to match* produce the same empty result. Now 60, including
-sonic-gnmi's Go dependencies attaching to sonic-gnmi — the case that showed up
-in the interface as `golang.org/x/net` sitting under the product with nothing
-above it.
-
-**Nine packages stated a version that was not installed.** `openssh-server`
-read as stock `10.0p1-7` where the image carries `1:10.0p1-7+fips`, and eight
-others dropped a Debian epoch. These records merge because their versions
-normalize equal, and the recipe-emit winner's filename version was then the
-only one stated. The more specific spelling now wins.
-
-**577 lost `publisher` and 35 lost `pedigree`** — bash, frr and flashrom among
-them, and pedigree is what this reads as "built from".
-
-**A Rust crate and the .deb built from it merged into one component**, because
-the dedupe key had name and version and nothing about the ecosystem.
-
-Still unattributed: 892 lockfile dependencies, 658 of them shipped *inside* an
-installed package (`usr/share/go-1.26/...`, a vscode extension inside a ruby
-gem) which have no source tree in the repository, and ~234 under
-`platform/alpinevs/...` whose owner is not in a broadcom image at all — that
-one looks like a scoping bug rather than an attribution one.
-
-**The lesson worth keeping:** every one of these was found by counting a
-property either side of the merge, not by reading the diff. A merge that drops
-a field states nothing about having dropped it, and code that never matches
-looks exactly like code with nothing to match.
+- **Attribute them to the package that ships the path.** `usr/share/go-1.19/…`
+  is owned by an installed .deb, so the tree could say "golang-1.19 pulls this
+  in", which is true and would explain every one of them.
+- **Ask whether they belong at all.** A test fixture vendored inside a source
+  tree is not linked into anything the image runs. That is a claim about
+  reachability rather than about attribution, and it is the larger question.
 
 ## Traps found the hard way
 

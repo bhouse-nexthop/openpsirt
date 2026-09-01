@@ -74,15 +74,22 @@ func TestARealImageReadsAsOneComponentPerPackage(t *testing.T) {
 	}
 
 	// Measured against this image when the fixture was taken. The document
-	// describes 8,374 components; they name 7,858 packages once an identifier
-	// is read for what it says rather than byte for byte, because a build that
-	// merges two sources spells 516 of them twice.
+	// describes 7,693 components and they name 7,693 packages — the reader
+	// collapses nothing, because there is nothing left to collapse.
 	//
-	// The reader collapses them as it goes, so what is counted here is what
-	// came out. The number is written down rather than expressed as a
-	// tolerance: a change in it is a change in what identity means, and that
-	// is something to look at rather than absorb.
-	const packages = 7858
+	// That is the change, and it is upstream rather than here. The previous
+	// fixture spelled 516 packages twice, under two package-URL namespaces for
+	// one .deb, and this reader absorbed it; the generator now merges them at
+	// the source (sonic-buildimage #29237). What this asserts is therefore no
+	// longer "the reader dedupes correctly" but "the reader has nothing to
+	// dedupe", which is the stronger statement of the two — a duplicate
+	// arriving again would show up as identities being fewer than components,
+	// which is the check below.
+	//
+	// The number is written down rather than expressed as a tolerance: a
+	// change in it is a change in what identity means, and that is something
+	// to look at rather than absorb.
+	const packages = 7693
 	if len(snapshot.Components) != packages {
 		t.Errorf("the image read as %d components, expected %d — has the fixture or the rule changed?",
 			len(snapshot.Components), packages)
@@ -243,10 +250,17 @@ func TestWhatAPackageWasBuiltFromIsReadHoweverItIsStated(t *testing.T) {
 		}
 	}
 
+	// Fewer than the previous fixture stated, and not because anything was
+	// lost: 565 became 551 when the generator stopped describing one package
+	// as two components. A pair where one half carried a pedigree and the
+	// other carried an `upstream=` qualifier used to be counted twice; merged,
+	// it is one component carrying both and counted once. Checked rather than
+	// assumed — **no package states an upstream now that stated none before**,
+	// and 548 distinct packages state one against 547 before.
 	const (
-		upstreams = 565  // every component that states one, either way
+		upstreams = 551  // every component that states one, either way
 		versions  = 106  // those stating a version with it
-		cpes      = 6565 // every component the document gives one
+		cpes      = 6567 // every component the document gives one
 	)
 	if named != upstreams {
 		t.Errorf("%d components say what they were built from, expected %d", named, upstreams)
@@ -254,9 +268,11 @@ func TestWhatAPackageWasBuiltFromIsReadHoweverItIsStated(t *testing.T) {
 	if versioned != versions {
 		t.Errorf("%d say which version they were built from, expected %d", versioned, versions)
 	}
-	// The identifier a scanner matches on is carried by one half of each
-	// duplicated pair. Keeping whichever description arrived first would drop
-	// it for every pair that arrived the other way round.
+	// The identifier a scanner matches on. The generator now promotes it onto
+	// the surviving record when it merges a pair, so this counts what arrived
+	// rather than what this reader rescued — two more than before, because the
+	// merge key gained the ecosystem and stopped collapsing a Rust crate into
+	// the Debian package built from it.
 	if identified != cpes {
 		t.Errorf("%d components kept a vulnerability-database identifier, expected %d",
 			identified, cpes)
