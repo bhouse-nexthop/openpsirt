@@ -613,6 +613,8 @@ export interface paths {
          *     The starting point for walking the graph. A full render is not offered and would not be useful: a real image holds thousands of components and tens of thousands of edges, which neither draws nor reads. Ask for one step at a time.
          *
          *     Every entry carries how many findings are open against it and how many components it pulls in, so descending follows something rather than being exploration.
+         *
+         *     With `q` it searches instead: components anywhere in the build whose name contains that text, most findings first and no root. Nobody finds anything in a graph this size by opening nodes — a real image holds eight thousand components under a root with five thousand children — so searching is the way in, and browsing is for answering "what else is under this" once you are already somewhere.
          */
         get: operations["list-top-level-components"];
         put?: never;
@@ -2301,9 +2303,21 @@ export interface components {
              * @example https://example.com/schemas/RootsBody.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description How many components this build holds
+             */
+            components: number;
+            /**
+             * Format: int64
+             * @description How many edges place them
+             */
+            edges: number;
             items: components["schemas"]["NeighbourBody"][] | null;
             /** @description The build itself, which everything below descends from. Absent where the inventory named no root of its own */
             root?: components["schemas"]["NeighbourBody"];
+            /** @description The search this answers, where one was asked */
+            term?: string;
         };
         "Send-decision-backRequest": {
             /**
@@ -3528,7 +3542,12 @@ export interface operations {
     };
     "list-top-level-components": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Find components anywhere in this build whose name contains this, instead of listing what the build pulls in directly */
+                q?: string;
+                /** @description How many matches to return. Only read when searching */
+                limit?: number;
+            };
             header?: never;
             path: {
                 product: string;

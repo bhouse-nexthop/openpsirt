@@ -46,19 +46,30 @@ export function Tree() {
 
   const [opened, setOpened] = useState<Set<string>>(() => new Set());
   const [widened, setWidened] = useState<Set<string>>(() => new Set());
+  const term = params.get("q") ?? "";
+  const [typed, setTyped] = useState(term);
 
   const top = useQuery({
-    queryKey: ["tree-top", at],
+    queryKey: ["tree-top", at, term],
     queryFn: async () =>
       unwrap(
         await api.GET("/v1/products/{product}/streams/{stream}/variants/{variant}/components", {
-          params: { path: at },
+          params: { path: at, query: term ? { q: term } : {} },
         }),
       ),
   });
 
   const root = (top.data?.root ?? null) as Node | null;
   const rootName = root?.component ?? "";
+  const searching = term !== "";
+  const found = (top.data?.items ?? []) as Node[];
+
+  function search(next: string) {
+    const now = new URLSearchParams(params);
+    if (next.trim()) now.set("q", next.trim());
+    else now.delete("q");
+    setParams(now);
+  }
 
   // The root starts open, because a tree whose only visible row is the thing
   // you already knew you were looking at has told you nothing. Closing it
@@ -126,18 +137,58 @@ export function Tree() {
         </p>
       </div>
 
+      {/* Searching is the way in, and browsing is for answering "what else is
+          under this" once somebody is already somewhere. Eight thousand
+          components under a root with five thousand children is not a graph
+          anybody reaches the middle of by opening nodes. */}
+      <div className="treehead">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            search(typed);
+          }}
+        >
+          <input
+            type="text"
+            value={typed}
+            aria-label="Find a component"
+            placeholder="Find a component — openssl, linux, python…"
+            onChange={(event) => setTyped(event.target.value)}
+          />
+        </form>
+        {searching && (
+          <button type="button" className="linkish" onClick={() => { setTyped(""); search(""); }}>
+            Back to the tree
+          </button>
+        )}
+        <span className="found">
+          {(top.data?.components ?? 0).toLocaleString()} components ·{" "}
+          {(top.data?.edges ?? 0).toLocaleString()} edges
+        </span>
+      </div>
+
       <div className="detail">
         <div>
           <div className="card">
             {top.isPending && <p className="text-sm text-[var(--muted)]">Loading…</p>}
             {top.isError && <Failed error={top.error} what="The build's contents could not be read." />}
-            {!top.isPending && !top.isError && !root && (
+            {!searching && !top.isPending && !top.isError && !root && (
               <Empty
                 title="This build has no root."
                 detail="Nothing has been scanned here, or the inventory described no component that everything else descends from."
               />
             )}
-            {root && (
+            {searching && !top.isPending && !top.isError && (
+              found.length === 0 ? (
+                <Empty
+                  title={`Nothing here is called "${term}".`}
+                  detail="Matched on part of a name, ignoring case. A component that is in the inventory but not in this build will not appear."
+                />
+              ) : (
+                <Matches found={found} focus={focus} onSelect={select} />
+              )
+            )}
+            {!searching && root && (
               <Branches
                 root={root}
                 below={below}
@@ -150,8 +201,9 @@ export function Tree() {
               />
             )}
             <p className="mt-3 text-xs text-[var(--faint)]">
-              Children load when a node is opened, and a count sits on every node so descending has
-              a direction — you are following the findings, not exploring.
+              {searching
+                ? "Matches anywhere in the build, most findings first. Selecting one shows what pulls it in."
+                : "Children load when a node is opened, and a count sits on every node so descending has a direction — you are following the findings, not exploring."}
             </p>
           </div>
         </div>
@@ -182,6 +234,41 @@ function findNode(name: string, root: Node | null, below: Map<string, Node[] | u
     if (hit) return hit;
   }
   return null;
+}
+
+// A search answers with a set of components rather than a position, so it is
+// drawn as a list and not as a tree with one branch. Selecting one moves the
+// pane to it, which is where "what pulls this in" is answered.
+function Matches({
+  found,
+  focus,
+  onSelect,
+}: {
+  found: Node[];
+  focus: string;
+  onSelect: (name: string) => void;
+}) {
+  return (
+    <div className="tree">
+      {found.map((node, i) => (
+        <div
+          key={`${node.component}\u0000${node.version}\u0000${i}`}
+          className={`node openable${node.component === focus ? " here" : ""}`}
+        >
+          <span className="rule">·</span>
+          <span className="id" style={{ cursor: "pointer" }} onClick={() => onSelect(node.component)}>
+            {node.component}
+          </span>
+          <span className="ver">{node.version}</span>
+          <span
+            className={`count${node.findings > HOT ? " hot" : node.findings === 0 ? " none" : ""}`}
+          >
+            {node.findings.toLocaleString()}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // One flat list of indented rows rather than nested lists, so the rule down the

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/uptrace/bun"
 
@@ -629,4 +630,93 @@ func climb(from, root int64, parents map[int64][]int64) []int64 {
 		}
 	}
 	return nil
+}
+
+// Counts reports how much the build's graph holds, which is what the screen
+// showing it says at the top.
+//
+// Two numbers rather than one because they answer different questions: how
+// much was inventoried, and how much of it was placed. A build with many
+// components and few edges is a document that listed everything and said
+// where almost nothing went.
+func (s *Store) Counts(ctx context.Context, subject access.Subject, targetID int64) (int, int, error) {
+	if _, err := s.visibleIn(ctx, subject, targetID); err != nil {
+		return 0, 0, err
+	}
+	components, err := s.db.NewSelect().
+		TableExpr("graph_node AS n").
+		Where("n.target_id = ?", targetID).
+		Where("n.closed_scan_id IS NULL").
+		Count(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("count what this build holds: %w", err)
+	}
+	edges, err := s.db.NewSelect().
+		TableExpr("graph_edge AS e").
+		Where("e.target_id = ?", targetID).
+		Where("e.closed_scan_id IS NULL").
+		Count(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("count what this build's edges are: %w", err)
+	}
+	return components, edges, nil
+}
+
+// Search finds components of a build by name.
+//
+// Opening nodes does not find anything in a graph this size — eight thousand
+// components under a root with five thousand children — so searching is the
+// way in and browsing is for answering "what else is under this" once somebody
+// is already somewhere. A tree without it is a tree nobody reaches the middle
+// of.
+//
+// Matched on a substring of the name, case-folded, because somebody looking
+// for openssl types "ssl" and should not have to know whether the package is
+// called openssl, libssl3t64 or symcrypt-openssl. Ordered by findings so the
+// first answer is the one worth opening.
+func (s *Store) Search(ctx context.Context, subject access.Subject, targetID int64,
+	term string, limit int) ([]Neighbour, error) {
+
+	readable, err := s.visibleIn(ctx, subject, targetID)
+	if err != nil {
+		return nil, err
+	}
+	term = strings.TrimSpace(term)
+	if term == "" {
+		return nil, nil
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+
+	var rows []Neighbour
+	err = s.db.NewSelect().
+		TableExpr("graph_node AS n").
+		Join("JOIN component AS c ON c.id = n.component_id").
+		Join(`LEFT JOIN (SELECT dp.component_id AS cid, COUNT(*) AS n
+			FROM "graph_edge" AS d
+			JOIN "graph_node" AS dp ON dp.id = d.parent_id
+			WHERE d.target_id = ? AND d.closed_scan_id IS NULL
+			GROUP BY dp.component_id) AS kids ON kids.cid = c.id`, targetID).
+		ColumnExpr("c.name AS name").
+		ColumnExpr("c.version AS version").
+		ColumnExpr(`(SELECT COUNT(*) FROM "finding" AS f
+			WHERE f.target_id = ? AND f.component_id = c.id
+			  AND f.closed_run_id IS NULL AND f.visibility IN (?)) AS findings`,
+			targetID, bun.List(readable)).
+		ColumnExpr("COALESCE(kids.n, 0) AS children").
+		Where("n.target_id = ?", targetID).
+		Where("n.closed_scan_id IS NULL").
+		// LOWER on both sides rather than a case-insensitive comparison,
+		// which two of the four engines spell differently and one of them
+		// decides by collation.
+		Where("LOWER(c.name) LIKE ?", "%"+strings.ToLower(term)+"%").
+		GroupExpr("c.id, c.name, c.version, kids.n").
+		OrderExpr("findings DESC, c.name").
+		Limit(limit).
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("search the build: %w", err)
+	}
+	return rows, nil
 }
