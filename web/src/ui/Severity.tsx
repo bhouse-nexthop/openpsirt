@@ -1,26 +1,24 @@
-// Severity reads at a glance and never borrows the accent colour. A page that
-// paints "critical" in the brand colour has nothing left that means "act on
-// this" (see the palette in index.css).
-const tone: Record<string, string> = {
-  exploited: "bg-exploited/12 text-exploited ring-exploited/30",
-  critical: "bg-critical/12 text-critical ring-critical/30",
-  high: "bg-high/12 text-high ring-high/30",
-  medium: "bg-medium/12 text-medium ring-medium/30",
-  low: "bg-low/12 text-low ring-low/30",
-};
+// Severity reads at a glance and never borrows the accent colour: "urgent" and
+// "clickable" must never look like the same thing.
+//
+// The rating and the fact are shown separately, because they are separate.
+// Severity says how bad the flaw is; being exploited says somebody is using
+// it. Replacing "medium" with "exploited" answers one question by destroying
+// the other — and the two together are what explain why an exploited medium
+// sits above an unexploited high in the list.
+export function Severity({ word }: { word?: string }) {
+  const shown = word || "unrated";
+  const known = ["critical", "high", "medium", "low"].includes(shown);
+  return <span className={`sev ${known ? shown : "low"}`}>{shown}</span>;
+}
 
-export function Severity({ word, exploited }: { word?: string; exploited?: boolean }) {
-  // Exploited outranks whatever the score says. Severity is how bad the flaw
-  // is; being exploited is a fact about the world, and the ordering everywhere
-  // else in this tool puts the fact first.
-  const shown = exploited ? "exploited" : (word || "unrated");
-  const style = tone[shown] ?? "bg-sunken text-muted ring-edge";
+// Known-exploited, said outright rather than left to a colour. It is a fact
+// about the world rather than a judgment, and it is what decides the order.
+export function Exploited({ when }: { when?: boolean }) {
+  if (!when) return null;
   return (
-    <span
-      className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset ${style}`}
-      title={exploited && word ? `known exploited — rated ${word}` : undefined}
-    >
-      {shown}
+    <span className="kev" title="Somebody is known to be using this. It sorts above everything else, whatever the severity says">
+      Exploited
     </span>
   );
 }

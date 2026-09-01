@@ -23,15 +23,16 @@ type Rank int64
 
 // The place value each signal owns.
 //
-// Chosen so the ranges cannot overlap: a likelihood is at most a million
-// parts, and a score at most a thousand hundredths, so neither can carry into
-// the band above it.
+// Sized so nothing can carry into the band above it: a severity is at most a
+// thousand hundredths, and a likelihood at most a million parts.
 const (
-	exploitedBand  = 1_000_000_000_000
-	shippedBand    = 100_000_000_000
-	likelihoodStep = 10_000
-	maxLikelihood  = 1_000_000
-	maxScore       = 1_000
+	exploitedBand = 1_000_000_000_000
+	shippedBand   = 100_000_000_000
+	// severityStep lifts severity above likelihood, which sits underneath it
+	// and orders things that are equally severe.
+	severityStep  = 10_000_000
+	maxScore      = 1_000
+	maxLikelihood = 1_000_000
 )
 
 // Ranked is what a rank was made of, so a position can be explained.
@@ -54,6 +55,27 @@ type Ranked struct {
 }
 
 // Rank packs the signals into one sortable number, highest first.
+//
+// Exploited, then whether it reaches customers, then **severity, then
+// likelihood** — each owning a range of digits so it never trades against a
+// lower signal.
+//
+// Likelihood used to sit above severity, and that was measured wrong on a real
+// image: a 2004 negligible with no score at all outranked every one of 379
+// criticals, because its likelihood was 0.80 where theirs topped out at 0.073
+// and any difference in the higher signal won outright.
+//
+// Multiplying the two was tried next, which is the published practice for
+// these two scores, and the same image argued against it: **95% of its issues
+// sit between 0.001 and 0.01 likelihood**, one order of magnitude, where the
+// differences are not differences anybody should act on. Multiplied, that 4.5×
+// ratio inside the spike outweighs the 2× between a medium and a critical, so
+// mediums would jump criticals constantly and on noise.
+//
+// So severity leads and likelihood orders what is equally severe. It gives up
+// letting a very likely medium jump a high — on this data almost always noise,
+// and the case that actually matters, something known to be used, is a fact
+// rather than a forecast and already ranks above everything.
 func (r Ranked) Rank() Rank {
 	rank := int64(0)
 	if r.Exploited {
@@ -62,8 +84,8 @@ func (r Ranked) Rank() Rank {
 	if r.Shipped {
 		rank += shippedBand
 	}
-	rank += int64(bounded(r.LikelihoodPPM, maxLikelihood)) * likelihoodStep
-	rank += int64(bounded(r.ScoreCenti, maxScore))
+	rank += int64(bounded(r.ScoreCenti, maxScore)) * severityStep
+	rank += int64(bounded(r.LikelihoodPPM, maxLikelihood))
 	return Rank(rank)
 }
 
@@ -82,11 +104,11 @@ func (r Ranked) Because() []string {
 	} else {
 		reasons = append(reasons, "does not reach customers")
 	}
-	if r.LikelihoodPPM > 0 {
-		reasons = append(reasons, "estimated likelihood of exploitation")
-	}
 	if r.ScoreCenti > 0 {
 		reasons = append(reasons, "severity")
+	}
+	if r.LikelihoodPPM > 0 {
+		reasons = append(reasons, "estimated likelihood, among things equally severe")
 	}
 	return reasons
 }

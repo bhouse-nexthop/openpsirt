@@ -1,6 +1,12 @@
 package httpapi
 
-import "github.com/danielgtaylor/huma/v2"
+import (
+	"errors"
+
+	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
+)
 
 // What to say when a name reaches nothing.
 //
@@ -40,4 +46,18 @@ func noSuchIssue() error {
 
 func nothingScannedThere() error {
 	return huma.Error404NotFound("nothing has been scanned there")
+}
+
+// ambiguousOrMissing answers a component lookup that could not settle on one.
+//
+// A name matching several is a different answer from a name matching none: the
+// first is something the caller can fix by saying which version, and the
+// second is not. Telling them apart discloses nothing — whoever is asking has
+// already been authorized to read this build.
+func ambiguousOrMissing(err error) error {
+	if errors.Is(err, graph.ErrAmbiguous) {
+		return huma.Error409Conflict(
+			"this build ships that name at more than one version — say which with ?version=")
+	}
+	return noSuchFinding()
 }

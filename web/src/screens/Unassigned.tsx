@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
-import { Severity } from "../ui/Severity";
+import { Exploited, Severity } from "../ui/Severity";
 
 // Work nobody owns, across every product somebody can see. Nobody-is-assigned
 // is a state to be asked about rather than an absence: work that falls between
@@ -51,7 +51,7 @@ export function Unassigned() {
     },
   });
 
-  if (nobodys.isPending) return <p className="text-sm text-muted">Loading…</p>;
+  if (nobodys.isPending) return <p className="text-sm text-[var(--muted)]">Loading…</p>;
   if (nobodys.isError) {
     return <Failed error={nobodys.error} what="What nobody owns could not be read." />;
   }
@@ -62,7 +62,7 @@ export function Unassigned() {
     <div className="max-w-4xl">
       <header className="mb-4">
         <h1 className="text-lg font-semibold tracking-tight">Nobody is dealing with these</h1>
-        <p className="text-sm text-muted">
+        <p className="text-sm text-[var(--muted)]">
           Across every product you can see. {nobodys.data?.total ?? 0} in total.
         </p>
       </header>
@@ -121,7 +121,7 @@ function Row({
   const [asking, setAsking] = useState(false);
 
   return (
-    <li className="rounded-lg border border-edge bg-raised p-3 text-sm">
+    <li className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <Link
           to={
@@ -131,21 +131,21 @@ function Row({
             `/findings/${encodeURIComponent(row.vulnerability ?? "")}` +
             `/components/${encodeURIComponent(row.component ?? "")}`
           }
-          className="font-medium hover:text-accent"
+          className="font-medium hover:text-[var(--accent)]"
         >
           {row.vulnerability}
         </Link>
-        <Severity word={row.severity} exploited={row.exploited} />
-        <span className="text-muted">
+        <Severity word={row.severity} /> <Exploited when={row.exploited} />
+        <span className="text-[var(--muted)]">
           {row.component} {row.version}
         </span>
-        <span className="ml-auto text-muted">
+        <span className="ml-auto text-[var(--muted)]">
           {row.product} / {row.stream} / {row.variant}
         </span>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <span className="text-muted">
+        <span className="text-[var(--muted)]">
           {row.places} {row.places === 1 ? "place" : "places"}
         </span>
         {asking ? (
@@ -158,7 +158,7 @@ function Row({
               onChange={(event) => setPerson(event.target.value)}
               placeholder="their sign-in identity"
               aria-label="Who takes this on"
-              className="rounded border border-edge bg-raised px-2 py-1"
+              className="rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1"
             />
             <button
               type="button"
@@ -168,11 +168,11 @@ function Row({
                 setAsking(false);
                 setPerson("");
               }}
-              className="rounded bg-accent px-2 py-1 font-medium text-accent-ink disabled:opacity-50"
+              className="rounded bg-[var(--accent)] px-2 py-1 font-medium text-white disabled:opacity-50"
             >
               Assign
             </button>
-            <button type="button" onClick={() => setAsking(false)} className="text-muted">
+            <button type="button" onClick={() => setAsking(false)} className="text-[var(--muted)]">
               Cancel
             </button>
           </span>
@@ -180,7 +180,7 @@ function Row({
           <button
             type="button"
             onClick={() => setAsking(true)}
-            className="ml-auto text-accent hover:underline"
+            className="ml-auto text-[var(--accent)] hover:underline"
           >
             Give it to somebody
           </button>

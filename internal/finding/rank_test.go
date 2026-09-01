@@ -32,7 +32,14 @@ func TestWhatReachesCustomersOutranksWhatDoesNot(t *testing.T) {
 	}
 }
 
-func TestTheOrderWithinABandIsLikelihoodThenSeverity(t *testing.T) {
+func TestTheOrderWithinABandIsSeverityThenLikelihood(t *testing.T) {
+	// This asserted the reverse, and the reverse was measured wrong on a real
+	// image: 95% of its issues sat inside one order of magnitude of
+	// likelihood, so letting that reorder severities moved things on
+	// differences nobody should act on — while a 2004 negligible with no score
+	// outranked every critical on a likelihood of 0.80.
+	//
+	// So severity leads, and likelihood orders what is equally severe.
 	base := finding.Ranked{Shipped: true, ScoreCenti: 500}
 	likelier := finding.Ranked{Shipped: true, ScoreCenti: 500, LikelihoodPPM: 900_000}
 	worse := finding.Ranked{Shipped: true, ScoreCenti: 900}
@@ -43,10 +50,11 @@ func TestTheOrderWithinABandIsLikelihoodThenSeverity(t *testing.T) {
 	if worse.Rank() <= base.Rank() {
 		t.Error("a more severe issue did not outrank an identical one")
 	}
-	// Likelihood is the stronger signal: how bad it would be matters less than
-	// whether it is going to happen.
-	if worse.Rank() >= likelier.Rank() {
-		t.Error("severity outranked likelihood, which is the wrong way round")
+	// Severity is the stronger signal. What it gives up is letting a very
+	// likely medium jump a high — and the case that actually matters, being
+	// known to be used, is a fact rather than a forecast and ranks above both.
+	if worse.Rank() <= likelier.Rank() {
+		t.Error("likelihood outranked severity, which is the wrong way round")
 	}
 }
 

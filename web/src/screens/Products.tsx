@@ -15,7 +15,7 @@ export function Products({ who }: { who: Who }) {
     queryFn: async () => unwrap(await api.GET("/v1/products", {})),
   });
 
-  if (streams.isPending) return <p className="text-sm text-muted">Loading…</p>;
+  if (streams.isPending) return <p className="text-sm text-[var(--muted)]">Loading…</p>;
   if (streams.isError) {
     return <Failed error={streams.error} what="The products could not be read." />;
   }
@@ -42,10 +42,10 @@ export function Products({ who }: { who: Who }) {
           <li key={product.name}>
             <Link
               to={`/products/${encodeURIComponent(product.name)}/streams`}
-              className="block rounded-lg border border-edge bg-raised px-4 py-3 hover:border-accent"
+              className="block rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-3 hover:border-[var(--accent)]"
             >
               <span className="font-medium">{product.display_name || product.name}</span>
-              <span className="mt-0.5 block text-sm text-muted">{product.name}</span>
+              <span className="mt-0.5 block text-sm text-[var(--muted)]">{product.name}</span>
             </Link>
           </li>
         ))}

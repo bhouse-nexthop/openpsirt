@@ -797,10 +797,18 @@ components:
         fixed_in:
           description: The version that resolves it, where one exists
           type: string
+        likelihood:
+          description: Published estimate that this will be exploited, 0 to 1
+          format: double
+          type: number
         places:
           description: How many places this component sits at here
           format: int64
           type: integer
+        score:
+          description: The severity as a number, which is what the order compares
+          format: double
+          type: number
         severity:
           description: As the scanner rated it. A word, not a score
           type: string
@@ -3492,6 +3500,8 @@ paths:
         Returns the full record for one issue in one component of a build: the description, the advisory, every reference the data carries with patches listed first, the score and what it assumes, whether it is known to be exploited and how likely exploitation is, the weakness classification, what upstream has done about it, and every place the component sits at here.
 
         This is what a triage decision is made from, so it is gathered into one request. Each entry in `places` carries the `place` identity to name when recording a decision about it.
+
+        **A component name is not unique within a build.** Where one ships at several versions, `version` says which — without it, a name that matches more than one is refused rather than guessed at.
       operationId: get-finding
       parameters:
         - in: path
@@ -3522,6 +3532,13 @@ paths:
           required: true
           schema:
             description: The component's name, as the findings list gives it
+            type: string
+        - description: Which version, where the build ships that name at more than one
+          explode: false
+          in: query
+          name: version
+          schema:
+            description: Which version, where the build ships that name at more than one
             type: string
       responses:
         "200":

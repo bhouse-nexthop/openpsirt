@@ -6,9 +6,15 @@ import { Refused } from "../api/queries";
 export function Failed({ error, what }: { error: unknown; what: string }) {
   const said = error instanceof Refused ? error.message : null;
   return (
-    <div className="rounded-lg border border-critical/40 bg-critical/8 px-4 py-3">
-      <p className="text-sm font-medium text-ink">{what}</p>
-      {said && <p className="mt-1 text-sm text-muted">{said}</p>}
+    <div
+      className="card"
+      style={{
+        borderColor: "var(--sev-critical)",
+        background: "var(--sev-exploited-bg)",
+      }}
+    >
+      <p style={{ margin: 0, fontWeight: 600 }}>{what}</p>
+      {said && <p className="hint" style={{ margin: "4px 0 0" }}>{said}</p>}
     </div>
   );
 }

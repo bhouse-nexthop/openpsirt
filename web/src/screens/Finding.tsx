@@ -1,9 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
 import { Failed } from "../ui/Failed";
-import { Crumbs } from "../ui/Crumbs";
 import { Severity } from "../ui/Severity";
 
 // Everything a decision is made from, in one request. There may be thousands
@@ -12,20 +11,22 @@ import { Severity } from "../ui/Severity";
 // the difference between a queue that gets worked and one that does not.
 export function Finding() {
   const { product = "", stream = "", variant = "", vulnerability = "", component = "" } = useParams();
+  const [params] = useSearchParams();
+  const version = params.get("version") ?? "";
   const at = { product, stream, variant, vulnerability, component };
 
   const finding = useQuery({
-    queryKey: ["finding", at],
+    queryKey: ["finding", { product, stream, variant }, vulnerability, component, version],
     queryFn: async () =>
       unwrap(
         await api.GET(
           "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}",
-          { params: { path: at } },
+          { params: { path: at, query: { version } } },
         ),
       ),
   });
 
-  if (finding.isPending) return <p className="text-sm text-muted">Loading…</p>;
+  if (finding.isPending) return <p className="hint">Loading…</p>;
   if (finding.isError) {
     return <Failed error={finding.error} what="This finding could not be read." />;
   }
@@ -38,85 +39,115 @@ export function Finding() {
     `/variants/${encodeURIComponent(variant)}/findings`;
 
   return (
-    <div className="max-w-3xl">
-      <Crumbs product={product} stream={stream} variant={variant} />
-      <Link to={back} className="mb-3 inline-block text-sm text-muted hover:text-ink">
-        ← All findings
-      </Link>
-
-      <header className="mb-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-xl font-semibold tracking-tight">{it.vulnerability}</h1>
-          <Severity word={it.severity} exploited={it.exploited} />
-          {it.score ? <Rated score={it.score} vector={it.vector} /> : null}
-        </div>
-        <p className="mt-1 text-sm text-muted">
-          {it.component} {it.version}
-          {it.upstream && ` · forked from ${it.upstream}`}
+    <>
+      <div className="screen-head">
+        <h2>
+          <span className="id">{it.vulnerability}</span> in <span className="id">{it.component}</span>{" "}
+          {it.exploited && <span className="kev">Exploited</span>}
+        </h2>
+        <p>
+          {product} · {stream} · {variant} · {(it.places ?? []).length}{" "}
+          {(it.places ?? []).length === 1 ? "place" : "places"}{" "}
+          <Link to={back} className="linkish">← back to findings</Link>
         </p>
-        {(it.aliases ?? []).length > 0 && (
-          <p className="mt-1 text-sm text-muted">also known as {(it.aliases ?? []).join(", ")}</p>
-        )}
-      </header>
+      </div>
 
-      {/* What a scan file said is shown, never rendered (SEC-16). This text
-          came from a producer rather than from a person typing into this tool,
-          so it is displayed as text and nothing in it is markup. */}
-      {it.description && (
-        <section className="mb-5">
-          <p className="whitespace-pre-wrap text-sm">{it.description}</p>
-        </section>
+      {/* A version that moved and took the issue with it. Two things follow:
+          the old reasoning probably still stands, and somebody's remediation
+          did not land. */}
+      {it.arrived_from && (
+        <div className="alert" style={{ marginBottom: 14 }}>
+          <strong>This was bumped and the issue came with it</strong>
+          <br />
+          <span>
+            <span className="id">{it.arrived_from}</span> → <span className="id">{it.version}</span>
+            {it.fixed_in && <> · <span className="id">{it.fixed_in}</span> is what fixes it</>}
+            . The old reasoning probably still stands, and somebody's remediation did not land.
+          </span>
+        </div>
       )}
 
-      <dl className="mb-6 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-        <Fact label="Upstream has" value={fixWord(it.fix_state, it.fixed_in)} />
-        {it.arrived_from && (
-          <Fact
-            label="Bumped from"
-            value={`${it.arrived_from} — and the issue came with it`}
-          />
+      <div className="evidence">
+        {it.description && (
+          <div className="block">
+            <h4>What it is</h4>
+            {/* What a scan file said is shown, never rendered (SEC-16). This
+                came from a producer rather than from a person typing here. */}
+            <p style={{ whiteSpace: "pre-wrap" }}>{it.description}</p>
+          </div>
         )}
-        {typeof it.likelihood === "number" && (
-          <Fact label="Chance of exploitation" value={`${Math.round(it.likelihood * 100)}%`} />
-        )}
-        {(it.weaknesses ?? []).length > 0 && (
-          <Fact label="Kind of flaw" value={(it.weaknesses ?? []).join(", ")} />
-        )}
-      </dl>
 
-      <Places at={at} places={it.places ?? []} />
+        <div className="block">
+          <h4>How bad</h4>
+          <div className="scores">
+            <div className="score">
+              <span className="n">{it.score ? it.score.toFixed(1) : "—"}</span>
+              <span className="l">CVSS</span>
+            </div>
+            <div className="score">
+              <span className="n">
+                {typeof it.likelihood === "number" ? it.likelihood.toFixed(2) : "—"}
+              </span>
+              <span className="l">Likelihood</span>
+            </div>
+            <div className="score">
+              <span className="n">{(it.weaknesses ?? [])[0] ?? "—"}</span>
+              <span className="l">Weakness</span>
+            </div>
+            <div className="score">
+              <span className="n">{it.exploited ? "Yes" : "No"}</span>
+              <span className="l">Exploited</span>
+            </div>
+          </div>
+          {it.vector && (
+            <p className="mono" style={{ fontSize: "var(--step--1)", color: "var(--muted)" }}>
+              {it.vector}
+            </p>
+          )}
+          <p className="hint">
+            <Severity word={it.severity} /> — being exploited is a fact
+            about the world rather than a judgment, and it outranks the score.
+          </p>
+        </div>
 
-      <References advisory={it.advisory} refs={it.references ?? []} />
-    </div>
+        <References advisory={it.advisory} refs={it.references ?? []} />
+
+        <div className="block">
+          <h4>Upstream</h4>
+          <p>
+            <span className="id">{it.component} {it.version}</span>
+            {it.upstream && <> — cut from <span className="id">{it.upstream}</span></>}
+            {". "}
+            {it.fix_state === "fixed" && it.fixed_in ? (
+              <>Fixed upstream in <span className="id">{it.fixed_in}</span>
+                {it.fixed_at && <>, available since {it.fixed_at.slice(0, 10)}</>}.</>
+            ) : it.fix_state === "wont-fix" ? (
+              <>Upstream has said it will not fix this.</>
+            ) : (
+              <>No fix has been published.</>
+            )}
+          </p>
+        </div>
+
+        <Places at={at} places={it.places ?? []} />
+
+        {(it.aliases ?? []).length > 0 && (
+          <div className="block">
+            <h4>Also known as</h4>
+            <p className="id">{(it.aliases ?? []).join(" · ")}</p>
+            <p className="hint">
+              Identity spans the names: whichever one a report used, it is the same issue here.
+            </p>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
-function Rated({ score, vector }: { score: number; vector?: string }) {
-  return (
-    <span className="text-sm text-muted" title={vector || undefined}>
-      {score.toFixed(1)}
-    </span>
-  );
-}
-
-function fixWord(state?: string, version?: string): string {
-  if (state === "fixed") return version ? `fixed in ${version}` : "fixed upstream";
-  if (state === "wont-fix") return "said it will not fix this";
-  return "no fix published";
-}
-
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-muted">{label}</dt>
-      <dd>{value}</dd>
-    </div>
-  );
-}
-
-// Every place the component sits at here. A place is the component and what
-// directly pulled it in — the pair, not the whole route — and it is what a
-// decision is recorded against.
+// Every place the component sits at. A place is the component and what
+// directly pulled it in — the pair, not the route — and it is what a decision
+// is recorded against.
 function Places({
   at,
   places,
@@ -126,19 +157,17 @@ function Places({
 }) {
   if (places.length === 0) return null;
   return (
-    <section className="mb-6">
-      <h2 className="mb-2 text-sm font-semibold">
-        Where it sits
-        <span className="ml-2 font-normal text-muted">
-          {places.length} {places.length === 1 ? "place" : "places"}
-        </span>
-      </h2>
-      <ul className="divide-y divide-edge overflow-hidden rounded-lg border border-edge">
+    <div className="block">
+      <h4>Where it sits</h4>
+      <div className="tree">
         {places.map((place) => (
-          <li key={place.place} className="flex flex-wrap items-center gap-2 bg-raised px-3 py-2 text-sm">
-            <span>{place.consumer ? `under ${place.consumer}` : "under the product itself"}</span>
+          <div key={place.place} className="node here">
+            <span className="rule">└</span>{" "}
+            <span className="id">
+              {place.consumer ? place.consumer : "the product itself"}
+            </span>
             {place.suppressed && (
-              <span className="rounded bg-sunken px-1.5 py-0.5 text-xs text-muted ring-1 ring-inset ring-edge">
+              <span className="state" style={{ marginLeft: 8 }}>
                 the build already argued this away
               </span>
             )}
@@ -150,44 +179,54 @@ function Places({
                 `/findings/${encodeURIComponent(at.vulnerability)}` +
                 `/places/${encodeURIComponent(place.place)}`
               }
-              className="ml-auto text-accent hover:underline"
+              className="linkish"
+              style={{ marginLeft: 10 }}
             >
-              What was decided
+              What was decided →
             </Link>
-          </li>
+          </div>
         ))}
-      </ul>
-    </section>
+      </div>
+      <p className="hint">
+        One judgment covers every place running the same code at the same versions; a place at a
+        different version is a separate judgment.
+      </p>
+    </div>
   );
 }
 
-// Patches first, because the commit that fixes something is what somebody
-// triaging most often wants and is the hardest to find by searching.
-function References({ advisory, refs }: { advisory?: string; refs: { url: string; kind: string }[] }) {
+// Patches first: for somebody deciding whether to backport rather than
+// upgrade, the change itself is the answer and is the hardest thing to find.
+function References({
+  advisory,
+  refs,
+}: {
+  advisory?: string;
+  refs: { url?: string; kind?: string }[];
+}) {
   const all = advisory ? [{ url: advisory, kind: "advisory" }, ...refs] : refs;
   if (all.length === 0) return null;
-  const order = { patch: 0, advisory: 1, report: 2, other: 3 } as Record<string, number>;
-  const sorted = [...all].sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9));
+  const order: Record<string, number> = { patch: 0, advisory: 1, report: 2, other: 3 };
+  const sorted = [...all].sort((a, b) => (order[a.kind ?? "other"] ?? 9) - (order[b.kind ?? "other"] ?? 9));
   return (
-    <section>
-      <h2 className="mb-2 text-sm font-semibold">References</h2>
-      <ul className="flex flex-col gap-1 text-sm">
-        {sorted.map((ref) => (
-          <li key={ref.url} className="flex items-baseline gap-2">
-            <span className="w-16 shrink-0 text-xs text-muted">{ref.kind}</span>
-            {/* Nothing this tool links to is ours, so nothing carries the
+    <div className="block">
+      <h4>Evidence</h4>
+      <ul className="refs">
+        {sorted.slice(0, 12).map((ref) => (
+          <li key={ref.url}>
+            <span className={ref.kind === "patch" ? "kind patch" : "kind"}>{ref.kind}</span>{" "}
+            {/* Nothing linked from here is ours, so nothing carries the
                 referrer or a handle back to this window. */}
-            <a
-              href={ref.url}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="break-all text-accent hover:underline"
-            >
-              {ref.url}
+            <a href={ref.url} target="_blank" rel="noreferrer noopener">
+              {(ref.url ?? "").replace(/^https?:\/\//, "")}
             </a>
           </li>
         ))}
       </ul>
-    </section>
+      <p className="hint">
+        Patches first: for somebody deciding whether to backport rather than upgrade, the change
+        itself is the answer.
+      </p>
+    </div>
   );
 }

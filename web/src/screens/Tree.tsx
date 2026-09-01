@@ -21,7 +21,7 @@ export function Tree() {
     <div className="max-w-3xl">
       <Crumbs product={product} stream={stream} variant={variant} />
       <h1 className="mb-1 text-lg font-semibold tracking-tight">What this build contains</h1>
-      <p className="mb-4 text-sm text-muted">
+      <p className="mb-4 text-sm text-[var(--muted)]">
         One step at a time. A component reached several ways appears once with several parents —
         it is a graph rather than a tree.
       </p>
@@ -52,7 +52,7 @@ function Top({ at, onFocus }: { at: At; onFocus: (component: string) => void }) 
       ),
   });
 
-  if (top.isPending) return <p className="text-sm text-muted">Loading…</p>;
+  if (top.isPending) return <p className="text-sm text-[var(--muted)]">Loading…</p>;
   if (top.isError) return <Failed error={top.error} what="The top level could not be read." />;
 
   const items = top.data?.items ?? [];
@@ -85,7 +85,7 @@ function Around({
       ),
   });
 
-  if (around.isPending) return <p className="text-sm text-muted">Loading…</p>;
+  if (around.isPending) return <p className="text-sm text-[var(--muted)]">Loading…</p>;
   if (around.isError) {
     return <Failed error={around.error} what="What sits around this could not be read." />;
   }
@@ -99,7 +99,7 @@ function Around({
         <button
           type="button"
           onClick={() => onFocus("")}
-          className="text-sm text-muted hover:text-ink"
+          className="text-sm text-[var(--muted)] hover:text-[var(--ink)]"
         >
           ← Back to the top level
         </button>
@@ -114,25 +114,25 @@ function Around({
             `/variants/${encodeURIComponent(at.variant)}` +
             `/components/${encodeURIComponent(component)}/decide`
           }
-          className="text-sm text-accent hover:underline"
+          className="text-sm text-[var(--accent)] hover:underline"
         >
           Decide several at once
         </Link>
       </div>
 
       <section className="mb-5">
-        <h3 className="mb-2 text-sm text-muted">What pulls it in</h3>
+        <h3 className="mb-2 text-sm text-[var(--muted)]">What pulls it in</h3>
         {above.length === 0 ? (
-          <p className="text-sm text-muted">Nothing — the build depends on it directly.</p>
+          <p className="text-sm text-[var(--muted)]">Nothing — the build depends on it directly.</p>
         ) : (
           <Nodes items={above} onFocus={onFocus} />
         )}
       </section>
 
       <section>
-        <h3 className="mb-2 text-sm text-muted">What it pulls in</h3>
+        <h3 className="mb-2 text-sm text-[var(--muted)]">What it pulls in</h3>
         {below.length === 0 ? (
-          <p className="text-sm text-muted">Nothing.</p>
+          <p className="text-sm text-[var(--muted)]">Nothing.</p>
         ) : (
           <Nodes items={below} onFocus={onFocus} />
         )}
@@ -148,20 +148,20 @@ type Node = { component?: string; name?: string; version?: string; findings?: nu
 // exploration.
 function Nodes({ items, onFocus }: { items: Node[]; onFocus: (component: string) => void }) {
   return (
-    <ul className="divide-y divide-edge overflow-hidden rounded-lg border border-edge">
+    <ul className="divide-y divide-edge overflow-hidden rounded-lg border border-[var(--line)]">
       {items.map((node) => {
         const name = node.component ?? node.name ?? "";
         return (
-          <li key={name} className="flex flex-wrap items-center gap-2 bg-raised px-3 py-2 text-sm">
+          <li key={name} className="flex flex-wrap items-center gap-2 bg-[var(--surface)] px-3 py-2 text-sm">
             <button
               type="button"
               onClick={() => onFocus(name)}
-              className="font-medium hover:text-accent"
+              className="font-medium hover:text-[var(--accent)]"
             >
               {name}
             </button>
-            {node.version && <span className="text-muted">{node.version}</span>}
-            <span className="ml-auto flex gap-3 text-muted">
+            {node.version && <span className="text-[var(--muted)]">{node.version}</span>}
+            <span className="ml-auto flex gap-3 text-[var(--muted)]">
               {typeof node.findings === "number" && node.findings > 0 && (
                 <span>{node.findings} open</span>
               )}

@@ -29,6 +29,15 @@ type FindingBody struct {
 	// can explain is one people stop trusting, and then they sort by something
 	// else and lose the point of the order entirely.
 	Exploited bool `json:"exploited,omitempty" doc:"Somebody is known to be exploiting this"`
+	// Likelihood is why one medium sits above another, and above a high. It
+	// ranks between whether something reaches customers and how severe it is,
+	// so a list that orders by it and does not show it reads as unsorted.
+	Likelihood float64 `json:"likelihood,omitempty" doc:"Published estimate that this will be exploited, 0 to 1"`
+	// Score is what the ordering compares. The word beside it comes from
+	// whichever scoring generation rated it — 10.0 reads "high" under CVSS v2
+	// and "critical" under v3 — so two rows can tie on the number while their
+	// words disagree, and without the number that looks mis-sorted.
+	Score float64 `json:"score,omitempty" doc:"The severity as a number, which is what the order compares"`
 }
 
 // FindingsOutput is a page of what is open.
@@ -100,7 +109,9 @@ func registerFindings(api huma.API, in Ingest) {
 				Component: group.Component, Version: group.Version, Upstream: group.Upstream,
 				FixState: string(group.FixState), FixedIn: group.FixedIn,
 				Places: group.Places, Answered: group.Answered,
-				Exploited: group.Exploited,
+				Exploited:  group.Exploited,
+				Likelihood: float64(group.LikelihoodPPM) / 1_000_000,
+				Score:      float64(group.ScoreCenti) / 100,
 			})
 		}
 		return out, nil
@@ -163,7 +174,10 @@ func registerFindingDetail(api huma.API, in Ingest) {
 			"it, and every place the component sits at here.\n\n" +
 			"This is what a triage decision is made from, so it is gathered into one request. " +
 			"Each entry in `places` carries the `place` identity to name when recording a " +
-			"decision about it.",
+			"decision about it.\n\n" +
+			"**A component name is not unique within a build.** Where one ships at several " +
+			"versions, `version` says which — without it, a name that matches more than one is " +
+			"refused rather than guessed at.",
 		Tags: []string{"Findings"},
 	}, func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
@@ -171,6 +185,7 @@ func registerFindingDetail(api huma.API, in Ingest) {
 		Variant       string `path:"variant"`
 		Vulnerability string `path:"vulnerability" doc:"The issue, by any name it is known under"`
 		Component     string `path:"component" doc:"The component's name, as the findings list gives it"`
+		Version       string `query:"version" doc:"Which version, where the build ships that name at more than one"`
 	}) (*struct{ Body EvidenceBody }, error) {
 		subject, err := reading(ctx)
 		if err != nil {
@@ -190,9 +205,14 @@ func registerFindingDetail(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, noSuchIssue()
 		}
-		component, err := graph.NewStore(in.DB.DB).ComponentAt(ctx, target.ID, input.Component)
+		// Name and version together, because a name alone is not unique: a
+		// real image ships three vendored versions of one library, and
+		// resolving the name on its own answers about whichever was interned
+		// first — for two of the three rows, an issue it does not carry.
+		component, err := graph.NewStore(in.DB.DB).
+			ComponentVersionAt(ctx, target.ID, input.Component, input.Version)
 		if err != nil {
-			return nil, noSuchFinding()
+			return nil, ambiguousOrMissing(err)
 		}
 
 		evidence, err := finding.NewStore(in.DB.DB).Detail(ctx, subject, target.ID, issue, component)

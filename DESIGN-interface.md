@@ -294,6 +294,31 @@ trusts a header from loopback, and hands administration to whoever sets that
 header. Every one of those is a hole; together they are a machine somebody can
 click around on.
 
+## What the order is, and why it has to show its working
+
+The findings list is ordered by urgency: known-exploited, then whether the
+build reaches customers, then severity, then likelihood. Every one of those is
+on the row, and that is not decoration.
+
+An order that sorts on something it does not show reads as no order at all. The
+first version showed only the severity word, and the top of a real list came
+out "high, high, medium, medium, medium, high, high, critical" — correct, and
+indistinguishable from unsorted. The first five were known-exploited and
+nothing said so.
+
+Two things in particular have to be visible:
+
+**Known-exploited**, as its own badge rather than by replacing the severity
+word. Replacing it answers one question by destroying another: an exploited
+medium is still a medium, and the reader needs both facts to see why it sits
+above an unexploited high.
+
+**The score, beside the word.** They come from different places and can tie
+while the words differ — a 2003 issue scored 10.0 reads "high" under CVSS v2
+and "critical" under v3. Two rows tied at 10.0 with different words look
+mis-sorted until the number is there. Genuine disagreement between word and
+number is rare, measured at 3 of 2,645; the vocabulary difference is not.
+
 ## Not built yet
 
 Named so that what is missing is a plan rather than something rediscovered by

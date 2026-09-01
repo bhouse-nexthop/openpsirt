@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/uptrace/bun"
@@ -212,26 +213,52 @@ func (s *Store) CurrentComponents(ctx context.Context, targetID int64) ([]Descri
 // there: two products can ship different things under one name, and a lookup
 // across everything would answer with whichever was interned first.
 func (s *Store) ComponentAt(ctx context.Context, targetID int64, name string) (int64, error) {
-	var ids []int64
-	err := s.db.NewSelect().
+	return s.ComponentVersionAt(ctx, targetID, name, "")
+}
+
+// ErrAmbiguous says a name matched more than one component and no version was
+// given to tell them apart.
+var ErrAmbiguous = errors.New("this build contains that name at more than one version")
+
+// ComponentVersionAt resolves a component by name and, where one is given,
+// version.
+//
+// **A name is not unique within a build**, and not rarely. This was written
+// assuming it nearly always was, resolving a collision by taking the lowest
+// identifier — stable between requests, which was the property being protected.
+// A real switch image then shipped three vendored versions of one library, and
+// every one of them resolved to the first: two of the three findings answered
+// "no such finding" for a row the list had just drawn, and the third answered
+// about a version nobody asked about.
+//
+// So the version narrows it where the caller has one, and an ambiguous name
+// with no version is an error rather than a guess. A caller that guesses on
+// behalf of somebody is worse than one that says it cannot tell.
+func (s *Store) ComponentVersionAt(ctx context.Context, targetID int64, name, version string) (int64, error) {
+	query := s.db.NewSelect().
 		TableExpr("graph_node AS n").
 		Join("JOIN component AS c ON c.id = n.component_id").
 		ColumnExpr("c.id").
 		Where("n.target_id = ?", targetID).
 		Where("n.closed_scan_id IS NULL").
 		Where("c.name = ?", name).
-		OrderExpr("c.id").
-		Scan(ctx, &ids)
-	if err != nil {
+		OrderExpr("c.id")
+	if version != "" {
+		query = query.Where("c.version = ?", version)
+	}
+
+	var ids []int64
+	if err := query.Scan(ctx, &ids); err != nil {
 		return 0, fmt.Errorf("look up component %q: %w", name, err)
 	}
 	if len(ids) == 0 {
 		return 0, fmt.Errorf("this build contains no component called %q", name)
 	}
-	// A build shipping the same name at two versions is unusual and possible.
-	// The lowest identifier is the one interned first, which is stable across
-	// requests — an arbitrary answer that changes between two identical
-	// requests would be worse than an arbitrary answer that does not.
+	if len(ids) > 1 {
+		// Only reachable without a version: with one, the name and version
+		// together identify a component.
+		return 0, fmt.Errorf("%w: %q", ErrAmbiguous, name)
+	}
 	return ids[0], nil
 }
 

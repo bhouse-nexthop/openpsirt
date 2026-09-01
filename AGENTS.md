@@ -45,6 +45,15 @@ All at the repository root, named `DESIGN-<area>.md`.
 - **Update them in the same change as the code.** A design document that lags is
   worse than none, because it is trusted and wrong.
 
+## Two documents are temporary
+
+`IMPLEMENTATION.md` holds build order and `WORKING-NOTES.md` holds the state of
+whatever is being built right now — what was decided this week, what is still
+open, and the traps that cost an hour each. Both are deleted once the work
+lands, and **nothing may reference either**: not code, not comments, not commit
+messages, not the design documents. Anything durable moves to `DECISIONS.md` or
+a `DESIGN-*.md` before the note goes.
+
 ## Plan documents are temporary
 
 `IMPLEMENTATION.md` will be deleted once its work has landed.

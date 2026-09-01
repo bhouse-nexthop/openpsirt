@@ -71,7 +71,7 @@ export function Together() {
       <h1 className="mb-1 text-lg font-semibold tracking-tight">
         Decide several at once — {component}
       </h1>
-      <p className="mb-4 text-sm text-muted">
+      <p className="mb-4 text-sm text-[var(--muted)]">
         One outcome, one reason, and a separate decision per issue and per place. Nothing here
         selects for you: narrowing finds candidates, and the reasoning has to hold for every one
         you tick.
@@ -89,14 +89,14 @@ export function Together() {
           onChange={(event) => setTyped(event.target.value)}
           placeholder="Narrow by what the report says"
           aria-label="Narrow the list"
-          className="min-w-56 flex-1 rounded border border-edge bg-raised px-2 py-1.5 text-sm"
+          className="min-w-56 flex-1 rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1.5 text-sm"
         />
-        <button type="submit" className="rounded border border-edge px-3 py-1.5 text-sm">
+        <button type="submit" className="rounded border border-[var(--line)] px-3 py-1.5 text-sm">
           Narrow
         </button>
       </form>
 
-      {issues.isPending && <p className="text-sm text-muted">Loading…</p>}
+      {issues.isPending && <p className="text-sm text-[var(--muted)]">Loading…</p>}
       {issues.isError && <Failed error={issues.error} what="The issues could not be read." />}
 
       {issues.data && items.length === 0 && (
@@ -109,23 +109,23 @@ export function Together() {
             <button
               type="button"
               onClick={() => setPicked(new Set(items.map((i) => i.vulnerability ?? "")))}
-              className="text-accent hover:underline"
+              className="text-[var(--accent)] hover:underline"
             >
               Tick all {items.length}
             </button>
-            <button type="button" onClick={() => setPicked(new Set())} className="text-muted hover:text-ink">
+            <button type="button" onClick={() => setPicked(new Set())} className="text-[var(--muted)] hover:text-[var(--ink)]">
               Clear
             </button>
-            <span className="ml-auto text-muted">
+            <span className="ml-auto text-[var(--muted)]">
               {picked.size} of {issues.data?.total ?? items.length} ticked
             </span>
           </div>
 
-          <ul className="mb-5 max-h-96 divide-y divide-edge overflow-y-auto rounded-lg border border-edge">
+          <ul className="mb-5 max-h-96 divide-y divide-edge overflow-y-auto rounded-lg border border-[var(--line)]">
             {items.map((issue) => {
               const name = issue.vulnerability ?? "";
               return (
-                <li key={name} className="flex flex-wrap items-center gap-2 bg-raised px-3 py-2 text-sm">
+                <li key={name} className="flex flex-wrap items-center gap-2 bg-[var(--surface)] px-3 py-2 text-sm">
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -140,7 +140,7 @@ export function Together() {
                     <span className="font-medium">{name}</span>
                   </label>
                   <Severity word={issue.severity} />
-                  <span className="ml-auto flex gap-3 text-muted">
+                  <span className="ml-auto flex gap-3 text-[var(--muted)]">
                     <span>
                       {issue.places} {issue.places === 1 ? "place" : "places"}
                     </span>
@@ -197,16 +197,16 @@ function Claim({
   const ready = count > 0 && reasoning.trim() !== "" && selectedBy.trim() !== "";
 
   return (
-    <section className="rounded-lg border border-edge bg-raised p-4">
+    <section className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
       <h2 className="mb-3 text-sm font-semibold">What is true of all {count} of them</h2>
 
       <div className="flex flex-col gap-3">
         <label className="text-sm">
-          <span className="mb-1 block text-muted">Outcome</span>
+          <span className="mb-1 block text-[var(--muted)]">Outcome</span>
           <select
             value={outcome}
             onChange={(event) => setOutcome(event.target.value)}
-            className="w-full rounded border border-edge bg-raised px-2 py-1.5"
+            className="w-full rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1.5"
           >
             <option value="not-applicable">They do not apply to us</option>
             <option value="wont-fix">They apply and will not be fixed</option>
@@ -216,11 +216,11 @@ function Claim({
 
         {needsJustification && (
           <label className="text-sm">
-            <span className="mb-1 block text-muted">Which reason</span>
+            <span className="mb-1 block text-[var(--muted)]">Which reason</span>
             <select
               value={justification}
               onChange={(event) => setJustification(event.target.value)}
-              className="w-full rounded border border-edge bg-raised px-2 py-1.5"
+              className="w-full rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1.5"
             >
               {JUSTIFICATIONS.map((each) => (
                 <option key={each.value} value={each.value}>
@@ -236,17 +236,17 @@ function Claim({
             word" is not a defence anybody would accept — but "how were these
             chosen" is the question asked of a bulk judgment months later. */}
         <label className="text-sm">
-          <span className="mb-1 block text-muted">How you narrowed this set</span>
+          <span className="mb-1 block text-[var(--muted)]">How you narrowed this set</span>
           <input
             value={selectedBy}
             onChange={(event) => setSelectedBy(event.target.value)}
             placeholder="e.g. searched the reports for the drivers this image does not build"
-            className="w-full rounded border border-edge bg-raised px-2 py-1.5"
+            className="w-full rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1.5"
           />
         </label>
 
         <div>
-          <span className="mb-1 block text-sm text-muted">
+          <span className="mb-1 block text-sm text-[var(--muted)]">
             Why this holds for every one of them
           </span>
           <Editor
@@ -261,7 +261,7 @@ function Claim({
 
         {error != null && <Failed error={error} what="That could not be recorded." />}
         {typeof recorded === "number" && recorded > 0 && (
-          <p className="rounded border border-low/40 bg-low/8 px-3 py-2 text-sm">
+          <p className="rounded border border-[var(--ok)] bg-[var(--ok-bg)] px-3 py-2 text-sm">
             {recorded} decisions recorded — one per issue, per place. Each waits for a second
             person and expires on its own.
           </p>
@@ -279,11 +279,11 @@ function Claim({
                 reasoning,
               })
             }}
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink disabled:opacity-50"
+            className="rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
             Record it for {count}
           </button>
-          <span className="ml-3 text-sm text-muted">
+          <span className="ml-3 text-sm text-[var(--muted)]">
             Always waits for a second person, whatever the outcome.
           </span>
         </div>

@@ -143,8 +143,8 @@ export function Editor({
   }
 
   return (
-    <div className="rounded-lg border border-edge bg-raised">
-      <div className="flex flex-wrap items-center gap-1 border-b border-edge px-2 py-1.5">
+    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)]">
+      <div className="flex flex-wrap items-center gap-1 border-b border-[var(--line)] px-2 py-1.5">
         {MARKS.map((mark) => (
           <button
             key={mark.title}
@@ -152,7 +152,7 @@ export function Editor({
             title={mark.title}
             aria-label={mark.title}
             onClick={() => surround(mark)}
-            className="min-h-8 min-w-8 rounded px-2 text-sm text-muted hover:bg-sunken hover:text-ink"
+            className="min-h-8 min-w-8 rounded px-2 text-sm text-[var(--muted)] hover:bg-[var(--raised)] hover:text-[var(--ink)]"
           >
             {mark.label}
           </button>
@@ -165,7 +165,7 @@ export function Editor({
               onClick={() => setShowing(tab)}
               aria-pressed={showing === tab}
               className={`min-h-8 rounded px-2 text-sm ${
-                showing === tab ? "bg-sunken text-ink" : "text-muted hover:text-ink"
+                showing === tab ? "bg-[var(--raised)] text-[var(--ink)]" : "text-[var(--muted)] hover:text-[var(--ink)]"
               }`}
             >
               {tab === "write" ? "Write" : "Preview"}
@@ -175,18 +175,18 @@ export function Editor({
       </div>
 
       {showing === "write" && typing !== null && candidates.length > 0 && (
-        <ul className="mx-3 mt-1 max-h-40 overflow-y-auto rounded border border-edge bg-sunken text-sm">
+        <ul className="mx-3 mt-1 max-h-40 overflow-y-auto rounded border border-[var(--line)] bg-[var(--raised)] text-sm">
           {candidates.map((each) => (
             <li key={each.identity}>
               <button
                 type="button"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => complete(each.identity ?? "")}
-                className="block w-full px-3 py-1.5 text-left hover:bg-raised"
+                className="block w-full px-3 py-1.5 text-left hover:bg-[var(--surface)]"
               >
                 <span className="font-medium">@{each.identity}</span>
                 {each.name && each.name !== each.identity && (
-                  <span className="ml-2 text-muted">{each.name}</span>
+                  <span className="ml-2 text-[var(--muted)]">{each.name}</span>
                 )}
               </button>
             </li>
@@ -218,7 +218,7 @@ export function Editor({
           {value ? (
             <Markdown source={value} />
           ) : (
-            <p className="text-muted">Nothing written yet.</p>
+            <p className="text-[var(--muted)]">Nothing written yet.</p>
           )}
         </div>
       )}

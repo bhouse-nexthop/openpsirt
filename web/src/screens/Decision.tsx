@@ -24,7 +24,7 @@ export function Decision({ who }: { who: Who }) {
     queryFn: async () => unwrap(await api.GET("/v1/decisions/{id}", { params: { path: { id } } })),
   });
 
-  if (decision.isPending) return <p className="text-sm text-muted">Loading…</p>;
+  if (decision.isPending) return <p className="text-sm text-[var(--muted)]">Loading…</p>;
   if (decision.isError) {
     return <Failed error={decision.error} what="That decision could not be read." />;
   }
@@ -41,22 +41,22 @@ export function Decision({ who }: { who: Who }) {
           <Outcome outcome={it.decision?.outcome} />
           <State state={it.decision?.state} />
         </div>
-        <p className="text-sm text-muted">
+        <p className="text-sm text-[var(--muted)]">
           {it.place?.product}
           {it.proposed_by && <> · claimed by {it.proposed_by}</>}
           {it.proposed_at && <> on {it.proposed_at.slice(0, 10)}</>}
           {typeof it.age_days === "number" && it.age_days > 365 && (
-            <> · <span className="text-medium">a judgment this old is worth re-reading</span></>
+            <> · <span className="text-[var(--sev-medium)]">a judgment this old is worth re-reading</span></>
           )}
         </p>
         {it.decision?.sent_back_at && (
-          <p className="mt-2 rounded border border-medium/40 bg-medium/8 px-3 py-2 text-sm">
+          <p className="mt-2 rounded border border-[var(--wait)] bg-[var(--wait-bg)] px-3 py-2 text-sm">
             An approver asked for more on {it.decision.sent_back_at.slice(0, 10)}. It is back with
             whoever wrote it, and out of the review queue until they revise it.
           </p>
         )}
         {it.decision?.selected_by && (
-          <p className="mt-2 text-sm text-muted">
+          <p className="mt-2 text-sm text-[var(--muted)]">
             One of many recorded together. Narrowed by: {it.decision.selected_by}
           </p>
         )}
@@ -108,7 +108,7 @@ function Reasoning({
               setText(current);
               setEditing(true);
             }}
-            className="text-sm text-accent hover:underline"
+            className="text-sm text-[var(--accent)] hover:underline"
           >
             Revise
           </button>
@@ -117,7 +117,7 @@ function Reasoning({
 
       {editing ? (
         <>
-          <p className="mb-2 text-sm text-muted">
+          <p className="mb-2 text-sm text-[var(--muted)]">
             Revising takes back any approval this has and returns it to the queue, marked as
             agreed before. The old words stay readable.
           </p>
@@ -138,22 +138,22 @@ function Reasoning({
                   },
                 )
               }
-              className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink disabled:opacity-50"
+              className="rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             >
               Save
             </button>
             <button
               type="button"
               onClick={() => setEditing(false)}
-              className="rounded border border-edge px-3 py-1.5 text-sm"
+              className="rounded border border-[var(--line)] px-3 py-1.5 text-sm"
             >
               Cancel
             </button>
           </div>
         </>
       ) : (
-        <div className="rounded-lg border border-edge bg-raised p-3 text-sm">
-          {current ? <Markdown source={current} /> : <p className="text-muted">Nothing written.</p>}
+        <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm">
+          {current ? <Markdown source={current} /> : <p className="text-[var(--muted)]">Nothing written.</p>}
         </div>
       )}
 
@@ -166,11 +166,11 @@ function Reasoning({
             type="button"
             disabled={withdraw.isPending}
             onClick={() => withdraw.mutate({ id })}
-            className="text-sm text-muted hover:text-critical"
+            className="text-sm text-[var(--muted)] hover:text-[var(--sev-critical)]"
           >
             Withdraw this claim
           </button>
-          <span className="ml-2 text-sm text-muted">
+          <span className="ml-2 text-sm text-[var(--muted)]">
             It stops applying and stays on the record.
           </span>
         </div>
@@ -195,12 +195,12 @@ function Revisions({ id }: { id: number }) {
     <section className="mb-6">
       <h2 className="mb-2 text-sm font-semibold">
         How the reasoning changed
-        <span className="ml-2 font-normal text-muted">{items.length} versions</span>
+        <span className="ml-2 font-normal text-[var(--muted)]">{items.length} versions</span>
       </h2>
       <ul className="flex flex-col gap-2">
         {items.map((revision) => (
-          <li key={revision.id} className="rounded-lg border border-edge bg-sunken p-3 text-sm">
-            <p className="mb-1 text-muted">
+          <li key={revision.id} className="rounded-lg border border-[var(--line)] bg-[var(--raised)] p-3 text-sm">
+            <p className="mb-1 text-[var(--muted)]">
               #{revision.ordinal} · {revision.written_by}
               {revision.written_at && <> on {revision.written_at.slice(0, 10)}</>}
             </p>
@@ -231,15 +231,15 @@ function Approvals({ id }: { id: number }) {
         {items.map((approval) => (
           <li
             key={approval.id}
-            className={`rounded-lg border border-edge p-3 ${
-              approval.withdrawn_at ? "bg-sunken text-muted" : "bg-raised"
+            className={`rounded-lg border border-[var(--line)] p-3 ${
+              approval.withdrawn_at ? "bg-[var(--raised)] text-[var(--muted)]" : "bg-[var(--surface)]"
             }`}
           >
             <span>{approval.approved_by}</span>
-            {approval.approved_at && <span className="text-muted"> on {approval.approved_at.slice(0, 10)}</span>}
+            {approval.approved_at && <span className="text-[var(--muted)]"> on {approval.approved_at.slice(0, 10)}</span>}
             {typeof approval.covered === "number" && (
               <span
-                className="text-muted"
+                className="text-[var(--muted)]"
                 title="How much it covered when it was agreed to. A decision reaches by matching, so it covers more as builds appear — with nobody having acted"
               >
                 {" "}· covered {approval.covered} then
@@ -273,15 +273,15 @@ function Comments({ id }: { id: number }) {
   return (
     <section>
       <h2 className="mb-2 text-sm font-semibold">Comments</h2>
-      <p className="mb-3 text-sm text-muted">
+      <p className="mb-3 text-sm text-[var(--muted)]">
         Separate from the reasoning, and they never affect an approval.
       </p>
 
       {items.length > 0 && (
         <ul className="mb-4 flex flex-col gap-2">
           {items.map((each) => (
-            <li key={each.id} className="rounded-lg border border-edge bg-raised p-3 text-sm">
-              <p className="mb-1 text-muted">
+            <li key={each.id} className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm">
+              <p className="mb-1 text-[var(--muted)]">
                 {each.written_by}
                 {each.written_at && <> on {each.written_at.slice(0, 10)}</>}
                 {each.edited_at && <> · edited</>}
@@ -315,7 +315,7 @@ function Comments({ id }: { id: number }) {
             },
           )
         }
-        className="mt-2 rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink disabled:opacity-50"
+        className="mt-2 rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
       >
         Comment
       </button>

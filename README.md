@@ -75,6 +75,7 @@ says what that costs.
 |---|---|
 | [DECISIONS.md](DECISIONS.md) | Every decision, with reasoning, organized by area |
 | [IMPLEMENTATION.md](IMPLEMENTATION.md) | Build order. Temporary — deleted once the work lands |
+| [WORKING-NOTES.md](WORKING-NOTES.md) | Where the current stretch of work is, and what is still open. Also temporary |
 | [AGENTS.md](AGENTS.md) | Conventions for anyone, human or otherwise, working in this repository |
 
 `DESIGN-*.md` documents describe how each area actually works, and appear as

@@ -3,9 +3,9 @@
 // so the caller says which of the two this is.
 export function Empty({ title, detail }: { title: string; detail?: string }) {
   return (
-    <div className="rounded-lg border border-edge bg-raised px-6 py-10 text-center">
-      <p className="text-sm font-medium text-ink">{title}</p>
-      {detail && <p className="mt-1 text-sm text-muted">{detail}</p>}
+    <div className="card" style={{ textAlign: "center", padding: "34px 20px" }}>
+      <p style={{ margin: 0, fontWeight: 600 }}>{title}</p>
+      {detail && <p className="hint" style={{ margin: "4px 0 0" }}>{detail}</p>}
     </div>
   );
 }

@@ -53,7 +53,7 @@ export function PlaceDecision() {
     },
   });
 
-  if (decided.isPending) return <p className="text-sm text-muted">Loading…</p>;
+  if (decided.isPending) return <p className="text-sm text-[var(--muted)]">Loading…</p>;
   if (decided.isError) {
     return <Failed error={decided.error} what="What was decided here could not be read." />;
   }
@@ -68,7 +68,7 @@ export function PlaceDecision() {
   return (
     <div className="max-w-3xl">
       <Crumbs product={product} stream={stream} variant={variant} />
-      <Link to={back} className="mb-3 inline-block text-sm text-muted hover:text-ink">
+      <Link to={back} className="mb-3 inline-block text-sm text-[var(--muted)] hover:text-[var(--ink)]">
         ← All findings
       </Link>
       <h1 className="mb-4 text-xl font-semibold tracking-tight">{vulnerability}</h1>
@@ -77,7 +77,7 @@ export function PlaceDecision() {
         <Standing detail={standing} />
       ) : (
         <>
-          <p className="mb-4 text-sm text-muted">
+          <p className="mb-4 text-sm text-[var(--muted)]">
             Nothing is in force here. A claim waiting for a second person suppresses nothing,
             so it does not appear as one.
           </p>
@@ -107,20 +107,20 @@ type Detail = {
 
 function Standing({ detail }: { detail: Detail }) {
   return (
-    <section className="mb-6 rounded-lg border border-edge bg-raised p-4">
+    <section className="mb-6 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <Outcome outcome={detail.decision?.outcome} />
         <State state={detail.decision?.state} />
         {detail.decision?.id && (
-          <Link to={`/decisions/${detail.decision.id}`} className="text-sm text-accent hover:underline">
+          <Link to={`/decisions/${detail.decision.id}`} className="text-sm text-[var(--accent)] hover:underline">
             History and comments
           </Link>
         )}
         {detail.decision?.deferred_until && (
-          <span className="text-sm text-muted">until {detail.decision.deferred_until}</span>
+          <span className="text-sm text-[var(--muted)]">until {detail.decision.deferred_until}</span>
         )}
       </div>
-      <p className="mb-3 text-sm text-muted">
+      <p className="mb-3 text-sm text-[var(--muted)]">
         {detail.proposed_by && <>claimed by {detail.proposed_by}</>}
         {detail.proposed_at && <> on {detail.proposed_at.slice(0, 10)}</>}
       </p>
@@ -144,21 +144,21 @@ function Previously({
   return (
     <section className="mt-8">
       <h2 className="mb-2 text-sm font-semibold">Decided here before</h2>
-      <p className="mb-3 text-sm text-muted">
+      <p className="mb-3 text-sm text-[var(--muted)]">
         Withdrawn claims, and claims that stopped applying when a version moved. Worth reading
         before deciding again.
       </p>
       <ul className="flex flex-col gap-2">
         {items.map((each, index) => (
-          <li key={each.decision?.id ?? index} className="rounded-lg border border-edge bg-sunken p-3">
+          <li key={each.decision?.id ?? index} className="rounded-lg border border-[var(--line)] bg-[var(--raised)] p-3">
             <div className="mb-1 flex flex-wrap items-center gap-2">
               <Outcome outcome={each.decision?.outcome} />
               <State state={each.decision?.state} />
-              <span className="text-sm text-muted">{each.proposed_by}</span>
+              <span className="text-sm text-[var(--muted)]">{each.proposed_by}</span>
               {each.decision?.id && (
                 <Link
                   to={`/decisions/${each.decision.id}`}
-                  className="ml-auto text-sm text-accent hover:underline"
+                  className="ml-auto text-sm text-[var(--accent)] hover:underline"
                 >
                   Read it
                 </Link>
@@ -221,7 +221,7 @@ function Reaffirm({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-2 text-sm text-accent hover:underline"
+        className="mt-2 text-sm text-[var(--accent)] hover:underline"
       >
         Say this still holds
       </button>
@@ -230,7 +230,7 @@ function Reaffirm({
 
   return (
     <div className="mt-3">
-      <p className="mb-2 text-sm text-muted">
+      <p className="mb-2 text-sm text-[var(--muted)]">
         A fresh reason is required. "Still true" with nothing behind it is what a re-affirmation
         becomes when it is made too easy. It normally needs no second approver — but it does if
         the severity has risen since, and the answer will say so.
@@ -249,11 +249,11 @@ function Reaffirm({
           type="button"
           disabled={!reasoning.trim() || again.isPending}
           onClick={() => again.mutate()}
-          className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink disabled:opacity-50"
+          className="rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
         >
           Re-affirm
         </button>
-        <button type="button" onClick={() => setOpen(false)} className="rounded border border-edge px-3 py-1.5 text-sm">
+        <button type="button" onClick={() => setOpen(false)} className="rounded border border-[var(--line)] px-3 py-1.5 text-sm">
           Cancel
         </button>
       </div>
@@ -289,11 +289,11 @@ function Decide({
       <h2 className="mb-2 text-sm font-semibold">Decide</h2>
       <div className="flex flex-col gap-3">
         <label className="text-sm">
-          <span className="mb-1 block text-muted">What is true here</span>
+          <span className="mb-1 block text-[var(--muted)]">What is true here</span>
           <select
             value={outcome}
             onChange={(event) => setOutcome(event.target.value)}
-            className="w-full rounded border border-edge bg-raised px-2 py-1.5"
+            className="w-full rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1.5"
           >
             <option value="not-applicable">It does not apply to us</option>
             <option value="affected">It applies and needs fixing</option>
@@ -307,11 +307,11 @@ function Decide({
             — it is the outcome. */}
         {needsJustification && (
           <label className="text-sm">
-            <span className="mb-1 block text-muted">Which reason</span>
+            <span className="mb-1 block text-[var(--muted)]">Which reason</span>
             <select
               value={justification}
               onChange={(event) => setJustification(event.target.value)}
-              className="w-full rounded border border-edge bg-raised px-2 py-1.5"
+              className="w-full rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1.5"
             >
               {JUSTIFICATIONS.map((each) => (
                 <option key={each.value} value={each.value}>
@@ -324,21 +324,21 @@ function Decide({
 
         {needsDate && (
           <label className="text-sm">
-            <span className="mb-1 block text-muted">Until when</span>
+            <span className="mb-1 block text-[var(--muted)]">Until when</span>
             <input
               type="date"
               value={until}
               onChange={(event) => setUntil(event.target.value)}
-              className="rounded border border-edge bg-raised px-2 py-1.5"
+              className="rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1.5"
             />
-            <span className="mt-1 block text-muted">
+            <span className="mt-1 block text-[var(--muted)]">
               A deferral with no date is a decision never to look again.
             </span>
           </label>
         )}
 
         <div>
-          <span className="mb-1 block text-sm text-muted">
+          <span className="mb-1 block text-sm text-[var(--muted)]">
             Why. Somebody else has to agree with this.
           </span>
           <Editor
@@ -365,11 +365,11 @@ function Decide({
                 reasoning,
               })
             }
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink disabled:opacity-50"
+            className="rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
             Record it
           </button>
-          <span className="ml-3 text-sm text-muted">
+          <span className="ml-3 text-sm text-[var(--muted)]">
             Most outcomes wait for a second person before they take effect.
           </span>
         </div>

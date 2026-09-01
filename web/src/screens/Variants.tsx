@@ -22,7 +22,7 @@ export function Variants() {
       ),
   });
 
-  if (variants.isPending) return <p className="text-sm text-muted">Loading…</p>;
+  if (variants.isPending) return <p className="text-sm text-[var(--muted)]">Loading…</p>;
   if (variants.isError) {
     return <Failed error={variants.error} what="The variants could not be read." />;
   }
@@ -47,11 +47,11 @@ export function Variants() {
                   `/streams/${encodeURIComponent(stream)}` +
                   `/variants/${encodeURIComponent(variant.name)}/findings`
                 }
-                className="block rounded-lg border border-edge bg-raised px-4 py-3 hover:border-accent"
+                className="block rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-3 hover:border-[var(--accent)]"
               >
                 <span className="font-medium">{variant.name}</span>
                 {variant.customer_facing === false && (
-                  <span className="mt-0.5 block text-sm text-muted">not customer-facing</span>
+                  <span className="mt-0.5 block text-sm text-[var(--muted)]">not customer-facing</span>
                 )}
               </Link>
             </li>

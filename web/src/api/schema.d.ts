@@ -731,6 +731,8 @@ export interface paths {
          * @description Returns the full record for one issue in one component of a build: the description, the advisory, every reference the data carries with patches listed first, the score and what it assumes, whether it is known to be exploited and how likely exploitation is, the weakness classification, what upstream has done about it, and every place the component sits at here.
          *
          *     This is what a triage decision is made from, so it is gathered into one request. Each entry in `places` carries the `place` identity to name when recording a decision about it.
+         *
+         *     **A component name is not unique within a build.** Where one ships at several versions, `version` says which — without it, a name that matches more than one is refused rather than guessed at.
          */
         get: operations["get-finding"];
         put?: never;
@@ -1694,10 +1696,20 @@ export interface components {
             /** @description The version that resolves it, where one exists */
             fixed_in?: string;
             /**
+             * Format: double
+             * @description Published estimate that this will be exploited, 0 to 1
+             */
+            likelihood?: number;
+            /**
              * Format: int64
              * @description How many places this component sits at here
              */
             places: number;
+            /**
+             * Format: double
+             * @description The severity as a number, which is what the order compares
+             */
+            score?: number;
             /** @description As the scanner rated it. A word, not a score */
             severity?: string;
             /** @description What a fork was made from, where it is one */
@@ -3636,7 +3648,10 @@ export interface operations {
     };
     "get-finding": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Which version, where the build ships that name at more than one */
+                version?: string;
+            };
             header?: never;
             path: {
                 product: string;

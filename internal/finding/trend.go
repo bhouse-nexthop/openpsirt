@@ -62,10 +62,11 @@ func (s *Store) Trend(ctx context.Context, subject access.Subject, since time.Ti
 	// here. The alternative is a statement per point per severity, which is
 	// sixty round trips to answer one question.
 	var rows []struct {
-		Severity      string     `bun:"severity"`
-		OpenedAt      time.Time  `bun:"opened_at"`
-		ClosedAt      *time.Time `bun:"closed_at"`
-		ClosedBecause string     `bun:"closed_because"`
+		VulnerabilityID int64      `bun:"vulnerability_id"`
+		Severity        string     `bun:"severity"`
+		OpenedAt        time.Time  `bun:"opened_at"`
+		ClosedAt        *time.Time `bun:"closed_at"`
+		ClosedBecause   string     `bun:"closed_because"`
 	}
 	query := s.db.NewSelect().
 		TableExpr("finding AS f").
@@ -74,6 +75,7 @@ func (s *Store) Trend(ctx context.Context, subject access.Subject, since time.Ti
 		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
 		Join("JOIN scan_run AS o ON o.id = f.opened_run_id").
 		Join("LEFT JOIN scan_run AS c ON c.id = f.closed_run_id").
+		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("COALESCE(v.severity, 'unknown') AS severity").
 		ColumnExpr("o.started_at AS opened_at").
 		ColumnExpr("c.started_at AS closed_at").
@@ -96,32 +98,85 @@ func (s *Store) Trend(ctx context.Context, subject access.Subject, since time.Ti
 		return nil, fmt.Errorf("read what changed over time: %w", err)
 	}
 
-	points := make([]Point, 0, steps)
-	for i := 0; i < steps; i++ {
-		from := since.Add(time.Duration(i) * step)
-		to := from.Add(step)
-		point := Point{At: to, BySeverity: map[string]int{}}
-		for _, row := range rows {
-			if row.OpenedAt.After(from) && !row.OpenedAt.After(to) {
-				point.Opened++
-			}
-			if row.ClosedAt != nil && row.ClosedAt.After(from) && !row.ClosedAt.After(to) &&
-				resolving(Closure(row.ClosedBecause)) {
-				point.Resolved++
-			}
-			// Open at the end of this step: opened by then, and either still
-			// open or closed afterwards.
+	// Counted as issues, not as places.
+	//
+	// A finding is a component at a place, and one issue in one shared library
+	// reaches every consumer of it — on a real image the kernel alone produced
+	// 305,487 findings for a few thousand issues. Counting rows here reported
+	// 441,108 open where 5,661 issues were open, which is not a chart anybody
+	// can read: it measures how much the dependency graph shares rather than
+	// how much there is to answer.
+	//
+	// So each point is a *set* of issues, and the three numbers come from the
+	// same set. That also settles what "resolved" means without a second rule:
+	// an issue whose version moved and came with it is still in the set, so a
+	// bump that fixed nothing cannot appear as work completed.
+	open := make([]map[int64]string, steps)
+	for i := range open {
+		open[i] = map[int64]string{}
+	}
+	// Where an issue stopped being present without explanation, per step. The
+	// scanner going quiet is a fault to investigate rather than a fix, so it
+	// is held back from the resolved count even though the issue has left the
+	// set (RPT-15).
+	quiet := make([]map[int64]bool, steps)
+	for i := range quiet {
+		quiet[i] = map[int64]bool{}
+	}
+
+	for _, row := range rows {
+		for i := 0; i < steps; i++ {
+			to := since.Add(time.Duration(i+1) * step)
 			if row.OpenedAt.After(to) {
 				continue
 			}
 			if row.ClosedAt != nil && !row.ClosedAt.After(to) {
+				// Gone by this point. Note an unexplained disappearance so the
+				// step it happened in does not read as work done.
+				if Closure(row.ClosedBecause) == Unexplained {
+					for j := 0; j < steps; j++ {
+						from := since.Add(time.Duration(j) * step)
+						until := from.Add(step)
+						if row.ClosedAt.After(from) && !row.ClosedAt.After(until) {
+							quiet[j][row.VulnerabilityID] = true
+						}
+					}
+				}
 				continue
 			}
-			point.Open++
-			point.BySeverity[row.Severity]++
+			open[i][row.VulnerabilityID] = row.Severity
+		}
+	}
+
+	points := make([]Point, 0, steps)
+	for i := 0; i < steps; i++ {
+		point := Point{At: since.Add(time.Duration(i+1) * step), BySeverity: map[string]int{}}
+		point.Open = len(open[i])
+		for _, severity := range open[i] {
+			point.BySeverity[severity]++
+		}
+		// New and resolved are the difference between this step's set and the
+		// last one's, so all three numbers agree with each other rather than
+		// counting events that may not change what is open. The first step has
+		// nothing to differ from, so it reports neither.
+		if i == 0 {
+			points = append(points, point)
+			continue
+		}
+		before := open[i-1]
+		for id := range open[i] {
+			if _, was := before[id]; !was {
+				point.Opened++
+			}
+		}
+		for id := range before {
+			if _, still := open[i][id]; !still && !quiet[i][id] {
+				point.Resolved++
+			}
 		}
 		points = append(points, point)
 	}
+
 	return points, nil
 }
 

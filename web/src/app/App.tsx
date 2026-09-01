@@ -28,6 +28,8 @@ const Unassigned = lazy(() =>
 const Together = lazy(() =>
   import("../screens/Together").then((m) => ({ default: m.Together })),
 );
+const Scans = lazy(() => import("../screens/Scans").then((m) => ({ default: m.Scans })));
+const Settings = lazy(() => import("../screens/Settings").then((m) => ({ default: m.Settings })));
 
 const build = "/products/:product/streams/:stream/variants/:variant";
 
@@ -42,7 +44,7 @@ export function App() {
 
   return (
     <Shell who={who.data}>
-      <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
+      <Suspense fallback={<p className="text-sm text-[var(--muted)]">Loading…</p>}>
       <Routes>
         <Route path="/" element={<Home who={who.data} />} />
         <Route path="/review-queue" element={<Queue />} />
@@ -56,6 +58,8 @@ export function App() {
         <Route path={`${build}/findings/:vulnerability/places/:place`} element={<PlaceDecision />} />
         <Route path={`${build}/components`} element={<Tree />} />
         <Route path={`${build}/components/:component/decide`} element={<Together />} />
+        <Route path={`${build}/scans`} element={<Scans />} />
+        <Route path="/settings" element={<Settings />} />
         {/* A path the page does not know either. Sending somebody home is
             better than a dead end, and the address bar already told them
             where they tried to go. */}
@@ -69,7 +73,7 @@ export function App() {
 function Waiting() {
   return (
     <div className="flex min-h-dvh items-center justify-center">
-      <p className="text-sm text-muted">Loading…</p>
+      <p className="text-sm text-[var(--muted)]">Loading…</p>
     </div>
   );
 }

@@ -139,6 +139,16 @@ type Group struct {
 	// is one people stop trusting and then work around.
 	Urgency   int64
 	Exploited bool
+	// LikelihoodPPM is the published estimate that this will be exploited, in
+	// parts per million. Carried because it ranks *above* severity: without it
+	// on the row, a medium sitting above a high looks like the list is
+	// unsorted, when it is sorted by something the list never showed.
+	LikelihoodPPM int
+	// ScoreCenti is what the ordering actually compares. The severity word
+	// beside it comes from whichever scoring generation the source used — a
+	// 2003 issue scored 10.0 reads "high" under CVSS v2 and "critical" under
+	// v3 — so a row showing only the word looks mis-sorted when two tie.
+	ScoreCenti int
 }
 
 // Groups returns what is open against a target, as the things somebody decides
@@ -170,11 +180,16 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		Answered        int    `bun:"answered"`
 		Urgency         int64  `bun:"urgency"`
 		Exploited       bool   `bun:"exploited"`
+		LikelihoodPPM   int    `bun:"likelihood_ppm"`
+		ScoreCenti      int    `bun:"score_centi"`
 		FixState        string `bun:"fix_state"`
 		FixedIn         string `bun:"fixed_in"`
 	}
 	err = s.db.NewSelect().
 		TableExpr("finding AS f").
+		// Joined for the likelihood alone. It ranks above severity, so a list
+		// that orders by it and does not show it looks unsorted.
+		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("f.component_id AS component_id").
 		ColumnExpr("COUNT(*) AS places").
@@ -182,6 +197,8 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		// about one issue in one component, so what should decide where that
 		// decision appears is the worst of what it covers.
 		ColumnExpr("MAX(f.urgency) AS urgency").
+		ColumnExpr("MAX(COALESCE(v.likelihood_ppm, 0)) AS likelihood_ppm").
+		ColumnExpr("MAX(COALESCE(v.score_centi, 0)) AS score_centi").
 		// Folded in Go from the same maximum rather than aggregated: no
 		// portable spelling reduces a boolean across rows, and one engine
 		// rejects the obvious one outright.
@@ -247,6 +264,7 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		group := Group{
 			Places: row.Places, Answered: row.Answered,
 			Urgency: row.Urgency, Exploited: row.Exploited,
+			LikelihoodPPM: row.LikelihoodPPM, ScoreCenti: row.ScoreCenti,
 			FixState: FixState(row.FixState), FixedIn: row.FixedIn,
 		}
 		if issue, held := named[row.VulnerabilityID]; held {

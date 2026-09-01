@@ -21,19 +21,19 @@ export function SignIn() {
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3">
           <img src="/brand/logo.svg" alt="OpenPSIRT" className="h-10" />
-          <p className="text-sm text-muted">Sign in to continue</p>
+          <p className="text-sm text-[var(--muted)]">Sign in to continue</p>
         </div>
 
-        {providers.isPending && <p className="text-center text-sm text-muted">Loading…</p>}
+        {providers.isPending && <p className="text-center text-sm text-[var(--muted)]">Loading…</p>}
 
         {providers.isError && (
           <Failed error={providers.error} what="The ways in could not be read." />
         )}
 
         {providers.data && (providers.data.items ?? []).length === 0 && (
-          <div className="rounded-lg border border-edge bg-raised px-4 py-6 text-center">
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-6 text-center">
             <p className="text-sm font-medium">No way in is configured.</p>
-            <p className="mt-1 text-sm text-muted">
+            <p className="mt-1 text-sm text-[var(--muted)]">
               An operator configures a sign-in provider before anybody can sign in.
             </p>
           </div>
@@ -44,7 +44,7 @@ export function SignIn() {
             <a
               key={each.name}
               href={each.path}
-              className="rounded-lg bg-accent px-4 py-2.5 text-center text-sm font-medium text-accent-ink hover:opacity-90"
+              className="rounded-lg bg-[var(--accent)] px-4 py-2.5 text-center text-sm font-medium text-white hover:opacity-90"
             >
               Continue with {each.name}
             </a>

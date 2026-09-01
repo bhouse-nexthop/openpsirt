@@ -1,25 +1,25 @@
 // The four outcomes, and what each one claims. Two of them hide risk and two
 // do not, which is the distinction that decides whether a second person has to
 // agree — so it is on the screen rather than only in the rules.
-const said: Record<string, { label: string; tone: string; means: string }> = {
+const said: Record<string, { label: string; colour: string; means: string }> = {
   affected: {
     label: "affected",
-    tone: "bg-high/12 text-high ring-high/30",
+    colour: "var(--sev-high)",
     means: "this applies to us and needs fixing",
   },
   "not-applicable": {
     label: "does not apply",
-    tone: "bg-low/12 text-low ring-low/30",
+    colour: "var(--ok)",
     means: "this does not affect us, for one of the recognized reasons",
   },
   deferred: {
     label: "deferred",
-    tone: "bg-medium/12 text-medium ring-medium/30",
+    colour: "var(--wait)",
     means: "it applies, and is being put off until a date",
   },
   "wont-fix": {
     label: "will not fix",
-    tone: "bg-critical/12 text-critical ring-critical/30",
+    colour: "var(--sev-critical)",
     means: "it applies and will not be fixed",
   },
 };
@@ -28,17 +28,12 @@ export function Outcome({ outcome }: { outcome?: string }) {
   const it = said[outcome ?? ""];
   if (!it) return null;
   return (
-    <span
-      title={it.means}
-      className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset ${it.tone}`}
-    >
+    <span className="sev" title={it.means} style={{ color: it.colour }}>
       {it.label}
     </span>
   );
 }
 
-// The vocabulary a claim of "does not apply" has to choose from. It is the
-// standard set, and it is the claim itself rather than a note beside it.
 export const JUSTIFICATIONS: { value: string; label: string }[] = [
   { value: "component_not_present", label: "the component is not present" },
   { value: "vulnerable_code_not_present", label: "the vulnerable code is not present" },

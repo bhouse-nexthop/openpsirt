@@ -11,6 +11,10 @@ import (
 func TestABumpThatFixedNothingIsNotCountedAsResolved(t *testing.T) {
 	// Otherwise the two lines move together and say opposite things: work
 	// completed, on the same chart where the same issue arrives as new.
+	//
+	// Counted as issues rather than places: the issue never leaves the set,
+	// because its version moved and it came along, so nothing here needs a
+	// rule about closure reasons to get the answer right.
 	each(t, func(t *testing.T, f *fixture) {
 		f.shipped(t, twoConsumers())
 		first := f.run(t)
@@ -42,8 +46,11 @@ func TestABumpThatFixedNothingIsNotCountedAsResolved(t *testing.T) {
 		if resolved != 0 {
 			t.Errorf("a bump that fixed nothing counted %d findings as resolved", resolved)
 		}
-		if points[len(points)-1].Open != 2 {
-			t.Errorf("%d open at the end, want the two against the new version",
+		// One issue, however many places it sits at. It was two here when the
+		// trend counted finding rows, and counting rows reported 441,108 open
+		// on a real image where 5,661 issues were open.
+		if points[len(points)-1].Open != 1 {
+			t.Errorf("%d open at the end, want the one issue against the new version",
 				points[len(points)-1].Open)
 		}
 	})
@@ -78,8 +85,10 @@ func TestAnUpgradeThatFixedSomethingIsCountedAsResolved(t *testing.T) {
 		for _, point := range points {
 			resolved += point.Resolved
 		}
-		if resolved != 2 {
-			t.Errorf("an upgrade that fixed it counted %d resolved, want 2", resolved)
+		// One issue went away, not two places. What somebody reads as work
+		// completed is the issue.
+		if resolved != 1 {
+			t.Errorf("an upgrade that fixed it counted %d resolved, want 1", resolved)
 		}
 	})
 }

@@ -21,7 +21,7 @@ export function Streams() {
       ),
   });
 
-  if (streams.isPending) return <p className="text-sm text-muted">Loading…</p>;
+  if (streams.isPending) return <p className="text-sm text-[var(--muted)]">Loading…</p>;
   if (streams.isError) {
     return <Failed error={streams.error} what="The branches and tags could not be read." />;
   }
@@ -42,14 +42,14 @@ export function Streams() {
             <li key={stream.name}>
               <Link
                 to={`/products/${encodeURIComponent(product)}/streams/${encodeURIComponent(stream.name)}`}
-                className="block rounded-lg border border-edge bg-raised px-4 py-3 hover:border-accent"
+                className="block rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-3 hover:border-[var(--accent)]"
               >
                 <span className="flex items-center gap-2">
                   <span className="font-medium">{stream.name}</span>
                   <Kind kind={stream.kind} />
                 </span>
                 {stream.parent && (
-                  <span className="mt-0.5 block text-sm text-muted">cut from {stream.parent}</span>
+                  <span className="mt-0.5 block text-sm text-[var(--muted)]">cut from {stream.parent}</span>
                 )}
               </Link>
             </li>
@@ -62,7 +62,7 @@ export function Streams() {
 
 function Kind({ kind }: { kind?: string }) {
   return (
-    <span className="rounded bg-sunken px-1.5 py-0.5 text-xs text-muted ring-1 ring-inset ring-edge">
+    <span className="rounded bg-[var(--raised)] px-1.5 py-0.5 text-xs text-[var(--muted)] ring-1 ring-inset ring-edge">
       {kind === "tag" ? "tag" : "branch"}
     </span>
   );
