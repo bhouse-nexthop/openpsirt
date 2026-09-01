@@ -326,6 +326,57 @@ components:
         - newly_present
         - still_present
       type: object
+    ComponentFindingBody:
+      additionalProperties: false
+      properties:
+        component:
+          type: string
+        exploited:
+          description: Whether any of them is known-exploited
+          type: boolean
+        issues:
+          description: Distinct vulnerabilities open against it, which is how many rows it contributes to the findings list
+          format: int64
+          type: integer
+        places:
+          description: How many times those sit somewhere in the build
+          format: int64
+          type: integer
+        upstream:
+          description: What a fork was cut from, where one is known
+          type: string
+        version:
+          type: string
+      required:
+        - component
+        - version
+        - issues
+        - places
+        - exploited
+      type: object
+    ComponentFindingsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ComponentFindingsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/ComponentFindingBody"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
+      type: object
     Decide-togetherRequest:
       additionalProperties: false
       properties:
@@ -1897,6 +1948,13 @@ components:
     SittingBody:
       additionalProperties: false
       properties:
+        chain:
+          description: The way down to here, the build first and this component last. Empty where the inventory left the component unplaced
+          items:
+            $ref: "#/components/schemas/StepBody"
+          type:
+            - array
+            - "null"
         consumer:
           description: What pulls the component in here. Absent under the product itself
           type: string
@@ -1929,6 +1987,16 @@ components:
           $ref: "#/components/schemas/DecisionDetail"
       required:
         - previously
+      type: object
+    StepBody:
+      additionalProperties: false
+      properties:
+        component:
+          type: string
+        version:
+          type: string
+      required:
+        - component
       type: object
     StreamBody:
       additionalProperties: false
@@ -3444,6 +3512,8 @@ paths:
         Grouping matters at real scale: one switch image produced 335,021 individual findings, which collapse to 7,906 rows here.
 
         Ordered by urgency — known-exploited first, then whether the build ships to customers, then likelihood, then severity. Supports limit and offset.
+
+        Narrowing happens here rather than in the client, and `total` counts what the filter admits. A filter applied to a page already fetched answers a different question from the one it appears to: `exploited` over fifty rows means exploited among those fifty.
       operationId: list-findings
       parameters:
         - in: path
@@ -3461,6 +3531,50 @@ paths:
           required: true
           schema:
             type: string
+        - description: Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating
+          explode: false
+          in: query
+          name: severity
+          schema:
+            description: Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating
+            enum:
+              - low
+              - medium
+              - high
+              - critical
+            type: string
+        - description: Keep only issues somebody is known to be exploiting
+          explode: false
+          in: query
+          name: exploited
+          schema:
+            description: Keep only issues somebody is known to be exploiting
+            type: boolean
+        - description: Keep only issues where an upstream fixed version is known
+          explode: false
+          in: query
+          name: fixable
+          schema:
+            description: Keep only issues where an upstream fixed version is known
+            type: boolean
+        - description: Keep only what is open against components of this name, whatever version
+          explode: false
+          in: query
+          name: component
+          schema:
+            description: Keep only what is open against components of this name, whatever version
+            type: string
+        - description: "Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows"
+          explode: false
+          in: query
+          name: exclude
+          schema:
+            description: "Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows"
+            items:
+              type: string
+            type:
+              - array
+              - "null"
         - description: How many to return
           explode: false
           in: query
@@ -3495,6 +3609,104 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: List vulnerability findings
+      tags:
+        - Findings
+  /v1/products/{product}/streams/{stream}/variants/{variant}/findings/components:
+    get:
+      description: |-
+        One row per component and version, with how many distinct issues are open against it and how many places those sit at. The level above the findings list: it answers where the weight is rather than what is wrong, which is the question somebody asks before deciding what to read and what to put aside.
+
+        It is also how a person finds the one package worth hiding. On a switch operating-system image the kernel carried 4,943 of 6,822 findings rows and the next largest contributor carried 58 — a fact no list of issues makes visible, because ordered by urgency it just looks like a long list.
+
+        Takes the same filters as the findings list, so the two agree about what is being counted. Ordered by how many issues, not by urgency: ordering by urgency would reproduce the findings list at worse resolution.
+      operationId: list-finding-components
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - description: Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating
+          explode: false
+          in: query
+          name: severity
+          schema:
+            description: Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating
+            enum:
+              - low
+              - medium
+              - high
+              - critical
+            type: string
+        - description: Keep only issues somebody is known to be exploiting
+          explode: false
+          in: query
+          name: exploited
+          schema:
+            description: Keep only issues somebody is known to be exploiting
+            type: boolean
+        - description: Keep only issues where an upstream fixed version is known
+          explode: false
+          in: query
+          name: fixable
+          schema:
+            description: Keep only issues where an upstream fixed version is known
+            type: boolean
+        - description: Drop components of these names
+          explode: false
+          in: query
+          name: exclude
+          schema:
+            description: Drop components of these names
+            items:
+              type: string
+            type:
+              - array
+              - "null"
+        - description: How many to return
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            description: How many to return
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - description: How many to skip
+          explode: false
+          in: query
+          name: offset
+          schema:
+            description: How many to skip
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComponentFindingsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List what is open, gathered by component
       tags:
         - Findings
   /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}:

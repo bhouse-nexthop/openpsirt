@@ -709,8 +709,34 @@ export interface paths {
          *     Grouping matters at real scale: one switch image produced 335,021 individual findings, which collapse to 7,906 rows here.
          *
          *     Ordered by urgency — known-exploited first, then whether the build ships to customers, then likelihood, then severity. Supports limit and offset.
+         *
+         *     Narrowing happens here rather than in the client, and `total` counts what the filter admits. A filter applied to a page already fetched answers a different question from the one it appears to: `exploited` over fifty rows means exploited among those fifty.
          */
         get: operations["list-findings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/components": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List what is open, gathered by component
+         * @description One row per component and version, with how many distinct issues are open against it and how many places those sit at. The level above the findings list: it answers where the weight is rather than what is wrong, which is the question somebody asks before deciding what to read and what to put aside.
+         *
+         *     It is also how a person finds the one package worth hiding. On a switch operating-system image the kernel carried 4,943 of 6,822 findings rows and the next largest contributor carried 58 — a fact no list of issues makes visible, because ordered by urgency it just looks like a long list.
+         *
+         *     Takes the same filters as the findings list, so the two agree about what is being counted. Ordered by how many issues, not by urgency: ordering by urgency would reproduce the findings list at worse resolution.
+         */
+        get: operations["list-finding-components"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1415,6 +1441,35 @@ export interface components {
             fixed: components["schemas"]["ChangedBody"][] | null;
             newly_present: components["schemas"]["ChangedBody"][] | null;
             still_present: components["schemas"]["ChangedBody"][] | null;
+        };
+        ComponentFindingBody: {
+            component: string;
+            /** @description Whether any of them is known-exploited */
+            exploited: boolean;
+            /**
+             * Format: int64
+             * @description Distinct vulnerabilities open against it, which is how many rows it contributes to the findings list
+             */
+            issues: number;
+            /**
+             * Format: int64
+             * @description How many times those sit somewhere in the build
+             */
+            places: number;
+            /** @description What a fork was cut from, where one is known */
+            upstream?: string;
+            version: string;
+        };
+        ComponentFindingsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ComponentFindingsOutputBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ComponentFindingBody"][] | null;
+            /** Format: int64 */
+            total: number;
         };
         "Decide-togetherRequest": {
             /**
@@ -2283,6 +2338,8 @@ export interface components {
             username: string;
         };
         SittingBody: {
+            /** @description The way down to here, the build first and this component last. Empty where the inventory left the component unplaced */
+            chain?: components["schemas"]["StepBody"][] | null;
             /** @description What pulls the component in here. Absent under the product itself */
             consumer?: string;
             /** @description Name this when recording a decision about it */
@@ -2299,6 +2356,10 @@ export interface components {
             readonly $schema?: string;
             previously: components["schemas"]["DecisionDetail"][] | null;
             standing?: components["schemas"]["DecisionDetail"];
+        };
+        StepBody: {
+            component: string;
+            version?: string;
         };
         StreamBody: {
             /**
@@ -3613,6 +3674,16 @@ export interface operations {
     "list-findings": {
         parameters: {
             query?: {
+                /** @description Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating */
+                severity?: "low" | "medium" | "high" | "critical";
+                /** @description Keep only issues somebody is known to be exploiting */
+                exploited?: boolean;
+                /** @description Keep only issues where an upstream fixed version is known */
+                fixable?: boolean;
+                /** @description Keep only what is open against components of this name, whatever version */
+                component?: string;
+                /** @description Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows */
+                exclude?: string[] | null;
                 /** @description How many to return */
                 limit?: number;
                 /** @description How many to skip */
@@ -3635,6 +3706,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FindingsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-finding-components": {
+        parameters: {
+            query?: {
+                /** @description Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating */
+                severity?: "low" | "medium" | "high" | "critical";
+                /** @description Keep only issues somebody is known to be exploiting */
+                exploited?: boolean;
+                /** @description Keep only issues where an upstream fixed version is known */
+                fixable?: boolean;
+                /** @description Drop components of these names */
+                exclude?: string[] | null;
+                /** @description How many to return */
+                limit?: number;
+                /** @description How many to skip */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                product: string;
+                stream: string;
+                variant: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentFindingsOutputBody"];
                 };
             };
             /** @description Error */

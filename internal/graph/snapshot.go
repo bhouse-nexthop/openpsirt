@@ -472,3 +472,161 @@ func (s *Store) visibleIn(ctx context.Context, subject access.Subject, targetID 
 	}
 	return readable, nil
 }
+
+// Step is one component on the way down to another.
+type Step struct {
+	Name    string
+	Version string
+}
+
+// Chains returns the way down to each of these components, root first.
+//
+// `UIX-14` asks a finding to show the complete chain, root to component, with
+// the version at each step, because that is where somebody judges whether the
+// vulnerable code is reached. The immediate parent alone cannot answer it:
+// where a component is reached several ways the parent is often the same word
+// twice, and two identical rows are not two answers.
+//
+// Read as one pass over the build's edges rather than as a query per step.
+// A walk upward is only two or three hops deep here — the graph an SBOM
+// describes is mostly containment — but it is a hop per query per place, and a
+// finding can sit at sixty. One pass over nineteen thousand edges is cheaper
+// than that and does not grow with how widely a library is shared.
+//
+// Where a component is reached several ways, the shortest way down is the one
+// returned. A path is being shown to explain a position rather than to
+// enumerate the graph, and the shortest is the one somebody can hold in mind.
+func (s *Store) Chains(ctx context.Context, subject access.Subject, targetID int64,
+	componentIDs []int64) (map[int64][]Step, error) {
+
+	chains := map[int64][]Step{}
+	if len(componentIDs) == 0 {
+		return chains, nil
+	}
+	if _, err := s.visibleIn(ctx, subject, targetID); err != nil {
+		return nil, err
+	}
+
+	var rootID int64
+	err := s.db.NewSelect().
+		TableExpr("graph_node AS n").
+		ColumnExpr("n.component_id").
+		Where("n.target_id = ?", targetID).
+		Where("n.closed_scan_id IS NULL").
+		Where("n.is_root = ?", true).
+		Limit(1).Scan(ctx, &rootID)
+	if database.IsNoRows(err) {
+		return chains, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("look up what this build is: %w", err)
+	}
+
+	var edges []struct {
+		Parent int64 `bun:"parent"`
+		Child  int64 `bun:"child"`
+	}
+	err = s.db.NewSelect().
+		TableExpr("graph_edge AS e").
+		Join("JOIN graph_node AS pn ON pn.id = e.parent_id").
+		Join("JOIN graph_node AS cn ON cn.id = e.child_id").
+		ColumnExpr("pn.component_id AS parent").
+		ColumnExpr("cn.component_id AS child").
+		Where("e.target_id = ?", targetID).
+		Where("e.closed_scan_id IS NULL").
+		Scan(ctx, &edges)
+	if err != nil {
+		return nil, fmt.Errorf("read the build's edges: %w", err)
+	}
+
+	parents := map[int64][]int64{}
+	for _, edge := range edges {
+		if edge.Parent != edge.Child {
+			parents[edge.Child] = append(parents[edge.Child], edge.Parent)
+		}
+	}
+
+	// Breadth-first upward, so the first way out is the shortest. Every
+	// component asked about is walked separately because they rarely share a
+	// route, and a shared answer would have to be recomputed anyway once the
+	// paths diverge.
+	routes := map[int64][]int64{}
+	needed := map[int64]bool{rootID: true}
+	for _, id := range componentIDs {
+		if _, done := routes[id]; done {
+			continue
+		}
+		route := climb(id, rootID, parents)
+		if route == nil {
+			continue
+		}
+		routes[id] = route
+		for _, step := range route {
+			needed[step] = true
+		}
+	}
+	if len(routes) == 0 {
+		return chains, nil
+	}
+
+	ids := make([]int64, 0, len(needed))
+	for id := range needed {
+		ids = append(ids, id)
+	}
+	var named []Component
+	if err := s.db.NewSelect().Model(&named).
+		Column("id", "name", "version").
+		Where("id IN (?)", bun.List(ids)).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read what is on the way down: %w", err)
+	}
+	words := map[int64]Step{}
+	for _, one := range named {
+		words[one.ID] = Step{Name: one.Name, Version: one.Version}
+	}
+
+	for id, route := range routes {
+		chain := make([]Step, 0, len(route))
+		for _, step := range route {
+			if word, ok := words[step]; ok {
+				chain = append(chain, word)
+			}
+		}
+		chains[id] = chain
+	}
+	return chains, nil
+}
+
+// climb walks upward from one component to the root and returns the way back
+// down, root first and the component itself last. Nil where the root is not
+// reachable, which a build whose inventory left a component unplaced will have.
+func climb(from, root int64, parents map[int64][]int64) []int64 {
+	if from == root {
+		return []int64{root}
+	}
+	came := map[int64]int64{from: 0}
+	queue := []int64{from}
+	for len(queue) > 0 {
+		at := queue[0]
+		queue = queue[1:]
+		for _, up := range parents[at] {
+			if _, seen := came[up]; seen {
+				continue
+			}
+			came[up] = at
+			if up == root {
+				// Unwound downward: the map points at where each step was
+				// reached from, which walking back is the way down.
+				route := []int64{root}
+				for step := at; ; step = came[step] {
+					route = append(route, step)
+					if step == from {
+						break
+					}
+				}
+				return route
+			}
+			queue = append(queue, up)
+		}
+	}
+	return nil
+}

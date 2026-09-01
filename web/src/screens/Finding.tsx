@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
@@ -153,40 +154,87 @@ function Places({
   places,
 }: {
   at: { product: string; stream: string; variant: string; vulnerability: string };
-  places: { place: string; consumer?: string; suppressed?: boolean }[];
+  places: {
+    place: string;
+    consumer?: string;
+    suppressed?: boolean;
+    chain?: { component: string; version?: string }[] | null;
+  }[];
 }) {
   if (places.length === 0) return null;
+  const build =
+    `/products/${encodeURIComponent(at.product)}` +
+    `/streams/${encodeURIComponent(at.stream)}` +
+    `/variants/${encodeURIComponent(at.variant)}`;
+
   return (
     <div className="block">
       <h4>Where it sits</h4>
+      {/* The complete chain, root to component, with the version at each step
+          (UIX-14). The immediate parent alone cannot answer this: where a
+          component is reached several ways the parent is often the same word
+          twice, and two identical rows are not two answers. */}
       <div className="tree">
-        {places.map((place) => (
-          <div key={place.place} className="node here">
-            <span className="rule">└</span>{" "}
-            <span className="id">
-              {place.consumer ? place.consumer : "the product itself"}
-            </span>
-            {place.suppressed && (
-              <span className="state" style={{ marginLeft: 8 }}>
-                the build already argued this away
-              </span>
-            )}
-            <Link
-              to={
-                `/products/${encodeURIComponent(at.product)}` +
-                `/streams/${encodeURIComponent(at.stream)}` +
-                `/variants/${encodeURIComponent(at.variant)}` +
-                `/findings/${encodeURIComponent(at.vulnerability)}` +
-                `/places/${encodeURIComponent(place.place)}`
-              }
-              className="linkish"
-              style={{ marginLeft: 10 }}
-            >
-              What was decided →
-            </Link>
-          </div>
-        ))}
+        {places.map((place) => {
+          const chain = place.chain ?? [];
+          if (chain.length === 0) {
+            // The inventory left this component unplaced. Saying so is better
+            // than drawing a chain of one and calling it a position.
+            return (
+              <div key={place.place} className="node here">
+                <span className="rule">└</span>{" "}
+                <span className="id">{place.consumer || "the product itself"}</span>
+                <span className="hint">nothing recorded what pulls this in</span>
+                {place.suppressed && (
+                  <span className="state">the build already argued this away</span>
+                )}
+                <Link to={`${build}/findings/${encodeURIComponent(at.vulnerability)}/places/${encodeURIComponent(place.place)}`} className="linkish">
+                  What was decided →
+                </Link>
+              </div>
+            );
+          }
+          return (
+            <Fragment key={place.place}>
+              {chain.map((step, depth) => {
+                const last = depth === chain.length - 1;
+                return (
+                  <div
+                    key={`${place.place}\u0000${depth}`}
+                    className={`node${last ? " here" : ""}`}
+                    style={{ paddingLeft: depth * 18 }}
+                  >
+                    <span className="rule">└</span>{" "}
+                    <span className="id">{step.component}</span>
+                    {step.version && <span className="ver">{step.version}</span>}
+                    {last && place.suppressed && (
+                      <span className="state">the build already argued this away</span>
+                    )}
+                    {last && (
+                      <Link
+                        to={
+                          `${build}/findings/${encodeURIComponent(at.vulnerability)}` +
+                          `/places/${encodeURIComponent(place.place)}`
+                        }
+                        className="linkish"
+                        style={{ marginLeft: "auto" }}
+                      >
+                        What was decided →
+                      </Link>
+                    )}
+                  </div>
+                );
+              })}
+            </Fragment>
+          );
+        })}
       </div>
+      {/* Where the mockup puts the one action on this panel. The panel asks
+          "where is this", so what it offers is somewhere to go on looking —
+          the per-place decision link stays on the row it belongs to. */}
+      <Link to={`${build}/components?at=${encodeURIComponent(places[0]?.chain?.at(-1)?.component ?? "")}`} className="linkish">
+        Show where this sits in the build →
+      </Link>
       <p className="hint">
         One judgment covers every place running the same code at the same versions; a place at a
         different version is a separate judgment.

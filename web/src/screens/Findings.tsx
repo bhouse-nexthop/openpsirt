@@ -9,7 +9,6 @@ import { Exploited, Severity } from "../ui/Severity";
 
 const PAGE = 50;
 const FLOORS = ["low", "medium", "high", "critical"] as const;
-const RANK: Record<string, number> = { low: 0, medium: 1, high: 2, critical: 3 };
 
 // One row per issue in a component, not per place. A real image produced
 // 335,021 individual findings that collapse to 7,906 rows here, so the
@@ -24,48 +23,38 @@ export function Findings() {
   const offset = Number(params.get("offset") ?? 0);
   const floor = params.get("floor") ?? "low";
   const only = params.get("only") ?? "";
+  const view = params.get("view") ?? "issues";
+  const hiding = (params.get("hide") ?? "").split(",").filter(Boolean);
+  // Set by "only this" in the by-component view, which is how somebody moves
+  // from "where is the weight" to "what is actually wrong with it".
+  const onlyComponent = params.get("component") ?? "";
   const [peeking, setPeeking] = useState<string | null>(null);
 
+  // The narrowing is the server's. Filtering a page that has already been
+  // fetched answers a different question from the one it appears to —
+  // "exploited" over fifty rows means exploited among those fifty — and leaves
+  // the total beside it counting something else, which is the number people
+  // quote (REJ-10).
+  const query = {
+    limit: PAGE,
+    offset,
+    ...(floor !== "low" ? { severity: floor as (typeof FLOORS)[number] } : {}),
+    ...(only === "exploited" ? { exploited: true } : {}),
+    ...(only === "hasFix" ? { fixable: true } : {}),
+    ...(hiding.length > 0 ? { exclude: hiding } : {}),
+    ...(onlyComponent ? { component: onlyComponent } : {}),
+  };
+
   const findings = useQuery({
-    queryKey: ["findings", product, stream, variant, offset],
+    queryKey: ["findings", product, stream, variant, query],
     queryFn: async () =>
       unwrap(
         await api.GET("/v1/products/{product}/streams/{stream}/variants/{variant}/findings", {
-          params: { path: { product, stream, variant }, query: { limit: PAGE, offset } },
+          params: { path: { product, stream, variant }, query },
         }),
       ),
+    enabled: view === "issues",
   });
-
-  if (findings.isPending) return <p className="hint">Loading…</p>;
-  if (findings.isError) {
-    return <Failed error={findings.error} what="The findings could not be read." />;
-  }
-
-  const all = findings.data?.items ?? [];
-  const total = findings.data?.total ?? 0;
-
-  // Narrowing happens here and is announced rather than applied silently. A
-  // preference that quietly moves a number is how two people quote different
-  // figures for one question and neither finds out (REJ-10).
-  const rows = all.filter((row) => {
-    if ((RANK[row.severity ?? "low"] ?? 0) < (RANK[floor] ?? 0)) return false;
-    if (only === "exploited" && !row.exploited) return false;
-    if (only === "hasFix" && !row.fixed_in) return false;
-    return true;
-  });
-  const hidden = all.length - rows.length;
-
-  // Names carried at more than one version on this page. They read as repeats
-  // and are not: a build that vendors a library twice ships two of it.
-  const seen = new Map<string, Set<string>>();
-  for (const row of rows) {
-    const versions = seen.get(row.component ?? "") ?? new Set<string>();
-    versions.add(row.version ?? "");
-    seen.set(row.component ?? "", versions);
-  }
-  const sameName = new Set(
-    [...seen.entries()].filter(([, versions]) => versions.size > 1).map(([name]) => name),
-  );
 
   function set(key: string, value: string) {
     const next = new URLSearchParams(params);
@@ -75,17 +64,32 @@ export function Findings() {
     setParams(next);
   }
 
-  return (
-    <>
-      <div className="screen-head">
-        <h2>Findings</h2>
-        <p>
-          {product} · {stream} · {variant} — one row per issue and component, however many
-          places it sits at.
-        </p>
-      </div>
+  function hide(component: string) {
+    set("hide", [...new Set([...hiding, component])].join(","));
+  }
 
+  function unhide(component: string) {
+    set("hide", hiding.filter((name) => name !== component).join(","));
+  }
+
+  const controls = (
+    <>
       <div className="filters">
+        <span className="seg">
+          {[
+            ["issues", "By issue"],
+            ["components", "By component"],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={view === value}
+              onClick={() => set("view", value === "issues" ? "" : (value as string))}
+            >
+              {label}
+            </button>
+          ))}
+        </span>
         {[
           ["", "Open"],
           ["exploited", "Exploited"],
@@ -124,6 +128,121 @@ export function Findings() {
           Dependencies →
         </Link>
       </div>
+
+      {onlyComponent && (
+        <div className="filters" style={{ marginTop: -4 }}>
+          <span style={{ color: "var(--faint)" }}>Only</span>
+          <button
+            type="button"
+            className="chip"
+            aria-pressed
+            title="Show every component again"
+            onClick={() => set("component", "")}
+          >
+            {onlyComponent} ×
+          </button>
+          <span className="hint">
+            Matched by name, so a build that vendors this twice answers with both.
+          </span>
+        </div>
+      )}
+
+      {hiding.length > 0 && (
+        <div className="filters" style={{ marginTop: -4 }}>
+          <span style={{ color: "var(--faint)" }}>Hiding</span>
+          {hiding.map((name) => (
+            <button
+              key={name}
+              type="button"
+              className="chip"
+              aria-pressed
+              title="Show it again"
+              onClick={() => unhide(name)}
+            >
+              {name} ×
+            </button>
+          ))}
+          <span className="hint">
+            Hidden everywhere on this page, and counted out of the total — a filter changes what
+            <b> you</b> are looking at and never what anybody else is reported.
+          </span>
+        </div>
+      )}
+    </>
+  );
+
+  if (view === "components") {
+    return (
+      <>
+        <div className="screen-head">
+          <h2>Findings</h2>
+          <p>
+            {product} · {stream} · {variant} — one row per component, so you can see where the
+            weight is before deciding what to read.
+          </p>
+        </div>
+        {controls}
+        <ByComponent
+          at={{ product, stream, variant }}
+          query={{
+            limit: PAGE,
+            offset,
+            ...(floor !== "low" ? { severity: floor as (typeof FLOORS)[number] } : {}),
+            ...(only === "exploited" ? { exploited: true } : {}),
+            ...(only === "hasFix" ? { fixable: true } : {}),
+            ...(hiding.length > 0 ? { exclude: hiding } : {}),
+          }}
+          offset={offset}
+          onHide={hide}
+          onOnly={(name) => {
+            const next = new URLSearchParams(params);
+            next.delete("view");
+            next.delete("offset");
+            next.set("component", name);
+            setParams(next);
+          }}
+          onPage={(next) => {
+            const now = new URLSearchParams(params);
+            if (next === 0) now.delete("offset");
+            else now.set("offset", String(next));
+            setParams(now);
+          }}
+        />
+      </>
+    );
+  }
+
+  if (findings.isPending) return <p className="hint">Loading…</p>;
+  if (findings.isError) {
+    return <Failed error={findings.error} what="The findings could not be read." />;
+  }
+
+  const rows = findings.data?.items ?? [];
+  const total = findings.data?.total ?? 0;
+
+  // Names carried at more than one version on this page. They read as repeats
+  // and are not: a build that vendors a library twice ships two of it.
+  const seen = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const versions = seen.get(row.component ?? "") ?? new Set<string>();
+    versions.add(row.version ?? "");
+    seen.set(row.component ?? "", versions);
+  }
+  const sameName = new Set(
+    [...seen.entries()].filter(([, versions]) => versions.size > 1).map(([name]) => name),
+  );
+
+  return (
+    <>
+      <div className="screen-head">
+        <h2>Findings</h2>
+        <p>
+          {product} · {stream} · {variant} — one row per issue and component, however many
+          places it sits at.
+        </p>
+      </div>
+
+      {controls}
 
       <p className="hint" style={{ margin: "0 0 8px" }}>
         Most urgent first: <b>known-exploited</b>, then whether the build reaches customers,
@@ -248,24 +367,6 @@ export function Findings() {
         exploited first, then whether it reaches customers, then likelihood, then severity
       </p>
 
-      {hidden > 0 && (
-        <div
-          className="alert"
-          style={{
-            marginTop: 10,
-            borderLeftColor: "var(--accent)",
-            background: "var(--accent-soft)",
-          }}
-        >
-          <strong>{hidden} on this page are not shown</strong>
-          <br />
-          <span>
-            That is a filter: it changes what <b>you</b> are looking at and never what anybody
-            else is reported, so it says so instead of showing a smaller number.
-          </span>
-        </div>
-      )}
-
       <Pager
         offset={offset}
         total={total}
@@ -276,6 +377,141 @@ export function Findings() {
           setParams(now);
         }}
       />
+    </>
+  );
+}
+
+// Where the weight is, rather than what is wrong. Somebody opening a list of
+// several thousand rows needs to know that one package is most of it before
+// they start reading — on a real image the kernel was 4,943 rows of 6,822, and
+// ordered by urgency that looks like nothing but a long list.
+function ByComponent({
+  at,
+  query,
+  offset,
+  onHide,
+  onOnly,
+  onPage,
+}: {
+  at: { product: string; stream: string; variant: string };
+  query: Record<string, unknown>;
+  offset: number;
+  onHide: (component: string) => void;
+  onOnly: (component: string) => void;
+  onPage: (offset: number) => void;
+}) {
+  const grouped = useQuery({
+    queryKey: ["findings-by-component", at, query],
+    queryFn: async () =>
+      unwrap(
+        await api.GET(
+          "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/components",
+          { params: { path: at, query: query as never } },
+        ),
+      ),
+  });
+
+  if (grouped.isPending) return <p className="hint">Loading…</p>;
+  if (grouped.isError) {
+    return <Failed error={grouped.error} what="What is open could not be read by component." />;
+  }
+
+  const rows = grouped.data?.items ?? [];
+  const total = grouped.data?.total ?? 0;
+  if (rows.length === 0) {
+    return (
+      <Empty
+        title="Nothing matches what you are looking at."
+        detail="Everything here is below the floor you set, or outside the filter."
+      />
+    );
+  }
+
+  const most = rows[0]?.issues ?? 0;
+
+  return (
+    <>
+      <p className="hint" style={{ margin: "0 0 8px" }}>
+        Ordered by how many issues each carries, not by urgency — that is the findings list, and
+        repeating it here at worse resolution would answer nothing new. <b>Issues</b> is how many
+        rows this component contributes to that list; <b>places</b> is how many times they sit
+        somewhere in the build.
+      </p>
+
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th className="num">Issues</th>
+              <th className="num">Places</th>
+              <th style={{ width: 150 }} />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const name = row.component ?? "";
+              const share = most > 0 ? Math.round(((row.issues ?? 0) / most) * 100) : 0;
+              return (
+                <tr key={`${name}\u0000${row.version}`}>
+                  <td>
+                    <span className="id">{name}</span>
+                    {row.exploited && (
+                      <>
+                        {" "}
+                        <Exploited when />
+                      </>
+                    )}
+                    <br />
+                    <span className="id" style={{ color: "var(--faint)" }}>{row.version}</span>
+                  </td>
+                  <td className="num">
+                    {(row.issues ?? 0).toLocaleString()}
+                    {/* A bar rather than a percentage: the point is that one
+                        row is an order of magnitude above the rest, which a
+                        column of numbers hides and a length does not. */}
+                    <span
+                      aria-hidden
+                      style={{
+                        display: "block",
+                        height: 3,
+                        marginTop: 3,
+                        borderRadius: 2,
+                        background: "var(--accent)",
+                        opacity: 0.55,
+                        width: `${Math.max(share, 2)}%`,
+                        marginLeft: "auto",
+                      }}
+                    />
+                  </td>
+                  <td className="num">{(row.places ?? 0).toLocaleString()}</td>
+                  <td>
+                    <button type="button" className="linkish" onClick={() => onOnly(name)}>
+                      Only this →
+                    </button>{" "}
+                    <button
+                      type="button"
+                      className="linkish"
+                      style={{ color: "var(--muted)" }}
+                      title="Hide it from both views until you put it back"
+                      onClick={() => onHide(name)}
+                    >
+                      Hide
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="hint" style={{ margin: "12px 0 0" }}>
+        Showing {rows.length.toLocaleString()} of {total.toLocaleString()} components that carry
+        anything open
+      </p>
+
+      <Pager offset={offset} total={total} onGo={onPage} />
     </>
   );
 }

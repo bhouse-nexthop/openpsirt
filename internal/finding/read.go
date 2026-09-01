@@ -151,9 +151,106 @@ type Group struct {
 	ScoreCenti int
 }
 
+// Severities in the order they rank, least first. A floor keeps this word and
+// everything after it.
+//
+// A word outside this list — "negligible", "unknown", whatever a producer
+// invents — ranks below all of them and so survives no floor at all. That is
+// deliberate: a floor is a claim about how bad something is, and a rating
+// nobody recognizes is not evidence of anything.
+var severityOrder = []string{"low", "medium", "high", "critical"}
+
+// Filter narrows what is open before it is paged.
+//
+// Narrowing belongs here rather than in whatever is displaying the result. A
+// filter applied to a page that has already been fetched answers a different
+// question from the one it appears to: "exploited" over fifty rows means
+// exploited among those fifty, and paging with one on walks a different
+// arbitrary subset each time. It also makes the total meaningless, which is the
+// number people quote.
+type Filter struct {
+	// MinSeverity keeps issues rated at this word or worse. Empty — or "low",
+	// which excludes nothing — keeps everything, including issues carrying no
+	// rating at all.
+	MinSeverity string
+	// Exploited keeps only issues somebody is known to be exploiting.
+	Exploited bool
+	// HasFix keeps only issues where an upstream fixed version is known, which
+	// is the set where the answer is to take a version rather than to judge.
+	HasFix bool
+	// Component keeps only what is open against components of this name.
+	// Matched by name and not by version, because "what is wrong with openssl
+	// here" is a question about the package rather than about one build of it,
+	// and a build that vendors it twice should answer with both.
+	Component string
+	// Exclude drops components of these names.
+	//
+	// This exists because one package can drown the list. Measured on a switch
+	// operating-system image: 4,943 of 6,822 rows — 72% — were the kernel, and
+	// the next largest contributor had 58. Hiding it is not a preference about
+	// tidiness, it is the difference between a list somebody reads and one they
+	// scroll past. What makes it safe is that the total says so too: hiding is
+	// narrowing, and narrowing is counted (REJ-10).
+	Exclude []string
+}
+
+// severities returns the words a floor admits, or nil where it admits all of
+// them and the filter should not be applied at all.
+func (f Filter) severities() []string {
+	for i, word := range severityOrder {
+		if word == f.MinSeverity {
+			if i == 0 {
+				return nil
+			}
+			return severityOrder[i:]
+		}
+	}
+	return nil
+}
+
+// narrow applies the filter to a grouped query over finding AS f, which must
+// already join vulnerability AS v and component AS c.
+//
+// Severity is a condition on a row and the other two are conditions on the
+// group, so they land in different clauses. Putting either in the other place
+// is wrong rather than slow: a fix known at one place and not another would
+// drop the places that lack it out of the count, and a group would report a
+// size smaller than it is.
+func (f Filter) narrow(q *bun.SelectQuery) *bun.SelectQuery {
+	if words := f.severities(); len(words) > 0 {
+		q = q.Where("v.severity IN (?)", bun.List(words))
+	}
+	if f.Exploited {
+		q = q.Having("MAX(CASE WHEN f.urgency_exploited THEN 1 ELSE 0 END) = 1")
+	}
+	if f.HasFix {
+		q = q.Having("MIN(f.fixed_in) IS NOT NULL AND MIN(f.fixed_in) <> ?", "")
+	}
+	if name := strings.TrimSpace(f.Component); name != "" {
+		q = q.Where("c.name = ?", name)
+	}
+	if names := trimmed(f.Exclude); len(names) > 0 {
+		q = q.Where("c.name NOT IN (?)", bun.List(names))
+	}
+	return q
+}
+
+// trimmed drops blanks from a list of names, so a stray separator in a query
+// string does not become a name nothing matches.
+func trimmed(names []string) []string {
+	kept := make([]string, 0, len(names))
+	for _, name := range names {
+		if name = strings.TrimSpace(name); name != "" {
+			kept = append(kept, name)
+		}
+	}
+	return kept
+}
+
 // Groups returns what is open against a target, as the things somebody decides
 // about rather than as one row per place.
-func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int64, limit, offset int) ([]Group, int, error) {
+func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int64, limit, offset int,
+	filter Filter) ([]Group, int, error) {
 	productID, err := productOf(ctx, s.db, targetID)
 	if err != nil {
 		return nil, 0, err
@@ -185,11 +282,16 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		FixState        string `bun:"fix_state"`
 		FixedIn         string `bun:"fixed_in"`
 	}
-	err = s.db.NewSelect().
+	page := s.db.NewSelect().
 		TableExpr("finding AS f").
-		// Joined for the likelihood alone. It ranks above severity, so a list
-		// that orders by it and does not show it looks unsorted.
+		// Joined for the likelihood, and for the severity a floor compares. It
+		// ranks above severity, so a list that orders by it and does not show
+		// it looks unsorted.
 		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+		// Joined so a filter can name a component. The names are still read in
+		// a second pass, because reducing text across a group has no portable
+		// spelling.
+		Join("JOIN component AS c ON c.id = f.component_id").
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("f.component_id AS component_id").
 		ColumnExpr("COUNT(*) AS places").
@@ -216,20 +318,26 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		// therefore the thing to look at first. What somebody with an hour
 		// needs at the top is what is being exploited.
 		OrderExpr("urgency DESC, places DESC, f.vulnerability_id, f.component_id").
-		Limit(limit).Offset(offset).
-		Scan(ctx, &rows)
-	if err != nil {
+		Limit(limit).Offset(offset)
+	if err = filter.narrow(page).Scan(ctx, &rows); err != nil {
 		return nil, 0, fmt.Errorf("read what is open: %w", err)
 	}
 
+	// Counted through the same filter as the page. A total that ignores the
+	// narrowing is worse than no total: it reports how much there is to decide
+	// about, which is the figure people quote, while the list beside it shows
+	// something else.
+	counted := s.db.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+		Join("JOIN component AS c ON c.id = f.component_id").
+		ColumnExpr("f.vulnerability_id").
+		Where("f.target_id = ?", targetID).
+		Where("f.closed_run_id IS NULL").
+		Where("f.visibility IN (?)", bun.List(visible)).
+		GroupExpr("f.vulnerability_id, f.component_id")
 	total, err := s.db.NewSelect().
-		TableExpr("(?) AS grouped", s.db.NewSelect().
-			TableExpr("finding AS f").
-			ColumnExpr("f.vulnerability_id").
-			Where("f.target_id = ?", targetID).
-			Where("f.closed_run_id IS NULL").
-			Where("f.visibility IN (?)", bun.List(visible)).
-			GroupExpr("f.vulnerability_id, f.component_id")).
+		TableExpr("(?) AS grouped", filter.narrow(counted)).
 		Count(ctx)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count what is open: %w", err)
@@ -373,6 +481,20 @@ type Sitting struct {
 	Consumer      string
 	Suppressed    bool
 	Urgency       int64
+	// Chain is the way down to here, the build first and this component last,
+	// with a version at every step.
+	//
+	// The direct consumer is what a decision is keyed on (MDL-06) and it is
+	// not enough to *read*: where a component is reached several ways the
+	// consumer is often the same word twice, and two identical rows do not
+	// distinguish two places. `UIX-14` asks for the whole chain for that
+	// reason. It stays display-only — putting it back into identity is what
+	// MDL-06 measured and rejected, at 49,170 paths against 48 consumers.
+	//
+	// Empty where the build's inventory left this component unplaced, which is
+	// a real state and not an error: a producer that names no root, or a
+	// component nothing was recorded as pulling in.
+	Chain []graph.Step
 }
 
 // Detail reads everything held about one issue in one component of a build.
@@ -391,6 +513,7 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 	var rows []struct {
 		PlaceIdentity string     `bun:"place_identity"`
 		Consumer      string     `bun:"consumer"`
+		ConsumerID    *int64     `bun:"consumer_id"`
 		Suppressed    bool       `bun:"suppressed"`
 		Urgency       int64      `bun:"urgency"`
 		FixState      string     `bun:"fix_state"`
@@ -403,6 +526,7 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
 		ColumnExpr("f.place_identity AS place_identity").
 		ColumnExpr("COALESCE(uc.name, '') AS consumer").
+		ColumnExpr("f.consumer_id AS consumer_id").
 		ColumnExpr("CASE WHEN f.suppressed_by IS NULL THEN ? ELSE ? END AS suppressed", false, true).
 		ColumnExpr("f.urgency AS urgency").
 		ColumnExpr("f.fix_state AS fix_state").
@@ -474,11 +598,38 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 			evidence.Aliases = append(evidence.Aliases, alias.Identifier)
 		}
 	}
+	// The way down to each place, read in one pass. A place whose consumer is
+	// the build itself is asked about by the component, which lands on the
+	// same answer with one step in it.
+	wanted := make([]int64, 0, len(rows)+1)
+	wanted = append(wanted, componentID)
 	for _, row := range rows {
-		evidence.Places = append(evidence.Places, Sitting{
+		if row.ConsumerID != nil {
+			wanted = append(wanted, *row.ConsumerID)
+		}
+	}
+	chains, err := graph.NewStore(s.db).Chains(ctx, subject, targetID, wanted)
+	if err != nil {
+		return nil, err
+	}
+	here := graph.Step{Name: component.Name, Version: component.Version}
+
+	for _, row := range rows {
+		place := Sitting{
 			PlaceIdentity: row.PlaceIdentity, Consumer: row.Consumer,
 			Suppressed: row.Suppressed, Urgency: row.Urgency,
-		})
+		}
+		// Down to the consumer, then this component under it. Where the build
+		// pulls the component in directly there is no consumer, and the chain
+		// down to the component itself is the whole of the answer.
+		if row.ConsumerID != nil {
+			if down, ok := chains[*row.ConsumerID]; ok && len(down) > 0 {
+				place.Chain = append(append([]graph.Step{}, down...), here)
+			}
+		} else if down, ok := chains[componentID]; ok && len(down) > 0 {
+			place.Chain = append([]graph.Step{}, down...)
+		}
+		evidence.Places = append(evidence.Places, place)
 	}
 	return evidence, nil
 }
@@ -637,4 +788,125 @@ func (s *Store) placesOf(ctx context.Context, targetID, componentID int64, issue
 		})
 	}
 	return everywhere, nil
+}
+
+// ComponentGroup is one component at one version, with what is open against
+// it counted rather than listed.
+//
+// The level above a findings list. A list of issues answers "what is wrong";
+// this answers "where is the weight", which is the question somebody asks
+// before deciding what to read and what to put aside. It is also how a person
+// finds the one package worth hiding: on a real image the kernel carried 4,943
+// of 6,822 rows, and no list of issues makes that visible — it just looks like
+// a long list.
+type ComponentGroup struct {
+	Component string
+	Version   string
+	// Upstream is what a fork was cut from, carried for the same reason it is
+	// carried on a finding: a version nobody recognizes needs it.
+	Upstream string
+	// Issues is how many distinct vulnerabilities are open against it, which
+	// is how many rows it contributes to the findings list.
+	Issues int
+	// Places is how many times those sit somewhere in the build. The two
+	// differ by orders of magnitude on shared code and the gap is the point:
+	// one kernel issue reaching four hundred modules is one decision.
+	Places int
+	// Exploited says whether any of them is known-exploited, which is what
+	// stops a component being put aside on the strength of its size alone.
+	Exploited bool
+	Urgency   int64
+}
+
+// ComponentGroups returns what is open against a target, gathered by the
+// component it is open against rather than by the issue.
+func (s *Store) ComponentGroups(ctx context.Context, subject access.Subject, targetID int64,
+	limit, offset int, filter Filter) ([]ComponentGroup, int, error) {
+
+	productID, err := productOf(ctx, s.db, targetID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if !subject.Sees(productID) {
+		return nil, 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
+	}
+	visible := visibleTo(subject, productID)
+	if len(visible) == 0 {
+		return nil, 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+
+	var rows []struct {
+		ComponentID int64 `bun:"component_id"`
+		Issues      int   `bun:"issues"`
+		Places      int   `bun:"places"`
+		Exploited   bool  `bun:"exploited"`
+		Urgency     int64 `bun:"urgency"`
+	}
+	page := s.db.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+		Join("JOIN component AS c ON c.id = f.component_id").
+		ColumnExpr("f.component_id AS component_id").
+		// Distinct issues rather than rows, because that is what the findings
+		// list shows and therefore what hiding this component would remove
+		// from it.
+		ColumnExpr("COUNT(DISTINCT f.vulnerability_id) AS issues").
+		ColumnExpr("COUNT(*) AS places").
+		ColumnExpr("MAX(CASE WHEN f.urgency_exploited THEN 1 ELSE 0 END) AS exploited").
+		ColumnExpr("MAX(f.urgency) AS urgency").
+		Where("f.target_id = ?", targetID).
+		Where("f.closed_run_id IS NULL").
+		Where("f.visibility IN (?)", bun.List(visible)).
+		GroupExpr("f.component_id").
+		// By weight, not by urgency. The question this view answers is where
+		// the volume is, and ordering it by urgency would reproduce the
+		// findings list with worse resolution.
+		OrderExpr("issues DESC, places DESC, f.component_id").
+		Limit(limit).Offset(offset)
+	if err = filter.narrow(page).Scan(ctx, &rows); err != nil {
+		return nil, 0, fmt.Errorf("read what is open by component: %w", err)
+	}
+
+	counted := s.db.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+		Join("JOIN component AS c ON c.id = f.component_id").
+		ColumnExpr("f.component_id").
+		Where("f.target_id = ?", targetID).
+		Where("f.closed_run_id IS NULL").
+		Where("f.visibility IN (?)", bun.List(visible)).
+		GroupExpr("f.component_id")
+	total, err := s.db.NewSelect().
+		TableExpr("(?) AS grouped", filter.narrow(counted)).
+		Count(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count what is open by component: %w", err)
+	}
+
+	ids := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ComponentID)
+	}
+	shipped, err := componentsNamed(ctx, s.db, ids)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	groups := make([]ComponentGroup, 0, len(rows))
+	for _, row := range rows {
+		group := ComponentGroup{
+			Issues: row.Issues, Places: row.Places,
+			Exploited: row.Exploited, Urgency: row.Urgency,
+		}
+		if named, ok := shipped[row.ComponentID]; ok {
+			group.Component = named.Name
+			group.Version = named.Version
+			group.Upstream = named.UpstreamVersion
+		}
+		groups = append(groups, group)
+	}
+	return groups, total, nil
 }
