@@ -6,6 +6,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 )
 
 // seenAt backdates a scan run, so a test can say when a finding was first
@@ -297,4 +298,32 @@ func TestWhatIsRunningOutNarrowsToWhatIsSelected(t *testing.T) {
 			t.Errorf("narrowing to another product returned %d rows, want none", len(none))
 		}
 	})
+}
+
+// setting writes one deployment setting, so a test can put a line in place
+// before a scan is applied.
+func (f *fixture) setting(t *testing.T, name, value string) error {
+	t.Helper()
+	return setting.NewStore(f.db.DB).Set(t.Context(), name, value)
+}
+
+// deadlineOrZero reads a stored deadline, or the zero time where there is
+// none. Below the line there is none, which is the thing being asserted.
+func (f *fixture) deadlineOrZero(t *testing.T, identifier string) time.Time {
+	t.Helper()
+	var due *time.Time
+	err := f.db.DB.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+		ColumnExpr("f.due_at").
+		Where("v.identifier = ?", identifier).
+		Where("f.closed_run_id IS NULL").
+		Limit(1).Scan(t.Context(), &due)
+	if err != nil {
+		t.Fatalf("read the stored deadline for %s: %v", identifier, err)
+	}
+	if due == nil {
+		return time.Time{}
+	}
+	return *due
 }

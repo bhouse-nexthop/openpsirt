@@ -48,7 +48,12 @@ type Product struct {
 	Name        string     `bun:"name,notnull"`
 	DisplayName string     `bun:"display_name,notnull"`
 	EOLOn       *time.Time `bun:"eol_on"`
-	CreatedAt   time.Time  `bun:"created_at,notnull"`
+	// TriageFloor is what this product considers worth triaging, where it has
+	// an opinion of its own. Empty means the deployment's line applies —
+	// stating the default instead would stop this product following it when
+	// the default changed (TRI-43).
+	TriageFloor *string   `bun:"triage_floor"`
+	CreatedAt   time.Time `bun:"created_at,notnull"`
 }
 
 // Stream is a branch or a tag of a product.

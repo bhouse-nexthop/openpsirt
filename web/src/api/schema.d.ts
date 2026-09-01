@@ -1860,6 +1860,13 @@ export interface components {
              * @example https://example.com/schemas/FindingsOutputBody.json
              */
             readonly $schema?: string;
+            /** @description The line they are below */
+            floor?: string;
+            /**
+             * Format: int64
+             * @description Findings this product does not consider worth triaging, kept out of the list. Still recorded and still counted
+             */
+            hidden?: number;
             items: components["schemas"]["FindingBody"][] | null;
             /** Format: int64 */
             total: number;
@@ -3781,6 +3788,8 @@ export interface operations {
                 exploited?: boolean;
                 /** @description Keep only issues where an upstream fixed version is known */
                 fixable?: boolean;
+                /** @description Include what this product does not consider worth triaging. Those are always recorded and counted; this asks to see them in the list */
+                below_floor?: boolean;
                 /** @description Keep only what is open against components of this name, whatever version */
                 component?: string;
                 /** @description Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows */
@@ -3829,6 +3838,8 @@ export interface operations {
                 exploited?: boolean;
                 /** @description Keep only issues where an upstream fixed version is known */
                 fixable?: boolean;
+                /** @description Include what this product does not consider worth triaging */
+                below_floor?: boolean;
                 /** @description Drop components of these names */
                 exclude?: string[] | null;
                 /** @description How many to return */

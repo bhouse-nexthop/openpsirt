@@ -95,7 +95,7 @@ func visibleTo(subject access.Subject, productID int64) []access.Visibility {
 }
 
 // productOf reads which product a target belongs to.
-func productOf(ctx context.Context, db *bun.DB, targetID int64) (int64, error) {
+func productOf(ctx context.Context, db bun.IDB, targetID int64) (int64, error) {
 	var productID int64
 	err := db.NewSelect().
 		TableExpr("target AS tg").
@@ -183,6 +183,13 @@ type Filter struct {
 	// here" is a question about the package rather than about one build of it,
 	// and a build that vendors it twice should answer with both.
 	Component string
+	// Floor is what this product considers worth triaging, and BelowFloor
+	// asks to see what it keeps out. The line is policy rather than
+	// preference — somebody set it once for everybody — which is why what it
+	// hides is counted and said rather than silently subtracted (TRI-43,
+	// TRI-44).
+	Floor      Floor
+	BelowFloor bool
 	// Exclude drops components of these names.
 	//
 	// This exists because one package can drown the list. Measured on a switch
@@ -232,7 +239,56 @@ func (f Filter) narrow(q *bun.SelectQuery) *bun.SelectQuery {
 	if names := trimmed(f.Exclude); len(names) > 0 {
 		q = q.Where("c.name NOT IN (?)", bun.List(names))
 	}
+	if !f.BelowFloor {
+		q = f.Floor.narrow(q)
+	}
 	return q
+}
+
+// Hidden counts what the line keeps out of a list, so that the list can say so
+// rather than showing a smaller number with nothing explaining it (TRI-44).
+//
+// Counted through the rest of the filter, because "hidden by the line" has to
+// mean hidden from *this* list — a number counted against everything would say
+// six thousand on a page showing fifty.
+func (s *Store) Hidden(ctx context.Context, subject access.Subject, targetID int64,
+	filter Filter) (int, error) {
+
+	if !filter.Floor.Hides() || filter.BelowFloor {
+		return 0, nil
+	}
+	productID, err := productOf(ctx, s.db, targetID)
+	if err != nil {
+		return 0, err
+	}
+	visible := visibleTo(subject, productID)
+	if !subject.Sees(productID) || len(visible) == 0 {
+		return 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
+	}
+
+	// The same query, with the line inverted rather than removed.
+	below := filter
+	below.Floor = Floor{}
+	counted := s.db.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+		Join("JOIN component AS c ON c.id = f.component_id").
+		ColumnExpr("f.vulnerability_id").
+		Where("f.target_id = ?", targetID).
+		Where("f.closed_run_id IS NULL").
+		Where("f.visibility IN (?)", bun.List(visible)).
+		GroupExpr("f.vulnerability_id, f.component_id")
+	if words := filter.Floor.admits(); len(words) > 0 {
+		counted = counted.Where("f.urgency_exploited = ?", false).
+			Where(BandExpr+" NOT IN (?)", bun.List(words))
+	}
+	n, err := s.db.NewSelect().
+		TableExpr("(?) AS grouped", below.narrow(counted)).
+		Count(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count what the line keeps out: %w", err)
+	}
+	return n, nil
 }
 
 // trimmed drops blanks from a list of names, so a stray separator in a query

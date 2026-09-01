@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -41,7 +43,19 @@ var settable = []struct {
 	{setting.SessionLifetime, "How long a sign-in lasts"},
 	{setting.MaxTokenLifetime, "The longest a personal token may be valid for"},
 	{setting.TogetherCap, "How many findings one action may claim about at once. A whole number, not a length of time"},
+	{setting.TriageFloor, "What counts as worth triaging: everything, or a severity word below which findings are still recorded and counted but kept out of the working list. A product may state its own instead"},
 }
+
+// theFloor is the words the triage line may be set to. \"everything\" is not a
+// severity — it is the absence of a line, and it is what a deployment starts
+// with, because a tool that quietly hid findings on the day it was installed
+// would be deciding something nobody asked it to.
+var theFloor = []string{"everything", "low", "medium", "high", "critical"}
+
+// aSeverity is the settings whose value is one of a few words rather than a
+// length of time or a count. A third kind, checked as one: a value checked as
+// the wrong kind is stored and then silently ignored.
+func aSeverity(name string) bool { return name == setting.TriageFloor }
 
 // aCount is the settings whose value is a number of things rather than a
 // length of time. Named here because the two are checked differently, and a
@@ -114,7 +128,13 @@ func registerSettings(api huma.API, in Ingest) {
 		// every caller falling back to the shipped one, which is a policy that
 		// quietly stopped applying — and every reader here treats zero and
 		// negative as unset, so those would do the same while looking set.
-		if aCount(input.Name) {
+		if aSeverity(input.Name) {
+			if !slices.Contains(theFloor, input.Body.Value) {
+				return nil, huma.Error422UnprocessableEntity(
+					fmt.Sprintf("%q is not a line to triage from — write one of %s",
+						input.Body.Value, strings.Join(theFloor, ", ")))
+			}
+		} else if aCount(input.Name) {
 			n, err := strconv.Atoi(input.Body.Value)
 			if err != nil || n <= 0 {
 				return nil, huma.Error422UnprocessableEntity(
@@ -192,6 +212,11 @@ func deadline(name string) bool {
 	case setting.DueExploited, setting.DueCritical, setting.DueHigh,
 		setting.DueMedium, setting.DueLow:
 		return true
+	// Moving the line moves what has a deadline at all: below it nothing
+	// does (REM-27). So this invalidates what is stored for the same reason
+	// the windows do, from the other direction.
+	case setting.TriageFloor:
+		return true
 	}
 	return false
 }
@@ -217,6 +242,9 @@ func shipped(name string) string {
 		return access.MaxTokenLifetime.String()
 	case setting.TogetherCap:
 		return strconv.Itoa(triage.DefaultTogetherCap)
+	case setting.TriageFloor:
+		// Nothing hidden until somebody decides to hide it.
+		return "everything"
 	}
 	return ""
 }

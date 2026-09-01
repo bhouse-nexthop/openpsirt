@@ -48,6 +48,12 @@ type FindingsOutput struct {
 		// number of findings: one issue in one component can occupy sixty
 		// places and is one decision.
 		Total int `json:"total"`
+		// Hidden is what the triage line kept out, and Floor is the line
+		// itself. Said rather than silently subtracted: a list showing a
+		// smaller number with nothing explaining it is how two people quote
+		// different figures for one question (TRI-44).
+		Hidden int    `json:"hidden,omitempty" doc:"Findings this product does not consider worth triaging, kept out of the list. Still recorded and still counted"`
+		Floor  string `json:"floor,omitempty" doc:"The line they are below"`
 	}
 }
 
@@ -88,16 +94,17 @@ func registerFindings(api huma.API, in Ingest) {
 			"among those fifty.",
 		Tags: []string{"Findings"},
 	}, func(ctx context.Context, input *struct {
-		Product   string   `path:"product"`
-		Stream    string   `path:"stream"`
-		Variant   string   `path:"variant"`
-		Severity  string   `query:"severity" enum:"low,medium,high,critical" doc:"Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating"`
-		Exploited bool     `query:"exploited" doc:"Keep only issues somebody is known to be exploiting"`
-		Fixable   bool     `query:"fixable" doc:"Keep only issues where an upstream fixed version is known"`
-		Component string   `query:"component" doc:"Keep only what is open against components of this name, whatever version"`
-		Exclude   []string `query:"exclude" doc:"Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows"`
-		Limit     int      `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"How many to return"`
-		Offset    int      `query:"offset" minimum:"0" doc:"How many to skip"`
+		Product    string   `path:"product"`
+		Stream     string   `path:"stream"`
+		Variant    string   `path:"variant"`
+		Severity   string   `query:"severity" enum:"low,medium,high,critical" doc:"Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating"`
+		Exploited  bool     `query:"exploited" doc:"Keep only issues somebody is known to be exploiting"`
+		Fixable    bool     `query:"fixable" doc:"Keep only issues where an upstream fixed version is known"`
+		BelowFloor bool     `query:"below_floor" doc:"Include what this product does not consider worth triaging. Those are always recorded and counted; this asks to see them in the list"`
+		Component  string   `query:"component" doc:"Keep only what is open against components of this name, whatever version"`
+		Exclude    []string `query:"exclude" doc:"Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows"`
+		Limit      int      `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"How many to return"`
+		Offset     int      `query:"offset" minimum:"0" doc:"How many to skip"`
 	}) (*FindingsOutput, error) {
 		subject, err := reading(ctx)
 		if err != nil {
@@ -123,21 +130,36 @@ func registerFindings(api huma.API, in Ingest) {
 			return out, nil
 		}
 
+		floor, err := finding.FloorFor(ctx, in.DB.DB, named.ProductID)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "cannot tell what is worth triaging here", err)
+		}
 		narrowed := finding.Filter{
 			MinSeverity: input.Severity,
 			Exploited:   input.Exploited,
 			HasFix:      input.Fixable,
 			Component:   input.Component,
 			Exclude:     input.Exclude,
+			Floor:       floor,
+			BelowFloor:  input.BelowFloor,
 		}
-		groups, total, err := finding.NewStore(in.DB.DB).Groups(ctx, subject, target.ID,
+		store := finding.NewStore(in.DB.DB)
+		groups, total, err := store.Groups(ctx, subject, target.ID,
 			input.Limit, input.Offset, narrowed)
+		if err != nil {
+			return nil, refused(in.Logger, err, "cannot read what is open")
+		}
+		hidden, err := store.Hidden(ctx, subject, target.ID, narrowed)
 		if err != nil {
 			return nil, refused(in.Logger, err, "cannot read what is open")
 		}
 
 		out := &FindingsOutput{}
 		out.Body.Total = total
+		out.Body.Hidden = hidden
+		if hidden > 0 {
+			out.Body.Floor = floor.Word
+		}
 		out.Body.Items = make([]FindingBody, 0, len(groups))
 		for _, group := range groups {
 			out.Body.Items = append(out.Body.Items, FindingBody{
@@ -170,15 +192,16 @@ func registerFindings(api huma.API, in Ingest) {
 			"would reproduce the findings list at worse resolution.",
 		Tags: []string{"Findings"},
 	}, func(ctx context.Context, input *struct {
-		Product   string   `path:"product"`
-		Stream    string   `path:"stream"`
-		Variant   string   `path:"variant"`
-		Severity  string   `query:"severity" enum:"low,medium,high,critical" doc:"Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating"`
-		Exploited bool     `query:"exploited" doc:"Keep only issues somebody is known to be exploiting"`
-		Fixable   bool     `query:"fixable" doc:"Keep only issues where an upstream fixed version is known"`
-		Exclude   []string `query:"exclude" doc:"Drop components of these names"`
-		Limit     int      `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"How many to return"`
-		Offset    int      `query:"offset" minimum:"0" doc:"How many to skip"`
+		Product    string   `path:"product"`
+		Stream     string   `path:"stream"`
+		Variant    string   `path:"variant"`
+		Severity   string   `query:"severity" enum:"low,medium,high,critical" doc:"Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating"`
+		Exploited  bool     `query:"exploited" doc:"Keep only issues somebody is known to be exploiting"`
+		Fixable    bool     `query:"fixable" doc:"Keep only issues where an upstream fixed version is known"`
+		BelowFloor bool     `query:"below_floor" doc:"Include what this product does not consider worth triaging"`
+		Exclude    []string `query:"exclude" doc:"Drop components of these names"`
+		Limit      int      `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"How many to return"`
+		Offset     int      `query:"offset" minimum:"0" doc:"How many to skip"`
 	}) (*ComponentFindingsOutput, error) {
 		subject, err := reading(ctx)
 		if err != nil {
@@ -200,11 +223,17 @@ func registerFindings(api huma.API, in Ingest) {
 			return out, nil
 		}
 
+		floor, err := finding.FloorFor(ctx, in.DB.DB, named.ProductID)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "cannot tell what is worth triaging here", err)
+		}
 		narrowed := finding.Filter{
 			MinSeverity: input.Severity,
 			Exploited:   input.Exploited,
 			HasFix:      input.Fixable,
 			Exclude:     input.Exclude,
+			Floor:       floor,
+			BelowFloor:  input.BelowFloor,
 		}
 		groups, total, err := finding.NewStore(in.DB.DB).ComponentGroups(ctx, subject, target.ID,
 			input.Limit, input.Offset, narrowed)

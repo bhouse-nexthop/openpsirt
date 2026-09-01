@@ -120,6 +120,20 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 			return fmt.Errorf("read when this run started: %w", err)
 		}
 
+		// What this product considers worth triaging. Below that line nothing
+		// carries a deadline (REM-27): a line says "this is not work" and a
+		// deadline says "this is work, and it is late", and holding both means
+		// one of them is lying — within a year the overdue figure would be
+		// thousands of things nobody ever intended to look at.
+		productID, err := productOf(ctx, tx, targetID)
+		if err != nil {
+			return err
+		}
+		floor, err := FloorFor(ctx, tx, productID)
+		if err != nil {
+			return err
+		}
+
 		wanted := map[key]Finding{}
 		for _, r := range reported {
 			component, held := present.byIdentity[r.Component.Identity()]
@@ -166,8 +180,10 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 				// finding already open keeps the deadline it was given, which
 				// the update below leaves alone — a deadline that restarted
 				// every night would never arrive.
-				due := startedAt.Add(windows.For(r.Issue.Exploited, r.Issue.Severity))
-				entry.DueAt = &due
+				if floor.Admits(r.Issue.Exploited, r.Issue.Severity) {
+					due := startedAt.Add(windows.For(r.Issue.Exploited, r.Issue.Severity))
+					entry.DueAt = &due
+				}
 				wanted[key{vulnerabilityID, at}] = entry
 			}
 		}

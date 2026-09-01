@@ -244,8 +244,8 @@ func (s *Store) Recompute(ctx context.Context, windows Windows) (int, error) {
 	rated := func(words ...string) func(*bun.UpdateQuery) *bun.UpdateQuery {
 		return func(q *bun.UpdateQuery) *bun.UpdateQuery {
 			return q.Where("urgency_exploited = ?", false).
-				Where(`vulnerability_id IN (SELECT id FROM "vulnerability" WHERE severity IN (?))`,
-					bun.List(words))
+				Where(`vulnerability_id IN (SELECT id FROM "vulnerability" AS v WHERE `+
+					BandExpr+` IN (?))`, bun.List(words))
 		}
 	}
 	bands := []band{
@@ -254,14 +254,10 @@ func (s *Store) Recompute(ctx context.Context, windows Windows) (int, error) {
 		}},
 		{windows.Critical, rated("critical")},
 		{windows.High, rated("high")},
-		{windows.Low, rated("low", "negligible", "none")},
-		// Everything else: medium, and anything nobody rated.
-		{windows.Medium, func(q *bun.UpdateQuery) *bun.UpdateQuery {
-			return q.Where("urgency_exploited = ?", false).
-				Where(`vulnerability_id NOT IN (SELECT id FROM "vulnerability"
-					WHERE severity IN (?))`,
-					bun.List([]string{"critical", "high", "low", "negligible", "none"}))
-		}},
+		{windows.Low, rated("low")},
+		// Everything else: medium, and anything nobody rated — folded the
+		// same way by Band, because unknown is not harmless.
+		{windows.Medium, rated("medium")},
 	}
 
 	// Written in slices of the identifier range rather than as one statement
@@ -306,7 +302,66 @@ func (s *Store) Recompute(ctx context.Context, windows Windows) (int, error) {
 			}
 		}
 	}
-	return changed, nil
+
+	// And then take the deadline away from everything below the line.
+	//
+	// Done as a pass afterwards rather than folded into the bands above,
+	// because the two say different things and reading them together is how
+	// one quietly becomes a condition of the other: the bands say how long
+	// something has, and this says that some things are not on a clock at all
+	// (REM-27).
+	cleared, err := s.clearBelowFloor(ctx)
+	if err != nil {
+		return changed, err
+	}
+	return changed + cleared, nil
+}
+
+// clearBelowFloor removes the deadline from open findings their product does
+// not consider worth triaging.
+func (s *Store) clearBelowFloor(ctx context.Context) (int, error) {
+	var products []int64
+	err := s.db.NewSelect().
+		TableExpr("product AS p").
+		ColumnExpr("p.id").
+		Scan(ctx, &products)
+	if err != nil {
+		return 0, fmt.Errorf("read which products there are: %w", err)
+	}
+
+	cleared := 0
+	for _, productID := range products {
+		floor, err := FloorFor(ctx, s.db, productID)
+		if err != nil {
+			return cleared, err
+		}
+		words := floor.admits()
+		if len(words) == 0 {
+			continue
+		}
+		// Everything this product holds that the line does not admit, and is
+		// not known-exploited — being exploited is a fact about the world
+		// rather than a rating, and no line sets it aside.
+		result, err := s.db.NewUpdate().
+			Model((*Finding)(nil)).
+			Set("due_at = NULL").
+			Where("closed_run_id IS NULL").
+			Where("due_at IS NOT NULL").
+			Where("urgency_exploited = ?", false).
+			Where(`target_id IN (SELECT tg.id FROM "target" AS tg
+				JOIN "stream" AS st ON st.id = tg.stream_id
+				WHERE st.product_id = ?)`, productID).
+			Where(`vulnerability_id NOT IN (SELECT id FROM "vulnerability" AS v
+				WHERE `+BandExpr+` IN (?))`, bun.List(words)).
+			Exec(ctx)
+		if err != nil {
+			return cleared, fmt.Errorf("take the deadline off what is below the line: %w", err)
+		}
+		if n, err := result.RowsAffected(); err == nil {
+			cleared += int(n)
+		}
+	}
+	return cleared, nil
 }
 
 // recomputeSlice is how many identifiers one rewriting statement covers.

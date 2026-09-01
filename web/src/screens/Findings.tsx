@@ -57,6 +57,9 @@ export function Findings() {
   // Set by "only this" in the by-component view, which is how somebody moves
   // from "where is the weight" to "what is actually wrong with it".
   const onlyComponent = params.get("component") ?? "";
+  // Whether to show what this product does not consider worth triaging. They
+  // are always recorded and always counted; this asks to see them here.
+  const below = params.get("below") === "yes";
   const [peeking, setPeeking] = useState<string | null>(null);
 
   // The narrowing is the server's. Filtering a page that has already been
@@ -72,6 +75,7 @@ export function Findings() {
     ...(only === "hasFix" ? { fixable: true } : {}),
     ...(hiding.length > 0 ? { exclude: hiding } : {}),
     ...(onlyComponent ? { component: onlyComponent } : {}),
+    ...(below ? { below_floor: true } : {}),
   };
 
   const findings = useQuery({
@@ -173,6 +177,32 @@ export function Findings() {
           <span className="hint">
             Matched by name, so a build that vendors this twice answers with both.
           </span>
+        </div>
+      )}
+
+      {/* A list that is hiding something says so, with the count. Somebody
+          else set this line once, for everybody, so a smaller number with
+          nothing explaining it is how two people quote different figures for
+          one question (TRI-44, REJ-10). */}
+      {(findings.data?.hidden ?? 0) > 0 && (
+        <div className="filters" style={{ marginTop: -4 }}>
+          <span className="hint">
+            {(findings.data?.hidden ?? 0).toLocaleString()} more are below what this product
+            triages ({findings.data?.floor}). They are still recorded and still counted.
+          </span>
+          <button type="button" className="linkish" onClick={() => set("below", "yes")}>
+            Show them too
+          </button>
+        </div>
+      )}
+      {below && (
+        <div className="filters" style={{ marginTop: -4 }}>
+          <span className="hint">
+            Showing what is below the line as well as above it.
+          </span>
+          <button type="button" className="linkish" onClick={() => set("below", "")}>
+            Back to what is triaged
+          </button>
         </div>
       )}
 

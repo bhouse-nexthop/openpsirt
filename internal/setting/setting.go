@@ -53,6 +53,11 @@ const (
 	// separate one the deadline contradicts the ranking, which puts an
 	// exploited medium above an unexploited critical — the list would say look
 	// at this first while the clock said ninety days.
+	// TriageFloor is what this deployment considers worth triaging: a severity
+	// word, below which a finding is recorded and counted but kept out of the
+	// working list (TRI-43). A product may state its own instead.
+	TriageFloor = "triage.floor"
+
 	DueExploited = "remediation.due.exploited"
 	DueCritical  = "remediation.due.critical"
 	DueHigh      = "remediation.due.high"
