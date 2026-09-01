@@ -12,9 +12,12 @@ The interface is built out and running. `make demo` brings it up; the details
 and the two settings people get wrong are in `DESIGN-interface.md` under
 "Running it locally".
 
-**The screens the mockup has that are still not built**: people and access,
-release comparison. Both have endpoints. `DESIGN-interface.md` lists the
-smaller gaps under "Not built yet".
+**Every screen the mockup has now exists.** People and access, release
+comparison and "who is working on what" were built in this stretch, and the
+catalogue screens can declare as well as list. What is left is one structural
+divergence and two missing numbers — see "Audit: the mockup's screens against
+what is built" below, which is the place to start rather than
+`DESIGN-interface.md`.
 
 **Researched: what a slow query does to the rest of the process.** Measured
 against the real database with the driver this build uses, so two of the three
@@ -91,7 +94,7 @@ Reported from clicking around the demo. Each one is checked against the mockup
 and against `DECISIONS.md` before it is written down, because the interface was
 built once already from decision text alone and came out wrong.
 
-**"Where it sits" shows one flat row, not the chain.** `UIX-14` says it plainly:
+**Fixed — "Where it sits" showed one flat row, not the chain.** `UIX-14` says it plainly:
 *opening a finding shows the complete chain, root to component, with the version
 at each step*. The mockup draws exactly that — `sonic-broadcom 202411.0`, then
 `docker-sonic-mgmt-framework 1.0.0` indented under it, then `openssh` indented
@@ -102,7 +105,8 @@ intermediate steps, no versions. `UIX-12` is unimplemented the same way — the
 findings row is meant to show both ends of the chain and shows only the
 immediate parent (`web/src/screens/Findings.tsx:324`).
 
-**"The product itself" is most of what you see, and it is not a fallback.** It
+**Still true — "the product itself" is most of what you see, and it is not a
+fallback.** It
 renders whenever `finding.consumer_id` is null. In the demo database that is
 **284 of the 450 components** that carry findings — so on a component picked at
 random it is the likely answer, which is what makes it read as the screen giving
@@ -113,7 +117,7 @@ Naming something more useful there needs richer edges from the producer, not a
 change here. The phrase is also borrowed from the wrong screen — in the mockup
 it belongs to the tree's "What pulls this in" panel, for a node with no parents.
 
-**Two places can render as the same row.** 207,606 findings have two places
+**Waiting on the rebuilt SBOM — two places can render as the same row.** 207,606 findings have two places
 whose consumer name is identical. It is not version drift — no consumer name in
 the database exists at two versions — it is the duplicate-component bug below:
 `opennsl-modules` interned twice from one artifact, so one place is listed twice
@@ -121,11 +125,12 @@ with nothing to tell the two apart. Most of this should dissolve when the
 rebuilt SBOM lands. What will not dissolve is that the row has no ancestry to
 distinguish it by, which is the first item.
 
-**"What was decided →" is the wrong affordance on that panel.** The mockup ends
-"Where it sits" with a single **"Show where this sits in the build →"** that
-opens the tree. The built panel instead hangs a per-place "What was decided →"
-link off every row, which is a different question from the one the panel asks
-and puts a decision route where the design put an orientation route.
+**Half-fixed — "What was decided →" is the wrong affordance on that panel.**
+The mockup's single **"Show where this sits in the build →"** is now there and
+opens the tree. The per-place decision link had to stay, because deciding lives
+on its own screen and this panel is the only route to it — the real fix is the
+Decide card the mockup puts on the finding itself, which the audit below
+records as the largest gap left.
 
 **"Dependencies" in the left rail never loads, and wedges the whole server.**
 Not a UI bug: `GET .../variants/{variant}/components` never returns.
@@ -157,7 +162,7 @@ also takes the rest of the interface down with it, which is why "everything is
 slow" and "Dependencies is broken" are the same bug. Cancelling the HTTP request
 has to cancel the query.
 
-**The dependency screen was a flat list — rebuilt to the mockup.** It now draws
+**Fixed — the dependency screen was a flat list, and is now the tree.** It now draws
 the indented lazy tree `UIX-04` asks for, rooted at `sonic-broadcom`, with the
 count on every node at every level so descending follows the findings rather
 than guessing (`UIX-02`). Wide nodes show five and offer the rest, a component
@@ -184,7 +189,7 @@ Two CSS rules the screen needs — `.detail` and `.upward` — were **missing fr
 from the mockup. That is the extraction trap recorded below, found a second
 time, and the lesson holds: check the containers, not just the leaves.
 
-**The findings filters only narrow the page you are looking at.** The endpoint
+**Fixed — the findings filters only narrowed the page you were looking at.** The endpoint
 takes `limit` and `offset` and *nothing else* — no severity, no exploited, no
 component. So the chips and the "at least" control in `Findings.tsx:49` filter
 `all`, which is the fifty rows already fetched. Asking for "exploited" on page
@@ -193,7 +198,7 @@ with one active walks through a different arbitrary subset each time. The screen
 does announce how many it hid, which is the honest half of a thing that should
 not be client-side at all.
 
-**Asked for: toggles on the findings view.** Two, and the second is the one the
+**Built — the toggles asked for on the findings view.** Two, and the second is the one the
 data argues hardest for.
 
 *Group by component and version, ignoring the path.* The list is already one row
@@ -209,11 +214,9 @@ holds 425,098 of the 441,108 places, 96%. The next largest contributor is
 1,879, which is the difference between a list somebody reads and one they scroll
 past.
 
-Both need the endpoint to take the filter, for the reason directly above: a
-toggle applied to fifty fetched rows answers a different question from the one
-it appears to answer. `REJ-10` is the rule to hold to while building them — a
-preference that quietly moves a number is how two people quote different figures
-for one question and neither finds out.
+Both are the server's, for the reason directly above. `REJ-10` is held to: the
+total is counted through the same filter, and what is hidden is named on screen
+rather than quietly subtracted.
 
 Worth saying once: none of these is a case of the design being unclear. The
 panel was specified, drawn, and cited, and the implementation went its own way —
@@ -262,6 +265,76 @@ interface shows. A fresh SBOM is being built. When it lands:
    against 535 qualifier — because they were measured on the old file and the
    first two of them will have moved.
 
+**Measured and left alone: `/v1/running-out` takes about eight seconds.** It is
+the query behind "due soon, still undecided", and it is slow for a reason no
+index fixes: it groups **every** open finding — 441,108 of them — once per
+urgency band, because a deadline window differs per band and the list spans
+products so nothing narrows it first. The `NOT EXISTS` against decisions that
+looks expensive is not: 0.1 s, well indexed. This is the "one package drowns
+everything" problem again, since 96% of those rows are the kernel. Worth
+reshaping before anybody relies on the screen; not reshaped here, because it
+wants a decision about whether the bands can share one pass.
+
+## Audit: the mockup's screens against what is built
+
+Done at the end of a stretch of interface work, screen by screen, against the
+published mockup rather than against the decision text — which is the rule this
+document already records, and the reason the first attempt came out wrong.
+
+Every one of the mockup's fifteen screens now exists. Three did not at the
+start of this stretch: **people and access**, **release comparison**, and
+**who is working on what**. A fourth, the mockup's "adding a release", is now
+the declare forms on the catalogue screens rather than a screen of its own.
+
+| Mockup screen | Built as | Standing |
+|---|---|---|
+| home | `Home.tsx` | All eight panels. "Assigned to you" reads as "Being worked on", and the charts come before the work rather than after it — `UIX-06` says panel order needs deliberate design and this is the deliberate part still owed |
+| findings | `Findings.tsx` | Built, and now goes further than the mockup: filters are the server's, and a by-component view the mockup does not have |
+| finding detail | `Finding.tsx` | **Partial — the largest gap left.** See below |
+| review queue | `Queue.tsx` | Built |
+| release comparison | `Compare.tsx` | Built this stretch. The mockup's release-over-release chart is not: it needs a per-release open count that nothing reports |
+| people and access | `People.tsx` | Built this stretch |
+| scans | `Scans.tsx` | Built. The mockup's "what the last run was measured against" — scanner and database version — is not shown, though the scan carries it |
+| settings | `Settings.tsx` | Every setting the server exposes renders. The mockup's four named groups are one list plus deadlines, so the grouping is missing rather than the function |
+| who is working on what | `Work.tsx` | Built this stretch, two of the three tabs. The third, "nobody assigned", is the `Unassigned` screen that already had its own rail entry, linked across rather than duplicated |
+| decide several together | `Together.tsx` | Built |
+| products / branches / variants | `Products` `Streams` `Variants` | Built, and each can now declare as well as list |
+| adding a release | folded into the above | The mockup gave it a screen; it is a form on the screen it belongs to |
+| dependencies | `Tree.tsx` | Rebuilt this stretch to the mockup, with search |
+
+**The finding detail is an orientation screen, and the mockup's is a working
+screen.** It has six of the mockup's twelve sections: what it is, how bad,
+upstream, also known as, where it sits, and the evidence — plus the bumped-and-
+came-with-it banner, which the mockup also has. What is missing is everything
+about *deciding*:
+
+- **The Decide card (`TRI-01`) is not on it.** Deciding happens on
+  `PlaceDecision`, one place at a time, reached by a link per row. That is why
+  the "what was decided" link had to stay on the "where it sits" panel where
+  the mockup has only an orientation link — a panel cannot be the only route to
+  a screen and also pretend it is not.
+- **A decision already made is invisible here.** The mockup shows "recorded,
+  now waiting for approval" on the finding. The built one shows nothing, so
+  the finding gives no sign that somebody has already answered it.
+- **"How the reasoning changed" and "what has been said"** live on
+  `Decision.tsx` and are not reachable from the finding.
+- **"What this decision covers"** (`REL-06`, `REL-07`, `TRI-29`) is a hint
+  sentence rather than the panel the mockup draws.
+- **"What we think of the issue itself"** is absent, and correctly so: the
+  mockup marks it unbuilt and `DECISIONS.md` §4 still has it open.
+
+That is one structural divergence rather than five omissions: the built
+interface splits a finding across three screens where the mockup has one. It is
+worth deciding on purpose rather than inheriting.
+
+**Two smaller things the mockup has and nothing reports:** a per-release open
+count, for the release-over-release chart; and what a scan run was measured
+against, which the scan document carries and the API does not surface.
+
+**Nothing was found that is built and unreachable.** Every screen has a rail
+entry or is reached from one, which was not true at the start of this stretch —
+people and comparison existed as endpoints with nothing pointing at them.
+
 ## Traps found the hard way
 
 Worth keeping until they are covered by a test or a rule.
@@ -297,8 +370,8 @@ local request needs `--noproxy '*'`.
 
 ## Not yet true
 
-`DESIGN-interface.md` claims the screens it describes. Two things it names as
-built deserve a second look before they are trusted: the release comparison and
-people screens are **not** built, and the design document says so — but the
-rail does not link to what does not exist, so nothing points at the gap from
-inside the running application.
+`DESIGN-interface.md` is now behind the code rather than ahead of it. It still
+describes release comparison and people as unbuilt, and knows nothing about the
+tree, the server-side filters, the by-component view, "who is working on what",
+or declaring from the catalogue screens. Bring it up to date from the audit
+above before trusting anything it says about what exists.
