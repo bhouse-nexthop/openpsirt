@@ -549,6 +549,18 @@ we happened to use are lenient. Fixed upstream by moving the digest to a
 from there and still reading the old spelling, so comparing against an older
 document does not read as every patch having changed.
 
+**The real fix is that the build now checks**, at both write sites, using the
+cyclonedx-cli it already provisions for the SPDX export. A warning by default,
+fatal under `SBOM_STRICT=1`.
+
+**And the check needed `--fail-on-errors` to be a check at all.** Without it
+cyclonedx-cli prints "BOM is not valid." and **exits 0** — so the obvious
+spelling passed on a document the same command had just rejected, and I only
+noticed because I ran it against the known-bad file expecting a failure.
+Written into the code rather than left to be rediscovered. It is the same shape
+as `check-engines` here: a green result that means *nothing failed* rather than
+*it was checked*, which is now the third time this has come up.
+
 ## Traps found the hard way
 
 **A multi-edit script that stops halfway leaves the rest unapplied, silently.**
