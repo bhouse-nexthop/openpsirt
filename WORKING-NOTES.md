@@ -93,6 +93,36 @@ opens the tree. The built panel instead hangs a per-place "What was decided →"
 link off every row, which is a different question from the one the panel asks
 and puts a decision route where the design put an orientation route.
 
+**"Dependencies" in the left rail never loads, and wedges the whole server.**
+Not a UI bug: `GET .../variants/{variant}/components` never returns.
+`graph.Store.Roots` (`internal/graph/snapshot.go:301`) asks for the root's
+direct children and hangs two correlated subqueries off every row — how many
+findings are open against it, and whether anything is under it. The root has
+**5,270 direct children** in the demo build, so both run 5,270 times.
+
+*The findings count.* `finding` carries five indexes and **none of them
+contains `component_id`**, so SQLite picks `finding_urgency_idx (target_id,
+closed_run_id)`, which matches all 441,108 open findings for the target, and
+filters each one. Measured: **637 ms per row, so about 56 minutes** for that
+column alone. Adding `finding (target_id, component_id, closed_run_id)` takes it
+to 0.067 ms — the whole column in 0.35 s.
+
+*The children count.* Its subquery drives off `graph_edge` by `(target_id,
+closed_scan_id)`, which is every one of the 19,192 edges, per row. An index on
+`graph_node (component_id)` was tried and made it **worse** (5.4 s to 10.0 s) —
+the driving scan is the edge table, not the node lookup. Computing it once as a
+grouped join instead of 5,270 times drops it to 0.106 s, same rows, same order.
+
+Both together: **about an hour to 0.11 s.**
+
+The second half of this is worse than the slowness. The request is long gone —
+the log has `walk the graph: context canceled` at 01:22:52 — and an hour and a
+half later the process was still burning **three full cores**, because each
+click started another walk that nothing stops. So the screen that does not load
+also takes the rest of the interface down with it, which is why "everything is
+slow" and "Dependencies is broken" are the same bug. Cancelling the HTTP request
+has to cancel the query.
+
 Worth saying once: none of these is a case of the design being unclear. The
 panel was specified, drawn, and cited, and the implementation went its own way —
 the same failure the note at the top of this document records about the palette,
