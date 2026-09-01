@@ -714,6 +714,22 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: now
 .hint { color: var(--muted); font-size: var(--step--1); }
 .card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 14px; }
 
+/* The finding's evidence, and the column that decides about it. Both used in
+   the markup already and neither had a rule — the fifth thing the first
+   extraction from the mockup dropped, which is why that screen laid out as one
+   long column of blocks. */
+.evidence {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 8px 22px;
+  align-items: start;
+}
+.deciding { margin-top: 18px; display: flex; flex-direction: column; gap: 14px; }
+.deciding .card { margin: 0; }
+/* The reasoning stays a readable measure even on a wide screen: prose set
+   across 1200 pixels is not easier to write, only wider. */
+.deciding .editor { max-width: 78ch; }
+
 /* The outcome buttons on the decide card. Missing from the first extraction
    with everything else in this block. */
 .outcomes { display: flex; flex-wrap: wrap; gap: 6px; }

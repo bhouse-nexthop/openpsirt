@@ -5,6 +5,9 @@ import { api } from "../api/client";
 import { unwrap } from "../api/queries";
 import { Failed } from "../ui/Failed";
 import { Severity } from "../ui/Severity";
+import { JUSTIFICATIONS } from "../ui/Outcome";
+import { Editor, forget } from "../ui/Editor";
+import { Reach } from "../ui/Reach";
 
 // Everything a decision is made from, in one request. There may be thousands
 // of findings and very few people, so the difference between a finding that
@@ -132,6 +135,9 @@ export function Finding() {
 
         <Places at={at} places={it.places ?? []} />
 
+      </div>
+
+      <div className="deciding">
         <Decide
           at={at}
           component={it.component ?? ""}
@@ -156,34 +162,25 @@ export function Finding() {
 // Every place the component sits at. A place is the component and what
 // directly pulled it in — the pair, not the route — and it is what a decision
 // is recorded against.
-const OUTCOMES = [
-  ["affected", "Affected — will fix"],
-  ["not-applicable", "Not applicable"],
-  ["deferred", "Defer to a date"],
-  ["wont-fix", "Won't fix"],
-] as const;
-
-const JUSTIFICATIONS = [
-  "vulnerable_code_not_in_execute_path",
-  "vulnerable_code_not_present",
-  "component_not_present",
-  "vulnerable_code_cannot_be_controlled_by_adversary",
-  "inline_mitigations_already_exist",
-] as const;
-
-type Sitting = { place: string; consumer?: string; decided?: boolean };
+type Sitting = {
+  place: string;
+  consumer?: string;
+  decision?: number;
+  suppressed?: boolean;
+  chain?: { component: string; version?: string }[] | null;
+};
 
 // One judgment about this finding, covering every place it sits at.
 //
-// All of them is the default and the places are listed beside it, so nobody
-// discovers afterwards that they answered for thirty containers — and nobody
-// has to answer thirty times, which is what TRI-29 exists to prevent and what
-// deciding a place at a time made unavoidable.
+// The same form the per-place screen uses — the same outcomes, the same
+// reasons, the same editor with its draft kept and its preview through the
+// renderer that publishes (UIX-21, UIX-22) — with one thing added: which of
+// the places it covers. All of them unless somebody says otherwise (TRI-29,
+// TRI-37).
 //
-// Unticking one leaves that place open and nothing is recorded against it. A
-// component used unsafely in one consumer and not another is exactly what
-// per-place findings capture, and asking somebody to justify the places they
-// deliberately left out is the tool arguing with a judgment it asked for.
+// Built from the shared pieces rather than beside them. A second decision form
+// that looked similar and behaved differently is how two screens come to
+// disagree about what a decision is.
 function Decide({
   at,
   component,
@@ -196,16 +193,17 @@ function Decide({
   places: Sitting[];
 }) {
   const queries = useQueryClient();
-  const open = places.filter((place) => !place.decided);
+  const open = places.filter((place) => !place.decision);
   const [covering, setCovering] = useState<Set<string> | null>(null);
-  const [outcome, setOutcome] = useState<string>("");
-  const [justification, setJustification] = useState<string>(JUSTIFICATIONS[0]);
+  const [outcome, setOutcome] = useState("not-applicable");
+  const [justification, setJustification] = useState(JUSTIFICATIONS[0]?.value ?? "");
   const [until, setUntil] = useState("");
   const [reasoning, setReasoning] = useState("");
 
   // Everything still open, until somebody says otherwise.
   const chosen = covering ?? new Set(open.map((place) => place.place));
-  const all = chosen.size === open.length;
+  const every = chosen.size === open.length;
+  const draftKey = `decide:${at.product}:${at.vulnerability}:${component}`;
 
   const decide = useMutation({
     mutationFn: async () =>
@@ -213,40 +211,46 @@ function Decide({
         await api.POST(
           "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/decision",
           {
-            params: {
-              path: { ...at, component },
-              query: version ? { version } : {},
-            },
+            params: { path: { ...at, component }, query: version ? { version } : {} },
             body: {
-              outcome: outcome as (typeof OUTCOMES)[number][0],
+              outcome: outcome as "affected" | "not-applicable" | "deferred" | "wont-fix",
               reasoning,
               ...(outcome === "not-applicable"
-                ? { justification: justification as (typeof JUSTIFICATIONS)[number] }
+                ? {
+                    justification: justification as
+                      | "component_not_present"
+                      | "vulnerable_code_not_present"
+                      | "vulnerable_code_not_in_execute_path"
+                      | "vulnerable_code_cannot_be_controlled_by_adversary"
+                      | "inline_mitigations_already_exist",
+                  }
                 : {}),
               ...(outcome === "deferred" ? { deferred_until: until } : {}),
-              // Sent only when it is a narrowing. Absent means all of them,
-              // which is the default the server has too — saying it twice
-              // invites the two to disagree.
-              ...(all ? {} : { places: [...chosen] }),
+              // Sent only when it narrows. Absent means all of them, which is
+              // the server's default too — saying it twice invites the two to
+              // disagree.
+              ...(every ? {} : { places: [...chosen] }),
             },
           },
         ),
       ),
     onSuccess: () => {
+      forget(draftKey);
       setCovering(null);
-      setOutcome("");
       setReasoning("");
       void queries.invalidateQueries({ queryKey: ["finding"] });
       void queries.invalidateQueries({ queryKey: ["queue"] });
     },
   });
 
-  const decided = places.length - open.length;
+  const answered = places.length - open.length;
+  const needsJustification = outcome === "not-applicable";
+  const needsDate = outcome === "deferred";
   const ready =
-    outcome !== "" &&
     reasoning.trim() !== "" &&
     chosen.size > 0 &&
-    (outcome !== "deferred" || until !== "");
+    (!needsJustification || justification) &&
+    (!needsDate || until);
 
   if (open.length === 0) {
     return (
@@ -254,8 +258,7 @@ function Decide({
         <h3>Decide</h3>
         <p className="reading" style={{ margin: 0 }}>
           Every place this sits at has been answered. Revising one of those claims is done from
-          the decision itself, so a second claim about the same code cannot stand beside the
-          first.
+          the claim itself, so a second claim about the same code cannot stand beside the first.
         </p>
       </div>
     );
@@ -264,11 +267,106 @@ function Decide({
   return (
     <div className="card">
       <h3>Decide</h3>
-      {decided > 0 && (
-        <p className="hint" style={{ margin: "-4px 0 10px" }}>
-          {decided} of {places.length} places already answered. This covers what is left.
+      {answered > 0 && (
+        <p className="hint" style={{ margin: "-4px 0 12px" }}>
+          {answered} of {places.length} places already answered. This covers what is left.
         </p>
       )}
+
+      <div className="field">
+        <label htmlFor="outcome">What is true here</label>
+        <select id="outcome" value={outcome} onChange={(event) => setOutcome(event.target.value)}>
+          <option value="not-applicable">It does not apply to us</option>
+          <option value="affected">It applies and needs fixing</option>
+          <option value="deferred">It applies, but not until a date</option>
+          <option value="wont-fix">It applies and will not be fixed</option>
+        </select>
+      </div>
+
+      {/* The claim that something does not affect us *is* which of the
+          recognized reasons applies, so it is not a note beside the outcome —
+          it is the outcome. */}
+      {needsJustification && (
+        <div className="field">
+          <label htmlFor="justification">Which reason</label>
+          <select
+            id="justification"
+            value={justification}
+            onChange={(event) => setJustification(event.target.value)}
+          >
+            {JUSTIFICATIONS.map((each) => (
+              <option key={each.value} value={each.value}>
+                {each.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {needsDate && (
+        <div className="field">
+          <label htmlFor="until">Until when</label>
+          <input
+            id="until"
+            type="date"
+            value={until}
+            onChange={(event) => setUntil(event.target.value)}
+          />
+          <span className="hint">A deferral with no date is a decision never to look again.</span>
+        </div>
+      )}
+
+      <div className="field">
+        <label>What this covers</label>
+        <p className="hint" style={{ margin: "0 0 6px" }}>
+          {chosen.size} of {open.length} {open.length === 1 ? "place" : "places"}, all of them
+          unless you say otherwise. A place you untick stays open and nothing is recorded against
+          it.
+        </p>
+        <div className="tree">
+          {open.map((place) => (
+            <label key={place.place} className="node" style={{ cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={chosen.has(place.place)}
+                onChange={(event) => {
+                  const next = new Set(chosen);
+                  if (event.target.checked) next.add(place.place);
+                  else next.delete(place.place);
+                  setCovering(next);
+                }}
+              />
+              <span className="id">{place.consumer || UNPLACED}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* How far it travels beyond this build, said before it is recorded
+          rather than discovered afterwards (TRI-30). Answerable for one place
+          at a time, so it is shown when the claim covers one. */}
+      {chosen.size === 1 && (
+        <Reach at={{ ...at, place: [...chosen][0] ?? "" }} />
+      )}
+      {chosen.size > 1 && (
+        <p className="hint">
+          Each of these {chosen.size} places carries its own claim and reaches its own set of
+          builds. Cover one at a time to see how far that one travels.
+        </p>
+      )}
+
+      <div className="field">
+        <label>Why</label>
+        <Editor
+          value={reasoning}
+          onChange={setReasoning}
+          draftKey={draftKey}
+          label="Reasoning"
+          mentions={{ product: at.product }}
+          placeholder="What makes this true for this component, at these places?"
+        />
+      </div>
+
       {decide.error != null && (
         <Failed error={decide.error} what="That judgment could not be recorded." />
       )}
@@ -294,113 +392,38 @@ function Decide({
         </div>
       )}
 
-      <div className="field">
-        <label>Outcome</label>
-        <div className="outcomes">
-          {OUTCOMES.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className="outcome"
-              aria-pressed={outcome === value}
-              onClick={() => setOutcome(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {outcome === "not-applicable" && (
-        <div className="field">
-          <label htmlFor="justification">Why it does not apply</label>
-          <select
-            id="justification"
-            value={justification}
-            onChange={(event) => setJustification(event.target.value)}
-          >
-            {JUSTIFICATIONS.map((each) => (
-              <option key={each} value={each}>
-                {each}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {outcome === "deferred" && (
-        <div className="field">
-          <label htmlFor="until">Returns on</label>
-          <input
-            id="until"
-            type="date"
-            value={until}
-            onChange={(event) => setUntil(event.target.value)}
-          />
-        </div>
-      )}
-
-      <div className="field">
-        <label htmlFor="reasoning">Why this holds</label>
-        <textarea
-          id="reasoning"
-          rows={4}
-          value={reasoning}
-          onChange={(event) => setReasoning(event.target.value)}
-        />
-      </div>
-
-      <div className="field">
-        <label>
-          What this covers — {chosen.size} of {open.length}{" "}
-          {open.length === 1 ? "place" : "places"}
-        </label>
-        <p className="hint" style={{ margin: "0 0 6px" }}>
-          All of them unless you say otherwise. A place you untick stays open, and nothing is
-          recorded against it.
-        </p>
-        <div className="tree">
-          {open.map((place) => (
-            <label key={place.place} className="node" style={{ cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={chosen.has(place.place)}
-                onChange={(event) => {
-                  const next = new Set(chosen);
-                  if (event.target.checked) next.add(place.place);
-                  else next.delete(place.place);
-                  setCovering(next);
-                }}
-              />
-              <span className="id">{place.consumer || "the product itself"}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-
       <button
         type="button"
         className="btn"
         disabled={!ready || decide.isPending}
         onClick={() => decide.mutate()}
       >
-        Record this
+        Record it
       </button>
+      <span className="hint" style={{ marginLeft: 10 }}>
+        Most outcomes wait for a second person before they take effect.
+      </span>
     </div>
   );
 }
+
+// What a place is called when nothing pulled it in.
+//
+// Not "the product itself", which was the old wording and is a claim: it says
+// the build depends on this directly. For a Go module vendored into a binary
+// that is false, and the inventory never said it — a lockfile is not a
+// filesystem, so the producer attaches what it finds there straight to the
+// image because it has nowhere better to put it. What is actually known is
+// that nothing recorded a consumer, and saying so points at the producer
+// rather than inventing a relationship.
+const UNPLACED = "nothing recorded what pulls this in";
 
 function Places({
   at,
   places,
 }: {
   at: { product: string; stream: string; variant: string; vulnerability: string };
-  places: {
-    place: string;
-    consumer?: string;
-    suppressed?: boolean;
-    chain?: { component: string; version?: string }[] | null;
-  }[];
+  places: Sitting[];
 }) {
   if (places.length === 0) return null;
   const build =
@@ -412,26 +435,26 @@ function Places({
     <div className="block">
       <h4>Where it sits</h4>
       {/* The complete chain, root to component, with the version at each step
-          (UIX-14). The immediate parent alone cannot answer this: where a
+          (UIX-14). The immediate parent alone cannot answer it: where a
           component is reached several ways the parent is often the same word
           twice, and two identical rows are not two answers. */}
       <div className="tree">
         {places.map((place) => {
           const chain = place.chain ?? [];
-          if (chain.length === 0) {
-            // The inventory left this component unplaced. Saying so is better
-            // than drawing a chain of one and calling it a position.
+          // Nothing above it but the build. The chain would be two rows saying
+          // nothing, so it says the one true thing instead.
+          const bare = chain.length <= 1 || !place.consumer;
+          if (bare) {
             return (
               <div key={place.place} className="node here">
-                <span className="rule">└</span>{" "}
-                <span className="id">{place.consumer || "the product itself"}</span>
-                <span className="hint">nothing recorded what pulls this in</span>
-                {place.suppressed && (
-                  <span className="state">the build already argued this away</span>
+                <span className="rule">└</span>
+                <span className="id">{chain[chain.length - 1]?.component ?? ""}</span>
+                <span className="hint">{UNPLACED}</span>
+                {place.decision != null && (
+                  <Link to={`/decisions/${place.decision}`} className="linkish">
+                    decided
+                  </Link>
                 )}
-                <Link to={`${build}/findings/${encodeURIComponent(at.vulnerability)}/places/${encodeURIComponent(place.place)}`} className="linkish">
-                  What was decided →
-                </Link>
               </div>
             );
           }
@@ -441,26 +464,23 @@ function Places({
                 const last = depth === chain.length - 1;
                 return (
                   <div
-                    key={`${place.place}\u0000${depth}`}
+                    key={`${place.place} ${depth}`}
                     className={`node${last ? " here" : ""}`}
                     style={{ paddingLeft: depth * 18 }}
                   >
-                    <span className="rule">└</span>{" "}
+                    <span className="rule">└</span>
                     <span className="id">{step.component}</span>
                     {step.version && <span className="ver">{step.version}</span>}
                     {last && place.suppressed && (
                       <span className="state">the build already argued this away</span>
                     )}
-                    {last && (
-                      <Link
-                        to={
-                          `${build}/findings/${encodeURIComponent(at.vulnerability)}` +
-                          `/places/${encodeURIComponent(place.place)}`
-                        }
-                        className="linkish"
-                        style={{ marginLeft: "auto" }}
-                      >
-                        What was decided →
+                    {/* Only where a claim actually stands. A link on every row
+                        saying "what was decided" answered a question nobody
+                        asked, and told you nothing about whether anything had
+                        been. */}
+                    {last && place.decision != null && (
+                      <Link to={`/decisions/${place.decision}`} className="linkish">
+                        decided
                       </Link>
                     )}
                   </div>
@@ -470,10 +490,10 @@ function Places({
           );
         })}
       </div>
-      {/* Where the mockup puts the one action on this panel. The panel asks
-          "where is this", so what it offers is somewhere to go on looking —
-          the per-place decision link stays on the row it belongs to. */}
-      <Link to={`${build}/components?at=${encodeURIComponent(places[0]?.chain?.at(-1)?.component ?? "")}`} className="linkish">
+      <Link
+        to={`${build}/components?at=${encodeURIComponent(places[0]?.chain?.at(-1)?.component ?? "")}`}
+        className="linkish"
+      >
         Show where this sits in the build →
       </Link>
       <p className="hint">

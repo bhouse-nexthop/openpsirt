@@ -2054,9 +2054,10 @@ components:
         consumer:
           description: What pulls the component in here. Absent under the product itself
           type: string
-        decided:
-          description: A claim already stands here. Not the same as suppressed, which is the build's own argument
-          type: boolean
+        decision:
+          description: The claim already standing here, where one does. Not the same as suppressed, which is the build's own argument
+          format: int64
+          type: integer
         place:
           description: Name this when recording a decision about it
           type: string

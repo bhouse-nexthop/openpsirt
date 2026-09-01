@@ -609,7 +609,7 @@ function Peek({
       <div className="legend">
         {(it?.places ?? []).slice(0, 6).map((place) => (
           <span key={place.place}>
-            {place.consumer ? `under ${place.consumer}` : "under the product itself"}
+            {place.consumer ? `under ${place.consumer}` : "nothing recorded what pulls this in"}
           </span>
         ))}
       </div>

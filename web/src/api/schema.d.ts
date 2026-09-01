@@ -2429,8 +2429,11 @@ export interface components {
             chain?: components["schemas"]["StepBody"][] | null;
             /** @description What pulls the component in here. Absent under the product itself */
             consumer?: string;
-            /** @description A claim already stands here. Not the same as suppressed, which is the build's own argument */
-            decided?: boolean;
+            /**
+             * Format: int64
+             * @description The claim already standing here, where one does. Not the same as suppressed, which is the build's own argument
+             */
+            decision?: number;
             /** @description Name this when recording a decision about it */
             place: string;
             /** @description The build has already argued this place away */
