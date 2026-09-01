@@ -297,8 +297,15 @@ func (s *Store) Around(ctx context.Context, subject access.Subject, targetID int
 	return above, below, nil
 }
 
-// Roots reports what the build itself pulls in directly.
-func (s *Store) Roots(ctx context.Context, subject access.Subject, targetID int64) ([]Neighbour, error) {
+// Roots reports the build's own component and what it pulls in directly.
+//
+// The root comes back with its children because a tree drawn without it is
+// drawn without the thing being explored: every path shown starts one step in,
+// and the indentation has nothing to hang from. It is nil where the document
+// named no root of its own.
+func (s *Store) Roots(ctx context.Context, subject access.Subject, targetID int64) (
+	*Neighbour, []Neighbour, error) {
+
 	var rootID int64
 	err := s.db.NewSelect().
 		TableExpr("graph_node AS n").
@@ -310,12 +317,57 @@ func (s *Store) Roots(ctx context.Context, subject access.Subject, targetID int6
 	if database.IsNoRows(err) {
 		// A build whose document named no root of its own. Nothing is wrong
 		// and there is simply nothing above the components.
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("look up what this build is: %w", err)
+	}
+
+	kids, err := s.step(ctx, subject, targetID, rootID, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	root, err := s.describe(ctx, subject, targetID, rootID, len(kids))
+	if err != nil {
+		return nil, nil, err
+	}
+	return root, kids, nil
+}
+
+// describe reads one component as a neighbour of nothing, for the root.
+//
+// The child count is passed in rather than counted again: the caller has just
+// walked that edge and holds the answer, and asking the database a second time
+// for a number already in hand is how the same walk ends up costing twice.
+func (s *Store) describe(ctx context.Context, subject access.Subject, targetID, componentID int64,
+	children int) (*Neighbour, error) {
+
+	readable, err := s.visibleIn(ctx, subject, targetID)
+	if err != nil {
+		return nil, err
+	}
+
+	row := &Neighbour{Children: children}
+	err = s.db.NewSelect().
+		TableExpr("component AS c").
+		ColumnExpr("c.name AS name").
+		ColumnExpr("c.version AS version").
+		// Narrowed exactly as the neighbours are. The root is one row, but a
+		// count that is not narrowed the same way is still a count of what the
+		// reader may not see.
+		ColumnExpr(`(SELECT COUNT(*) FROM "finding" AS f
+			WHERE f.target_id = ? AND f.component_id = c.id
+			  AND f.closed_run_id IS NULL AND f.visibility IN (?)) AS findings`,
+			targetID, bun.List(readable)).
+		Where("c.id = ?", componentID).
+		Scan(ctx, row)
+	if database.IsNoRows(err) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("look up what this build is: %w", err)
+		return nil, fmt.Errorf("read what this build is: %w", err)
 	}
-	return s.step(ctx, subject, targetID, rootID, true)
+	return row, nil
 }
 
 // step walks one edge, downward or upward.

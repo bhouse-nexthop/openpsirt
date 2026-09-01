@@ -16,6 +16,18 @@ and the two settings people get wrong are in `DESIGN-interface.md` under
 release comparison. Both have endpoints. `DESIGN-interface.md` lists the
 smaller gaps under "Not built yet".
 
+**To research: what a cancelled request leaves running.** When the dependency
+walk was slow, the log recorded `walk the graph: context canceled` and the
+process kept saturating three cores for another ninety minutes, so every click
+on the broken screen left a query behind that nothing stopped. Stopping it
+needed `SIGKILL`; the graceful path was waiting on the same queries. That
+particular query is fast now, which removes the symptom and not the cause —
+any slow statement can still outlive the request that asked for it, and each
+retry adds another. Worth establishing: whether the SQLite driver honours
+cancellation at all, whether the other three engines differ, whether the pool
+is the thing that starves, and whether shutdown should wait on in-flight work
+the way it does today.
+
 **The mockup is the approved design** and is the reference for anything
 visual. It is published at
 `https://claude.ai/code/artifact/fe3e1df3-fa9d-4d12-9545-b31d9366d078`. The
@@ -123,36 +135,63 @@ also takes the rest of the interface down with it, which is why "everything is
 slow" and "Dependencies is broken" are the same bug. Cancelling the HTTP request
 has to cancel the query.
 
-**The dependency screen is a flat list, not a tree.** Now that it loads, what
-it shows is one level at a time: 5,270 rows for the root, and clicking one
-*replaces* the view with a focused pane for that component. The mockup's
-`drawTree` is an indented tree rooted at the product — `padding-left` of twenty
-pixels per level — that expands lazily in place, so the levels stay on screen
-together. `UIX-04` asks for both halves, "expansion is **lazy**, with a focused
-view around a selected component", and only the second half was built.
+**The dependency screen was a flat list — rebuilt to the mockup.** It now draws
+the indented lazy tree `UIX-04` asks for, rooted at `sonic-broadcom`, with the
+count on every node at every level so descending follows the findings rather
+than guessing (`UIX-02`). Wide nodes show five and offer the rest, a component
+already drawn higher up is marked *shown above* rather than expanded again, and
+the pane beside it says what pulls the selection in and what it pulls in.
 
-What the tree is *for* is the part that goes missing with it. Every node in the
-mockup carries its open-findings count, emphasised past 500, and they are
-visible at every level at once — so you follow the biggest number downward
-rather than guessing which branch to open. That is the whole motion `UIX-02`
-describes, and one level at a time cannot support it: you see 5,270 numbers with
-nothing above them, click, and lose the trail you were following.
+Two things the mockup has on that screen are **not** built, because no endpoint
+answers them, and both are load-bearing rather than decoration:
 
-Three smaller things go with it, all already possible — the endpoint returns
-`findings` and `children` for every node, so this is client-side work:
+- **The search box.** The mockup's own note says it plainly — *"nobody finds
+  anything in a tree this size by opening nodes, so searching is the way in"*.
+  There is no component search endpoint. The input is left out rather than
+  drawn dead.
+- **The header totals** ("8,374 components, 27,366 edges"). Nothing reports
+  either number.
 
-- **The root is never drawn.** The mockup starts at `sonic-broadcom` itself;
-  the screen starts at its children, so the thing being explored is off-screen.
-- **Nothing truncates a wide node.** The root has 5,270 children and all of them
-  render, a 398 KB response drawn in full. The mockup shows five and a *"Show
-  all 5,270 under sonic-broadcom"* button.
-- **A repeat is redrawn rather than marked.** The mockup marks a component
-  already drawn higher up as *"shown above"* and stops. Without that, a graph
-  with any sharing in it never finishes drawing — which on this data is not a
-  hypothetical.
+A third is possible but not done: the mockup opens straight to a component with
+the path above it expanded when you arrive from a finding. That needs walking
+`above` upward one request at a time, so it is a small design decision rather
+than a line of code.
 
-A zero count is also hidden where the mockup prints it in a quiet style. That
-reads as missing data rather than as a clean component.
+Two CSS rules the screen needs — `.detail` and `.upward` — were **missing from
+`web/src/index.css` entirely**, having been skipped when the styles were lifted
+from the mockup. That is the extraction trap recorded below, found a second
+time, and the lesson holds: check the containers, not just the leaves.
+
+**The findings filters only narrow the page you are looking at.** The endpoint
+takes `limit` and `offset` and *nothing else* — no severity, no exploited, no
+component. So the chips and the "at least" control in `Findings.tsx:49` filter
+`all`, which is the fifty rows already fetched. Asking for "exploited" on page
+one shows the exploited rows **among those fifty**, not in the build, and paging
+with one active walks through a different arbitrary subset each time. The screen
+does announce how many it hid, which is the honest half of a thing that should
+not be client-side at all.
+
+**Asked for: toggles on the findings view.** Two, and the second is the one the
+data argues hardest for.
+
+*Group by component and version, ignoring the path.* The list is already one row
+per issue and component rather than per place, so the path is collapsed — what
+this asks for is the level above: one row per component at a version, carrying
+how many issues it has, so you can see that `openssl 3.5.6` has twelve rather
+than reading twelve rows.
+
+*Hide a component that drowns the list.* Measured on the demo build: the list is
+**6,822 rows, and 4,943 of them — 72% — are the kernel**, one package. It also
+holds 425,098 of the 441,108 places, 96%. The next largest contributor is
+`binutils` with 58 rows. Hiding one component takes the list from 6,822 rows to
+1,879, which is the difference between a list somebody reads and one they scroll
+past.
+
+Both need the endpoint to take the filter, for the reason directly above: a
+toggle applied to fifty fetched rows answers a different question from the one
+it appears to answer. `REJ-10` is the rule to hold to while building them — a
+preference that quietly moves a number is how two people quote different figures
+for one question and neither finds out.
 
 Worth saying once: none of these is a case of the design being unclear. The
 panel was specified, drawn, and cited, and the implementation went its own way —

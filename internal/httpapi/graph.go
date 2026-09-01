@@ -19,6 +19,16 @@ type NeighbourBody struct {
 	Children  int    `json:"children" doc:"How many components it pulls in. Zero means nothing to open"`
 }
 
+// RootsBody is the build's own component and what it pulls in directly.
+type RootsBody struct {
+	Root  *NeighbourBody  `json:"root,omitempty" doc:"The build itself, which everything below descends from. Absent where the inventory named no root of its own"`
+	Items []NeighbourBody `json:"items"`
+}
+
+type rootsOutput struct {
+	Body RootsBody
+}
+
 // AroundBody is what sits above and below one component.
 type AroundBody struct {
 	Above []NeighbourBody `json:"above" doc:"What pulls this in — usually short, and the direction people use"`
@@ -30,7 +40,9 @@ func registerGraph(api huma.API, in Ingest) {
 		OperationID: "list-top-level-components", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/components",
 		Summary: "List what a build pulls in directly",
-		Description: "Returns the components the build itself depends on, most findings first.\n\n" +
+		Description: "Returns the build's own component and what it depends on, most findings " +
+			"first. The root is named separately from the list because it is what the list " +
+			"hangs from rather than a member of it.\n\n" +
 			"The starting point for walking the graph. A full render is not offered and would " +
 			"not be useful: a real image holds thousands of components and tens of thousands of " +
 			"edges, which neither draws nor reads. Ask for one step at a time.\n\n" +
@@ -41,17 +53,21 @@ func registerGraph(api huma.API, in Ingest) {
 		Product string `path:"product"`
 		Stream  string `path:"stream"`
 		Variant string `path:"variant"`
-	}) (*listOutput[NeighbourBody], error) {
+	}) (*rootsOutput, error) {
 		subject, target, err := browsing(ctx, in, input.Product, input.Stream, input.Variant)
 		if err != nil {
 			return nil, err
 		}
-		roots, err := graph.NewStore(in.DB.DB).Roots(ctx, subject, target)
+		root, roots, err := graph.NewStore(in.DB.DB).Roots(ctx, subject, target)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "the build's contents could not be read", err)
 		}
-		out := &listOutput[NeighbourBody]{}
+		out := &rootsOutput{}
 		out.Body.Items = neighbours(roots)
+		if root != nil {
+			at := neighbours([]graph.Neighbour{*root})[0]
+			out.Body.Root = &at
+		}
 		return out, nil
 	})
 

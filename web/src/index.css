@@ -714,6 +714,21 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: now
 .hint { color: var(--muted); font-size: var(--step--1); }
 .card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 14px; }
 
+/* Two rules the first extraction from the mockup missed, both wanted by the
+   dependency screen: the tree beside the pane that describes what is selected
+   in it, and the pane's "what pulls this in" panel. */
+.detail { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 18px; }
+
+.upward {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.upward h5 { margin: 0 0 6px; font-size: var(--step--1); font-weight: 600; }
+.upward ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; font-size: var(--step--1); }
+
 /* A narrow screen has no room for a rail, and the findings list becomes cards
    rather than a table that scrolls sideways (UIX-16). */
 @media (max-width: 780px) {
@@ -725,6 +740,8 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: now
   .rail .group { display: none; }
   .nav { width: auto; white-space: nowrap; }
   .stage { padding: 16px 14px 28px; }
+  /* The tree needs the width more than the pane beside it does. */
+  .detail { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Recharts marks its drawing surface focusable for keyboard users, and the

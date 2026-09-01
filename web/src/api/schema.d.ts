@@ -608,7 +608,7 @@ export interface paths {
         };
         /**
          * List what a build pulls in directly
-         * @description Returns the components the build itself depends on, most findings first.
+         * @description Returns the build's own component and what it depends on, most findings first. The root is named separately from the list because it is what the list hangs from rather than a member of it.
          *
          *     The starting point for walking the graph. A full render is not offered and would not be useful: a real image holds thousands of components and tens of thousands of edges, which neither draws nor reads. Ask for one step at a time.
          *
@@ -1923,15 +1923,6 @@ export interface components {
             readonly $schema?: string;
             items: components["schemas"]["MentionableBody"][] | null;
         };
-        ListBodyNeighbourBody: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/ListBodyNeighbourBody.json
-             */
-            readonly $schema?: string;
-            items: components["schemas"]["NeighbourBody"][] | null;
-        };
         ListBodyPersonBody: {
             /**
              * Format: uri
@@ -2247,6 +2238,17 @@ export interface components {
             ordinal: number;
             written_at: string;
             written_by: string;
+        };
+        RootsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RootsBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["NeighbourBody"][] | null;
+            /** @description The build itself, which everything below descends from. Absent where the inventory named no root of its own */
+            root?: components["schemas"]["NeighbourBody"];
         };
         "Send-decision-backRequest": {
             /**
@@ -3482,7 +3484,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ListBodyNeighbourBody"];
+                    "application/json": components["schemas"]["RootsBody"];
                 };
             };
             /** @description Error */
