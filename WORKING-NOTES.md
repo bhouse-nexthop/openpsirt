@@ -123,6 +123,37 @@ also takes the rest of the interface down with it, which is why "everything is
 slow" and "Dependencies is broken" are the same bug. Cancelling the HTTP request
 has to cancel the query.
 
+**The dependency screen is a flat list, not a tree.** Now that it loads, what
+it shows is one level at a time: 5,270 rows for the root, and clicking one
+*replaces* the view with a focused pane for that component. The mockup's
+`drawTree` is an indented tree rooted at the product — `padding-left` of twenty
+pixels per level — that expands lazily in place, so the levels stay on screen
+together. `UIX-04` asks for both halves, "expansion is **lazy**, with a focused
+view around a selected component", and only the second half was built.
+
+What the tree is *for* is the part that goes missing with it. Every node in the
+mockup carries its open-findings count, emphasised past 500, and they are
+visible at every level at once — so you follow the biggest number downward
+rather than guessing which branch to open. That is the whole motion `UIX-02`
+describes, and one level at a time cannot support it: you see 5,270 numbers with
+nothing above them, click, and lose the trail you were following.
+
+Three smaller things go with it, all already possible — the endpoint returns
+`findings` and `children` for every node, so this is client-side work:
+
+- **The root is never drawn.** The mockup starts at `sonic-broadcom` itself;
+  the screen starts at its children, so the thing being explored is off-screen.
+- **Nothing truncates a wide node.** The root has 5,270 children and all of them
+  render, a 398 KB response drawn in full. The mockup shows five and a *"Show
+  all 5,270 under sonic-broadcom"* button.
+- **A repeat is redrawn rather than marked.** The mockup marks a component
+  already drawn higher up as *"shown above"* and stops. Without that, a graph
+  with any sharing in it never finishes drawing — which on this data is not a
+  hypothetical.
+
+A zero count is also hidden where the mockup prints it in a quiet style. That
+reads as missing data rather than as a clean component.
+
 Worth saying once: none of these is a case of the design being unclear. The
 panel was specified, drawn, and cited, and the implementation went its own way —
 the same failure the note at the top of this document records about the palette,

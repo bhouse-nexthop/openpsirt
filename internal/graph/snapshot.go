@@ -342,6 +342,11 @@ func (s *Store) step(ctx context.Context, subject access.Subject, targetID, comp
 		Join("JOIN graph_node AS nn ON nn.id = e."+near).
 		Join("JOIN graph_node AS fn ON fn.id = e."+far).
 		Join("JOIN component AS c ON c.id = fn.component_id").
+		Join(`LEFT JOIN (SELECT dp.component_id AS cid, COUNT(*) AS n
+			FROM "graph_edge" AS d
+			JOIN "graph_node" AS dp ON dp.id = d.parent_id
+			WHERE d.target_id = ? AND d.closed_scan_id IS NULL
+			GROUP BY dp.component_id) AS kids ON kids.cid = c.id`, targetID).
 		ColumnExpr("c.name AS name").
 		ColumnExpr("c.version AS version").
 		// What is open against it here, so descending follows the findings
@@ -356,14 +361,25 @@ func (s *Store) step(ctx context.Context, subject access.Subject, targetID, comp
 			targetID, bun.List(readable)).
 		// Whether anything is under it, so a node that opens can be told from
 		// one that does not before somebody clicks it.
-		ColumnExpr(`(SELECT COUNT(*) FROM "graph_edge" AS d
-			JOIN "graph_node" AS dp ON dp.id = d.parent_id
-			WHERE d.target_id = ? AND dp.component_id = c.id
-			  AND d.closed_scan_id IS NULL) AS children`, targetID).
+		//
+		// Counted once for the whole build and joined, rather than asked per
+		// row. As a correlated subquery this has no index to take: it is bound
+		// on the child's component, while the only way into the edge table is
+		// the target, so each row scanned every edge in the build. Measured on
+		// a switch operating-system image — 19,192 edges, 5,270 components
+		// directly under the root — that column alone cost 5.06 s against
+		// 0.106 s for one pass. An index on the node's component was tried
+		// first and made it worse (5.4 s to 10.0 s), because the scan being
+		// repeated is over the edges rather than the lookup it drives.
+		ColumnExpr("COALESCE(kids.n, 0) AS children").
 		Where("e.target_id = ?", targetID).
 		Where("nn.component_id = ?", componentID).
 		Where("e.closed_scan_id IS NULL").
-		GroupExpr("c.id, c.name, c.version").
+		// kids.n is grouped on as well as selected. It is one value per c.id
+		// and so adds nothing, but the engines that enforce the rule strictly
+		// will not take a column from a joined subquery on the strength of a
+		// primary key belonging to a different table.
+		GroupExpr("c.id, c.name, c.version, kids.n").
 		OrderExpr("findings DESC, c.name").
 		Scan(ctx, &rows)
 	if err != nil {
