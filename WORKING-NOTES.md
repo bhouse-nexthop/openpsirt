@@ -26,8 +26,9 @@ it.
 
 ## Decided during this stretch
 
-Each of these is recorded in `DECISIONS.md`; they are listed here only so the
-reasoning is findable while the work is fresh.
+Each of these is recorded in `DECISIONS.md`, except the last, which changed
+nothing here and is recorded in the upstream commit instead; they are listed
+here only so the reasoning is findable while the work is fresh.
 
 | | |
 |---|---|
@@ -36,17 +37,9 @@ reasoning is findable while the work is fresh.
 | **A component is addressed by name and version** | A name is not unique in a build. Resolving by name alone answered about whichever was interned first, so two of three rows for one library said "no such finding". An ambiguous name with no version is now a 409 that says to give one |
 | **ACC-57 to ACC-59** | Capabilities per product in one answer; the sign-in providers are public; mention candidates are only people who can already read the finding |
 | **UIX-37** | The interface is embedded in the binary; a path the router has no route for belongs to the page |
+| **One package arriving as two components was not ours to decide** | It read as a modelling question about purl namespaces and was none of the five options weighed here. The producer was emitting two records for one artifact — see "The split, and the reload it needs" below |
 
 ## Open, and needing a decision
-
-**One package arrives as two components.** 158 of 7,859 components split
-because the purl namespace differs — `pkg:deb/sonic/openssl`,
-`pkg:deb/debian/openssl` and `pkg:deb/openssl` with none. Each split
-double-counts its findings. The options and their costs were laid out in full:
-ignore the namespace for OS-package ecosystems only, ignore it everywhere
-(wrong — it is the scope in npm and the groupId in Maven), group in the list
-only (cosmetic, leaves every total wrong), normalise at ingest rather than in
-identity, or leave it and wait for a second real producer. **Not decided.**
 
 **Should home be scoped to the selected product?** Asked for, and it reverses
 UIX-08 ("the home page panels still summarize *across* products"). Three of the
@@ -57,6 +50,48 @@ built.**
 **A vulnerability has no published date.** A findings list ordered by when
 something was disclosed was asked about; nothing stores it. That is ingest work
 rather than a screen.
+
+## The split, and the reload it needs
+
+**Resolved upstream, not here.** The 156 deb packages that appeared twice —
+`pkg:deb/sonic/openssl` beside `pkg:deb/debian/openssl`, `pkg:deb/sonic/bash`
+beside `pkg:deb/bash` — were one defect in SONiC's own generator, not a
+disagreement worth modelling. `merge_components` already keyed on
+`(name, version)` so its three producers collapse into one record, but the key
+also carried architecture, read from a `sonic:arch` property that only the
+recipe-emit and observation fragments set. All 5,826 syft components therefore
+compared as architecture `""` and never met the recipe fragment describing the
+same `.deb`.
+
+Fixed in `sonic-net/sonic-buildimage` PR #29237, commit `ad3211ee`: architecture
+leaves the dedupe key (no producer there knows it — the recipe reads a filename,
+the observation stamps `CONFIGURED_ARCH`, only syft reads dpkg, and the three
+disagree), syft's `distro=` qualifier moves to the merge winner so 65 packages
+keep the advisory-feed context the loser held, and a new `scripts/sbom_purl.py`
+escapes package identifiers for both producers so `+fips` stops arriving as
+`+fips` from one and `%2Bfips` from the other. Replaying the merge over the
+current fixture: 156 split packages to 0, 8,374 components to 7,680.
+
+**Nothing in `ING-36` changes.** Dropping qualifiers and decoding escapes was
+right for its own reasons and stays. The namespace is meaningful — it is the
+scope in npm and the groupId in Maven — and the tempting option, ignoring it for
+OS-package ecosystems, would have hidden a producer bug behind a rule.
+
+**Pending: the fixture still holds the bad data.** Everything measured against
+`internal/sbom/testdata/switch-image.cdx.json.xz` — and everything in the demo
+database seeded from it — was produced by the generator before the fix, so the
+duplicate packages and their doubled findings are still in every number the
+interface shows. A fresh SBOM is being built. When it lands:
+
+1. `xz -9` it over `internal/sbom/testdata/switch-image.cdx.json.xz`, which is
+   the path `make demo-seed` decompresses and uploads and the path
+   `internal/sbom/fullsize_test.go` reads.
+2. `make demo-reset` to rebuild the demo database from it, since `urgency` is
+   computed at ingest and nothing already stored moves.
+3. Re-check the counts quoted in `DECISIONS.md` `ING-36` and `ING-37` — 8,374
+   described components naming 7,858 packages, 516 collisions, 30 pedigree
+   against 535 qualifier — because they were measured on the old file and the
+   first two of them will have moved.
 
 ## Traps found the hard way
 
@@ -81,6 +116,11 @@ brace-matching, and check the container is there.
 
 **`urgency` is computed at ingest and stored**, so changing the ranking needs a
 re-scan before anything moves.
+
+**Every count on screen today came from an SBOM with known duplicates.** Until
+the fixture is replaced, 156 packages are counted twice and so are their
+findings. A total that looks slightly high is not necessarily a defect in the
+query.
 
 **The dev machine has an HTTP proxy configured** (`HTTP_PROXY` to a Squid
 cache) which intercepts `curl` to the local hostname and answers 403. Every
