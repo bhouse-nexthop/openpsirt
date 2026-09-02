@@ -17,6 +17,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
 	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 	"github.com/bhouse-nexthop/openpsirt/internal/version"
 )
@@ -160,6 +161,7 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	registerScans(api, in)
 	registerFindings(api, in)
 	registerReceipts(api, in)
+	registerCoverage(api, in)
 	registerSession(api, in)
 	registerTokens(api, in)
 	registerFindingDetail(api, in)
@@ -189,7 +191,21 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 		}
 		return setting.NewStore(in.DB.DB)
 	})
-	registerCatalog(api, Declaring{Store: in.catalog, Logger: logger})
+	registerCatalog(api, Declaring{
+		Store: in.catalog, Logger: logger,
+		Findings: func() *finding.Store {
+			if in.DB == nil {
+				return nil
+			}
+			return finding.NewStore(in.DB.DB)
+		},
+		Scans: func() *ingest.Store {
+			if in.DB == nil {
+				return nil
+			}
+			return ingest.NewStore(in.DB.DB)
+		},
+	})
 	registerAdministration(api, Administering{
 		Access: in.rights, Catalog: in.catalog, Logger: logger, Mode: in.Mode,
 		Findings: func() *finding.Store {

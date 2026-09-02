@@ -1174,6 +1174,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/scanning": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List when each build was last scanned
+         * @description Returns every build you can see, longest-silent first, with when a scan last arrived for it and whether that is longer ago than this deployment allows.
+         *
+         *     A build that stops being scanned reports no new findings and fails nothing, so it looks healthier than one that is still being scanned. A build nothing has ever been filed against is measured from when it was declared.
+         *
+         *     How long counts as quiet is the `scanning.quiet-after` setting.
+         */
+        get: operations["list-scanning"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/session": {
         parameters: {
             query?: never;
@@ -1632,6 +1656,44 @@ export interface components {
             /** Format: int64 */
             total: number;
         };
+        CoverageBody: {
+            /** @description When a scan last arrived. Absent where none ever has */
+            last_received_at?: string;
+            product: string;
+            /** @description Whether that is longer than this deployment allows */
+            quiet?: boolean;
+            /**
+             * Format: int64
+             * @description How long it has been, in days, measured from the last arrival or from when the build was declared
+             */
+            quiet_days: number;
+            stream: string;
+            /**
+             * @description Whether this line moves
+             * @enum {string}
+             */
+            stream_kind: "branch" | "tag";
+            variant: string;
+        };
+        CoverageOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CoverageOutputBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["CoverageBody"][] | null;
+            /**
+             * Format: int64
+             * @description How many of these have gone quiet
+             */
+            quiet: number;
+            /**
+             * Format: int64
+             * @description How long this deployment allows, in days
+             */
+            quiet_after_days: number;
+        };
         "Decide-togetherRequest": {
             /**
              * Format: uri
@@ -1936,6 +1998,11 @@ export interface components {
              * @description How many of those the build has already argued do not apply
              */
             answered?: number;
+            /**
+             * Format: int64
+             * @description How many distinct ways down there are. More than one means the pair above is one of them
+             */
+            chains?: number;
             /** @description What carries it */
             component: string;
             /** @description Somebody is known to be exploiting this */
@@ -1952,6 +2019,15 @@ export interface components {
              * @description Published estimate that this will be exploited, 0 to 1
              */
             likelihood?: number;
+            /**
+             * Format: int64
+             * @description How many steps sit between those two
+             */
+            middle?: number;
+            /** @description The part of the product this belongs to. Absent where the inventory placed the component nowhere */
+            owner?: string;
+            /** @description What directly pulls it in, which is what a decision is about */
+            parent?: string;
             /**
              * Format: int64
              * @description How many places this component sits at here
@@ -2417,10 +2493,32 @@ export interface components {
              * @example https://example.com/schemas/ProductBody.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description How many branches are declared
+             */
+            branches?: number;
             /** @description What people see. Defaults to the name */
             display_name?: string;
+            /** @description When a scan last arrived for any of its builds */
+            last_scan_at?: string;
             /** @description How scans name this product */
             name: string;
+            /**
+             * Format: int64
+             * @description Issues open against it, counted at components rather than at every place they sit
+             */
+            open?: number;
+            /**
+             * Format: int64
+             * @description How many tags are declared
+             */
+            tags?: number;
+            /**
+             * Format: int64
+             * @description How many variants are declared
+             */
+            variants?: number;
         };
         ProviderBody: {
             /** @description What to put in the sign-in path */
@@ -2474,8 +2572,18 @@ export interface components {
         ReceiptBody: {
             /** @description When the producer says the build was made */
             built_at?: string;
+            /**
+             * Format: int64
+             * @description Issues that were open and are not any more
+             */
+            closed?: number;
             /** @description Why it could not be used, where it could not */
             failure?: string;
+            /**
+             * Format: int64
+             * @description Issues this run found that were not open before
+             */
+            opened?: number;
             /** @description When it arrived here */
             received_at: string;
             /**
@@ -2669,8 +2777,15 @@ export interface components {
              * @enum {string}
              */
             kind: "branch" | "tag";
+            /** @description When a scan last arrived for any build of it */
+            last_scan_at?: string;
             /** @description How scans name this branch or tag */
             name: string;
+            /**
+             * Format: int64
+             * @description Issues open against it, counted at components rather than at every place they sit
+             */
+            open?: number;
             /** @description For a tag, the branch it was cut from */
             parent?: string;
         };
@@ -2756,6 +2871,11 @@ export interface components {
             customer_facing?: boolean;
             /** @description How scans name this build of the stream */
             name: string;
+            /**
+             * Format: int64
+             * @description Issues open against it here, counted at components rather than at every place they sit
+             */
+            open?: number;
         };
         WaitingBody: {
             /**
@@ -4866,6 +4986,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListBodyLateBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-scanning": {
+        parameters: {
+            query?: {
+                /** @description Limit to one product, by name. Empty means every product you can see */
+                product?: string;
+                /** @description Limit to one branch or tag. Only meaningful with a product */
+                stream?: string;
+                /** @description Limit to one variant. Only meaningful with a product, and independent of the branch */
+                variant?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverageOutputBody"];
                 };
             };
             /** @description Error */

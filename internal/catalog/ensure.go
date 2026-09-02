@@ -224,3 +224,67 @@ func (s *Store) VisibleStream(ctx context.Context, subject access.Subject, produ
 	}
 	return p, st, nil
 }
+
+// Shape is how much a product holds.
+type Shape struct {
+	Branches int
+	Tags     int
+	Variants int
+}
+
+// Shapes counts what each of these products holds.
+//
+// A catalogue row saying only a name makes somebody open it to find out
+// whether there is anything there, which for a list whose whole job is to say
+// what exists is the question it should have answered.
+func (s *Store) Shapes(ctx context.Context, productIDs []int64) (map[int64]Shape, error) {
+	out := make(map[int64]Shape, len(productIDs))
+	if len(productIDs) == 0 {
+		return out, nil
+	}
+
+	var streams []struct {
+		ProductID int64  `bun:"product_id"`
+		Kind      string `bun:"kind"`
+		Count     int    `bun:"count"`
+	}
+	if err := s.db.NewSelect().
+		TableExpr("stream AS st").
+		ColumnExpr("st.product_id AS product_id").
+		ColumnExpr("st.kind AS kind").
+		ColumnExpr("COUNT(*) AS count").
+		Where("st.product_id IN (?)", bun.List(productIDs)).
+		GroupExpr("st.product_id, st.kind").
+		Scan(ctx, &streams); err != nil {
+		return nil, fmt.Errorf("count branches and tags: %w", err)
+	}
+	for _, row := range streams {
+		shape := out[row.ProductID]
+		if Kind(row.Kind) == Tag {
+			shape.Tags = row.Count
+		} else {
+			shape.Branches = row.Count
+		}
+		out[row.ProductID] = shape
+	}
+
+	var variants []struct {
+		ProductID int64 `bun:"product_id"`
+		Count     int   `bun:"count"`
+	}
+	if err := s.db.NewSelect().
+		TableExpr("variant AS va").
+		ColumnExpr("va.product_id AS product_id").
+		ColumnExpr("COUNT(*) AS count").
+		Where("va.product_id IN (?)", bun.List(productIDs)).
+		GroupExpr("va.product_id").
+		Scan(ctx, &variants); err != nil {
+		return nil, fmt.Errorf("count variants: %w", err)
+	}
+	for _, row := range variants {
+		shape := out[row.ProductID]
+		shape.Variants = row.Count
+		out[row.ProductID] = shape
+	}
+	return out, nil
+}

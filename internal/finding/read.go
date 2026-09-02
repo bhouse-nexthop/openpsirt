@@ -150,6 +150,21 @@ type Group struct {
 	// 2003 issue scored 10.0 reads "high" under CVSS v2 and "critical" under
 	// v3 — so a row showing only the word looks mis-sorted when two tie.
 	ScoreCenti int
+	// Owner and Parent are the two ends of the way down to this component: the
+	// part of the product it belongs to, and what directly pulls it in
+	// (UIX-12). Those two are what differ between sibling rows — the top says
+	// which part of the product this is, the bottom is what a decision is
+	// about — and the steps between them rarely distinguish anything, so
+	// Middle counts them rather than naming them.
+	//
+	// A group covers every place the component sits at, and those places can
+	// come down different ways. Chains says how many distinct ways there are,
+	// so a row can say "one of 4" rather than presenting one route as though
+	// it were the only one.
+	Owner  string
+	Parent string
+	Middle int
+	Chains int
 }
 
 // Severities in the order they rank, least first. A floor keeps this word and
@@ -338,6 +353,9 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		ScoreCenti      int    `bun:"score_centi"`
 		FixState        string `bun:"fix_state"`
 		FixedIn         string `bun:"fixed_in"`
+		ConsumerID      *int64 `bun:"consumer_id"`
+		Consumers       int    `bun:"consumers"`
+		Direct          int    `bun:"direct"`
 	}
 	page := s.db.NewSelect().
 		TableExpr("finding AS f").
@@ -365,6 +383,12 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		ColumnExpr("SUM(CASE WHEN f.suppressed_by IS NULL THEN 0 ELSE 1 END) AS answered").
 		ColumnExpr("MIN(f.fix_state) AS fix_state").
 		ColumnExpr("MIN(f.fixed_in) AS fixed_in").
+		// One of the ways down, and how many there are. MIN passes over the
+		// places the build pulls in directly, whose consumer is null, so those
+		// are counted separately rather than being read as "no route at all".
+		ColumnExpr("MIN(f.consumer_id) AS consumer_id").
+		ColumnExpr("COUNT(DISTINCT f.consumer_id) AS consumers").
+		ColumnExpr("SUM(CASE WHEN f.consumer_id IS NULL THEN 1 ELSE 0 END) AS direct").
 		Where("f.target_id = ?", targetID).
 		Where("f.closed_run_id IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
@@ -424,6 +448,23 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		return nil, 0, err
 	}
 
+	// Both ends of the way down to each row, in one pass over the page rather
+	// than a walk per row. A row whose places are pulled in directly by the
+	// build is asked about by the component itself, which lands on the same
+	// answer with one step in it.
+	wanted := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		if row.ConsumerID != nil {
+			wanted = append(wanted, *row.ConsumerID)
+		} else {
+			wanted = append(wanted, row.ComponentID)
+		}
+	}
+	chains, err := graph.NewStore(s.db).Chains(ctx, subject, targetID, wanted)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	groups := make([]Group, 0, len(rows))
 	for _, row := range rows {
 		group := Group{
@@ -441,9 +482,46 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 				group.Upstream = component.UpstreamName + " " + component.UpstreamVersion
 			}
 		}
+		// How many distinct ways down there are: the consumers this component
+		// has here, plus one for the build pulling it in directly.
+		group.Chains = row.Consumers
+		if row.Direct > 0 {
+			group.Chains++
+		}
+		down := chains[row.ComponentID]
+		if row.ConsumerID != nil {
+			down = chains[*row.ConsumerID]
+		}
+		group.Owner, group.Parent, group.Middle = ends(down)
 		groups = append(groups, group)
 	}
 	return groups, total, nil
+}
+
+// ends reduces a way down to the two steps worth showing and a count of what
+// was left out.
+//
+// The chain arrives build-first. The build itself is not one of the two: every
+// row in a list scoped to one build shares it, so naming it in every row says
+// nothing and costs the width that the parts which differ need.
+func ends(down []graph.Step) (owner, parent string, middle int) {
+	switch len(down) {
+	case 0:
+		// The inventory placed the component nowhere. Saying so is the honest
+		// answer; claiming the product itself pulls it in is a comfortable
+		// sentence and not a true one.
+		return "", "", 0
+	case 1:
+		// The build pulls it in directly, so both ends are the build.
+		return down[0].Name, down[0].Name, 0
+	}
+	owner = down[1].Name
+	parent = down[len(down)-1].Name
+	// Everything between the two named steps.
+	if middle = len(down) - 3; middle < 0 {
+		middle = 0
+	}
+	return owner, parent, middle
 }
 
 // issuesNamed reads what these issues are called and how bad they are said to be.

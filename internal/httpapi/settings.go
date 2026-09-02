@@ -44,6 +44,7 @@ var settable = []struct {
 	{setting.MaxTokenLifetime, "The longest a personal token may be valid for"},
 	{setting.TogetherCap, "How many findings one action may claim about at once. A whole number, not a length of time"},
 	{setting.TriageFloor, "What counts as worth triaging: everything, or a severity word below which findings are still recorded and counted but kept out of the working list. A product may state its own instead"},
+	{setting.QuietAfter, "How long a build may go without a scan arriving before it is reported as having gone quiet. Measured from the last arrival, or from when the build was declared where nothing has ever arrived"},
 	{setting.UpstreamCurrency, "Whether to ask public package indexes what the newest version of a component is. Off unless turned on: it is the only thing here that reaches the network, and a deployment that cannot reach out loses this answer and nothing else"},
 }
 
@@ -258,6 +259,11 @@ func shipped(name string) string {
 	case setting.TriageFloor:
 		// Nothing hidden until somebody decides to hide it.
 		return "everything"
+	case setting.QuietAfter:
+		// A week. Long enough that a nightly build missing one night is not an
+		// alert, short enough that a pipeline switched off is noticed in the
+		// week it happens rather than the month.
+		return "168h"
 	case setting.UpstreamCurrency:
 		// Nobody talked to until somebody says to.
 		return setting.Off

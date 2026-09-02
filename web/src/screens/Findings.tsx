@@ -337,6 +337,11 @@ export function Findings() {
                 <th>Severity</th>
                 <th>Issue</th>
                 <th>Component</th>
+                {/* Both ends of the way down, middle collapsed (UIX-12).
+                    The top says which part of the product this is, the bottom
+                    says what pulls it in and is therefore what a decision is
+                    about; the steps between rarely tell two rows apart. */}
+                <th>Where it sits</th>
                 <th className="num" title="Published estimate that this will be exploited. It orders things that are equally severe">Likely</th>
                 <th>Fix</th>
                 <th className="num">Places</th>
@@ -400,6 +405,9 @@ export function Findings() {
                         <br />
                         <span className="id" style={{ color: "var(--faint)" }}>{row.version}</span>
                       </td>
+                      <td>
+                        <Sits row={row} />
+                      </td>
                       <td className="num hint">
                         {row.likelihood ? row.likelihood.toFixed(3) : "—"}
                       </td>
@@ -425,7 +433,7 @@ export function Findings() {
                     </tr>
                     {peeking === key && (
                       <tr className="places">
-                        <td colSpan={7}>
+                        <td colSpan={8}>
                           <Peek
                             at={{ product, stream, variant }}
                             vulnerability={row.vulnerability ?? ""}
@@ -460,6 +468,35 @@ export function Findings() {
         }}
       />
     </>
+  );
+}
+
+// Where a component sits, as the two ends that differ between sibling rows.
+//
+// Where the row covers places reached more than one way, it says so rather
+// than presenting one route as though it were the only one: the pair shown is
+// one of several, and a reader deciding about "the" parent would be deciding
+// about a parent they were not shown.
+function Sits({
+  row,
+}: {
+  row: { owner?: string; parent?: string; middle?: number; chains?: number };
+}) {
+  if (!row.owner && !row.parent) {
+    return <span className="hint">nothing records what pulls this in</span>;
+  }
+  const same = row.owner === row.parent;
+  return (
+    <span className="hint">
+      <span className="id">{row.owner}</span>
+      {!same && (
+        <>
+          {row.middle ? ` › +${row.middle} › ` : " › "}
+          <span className="id">{row.parent}</span>
+        </>
+      )}
+      {(row.chains ?? 0) > 1 && <> · one of {row.chains}</>}
+    </span>
   );
 }
 

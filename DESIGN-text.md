@@ -77,8 +77,9 @@ email is composed server-side without going through the API — so the parameter
 had no caller left, and a rendered field nobody asked for is one somebody
 eventually displays without sanitizing it themselves.
 
-**The server still renders**, for an email's HTML part (Stage 6). What it no
-longer does is render for a reader on the way out of the API.
+**The server still renders**, for an email's HTML part, which has no client to
+render for it. What it no longer does is render for a reader on the way out of
+the API.
 
 ### What that moves, and what it does not
 

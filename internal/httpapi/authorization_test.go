@@ -457,6 +457,10 @@ func TestAPipelineCanReachNothingButSending(t *testing.T) {
 			"/v1/tokens",
 			// Nor anything to argue about: a build server has no judgment.
 			"/v1/review-queue",
+			// Nor when anything was last scanned. A key reads back what it
+			// sent; when a build was last scanned by anybody is a fact about
+			// the deployment, and the answer names every build there is.
+			"/v1/scanning",
 			"/v1/roles/mode",
 			"/v1/roles/bindings",
 		} {
@@ -505,6 +509,26 @@ func TestAListShowsOnlyWhatTheAskerHolds(t *testing.T) {
 	})
 }
 
+func TestScanningShowsOnlyTheBuildsTheAskerHolds(t *testing.T) {
+	// Counting is reading, and this one names every build there is: a list
+	// that included one somebody holds nothing on would disclose that the
+	// product exists, which is the thing every other refusal here is careful
+	// not to say.
+	eachReach(t, func(t *testing.T, r *reach) {
+		req := httptest.NewRequest(http.MethodGet, "/v1/scanning", nil)
+		req.Header.Set(testHeader, "reader")
+		rec := httptest.NewRecorder()
+		r.handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("a reader could not ask what has been scanned: %d", rec.Code)
+		}
+		if body := rec.Body.String(); contains(body, "theirs") {
+			t.Errorf("a product they hold nothing on was listed: %s", body)
+		}
+	})
+}
+
 func contains(haystack, needle string) bool {
 	return len(haystack) >= len(needle) && (func() bool {
 		for i := 0; i+len(needle) <= len(haystack); i++ {
@@ -526,7 +550,7 @@ func TestNothingButTheProbesAnswersWithoutACredential(t *testing.T) {
 		for _, path := range []string{
 			"/openapi.json", "/openapi.yaml", "/openapi-3.0.json", "/openapi-3.0.yaml",
 			"/schemas/VariantBody.json", "/docs",
-			"/v1/version", "/v1/products",
+			"/v1/version", "/v1/products", "/v1/scanning",
 		} {
 			got := r.body(t, "", http.MethodGet, path)
 			if got.code == http.StatusOK {

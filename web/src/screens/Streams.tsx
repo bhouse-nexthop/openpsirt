@@ -57,7 +57,10 @@ export function Streams() {
   return (
     <div>
       <Crumbs product={product} />
-      <h1 className="mb-4 text-lg font-semibold tracking-tight">Branches and tags</h1>
+      <div className="screen-head">
+        <h2>Branches and tags</h2>
+        <p>The releases of a product, past and in progress. A branch moves; a tag never does.</p>
+      </div>
       <Declare
         what="a branch or tag"
         hint="A tag names the branch it was cut from, which is what lets a decision made on the branch carry into it rather than being made again."
@@ -94,24 +97,41 @@ export function Streams() {
           detail="A branch or a tag is declared before a scan can be filed against it."
         />
       ) : (
-        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((stream) => (
-            <li key={stream.name}>
-              <Link
-                to={`/products/${encodeURIComponent(product)}/streams/${encodeURIComponent(stream.name)}`}
-                className="block rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-3 hover:border-[var(--accent)]"
-              >
-                <span className="flex items-center gap-2">
-                  <span className="font-medium">{stream.name}</span>
-                  <Kind kind={stream.kind} />
-                </span>
-                {stream.parent && (
-                  <span className="mt-0.5 block text-sm text-[var(--muted)]">cut from {stream.parent}</span>
-                )}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <div className="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Kind</th>
+                <th>Came from</th>
+                <th className="num">Open</th>
+                <th>Last scan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((stream) => (
+                <tr key={stream.name} className="row">
+                  <td>
+                    <Link
+                      to={`/products/${encodeURIComponent(product)}/streams/${encodeURIComponent(stream.name)}`}
+                      className="id"
+                    >
+                      {stream.name}
+                    </Link>
+                  </td>
+                  <td><Kind kind={stream.kind} /></td>
+                  <td className="hint">{stream.parent ?? "—"}</td>
+                  <td className="num">{(stream.open ?? 0).toLocaleString()}</td>
+                  {/* A line that has stopped being built looks identical to a
+                      healthy one until somebody opens it. */}
+                  <td className="hint">
+                    {stream.last_scan_at ? stream.last_scan_at.slice(0, 10) : "never"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

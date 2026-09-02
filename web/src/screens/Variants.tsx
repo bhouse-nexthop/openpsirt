@@ -53,7 +53,10 @@ export function Variants() {
   return (
     <div>
       <Crumbs product={product} stream={stream} />
-      <h1 className="mb-4 text-lg font-semibold tracking-tight">Variants</h1>
+      <div className="screen-head">
+        <h2>Variants</h2>
+        <p>The ways this release is built.</p>
+      </div>
       {/* Declaring is the product's, listing is the release's. What a product
           is built as belongs to the product; which of them a given release was
           built as is the release's, and is answered by a scan arriving
@@ -86,25 +89,39 @@ export function Variants() {
           detail="A variant appears once a build has filed a scan against it."
         />
       ) : (
-        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((variant) => (
-            <li key={variant.name}>
-              <Link
-                to={
-                  `/products/${encodeURIComponent(product)}` +
-                  `/streams/${encodeURIComponent(stream)}` +
-                  `/variants/${encodeURIComponent(variant.name)}/findings`
-                }
-                className="block rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-3 hover:border-[var(--accent)]"
-              >
-                <span className="font-medium">{variant.name}</span>
-                {variant.customer_facing === false && (
-                  <span className="mt-0.5 block text-sm text-[var(--muted)]">not customer-facing</span>
-                )}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <div className="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Ships to customers</th>
+                <th className="num">Open</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((variant) => (
+                <tr key={variant.name} className="row">
+                  <td>
+                    <Link
+                      to={
+                        `/products/${encodeURIComponent(product)}` +
+                        `/streams/${encodeURIComponent(stream)}` +
+                        `/variants/${encodeURIComponent(variant.name)}/findings`
+                      }
+                      className="id"
+                    >
+                      {variant.name}
+                    </Link>
+                  </td>
+                  {/* Absent reads as yes: an unclassified artifact ranks as
+                      though it ships, so silence must not look like a denial. */}
+                  <td className="hint">{variant.customer_facing === false ? "no" : "yes"}</td>
+                  <td className="num">{(variant.open ?? 0).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

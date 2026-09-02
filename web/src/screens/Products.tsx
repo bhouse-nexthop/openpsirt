@@ -78,21 +78,53 @@ export function Products({ who }: { who: Who }) {
 
   return (
     <div>
-      <h1 className="mb-4 text-lg font-semibold tracking-tight">Products</h1>
+      <div className="screen-head">
+        <h2>Products</h2>
+        <p>Everything a scan can be filed against has to be declared first.</p>
+      </div>
       {form}
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {products.map((product) => (
-          <li key={product.name}>
-            <Link
-              to={`/products/${encodeURIComponent(product.name)}/streams`}
-              className="block rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-3 hover:border-[var(--accent)]"
-            >
-              <span className="font-medium">{product.display_name || product.name}</span>
-              <span className="mt-0.5 block text-sm text-[var(--muted)]">{product.name}</span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      {/* What each one holds, rather than a list of names that has to be
+          opened one at a time to find out whether anything is behind it. The
+          open count is issues at components, the same way the findings list
+          counts, so the two numbers agree. */}
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th className="num">Branches</th>
+              <th className="num">Tags</th>
+              <th className="num">Variants</th>
+              <th className="num">Open</th>
+              <th>Last scan</th>
+            </tr>
+          </thead>
+          <tbody>
+            {products.map((product) => (
+              <tr key={product.name} className="row">
+                <td>
+                  <Link to={`/products/${encodeURIComponent(product.name)}/streams`} className="id">
+                    {product.display_name || product.name}
+                  </Link>
+                  {product.display_name && product.display_name !== product.name && (
+                    <>
+                      <br />
+                      <span className="id" style={{ color: "var(--faint)" }}>{product.name}</span>
+                    </>
+                  )}
+                </td>
+                <td className="num">{product.branches ?? 0}</td>
+                <td className="num">{product.tags ?? 0}</td>
+                <td className="num">{product.variants ?? 0}</td>
+                <td className="num">{(product.open ?? 0).toLocaleString()}</td>
+                <td className="hint">
+                  {product.last_scan_at ? product.last_scan_at.slice(0, 10) : "never"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

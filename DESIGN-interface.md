@@ -2,10 +2,11 @@
 
 The web interface, how it is built, and how it reaches the server.
 
-Satisfies UIX-01 to UIX-05, UIX-07, UIX-08, UIX-11, UIX-14, UIX-16, UIX-18 to
-UIX-23, UIX-25 to UIX-27, UIX-30 to UIX-32, UIX-34 to UIX-37, API-17, ACC-56
-to ACC-59. What is not built is named at the end rather than left to be found
-by clicking.
+Satisfies UIX-01 to UIX-05, UIX-07, UIX-08, UIX-11, UIX-12, UIX-14, UIX-16,
+UIX-18 to
+UIX-23, UIX-25 to UIX-27, UIX-30 to UIX-32, UIX-34 to UIX-42, API-17, ACC-56
+to ACC-59, and the half of ING-41 that is shown rather than collected. What is
+not built is named at the end rather than left to be found by clicking.
 
 ## One artifact
 
@@ -142,11 +143,76 @@ keystroke.
 What the server keeps is the half a client cannot do: the policy at submission.
 That split, and what it moves, is set out in `DESIGN-text.md`.
 
+## What you are looking at
+
+**The picker narrows the whole interface, and every level offers "all"**
+(UIX-38). Product, branch and variant are chosen once and every cross-product
+screen answers for that selection. The levels are independent: a variant
+belongs to its product, so "this product, every branch, this variant" is a real
+question rather than a mistake. Choosing "all" for the product leaves the two
+below it unselectable, because neither means anything without one.
+
+Summarizing across every product is still there — it is what "all" selects.
+It stopped being the only option, which is what it was while home always
+answered across everything: once somebody has picked a product, a page counting
+the others is answering a question nobody asked.
+
+**A screen that needs a whole build cannot be given half a scope** (UIX-39).
+Six of them exist for one build and no other — the findings list, a finding,
+deciding a place, the dependency tree, deciding several together, and scans —
+because there is no dependency graph across branches and a finding is a row in
+one build's scan. On those screens the levels that would go to "all" are
+disabled and say why. The alternative was to accept the partial scope and
+navigate somewhere it makes sense, which turns a filter into a jump nobody
+asked for: a control that declines is less surprising than one that relocates
+you.
+
+**Changing scope keeps you where you are.** A build-scoped screen swaps its
+build and stays the same screen, because changing what you are looking at is a
+property of the screen rather than a journey to another one.
+
+**A screen that names a build in its address is the authority for it.**
+Everything else — home, the review queue, the product list — remembers the last
+one instead, so walking away from a build and back does not lose it. That
+memory belongs to the tab rather than to the browser: it is where somebody is
+working right now, not a preference, and a second tab looking at another
+product must not drag the first one with it. A browser that refuses to store it
+still works and simply forgets.
+
+**A narrowed screen says what it is counting.** A page answering for one
+product that looks exactly like a page answering for all of them is how two
+people quote different figures for the same question. That applies to the
+panels within it as much as to the page: a chart the picker has narrowed and a
+label reading "all products" state opposite things, and the label is the half a
+reader believes.
+
+**A selection the server would refuse is never sent.** A branch or a variant
+with no product above it is refused rather than guessed at, so the levels that
+cannot stand alone are dropped on the way out. Sending one would turn a
+selection nobody can make in the interface into an error.
+
 ## Screens
 
 **The product list is the first pick.** The findings list is scoped to one
 product and everything below it is bound to that (UIX-07), so choosing one is a
 screen rather than a dropdown that silently changes what a number means.
+
+**A build that has gone quiet is named on the front page and on the scans
+screen.** A build that stops being scanned reports no new findings and fails
+nothing, so it looks healthier than one still being scanned — it is the one
+failure that makes every other number wrong rather than merely incomplete. How
+long counts as quiet is a setting; a build nothing has ever been filed against
+is the same failure caught earlier and is measured from when it was declared.
+Quiet builds are named one at a time rather than counted, because a number is
+read past and a name is acted on.
+
+**Home leads with the work and puts the shape of things underneath** (UIX-42) —
+what is waiting for review, what is being worked on, what stopped applying,
+then the trends, and the operational state at the foot. Somebody opening this
+most days wants to know what to do next; the trends answer a question asked
+occasionally, or asked by somebody about to report upward. The charts are also
+the slowest part of the page, so the half that is wanted first is also the half
+that arrives first.
 
 **The findings list is one row per issue-and-component**, not per place
 (UIX-01). A real image produced 335,021 individual findings that collapse to
@@ -174,6 +240,38 @@ kernel from the twenty rows already fetched and from nothing else. The filters
 are query parameters, which also puts them in the URL where a link carries
 them.
 
+**A row says where the component sits, as both ends of the way down**
+(UIX-12): the part of the product it belongs to, and what directly pulls it
+in. Those two are what differ between sibling rows — the top says which part of
+the product this is, the bottom is what a decision is about — and the steps
+between them rarely distinguish anything, so they are counted rather than
+named.
+
+Both ends cost one pass over the build's edges for the whole page, not a walk
+per row — the same pass the dependency tree makes, and a test pins the cost to
+the page size rather than to a statement count somebody has to maintain. **What
+that pass costs on a full-size build has not been measured here.** The tree's
+equivalent walk over 19,192 edges took a request from 0.16 s to 0.57 s, and
+this screen is the one opened first against the largest product, so the number
+is worth having before it is relied on. If it turns out to matter, the cheaper
+shape is climbing a level at a time from the consumers on the page rather than
+reading every edge: bounded by the depth of the graph instead of its size, and
+still flat in the number of rows.
+
+A row covers every place its component sits at, and those places can be reached
+different ways. Where they are, the row says the pair it shows is one of
+several rather than presenting one route as though it were the only one — a
+reader deciding about "the" parent would otherwise be deciding about a parent
+they were never shown. Where the inventory placed the component nowhere, it
+says that, rather than naming the product itself.
+
+**A row says what upstream has done, and how old the issue is** (UIX-41).
+"Upstream declined" and "nobody has fixed this yet" were the same blank, and
+they call for different responses. Age comes out of the year in the identifier
+at no cost, which is why it does not wait on a disclosure date being ingested:
+a fix that has not arrived in six years and one that has not arrived in six
+weeks are not the same situation, and the row used to show them identically.
+
 **The findings list has a second view: by component.** The default asks "what
 is wrong", grouped by issue; this asks "what is wrong *with this thing*", which
 is the question somebody upgrading a package has. Same data, different subject.
@@ -199,17 +297,77 @@ the one kernel all reported its total and filled the first screen — putting th
 containers out of sight again, which is the same fault arrived at from the
 other side.
 
+**The count is every open finding, answered or not.** A dismissal does not
+subtract from it. That is the behavior the screen has always had rather than a
+choice made for it, and it is written down because the two readings — "what is
+open here" and "what is still to answer here" — are both reasonable and the
+screen currently gives the first.
+
 **The finding screen is where deciding happens**, not a screen that links to
 deciding. It carries what the issue is, how bad, what upstream has done, where
 it sits in the build, the evidence, and both the Decide and the Assess cards.
 Deciding reuses the same outcome, editor and reach components the standalone
 decision screen uses, rather than a second form that drifts from the first.
 
+**It says how many of its places have been decided** (UIX-40). Once a judgment
+can cover a chosen subset of them, a finding half answered has to look
+different from one nobody has touched. The count of what the build argued away
+through its own VEX documents cannot stand in for this: that is a different
+claim by a different author, and reading it as ours would credit somebody
+else's reasoning to us.
+
+**Where upstream currency is switched on, the finding says what upstream has
+released and when** (ING-41). Two facts rather than a judgment about anybody's
+project: the newest version the component has published, and the date it
+shipped. Where an issue was named a clear year after the last release and is
+still unfixed, the screen says that is why there is no fix — phrased as the
+reason nothing has arrived, never as a claim that a project is abandoned, which
+is not something this tool knows. It states the release date rather than a year
+parsed back out of the identifier, and it needs a full year of silence: where a
+stand-in is only precise to a year, comparing two year-numbers makes a
+five-week gap look identical to a five-year one. Where the deployment has this
+switched off, the panel is absent rather than empty.
+
+**A link that names a component ambiguously offers the choices rather than
+refusing.** A name and a version together are not unique — a source repository
+and the package built from it can share both — so a finding reached by name
+alone can match more than one component. The screen lists what the name could
+mean, carrying the ecosystem wherever the choices disagree about it, so that
+following one resolves rather than returning the same refusal. Two lists are
+possible and they are not interchangeable: the components this issue is
+actually open at, and every component of that name. Saying the first sentence
+over the second list would tell somebody an issue affects a version it does
+not, so each says what is true of it.
+
 **Where it sits shows the chain, not the immediate parent.** The same parent
 can be reached by several routes, and a screen naming only the nearest one
 cannot tell them apart. Where nothing records what pulls a component in, it
 says that — rather than claiming the product itself does, which was a
 comfortable sentence and not a true one.
+
+**The review queue carries three kinds, not one.** A claim waiting for
+agreement, a deferral whose date has passed, and a decision the code moved out
+from under. The first is what "review queue" names and the other two disappear
+without somewhere that shows them — home counts them and links here, so a queue
+holding only the first sends somebody to a list that cannot contain what they
+were told about. The other two do not need a second person, since two people
+already agreed; they need a fresh reason, so they link to the decision rather
+than offering the judgment inline.
+
+**The catalogue says what each entry holds.** Products carry how many branches,
+tags and variants they have, what is open against them and when they were last
+scanned; branches and tags carry what they came from, what is open and when
+they were last scanned; variants carry whether they ship to customers and what
+is open. A list of names alone makes somebody open every row to find out
+whether anything is behind it, which is the question the list exists to answer.
+Every count of what is open is issues at components, the way the findings list
+counts, so a catalogue row and the list it opens agree.
+
+**The scans list says what each run changed**, not only that it finished.
+Opened and closed are counted as issues at components like everything else. A
+run covers a build rather than an upload, so where several uploads are answered
+by one run the numbers sit on the newest of them and the rest are blank rather
+than repeating one fact three times.
 
 **"Who is working on what" is three tabs, and the third is somewhere else.**
 Nobody-assigned already had its own entry in the rail, so the tab links across
@@ -396,6 +554,23 @@ months, and where a product has said what is worth triaging at all, a downgrade
 across that line takes the finding off the working list and off any clock
 entirely.
 
+## Where this diverges from the mockup
+
+**A finding is one screen in the mockup and three here.** The finding
+carries what it is, how bad, what upstream has done, where it sits, the
+evidence, and both judgments; a claim already standing has its own screen, and
+deciding a single place has another. Deciding itself moved onto the finding, so
+what remains split is the history — how the reasoning changed, and what has
+been said about it.
+
+That is one structural difference rather than a list of omissions, and it is
+written down as a difference rather than as a gap because which shape is better
+has not been decided. The mockup is where the visual design was worked out and
+is what gets cross-referenced when a screen is in question; it is not a
+contract, and diverging from it is allowed. What is not allowed is diverging
+from it without noticing, which is how a difference quietly becomes the design
+without anybody choosing it.
+
 ## Not built yet
 
 Named so that what is missing is a plan rather than something rediscovered by
@@ -411,14 +586,24 @@ which is the slow way to undo sixty.
 `@name` into the text, but the renderer treats it as ordinary words. UIX-24
 wants a mention and a finding reference to become links, and that is resolution
 the server has to do, because it needs to know what the reader may see.
-Notifying somebody who was mentioned is a notification (Stage 6) rather than a
-screen.
+Notifying somebody who was mentioned is a notification rather than a screen,
+and waits on there being anywhere to send one.
 
 **The carry-forward preview.** What a decision will cover when a build moves is
 a hint sentence rather than the panel the mockup draws.
 
+**Arriving at the tree from a finding opens at the root, not at the
+component.** The mockup opens on the component with the path above it already
+expanded, which means walking upward a step at a time before anything can be
+drawn.
+
+**The settings screen is one list.** Every setting the server exposes renders,
+so what is missing is the design's four named groups rather than any of the
+function.
+
 **"How the reasoning changed" and "what has been said" are only on the decision
-screen**, and are not reachable from the finding that led to them.
+screen**, and are not reachable from the finding that led to them — which is
+the split described above rather than a separate omission.
 
 What is *no longer* here is worth stating, because this section claimed it for
 a while after it stopped being true: release comparison, people and access, and

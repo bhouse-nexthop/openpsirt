@@ -302,6 +302,20 @@ func registerAdministration(api huma.API, a Administering) {
 			if product, err := names.ProductByID(ctx, key.ProductID); err == nil {
 				body.Product = product.DisplayName
 			}
+			// What the key is narrowed to, not only which product it names.
+			// "any branch, any variant" and "one release only" are different
+			// credentials, and a list that renders both the same way cannot be
+			// used to decide which one to withdraw.
+			if key.StreamID != nil {
+				if stream, err := names.StreamByID(ctx, *key.StreamID); err == nil {
+					body.Stream = stream.Name
+				}
+			}
+			if key.VariantID != nil {
+				if variant, err := names.VariantByID(ctx, *key.VariantID); err == nil {
+					body.Variant = variant.Name
+				}
+			}
 			if key.LastUsedAt != nil {
 				body.LastUsedAt = key.LastUsedAt.UTC().Format(timeFormat)
 			}

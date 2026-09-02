@@ -1062,30 +1062,54 @@ func TestNamingAPageOfFindingsDoesNotCostAQueryPerRow(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		counted := &counter{}
-		f.db.AddQueryHook(counted)
-		groups, total, err := f.store.Groups(t.Context(), f.holding(t, access.PublicRead),
-			f.target, 50, 0, finding.Filter{})
-		if err != nil {
+		// Four more issues over the same components, so the same fixture
+		// answers a page of four and a page of eight.
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t), []finding.Reported{
+			found("CVE-2026-1", libnl), found("CVE-2026-2", libnl),
+			found("CVE-2026-3", swss), found("CVE-2026-4", teamd),
+			found("CVE-2026-5", libnl), found("CVE-2026-6", swss),
+			found("CVE-2026-7", teamd), found("CVE-2026-8", teamd),
+		}); err != nil {
 			t.Fatal(err)
 		}
-		issued := counted.queries.Load()
 
-		if total != 4 || len(groups) != 4 {
-			t.Fatalf("read %d of %d groups, want 4", len(groups), total)
-		}
-		for _, group := range groups {
-			if group.Vulnerability == "" || group.Component == "" {
-				t.Errorf("a row came back unnamed: %+v", group)
+		read := func(limit int) (int, int64) {
+			counted := &counter{}
+			f.db.AddQueryHook(counted)
+			groups, _, err := f.store.Groups(t.Context(), f.holding(t, access.PublicRead),
+				f.target, limit, 0, finding.Filter{})
+			if err != nil {
+				t.Fatal(err)
 			}
+			for _, group := range groups {
+				if group.Vulnerability == "" || group.Component == "" {
+					t.Errorf("a row came back unnamed: %+v", group)
+				}
+			}
+			return len(groups), counted.queries.Load()
 		}
-		// Which product this is, the list, the count, and one lookup per kind
-		// of name. Four rows or four hundred, it is the same five statements —
-		// where a query per row would already be thirteen at four rows.
-		const flat = 5
-		if issued > flat {
-			t.Errorf("naming %d rows took %d statements, want no more than %d; "+
-				"the cost is not flat", len(groups), issued, flat)
+
+		few, atFew := read(4)
+		many, atMany := read(8)
+		if few != 4 || many != 8 {
+			t.Fatalf("read %d and %d rows, want 4 and 8", few, many)
+		}
+		// The invariant is that the cost does not grow with the page, stated
+		// by comparing two page sizes rather than by a number somebody has to
+		// keep up to date. A count is a moving target — a pass that is itself
+		// flat legitimately adds to it, and a test pinned to the total fails
+		// for that and reads as a regression.
+		if atFew != atMany {
+			t.Errorf("four rows took %d statements and eight took %d; "+
+				"the cost grows with the page", atFew, atMany)
+		}
+		// And a loose ceiling, so a flat pass nobody needs is still noticed:
+		// which product this is, the list, the count, a lookup per kind of
+		// name, and — for both ends of the chain each row sits at — the
+		// build's root, its edges, and the names along the way.
+		const ceiling = 12
+		if atMany > ceiling {
+			t.Errorf("naming a page took %d statements, want no more than %d", atMany, ceiling)
 		}
 	})
 }

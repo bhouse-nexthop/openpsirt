@@ -26,6 +26,10 @@ export function Home({ who }: { who: Who }) {
       unwrap(await api.GET("/v1/trend", { params: { query: { weeks: 12, ...scope } } })),
   });
   const points = trend.data?.items ?? [];
+  // What the charts are drawn from, said rather than implied. The query above
+  // carries the scope, so a label reading "all products" while a product is
+  // picked describes the one thing the chart is not showing.
+  const counting = at.product ?? "all products";
 
   return (
     <>
@@ -67,7 +71,7 @@ export function Home({ who }: { who: Who }) {
         <div className="panel wide">
           <header>
             <h3>Are we keeping pace?</h3>
-            <span className="eyebrow" style={{ marginLeft: "auto" }}>12 weeks · all products</span>
+            <span className="eyebrow" style={{ marginLeft: "auto" }}>12 weeks · {counting}</span>
           </header>
           {trend.isError ? (
             <Failed error={trend.error} what="The trend could not be read." />
@@ -99,7 +103,7 @@ export function Home({ who }: { who: Who }) {
         <div className="panel">
           <header>
             <h3>Open findings by severity</h3>
-            <span className="eyebrow" style={{ marginLeft: "auto" }}>Open now · all products</span>
+            <span className="eyebrow" style={{ marginLeft: "auto" }}>Open now · {counting}</span>
           </header>
           <Ring point={points[points.length - 1]} />
           <p className="reading">
@@ -119,7 +123,7 @@ export function Home({ who }: { who: Who }) {
           </p>
         </div>
 
-        <Operational who={who} />
+        <Operational />
       </div>
     </>
   );
@@ -282,45 +286,66 @@ function Lapsed() {
 
 // The tool's own health. An operator who has not opted into anything is
 // exactly the one who needs telling that a product stopped being scanned.
-function Operational({ who }: { who: Who }) {
-  const first = who.reach[0]?.product;
-  const scans = useQuery({
-    queryKey: ["home", "scans", first],
-    enabled: !!first,
+//
+// It asks what has been scanned rather than reading one build's scans: the
+// question is which build has gone silent, and that cannot be answered by
+// looking at a build somebody named in advance. An earlier version named one —
+// the first product the reader could reach, at a branch and variant spelled
+// into the source — so on any deployment not using those two names the panel
+// was permanently empty and said "never".
+function Operational() {
+  const at = useScope();
+  const scope = scopeQuery(at);
+  const scanning = useQuery({
+    queryKey: ["home", "scanning", scope],
     queryFn: async () =>
-      unwrap(
-        await api.GET("/v1/products/{product}/streams/{stream}/variants/{variant}/scans", {
-          params: { path: { product: first ?? "", stream: "master", variant: "broadcom" } },
-        }),
-      ),
+      unwrap(await api.GET("/v1/scanning", { params: { query: scope } })),
   });
-  const last = (scans.data?.items ?? [])[0];
+  const builds = scanning.data?.items ?? [];
+  const quiet = builds.filter((b) => b.quiet);
+  const last = builds.find((b) => b.last_received_at);
 
   return (
     <div className="panel">
       <header>
         <h3>Operational</h3>
       </header>
-      {last?.failure && (
-        <div className="alert">
-          <strong>The last scan did not finish</strong>
+      {scanning.isError && (
+        <Failed error={scanning.error} what="What has been scanned could not be read." />
+      )}
+      {/* Named one at a time up to three. "Three builds have gone quiet" is a
+          number somebody reads past; the names are what gets acted on. */}
+      {quiet.slice(0, 3).map((build) => (
+        <div className="alert" key={`${build.product}\u0000${build.stream}\u0000${build.variant}`}>
+          <strong>
+            {build.product} · {build.stream} · {build.variant} has not been scanned
+            {build.last_received_at ? ` for ${build.quiet_days} days` : " at all"}
+          </strong>
           <br />
-          <span>{last.failure}</span>
+          <span>
+            {build.last_received_at
+              ? "Nothing has failed — nothing has arrived."
+              : `Declared ${build.quiet_days} days ago and nothing has ever been filed against it.`}
+          </span>
         </div>
+      ))}
+      {quiet.length > 3 && (
+        <p className="hint">and {quiet.length - 3} more, on the scans screen.</p>
       )}
       <ul>
         <li>
-          <span className="what">Last scan of {first ?? "anything"}</span>
-          <span className="when">{last?.received_at?.slice(0, 10) ?? "never"}</span>
+          <span className="what">Builds being scanned</span>
+          <span className="when">{builds.length - quiet.length} of {builds.length}</span>
         </li>
         <li>
-          <span className="what">What it reported</span>
-          <span className="when">{last?.state ?? "—"}</span>
+          <span className="what">Most recent scan</span>
+          <span className="when">{last?.last_received_at?.slice(0, 10) ?? "never"}</span>
         </li>
       </ul>
       <p className="reading">
-        A product quietly dropping out of scanning is the failure that makes everything else
-        wrong, so when it was last seen is on the front page.
+        A build that stops being scanned reports no new findings and fails nothing, so it looks
+        healthier than one that is still being scanned. Quiet after{" "}
+        {scanning.data?.quiet_after_days ?? 7} days, which is a setting.
       </p>
     </div>
   );

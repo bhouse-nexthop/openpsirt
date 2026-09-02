@@ -11,6 +11,8 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
 )
 
 // Declaring is what the catalog endpoints need.
@@ -21,6 +23,12 @@ import (
 type Declaring struct {
 	Store  func() *catalog.Store
 	Logger *slog.Logger
+	// Findings and Scans answer what is open against a catalogue entry and
+	// when it was last scanned. A list of names alone makes somebody open
+	// every row to find out whether there is anything behind it, which is the
+	// question the list exists to answer.
+	Findings func() *finding.Store
+	Scans    func() *ingest.Store
 }
 
 // reading is who a handler is answering, where the answer is something to
@@ -60,6 +68,17 @@ func requester(ctx context.Context) (access.Subject, error) {
 type ProductBody struct {
 	Name        string `json:"name" minLength:"1" maxLength:"191" doc:"How scans name this product"`
 	DisplayName string `json:"display_name,omitempty" doc:"What people see. Defaults to the name"`
+	// What the product holds, so a catalogue answers what exists rather than
+	// making somebody open each row to find out. Counts of what is open are
+	// issues at components, the way the findings list counts, so the two
+	// agree; a declaration returns them as zero because it has just been made.
+	Branches int `json:"branches,omitempty" doc:"How many branches are declared"`
+	Tags     int `json:"tags,omitempty" doc:"How many tags are declared"`
+	Variants int `json:"variants,omitempty" doc:"How many variants are declared"`
+	Open     int `json:"open,omitempty" doc:"Issues open against it, counted at components rather than at every place they sit"`
+	// LastScanAt is absent where nothing has ever been filed against any of
+	// this product's builds.
+	LastScanAt string `json:"last_scan_at,omitempty" doc:"When a scan last arrived for any of its builds"`
 }
 
 // StreamBody is a branch or a tag.
@@ -69,6 +88,11 @@ type StreamBody struct {
 	// Parent is the branch a tag was cut from, which is what lets a branch be
 	// compared against its last release.
 	Parent string `json:"parent,omitempty" doc:"For a tag, the branch it was cut from"`
+	// Open and LastScanAt, for the same reason the product list carries them:
+	// a line that has stopped being built looks identical to a healthy one
+	// until somebody opens it.
+	Open       int    `json:"open,omitempty" doc:"Issues open against it, counted at components rather than at every place they sit"`
+	LastScanAt string `json:"last_scan_at,omitempty" doc:"When a scan last arrived for any build of it"`
 }
 
 // VariantBody is one of the ways a stream is built.
@@ -78,6 +102,7 @@ type VariantBody struct {
 	// saying no. An unclassified artifact should rank as though it ships,
 	// which means the default is yes and silence must not read as a denial.
 	CustomerFacing *bool `json:"customer_facing,omitempty" doc:"Whether this reaches customers. Defaults to yes"`
+	Open           int   `json:"open,omitempty" doc:"Issues open against it here, counted at components rather than at every place they sit"`
 }
 
 // declaredOutput reports what a declaration did.
@@ -222,11 +247,37 @@ func registerCatalog(api huma.API, d Declaring) {
 		if err != nil {
 			return nil, wentWrong(d.Logger, "cannot list products", err)
 		}
+
+		ids := make([]int64, 0, len(rows))
+		for _, row := range rows {
+			ids = append(ids, row.ID)
+		}
+		shapes, err := store.Shapes(ctx, ids)
+		if err != nil {
+			return nil, wentWrong(d.Logger, "cannot count what the products hold", err)
+		}
+		open, err := d.Findings().OpenBy(ctx, subject, finding.Scope{}, finding.ByProduct)
+		if err != nil {
+			return nil, wentWrong(d.Logger, "cannot count what is open", err)
+		}
+		// When each product was last scanned comes from the same answer the
+		// home page reads, rather than a second query that could disagree
+		// with it about which build counts.
+		seen, err := lastScans(ctx, d.Scans(), subject)
+		if err != nil {
+			return nil, wentWrong(d.Logger, "cannot read when these were last scanned", err)
+		}
+
 		out := &listOutput[ProductBody]{}
 		out.Body.Items = make([]ProductBody, 0, len(rows))
 		for _, row := range rows {
-			out.Body.Items = append(out.Body.Items,
-				ProductBody{Name: row.Name, DisplayName: row.DisplayName})
+			shape := shapes[row.ID]
+			out.Body.Items = append(out.Body.Items, ProductBody{
+				Name: row.Name, DisplayName: row.DisplayName,
+				Branches: shape.Branches, Tags: shape.Tags, Variants: shape.Variants,
+				Open:       open[row.ID],
+				LastScanAt: seen[row.Name],
+			})
 		}
 		return out, nil
 	})
@@ -253,11 +304,24 @@ func registerCatalog(api huma.API, d Declaring) {
 		if err != nil {
 			return nil, refused(d.Logger, err, "cannot list streams")
 		}
+		open, err := d.Findings().OpenBy(ctx, subject, finding.Scope{ProductID: &product.ID}, finding.ByStream)
+		if err != nil {
+			return nil, wentWrong(d.Logger, "cannot count what is open", err)
+		}
+		seen, err := lastScansIn(ctx, d.Scans(), subject, product.ID, func(c ingest.Coverage) string {
+			return c.Stream
+		})
+		if err != nil {
+			return nil, wentWrong(d.Logger, "cannot read when these were last scanned", err)
+		}
+
 		out := &listOutput[StreamBody]{}
 		out.Body.Items = make([]StreamBody, 0, len(rows))
 		for _, row := range rows {
-			out.Body.Items = append(out.Body.Items,
-				StreamBody{Name: row.Name, Kind: string(row.Kind)})
+			out.Body.Items = append(out.Body.Items, StreamBody{
+				Name: row.Name, Kind: string(row.Kind),
+				Open: open[row.ID], LastScanAt: seen[row.Name],
+			})
 		}
 		return out, nil
 	})
@@ -285,7 +349,15 @@ func registerCatalog(api huma.API, d Declaring) {
 		if err != nil {
 			return nil, refused(d.Logger, err, "cannot list variants")
 		}
-		return variantList(rows), nil
+		open, err := d.Findings().OpenBy(ctx, subject, finding.Scope{ProductID: &product.ID}, finding.ByVariant)
+		if err != nil {
+			return nil, wentWrong(d.Logger, "cannot count what is open", err)
+		}
+		list := variantList(rows)
+		for i := range list.Body.Items {
+			list.Body.Items[i].Open = open[rows[i].ID]
+		}
+		return list, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -394,4 +466,53 @@ func declineDeclaration(err error) error {
 	default:
 		return huma.Error400BadRequest(err.Error())
 	}
+}
+
+// lastScans is when a scan last arrived for each product, by product name.
+//
+// It reads the same answer the front page reads rather than asking a question
+// of its own: two queries about when something was last scanned are two
+// numbers that can disagree, and the one on the catalogue would be the one
+// nobody checks.
+func lastScans(ctx context.Context, scans *ingest.Store, subject access.Subject) (map[string]string, error) {
+	rows, err := scans.Scanning(ctx, subject, finding.Scope{}, 0)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]string, len(rows))
+	for _, row := range rows {
+		if row.LastReceivedAt == nil {
+			continue
+		}
+		at := stamp(*row.LastReceivedAt)
+		// The newest across a product's builds. Rows arrive quietest first,
+		// so the last one to win is the most recent.
+		if at > seen[row.Product] {
+			seen[row.Product] = at
+		}
+	}
+	return seen, nil
+}
+
+// lastScansIn is the same within one product, keyed by whichever level the
+// caller is listing.
+// Narrowed in the query rather than filtered afterwards, so a deployment with
+// many products does not read every build to answer about one.
+func lastScansIn(ctx context.Context, scans *ingest.Store, subject access.Subject, productID int64,
+	key func(ingest.Coverage) string) (map[string]string, error) {
+
+	rows, err := scans.Scanning(ctx, subject, finding.Scope{ProductID: &productID}, 0)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]string, len(rows))
+	for _, row := range rows {
+		if row.LastReceivedAt == nil {
+			continue
+		}
+		if at := stamp(*row.LastReceivedAt); at > seen[key(row)] {
+			seen[key(row)] = at
+		}
+	}
+	return seen, nil
 }

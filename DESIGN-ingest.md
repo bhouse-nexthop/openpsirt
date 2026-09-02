@@ -507,6 +507,54 @@ packages, so this is the ordinary case rather than the exceptional one.
 | Only a security claim is read from a patch | A patch resolves defects and improvements as readily as vulnerabilities |
 
 
+## A build that stops being scanned
+
+Every other failure here is loud: a document that will not parse produces a
+receipt saying so, and a scan filed against a name nobody declared is refused
+rather than quietly creating one. **Silence is the failure that is not.** A
+build nothing files against reports no new findings, closes nothing, fails
+nothing, and every number about it holds still — which is indistinguishable
+from a build with nothing wrong.
+
+So it is asked rather than waited for. Every declared build is reported with
+when a scan last arrived for it, longest-silent first, and whether that is
+longer ago than the deployment allows. Ordering by silence rather than by name
+is the point: the answer somebody needs is which build stopped, and an
+alphabetical list buries it among the ones that are fine.
+
+**A build nothing has ever been filed against is the same failure caught
+earlier**, so it is reported too, measured from when it was declared rather
+than from a scan that never came. A pipeline pointed at a name nobody declared
+is refused loudly; a build declared and never pointed at anything fails
+silently, and this is what says so.
+
+**How long counts as quiet is a setting**, not a constant. How often a
+deployment expects to be scanned is a fact about that deployment — nightly for
+some, on a release cadence for others — and a threshold nobody agreed to
+produces either an alert that is always on or one that never fires. It ships at
+a week: long enough that a nightly build missing one night is not an alert,
+short enough that a pipeline switched off is noticed in the week it happened.
+
+**It is a person's question.** A pipeline key sees the receipts for what it
+sent and nothing more, and when a build was last scanned by anybody is a fact
+about the deployment rather than about that key's uploads.
+
+*No decision covered this.* It was found by auditing the interface against the
+approved mockup, which leads its scans screen with a product that has not been
+scanned for eleven days while nothing has failed.
+
+## What each run changed
+
+A receipt says how far an upload got. What it did — how many issues opened and
+how many closed — is counted when it is asked for rather than stored, from the
+runs the findings already point at.
+
+Counted as issues at components rather than as places, like every other number
+here. **A run covers a build rather than an upload**, so several uploads can be
+answered by one run; the count is attributed to the newest upload that run
+covered and left off the rest, because one fact repeated down three rows reads
+as three separate changes.
+
 ## A note on column types
 
 Fixed-width character columns blank-pad on some engines, so a hash read back

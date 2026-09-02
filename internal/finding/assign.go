@@ -281,7 +281,7 @@ func (s *Store) Unassigned(ctx context.Context, subject access.Subject, scope Sc
 		if !all {
 			q = q.Where("st.product_id IN (?)", bun.List(products))
 		}
-		return scope.narrow(onlyVisible(q, subject, products, all))
+		return scope.Narrow(onlyVisible(q, subject, products, all))
 	}
 
 	// Counted by grouping and counting the groups, not by a COUNT DISTINCT

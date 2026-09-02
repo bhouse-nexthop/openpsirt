@@ -25,6 +25,18 @@ export function Scans() {
       ),
   });
 
+  // Every build of this product, so a build that has gone silent is named
+  // here rather than being invisible on the screen about scanning. The one in
+  // front of you is the likeliest thing to be looking at and the least likely
+  // to be the problem: a build nobody is filing against is one nobody is
+  // looking at either.
+  const scanning = useQuery({
+    queryKey: ["scanning", product],
+    queryFn: async () =>
+      unwrap(await api.GET("/v1/scanning", { params: { query: { product } } })),
+  });
+  const quiet = (scanning.data?.items ?? []).filter((b) => b.quiet);
+
   if (scans.isPending) return <p className="hint">Loading…</p>;
   if (scans.isError) return <Failed error={scans.error} what="The scans could not be read." />;
 
@@ -36,6 +48,21 @@ export function Scans() {
         <h2>Scans</h2>
         <p>{product} · {stream} · {variant} — newest first.</p>
       </div>
+
+      {quiet.map((build) => (
+        <div className="alert" key={`${build.stream}\u0000${build.variant}`}>
+          <strong>
+            {build.stream} · {build.variant} has not been scanned
+            {build.last_received_at ? ` for ${build.quiet_days} days` : " at all"}
+          </strong>
+          <br />
+          <span>
+            {build.last_received_at
+              ? "Nothing has failed — nothing has arrived. A build that stops being scanned looks healthy, because no new findings appear against it."
+              : `Declared ${build.quiet_days} days ago, and nothing has ever been filed against it.`}
+          </span>
+        </div>
+      ))}
 
       {/* What the numbers on every other screen were arrived at with. Without
           it, a build with nothing wrong and a build last measured against a
@@ -70,6 +97,11 @@ export function Scans() {
                 <th>Received</th>
                 <th>Built</th>
                 <th>State</th>
+                {/* What the run changed. A row saying only "scanned" leaves
+                    the thing worth knowing — whether anything moved — to be
+                    worked out from the findings list. */}
+                <th className="num">Opened</th>
+                <th className="num">Closed</th>
                 <th>Serial</th>
               </tr>
             </thead>
@@ -84,6 +116,13 @@ export function Scans() {
                       <div className="hint" style={{ marginTop: 4 }}>{scan.failure}</div>
                     )}
                   </td>
+                  {/* Counted as issues at components, the way the findings
+                      list counts, rather than as places. A run covers a build
+                      rather than an upload, so where several uploads share one
+                      run the numbers sit on the newest of them and the rest
+                      are blank rather than repeating it. */}
+                  <td className="num">{scan.opened || (scan.state === "scanned" ? "—" : "")}</td>
+                  <td className="num">{scan.closed || (scan.state === "scanned" ? "—" : "")}</td>
                   <td className="id hint">{scan.serial}</td>
                 </tr>
               ))}

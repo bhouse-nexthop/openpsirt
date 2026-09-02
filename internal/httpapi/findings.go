@@ -24,6 +24,14 @@ type FindingBody struct {
 	FixedIn       string `json:"fixed_in,omitempty" doc:"The version that resolves it, where one exists"`
 	// Places is how many consumers pull this component in here, and Answered
 	// how many of those the build has already argued about.
+	// Both ends of the way down, with the middle collapsed (UIX-12). Those two
+	// are what differ between sibling rows; the steps between them rarely
+	// distinguish anything, so they are counted rather than named.
+	Owner  string `json:"owner,omitempty" doc:"The part of the product this belongs to. Absent where the inventory placed the component nowhere"`
+	Parent string `json:"parent,omitempty" doc:"What directly pulls it in, which is what a decision is about"`
+	Middle int    `json:"middle,omitempty" doc:"How many steps sit between those two"`
+	Chains int    `json:"chains,omitempty" doc:"How many distinct ways down there are. More than one means the pair above is one of them"`
+
 	Places   int `json:"places" doc:"How many places this component sits at here"`
 	Answered int `json:"answered,omitempty" doc:"How many of those the build has already argued do not apply"`
 	// Exploited is why something is at the top when it is. A position nobody
@@ -167,6 +175,8 @@ func registerFindings(api huma.API, in Ingest) {
 				Vulnerability: group.Vulnerability, Severity: group.Severity,
 				Component: group.Component, Version: group.Version, Upstream: group.Upstream,
 				FixState: string(group.FixState), FixedIn: group.FixedIn,
+				Owner: group.Owner, Parent: group.Parent,
+				Middle: group.Middle, Chains: group.Chains,
 				Places: group.Places, Answered: group.Answered,
 				Exploited:  group.Exploited,
 				Likelihood: float64(group.LikelihoodPPM) / 1_000_000,

@@ -21,6 +21,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
+	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 	"github.com/bhouse-nexthop/openpsirt/internal/signin"
 	"github.com/bhouse-nexthop/openpsirt/internal/version"
 )
@@ -374,6 +375,12 @@ type ReceiptBody struct {
 	// and where. It is not a fault in this deployment, so it is reported
 	// rather than logged away.
 	Failure string `json:"failure,omitempty" doc:"Why it could not be used, where it could not"`
+	// What the run covering this upload changed, counted as issues at
+	// components rather than as places. Absent where no run has covered it
+	// yet, and absent on an upload whose run was already reported against a
+	// newer one: a run covers a build rather than an upload.
+	Opened int `json:"opened,omitempty" doc:"Issues this run found that were not open before"`
+	Closed int `json:"closed,omitempty" doc:"Issues that were open and are not any more"`
 }
 
 // MeasuredBody is what the numbers on a build were arrived at with.
@@ -459,15 +466,34 @@ func registerReceipts(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, wentWrong(in.Logger, "the scans could not be read", err)
 		}
+		// What each run changed, in one pair of statements for the page. A
+		// scan that says only "scanned" leaves the reason to read it — what it
+		// did — to a second screen.
+		runs := make([]int64, 0, len(receipts))
 		for _, r := range receipts {
-			out.Body.Items = append(out.Body.Items, ReceiptBody{
+			if r.RunID != nil {
+				runs = append(runs, *r.RunID)
+			}
+		}
+		changed, err := finding.NewStore(in.DB.DB).Changes(ctx, subject, target.ID, runs)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "what the scans changed could not be read", err)
+		}
+
+		for _, r := range receipts {
+			body := ReceiptBody{
 				ScanID:     r.Scan.ID,
 				Serial:     r.Scan.Serial,
 				BuiltAt:    stamp(r.Scan.BuiltAt),
 				ReceivedAt: stamp(r.Scan.ReceivedAt),
 				State:      string(r.State),
 				Failure:    r.Failure,
-			})
+			}
+			if r.RunID != nil {
+				change := changed[*r.RunID]
+				body.Opened, body.Closed = change.Opened, change.Closed
+			}
+			out.Body.Items = append(out.Body.Items, body)
 		}
 		out.Body.Total = total
 
@@ -507,4 +533,92 @@ func stamp(t time.Time) string {
 		return ""
 	}
 	return t.UTC().Format(time.RFC3339)
+}
+
+// DefaultQuietAfter is how long a build may go unscanned before it is
+// reported, where the deployment has not said otherwise. A week: long enough
+// that a nightly build missing one night is not an alert, short enough that a
+// pipeline switched off is noticed in the week it happened.
+const DefaultQuietAfter = 7 * 24 * time.Hour
+
+// coverageOutput carries the rows and what was asked of them, because "quiet"
+// is a judgment against a threshold and a reader cannot check the judgment
+// without the threshold.
+type coverageOutput struct {
+	Body struct {
+		Items []CoverageBody `json:"items"`
+		// Quiet is how many of the rows are, so a caller can say so without
+		// counting them again.
+		Quiet          int `json:"quiet" doc:"How many of these have gone quiet"`
+		QuietAfterDays int `json:"quiet_after_days" doc:"How long this deployment allows, in days"`
+	}
+}
+
+// CoverageBody is one declared build and when a scan last arrived for it.
+type CoverageBody struct {
+	Product    string `json:"product"`
+	Stream     string `json:"stream"`
+	StreamKind string `json:"stream_kind" enum:"branch,tag" doc:"Whether this line moves"`
+	Variant    string `json:"variant"`
+	// LastReceivedAt is absent where nothing has ever been filed against this
+	// build, which is a different situation from a scan that failed.
+	LastReceivedAt string `json:"last_received_at,omitempty" doc:"When a scan last arrived. Absent where none ever has"`
+	QuietDays      int    `json:"quiet_days" doc:"How long it has been, in days, measured from the last arrival or from when the build was declared"`
+	Quiet          bool   `json:"quiet,omitempty" doc:"Whether that is longer than this deployment allows"`
+}
+
+func registerCoverage(api huma.API, in Ingest) {
+	huma.Register(api, huma.Operation{
+		OperationID: "list-scanning", Method: http.MethodGet, Path: "/v1/scanning",
+		Summary: "List when each build was last scanned",
+		Description: "Returns every build you can see, longest-silent first, with when a scan " +
+			"last arrived for it and whether that is longer ago than this deployment allows.\n\n" +
+			"A build that stops being scanned reports no new findings and fails nothing, so it " +
+			"looks healthier than one that is still being scanned. A build nothing has ever " +
+			"been filed against is measured from when it was declared.\n\n" +
+			"How long counts as quiet is the `scanning.quiet-after` setting.",
+		Tags: []string{"Scans"},
+	}, func(ctx context.Context, input *struct {
+		ScopeQuery
+	}) (*coverageOutput, error) {
+		subject, err := reading(ctx)
+		if err != nil {
+			return nil, err
+		}
+		scope, err := scoped(ctx, in, subject, input.ScopeQuery)
+		if err != nil {
+			return nil, err
+		}
+		quietAfter, err := setting.NewStore(in.DB.DB).Duration(ctx, setting.QuietAfter, DefaultQuietAfter)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "the settings could not be read", err)
+		}
+
+		rows, err := ingest.NewStore(in.DB.DB).Scanning(ctx, subject, scope, quietAfter)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "what has been scanned could not be read", err)
+		}
+
+		out := &coverageOutput{}
+		out.Body.Items = make([]CoverageBody, 0, len(rows))
+		out.Body.QuietAfterDays = int(quietAfter.Hours() / 24)
+		for _, row := range rows {
+			body := CoverageBody{
+				Product:    row.Product,
+				Stream:     row.Stream,
+				StreamKind: row.StreamKind,
+				Variant:    row.Variant,
+				QuietDays:  int(row.Since.Hours() / 24),
+				Quiet:      row.Quiet,
+			}
+			if row.LastReceivedAt != nil {
+				body.LastReceivedAt = stamp(*row.LastReceivedAt)
+			}
+			if row.Quiet {
+				out.Body.Quiet++
+			}
+			out.Body.Items = append(out.Body.Items, body)
+		}
+		return out, nil
+	})
 }

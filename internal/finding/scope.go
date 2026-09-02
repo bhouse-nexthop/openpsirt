@@ -27,14 +27,14 @@ type Scope struct {
 	VariantID *int64
 }
 
-// narrow applies the scope to a query over finding AS f that already joins
-// target AS tg and stream AS st.
+// Narrow applies the scope to a query that already joins target AS tg and
+// stream AS st.
 //
 // Filtering on the identifiers the target already carries rather than by
 // joining names: every one of these queries has the joins for other reasons,
 // and comparing an integer the row holds is cheaper than comparing a string
 // through a join that exists to produce a label.
-func (s Scope) narrow(q *bun.SelectQuery) *bun.SelectQuery {
+func (s Scope) Narrow(q *bun.SelectQuery) *bun.SelectQuery {
 	if s.ProductID != nil {
 		q = q.Where("st.product_id = ?", *s.ProductID)
 	}

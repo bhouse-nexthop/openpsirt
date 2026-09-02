@@ -195,7 +195,7 @@ func (s *Store) RunningOut(ctx context.Context, subject access.Subject, scope Sc
 		query = query.Where("st.product_id IN (?)", bun.List(products))
 	}
 	query = onlyVisible(query, subject, products, all)
-	query = scope.narrow(query)
+	query = scope.Narrow(query)
 
 	var late []Late
 	if err := query.Scan(ctx, &late); err != nil {

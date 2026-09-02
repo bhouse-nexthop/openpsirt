@@ -69,6 +69,15 @@ const (
 	// generous it should be is a judgment about a product — a kernel's list is
 	// long — so it is tuned here rather than compiled in.
 	TogetherCap = "triage.together-cap"
+	// QuietAfter is how long a declared build may go without a scan arriving
+	// before it is reported as having gone quiet.
+	//
+	// It is a judgment about how often a deployment expects to be scanned —
+	// nightly for some, on a release cadence for others — so it is tuned here
+	// rather than compiled in. A build that stops being scanned reports no new
+	// findings and fails nothing, which is why silence has to be looked for
+	// rather than waited for.
+	QuietAfter = "scanning.quiet-after"
 	// UpstreamCurrency is whether this deployment asks public package indexes
 	// what the newest version of a component is (ING-41).
 	//

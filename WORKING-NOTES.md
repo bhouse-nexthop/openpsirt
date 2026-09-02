@@ -8,14 +8,15 @@ here.
 
 ## Where to pick up
 
-**Everything decided so far is built except one half.** The state of it, in the
-order it would be picked up:
+**Everything decided so far is built.** The state of it, in the order it would
+be picked up:
 
 | | |
 |---|---|
 | **Done** | The rebuilt SBOM is in as the fixture, the demo is reseeded from it, and `ING-36`/`ING-37` carry their new numbers |
 | **Built** | `ING-41`, end to end: the `upstream.currency` setting (off by default), the pass that fills the columns, a third worker beside the reader and the runner, and the finding screen showing both what upstream has released and why there is no fix |
-| **Not started** | `DESIGN-interface.md` is behind the code and is the thing most likely to be lost, because this document is temporary and it is not |
+| **Done** | `DESIGN-interface.md` is level with the code again: the picker and what a partial scope refuses, home's order, the upstream and age columns, the decided count, the currency panel, the ambiguous-name chooser, and the finding-split divergence recorded as a divergence |
+| **Done** | `make engines-up` stands the four servers up and writes `local.mk`, so a fresh machine is one command rather than a document followed by hand |
 
 **How `ING-41` ended up built**, since the shape is not obvious from the
 decision:
@@ -420,13 +421,115 @@ That is one structural divergence rather than five omissions: the built
 interface splits a finding across three screens where the mockup has one. It is
 worth deciding on purpose rather than inheriting.
 
-**Two smaller things the mockup has and nothing reports:** a per-release open
-count, for the release-over-release chart; and what a scan run was measured
-against, which the scan document carries and the API does not surface.
+**Two smaller things the mockup had and nothing reported** — a per-release open
+count for the release-over-release chart, and what a scan run was measured
+against — are both built now, and both are on their screens.
 
-**Nothing was found that is built and unreachable.** Every screen has a rail
-entry or is reached from one, which was not true at the start of this stretch —
-people and comparison existed as endpoints with nothing pointing at them.
+**No screen is built and unreachable.** Every one has a rail entry or is
+reached from one, which was not true at the start of this stretch — people and
+comparison existed as endpoints with nothing pointing at them. The same
+question asked of the *API* rather than the screens turns up four endpoints no
+screen calls — creating a pipeline key, and the three for a person's own
+tokens. The mockup draws neither, so that is an API surface without an
+interface rather than a screen missing a panel.
+
+## Audit: inside the screens
+
+The audit above asked whether each screen exists, and they all do. This one
+asks what is *on* them, panel by panel and column by column, against the
+published mockup. Different question, different answers: everything below sits
+inside a screen that the earlier audit passed.
+
+**Decided divergences — these are right, and the decision says so.** Worth
+listing so nobody re-reports them: the no-fix outcome set the mockup draws
+(*contained another way*, *replace the component*, *accept it*) is `REJ-12`,
+sayable already as not-applicable with `inline_mitigations_already_exist`;
+home summarizing across every product is superseded by `UIX-38`; and the
+server-side filters and the by-component view go beyond the mockup rather than
+behind it.
+
+**Two defects, not divergences.**
+
+*~~`web/src/screens/Home.tsx:297` hardcodes `stream: "master", variant:
+"broadcom"`.~~* **Fixed.** The Operational panel asks for the first product the person can
+reach and then names a branch and a variant that only exist in the SONiC
+fixture. Any other deployment gets a 404 the panel renders as "never" and "—",
+so it degrades into a panel that is silently always empty. It is the only
+hardcoded scope in the interface.
+
+*Home's two charts were scoped and said "all products".* Found and fixed while
+bringing `DESIGN-interface.md` up to date; recorded above under "Not yet true".
+
+**Gaps with no decision behind them**, largest first:
+
+| | |
+|---|---|
+| ~~**The credentials half of people and access**~~ | **Withdrawn — it is built.** The people screen lists pipeline keys and everybody's personal tokens and revokes either. This was reported from a search whose output was cut off above the lines that call them, and the conclusion was drawn from the absence rather than checked against the screen. What is genuinely uncalled is narrower and is not a divergence from the mockup, which draws neither: creating a key, and the three endpoints for a person's own tokens |
+| ~~**The review queue has no lapsed card, and home links to it anyway**~~ **Fixed.** | The mockup's third card kind is a decision the code moved out from under, offering "say it still applies" and "write a new decision". `/v1/review-queue` returns decisions *proposed and not yet approved*, so home's "decisions that stopped applying → review them" opens a list that cannot contain them. The data is reachable — decisions carry a `lapsed` state and the list endpoint filters on it — but no screen asks for it |
+| ~~**Nothing reports a product that has gone quiet**~~ **Fixed.** | The mockup leads the scans screen with "edge-router has not been scanned for 11 days" — nothing failed, nothing arrived. The built screen's own comment states that rationale and the alert is not there, and home's Operational panel reports the last scan of one product rather than noticing a silent one. This is the failure that makes every other number meaningless, and it is the one nothing watches |
+| ~~**The findings row is missing three columns**~~ **Two fixed, one declined.** | Where it sits (`UIX-12`), variants (`REL-01`), and state. The row preview shows the immediate consumer, not both ends of the chain, so `UIX-12` is unbuilt in the list in both places it was drawn. `REL-01` is scheduled rather than missed. The row gained three things the mockup lacks — the score beside the word, the likelihood, and the age |
+| ~~**The scans table has no opened/closed counts**~~ **Fixed.** | The mockup's columns say what each run changed; the built table says received, built, state and serial. What a run *did* is the reason to read the row |
+| **Release comparison cannot be copied out** | The mockup's "copy for release notes" is the point of the screen for the person about to publish. Nothing exports, on the screen or in the API |
+| ~~**The catalogue screens list names where the mockup lists numbers**~~ **Fixed.** | Products draws a card grid of name and display name; the mockup's table carries branches, tags, variants, open findings and last scan. Same for variants, which the mockup gives "ships to customers", releases built as it, and open findings |
+| **Phones get a scrolling rail, not the tab bar** | The mockup puts a three-item bar at the bottom on a phone; the build turns the side rail into a horizontal scrolling strip below 780px. Both work; they are not the same design |
+
+**What the fixes turned out to need**, since none of it was a line of code:
+
+*A build that has gone quiet needed a question nobody was asking.* The home
+panel that was supposed to report it named a branch and a variant in its source
+and so could only ever have worked on the deployment it was written against.
+Both it and the scans screen now read one answer — every declared build,
+longest-silent first — which also gave the catalogue its "last scan" column for
+free, from the same answer rather than a second query that could disagree with
+it.
+
+*A build nothing has ever been filed against is reported too*, measured from
+when it was declared. It is the same failure caught earlier, and an inner join
+to the scan table is exactly the query that cannot see it — which is what the
+test for it breaks to prove.
+
+*The queue's own comment already said it should carry three kinds* and warned
+that showing only the first lets the other two disappear. It showed one. The
+other two link to the decision rather than offering the judgment inline,
+because a decision is keyed structurally rather than to a build (MDL-08), so a
+row cannot know which build somebody means by "say it still applies".
+
+*What a run changed is counted, not stored*, from the runs the findings already
+point at — and a run covers a build rather than an upload, so the count sits on
+the newest upload that run covered rather than repeating down three rows.
+
+*Both ends of the chain (UIX-12) needed the row to admit when it is one of
+several.* A row covers every place its component sits at and those places can
+come down different ways, so it says "one of 4" rather than presenting one
+route as though it were the only one.
+
+**One cost is unmeasured, deliberately said so.** Both ends of the chain need
+one pass over the build's edges per page. It is flat in the page size — a test
+now proves that by comparing two page sizes rather than by a statement count
+somebody has to keep up to date, and it was checked by adding a per-row query
+and watching it fail. What it costs on a full-size build is not known here:
+there is no seeded database on this machine, and the comparable number is the
+tree's walk over 19,192 edges taking a request from 0.16 s to 0.57 s. The
+findings list is the screen opened first against the largest product, so that
+number is worth having. The cheaper shape, if it matters, is climbing a level
+at a time from the consumers on the page instead of reading every edge.
+
+**The state column was declined rather than built.** The mockup's single state
+per row assumes one place; a row here is a group, and its places can be in
+different states. What the row already carries — how many of its places have
+been answered — is the more honest answer to the same question, and inventing a
+group-level state would mean deciding what "waiting" means for a group where
+three places are agreed and nine are untouched. That is a decision, not a
+column.
+
+**One thing that is not a divergence but reads like one.** Twelve files style
+themselves with utility classes rather than the vocabulary lifted from the
+mockup into the stylesheet — heaviest in `PlaceDecision`, `Decision`,
+`Together` and `Unassigned`. Nothing is broken, and the tokens are the same
+underneath. But the reason the palette and type scale were taken verbatim was
+so screens would come out looking like the mockup without anybody eyeballing
+them, and a third of the screens opt out of that. Worth settling as a
+convention rather than leaving as two habits.
 
 ## The dependency tree, and why its counts are worked out live
 
@@ -586,10 +689,14 @@ scope.ts` reads the path instead.
 
 **Two test runs against the same three databases corrupt each other** into
 failures that look like real defects — duplicate keys, foreign keys, fixtures
-half-deleted. The runner at
-`scratchpad/fourengine.sh` refuses to start beside another for that reason. A
-`pkill -f "go test"` also kills the shell that is running it, which reads as
-the command having failed.
+half-deleted. So do not start a second run beside a first; there is one set of
+servers and `-p 1` serializes packages within a run, not runs against each
+other. A `pkill -f "go test"` also kills the shell that is running it, which
+reads as the command having failed.
+
+The servers themselves are `make engines-up` now, which is in the repository
+rather than on whichever machine happened to have the script — the previous
+runner lived in a scratch directory and went with it.
 
 **A rule lifted from the mockup by matching selector prefixes silently skipped
 `.panels`** — the grid container — while matching every `.panel*` rule inside
@@ -660,8 +767,20 @@ means nothing failed, which is also what running almost nothing looks like.
 
 ## Not yet true
 
-`DESIGN-interface.md` is now behind the code rather than ahead of it. It still
-describes release comparison and people as unbuilt, and knows nothing about the
-tree, the server-side filters, the by-component view, "who is working on what",
-or declaring from the catalogue screens. Bring it up to date from the audit
-above before trusting anything it says about what exists.
+Nothing known. `DESIGN-interface.md` was brought level with the code from the
+audit above, which is what that audit was for.
+
+Two things found while doing it, both fixed, and the shape matters more than
+the detail:
+
+**A design document can be true screen by screen and still be behind.** What
+was missing was not the screens — those had been caught up already — but
+everything the picker does, which is a behavior of the whole interface and
+belongs to no single screen. A screen-by-screen audit cannot find that, because
+it is not on a screen.
+
+**Home's two charts were scoped and said they were not.** The query carries the
+picker's selection; the panel label said "all products" regardless, so a
+narrowed chart claimed to be the unnarrowed one — ten lines below a comment
+saying that a narrowed page must announce itself. The rule was written, the
+page obeyed it, and a panel inside the page did not.

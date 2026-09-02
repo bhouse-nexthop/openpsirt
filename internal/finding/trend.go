@@ -92,7 +92,7 @@ func (s *Store) Trend(ctx context.Context, subject access.Subject, scope Scope, 
 	if !all {
 		query = query.Where("st.product_id IN (?)", bun.List(products))
 	}
-	query = scope.narrow(onlyVisible(query, subject, products, all))
+	query = scope.Narrow(onlyVisible(query, subject, products, all))
 
 	if err := query.Scan(ctx, &rows); err != nil {
 		return nil, fmt.Errorf("read what changed over time: %w", err)

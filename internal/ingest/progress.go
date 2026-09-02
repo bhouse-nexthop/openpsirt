@@ -41,6 +41,13 @@ type Receipt struct {
 	Scan    Scan
 	State   Progress
 	Failure string
+	// RunID is the scan run that reflects this upload, where one has finished.
+	//
+	// A run covers a target rather than an upload, so several uploads can be
+	// answered by one run. It is attributed to the newest upload it covered
+	// and left off the rest: what a run opened and closed is one fact, and
+	// repeating it down three rows reads as three separate changes.
+	RunID *int64
 }
 
 // Receipts reports what became of the scans filed against a target, newest
@@ -104,60 +111,78 @@ func (s *Store) Receipts(ctx context.Context, subject access.Subject, targetID i
 	}
 
 	// One run covers a target rather than a scan, so what matters is whether a
-	// run finished after this upload was parsed.
+	// run finished after this upload was parsed. Every finished run rather
+	// than only the newest, because a page of receipts spans several and each
+	// upload is answered by the run that came after it rather than by the last
+	// one to happen.
 	var runs []finding.Run
 	if err := s.db.NewSelect().Model(&runs).
 		Where("target_id = ?", targetID).
 		Where("finished_at IS NOT NULL").
-		Order("id DESC").Limit(1).Scan(ctx); err != nil {
+		Order("id DESC").Scan(ctx); err != nil {
 		return nil, 0, err
 	}
 
 	receipts := make([]Receipt, 0, len(scans))
+	claimed := make(map[int64]bool, len(runs))
 	for _, sc := range scans {
-		state, failure := progressOf(sc, read[strconv.FormatInt(sc.ID, 10)], runs)
-		receipts = append(receipts, Receipt{Scan: sc, State: state, Failure: failure})
+		state, failure, run := progressOf(sc, read[strconv.FormatInt(sc.ID, 10)], runs)
+		receipt := Receipt{Scan: sc, State: state, Failure: failure}
+		// Scans arrive newest first, so the first upload a run answers is the
+		// newest one it covered.
+		if run != nil && !claimed[*run] {
+			claimed[*run] = true
+			receipt.RunID = run
+		}
+		receipts = append(receipts, receipt)
 	}
 	return receipts, total, nil
 }
 
 // progressOf folds a scan, the job that read it and the target's latest
 // finished run into one answer.
-func progressOf(sc Scan, job queue.Job, runs []finding.Run) (Progress, string) {
+func progressOf(sc Scan, job queue.Job, runs []finding.Run) (Progress, string, *int64) {
 	if sc.Status == Failed {
-		return Refused, sc.Failure
+		return Refused, sc.Failure, nil
 	}
 	switch job.State {
 	case queue.Dead:
 		// The scan row is marked too, but a job that died before it could mark
 		// anything would otherwise read as still being worked on.
 		if job.LastError != nil {
-			return Refused, *job.LastError
+			return Refused, *job.LastError, nil
 		}
-		return Refused, "the upload could not be read"
+		return Refused, "the upload could not be read", nil
 	case queue.Pending, queue.Running:
-		return Reading, ""
+		return Reading, "", nil
 	}
 	if job.State != queue.Done {
 		// No job row at all. An upload that matched one already held is
 		// answered by the scan it matched, which has its own job.
-		return Reading, ""
+		return Reading, "", nil
 	}
 
 	parsed := job.UpdatedAt
 	if parsed.IsZero() {
 		parsed = sc.ReceivedAt
 	}
-	for _, run := range runs {
+	// Runs arrive newest first, so the last one still finishing after this
+	// upload was parsed is the earliest that reflects it.
+	var answered *finding.Run
+	for i := range runs {
+		run := runs[i]
 		if run.FinishedAt == nil || run.FinishedAt.Before(parsed) {
 			continue
 		}
 		if run.Failure != "" {
-			return Refused, run.Failure
+			return Refused, run.Failure, nil
 		}
-		return Scanned, ""
+		answered = &runs[i]
 	}
-	return Scanning, ""
+	if answered != nil {
+		return Scanned, "", &answered.ID
+	}
+	return Scanning, "", nil
 }
 
 // productOf reads which product a build belongs to, so that reaching it can be

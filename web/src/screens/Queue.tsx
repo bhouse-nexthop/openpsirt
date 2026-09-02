@@ -26,6 +26,20 @@ export function Queue() {
     queryKey: ["queue"],
     queryFn: async () => unwrap(await api.GET("/v1/review-queue", {})),
   });
+  // The other two kinds. The review queue answers "what is waiting for
+  // agreement" and only that, so a decision the code moved out from under and
+  // a deferral whose date has passed were counted on the home page, linked to
+  // from it, and then absent from the screen the link opened.
+  const lapsed = useQuery({
+    queryKey: ["queue", "lapsed"],
+    queryFn: async () =>
+      unwrap(await api.GET("/v1/decisions", { params: { query: { state: "lapsed", limit: 50 } } })),
+  });
+  const expired = useQuery({
+    queryKey: ["queue", "expired"],
+    queryFn: async () =>
+      unwrap(await api.GET("/v1/decisions", { params: { query: { expired: true, limit: 50 } } })),
+  });
 
   if (queue.isPending) return <p className="hint">Loading…</p>;
   if (queue.isError) {
@@ -33,6 +47,15 @@ export function Queue() {
   }
 
   const items = queue.data?.items ?? [];
+  // Both lists, newest judgment first, with a deferral that has also lapsed
+  // counted once rather than in both sections.
+  const seen = new Set<number>();
+  const stopped = [...(lapsed.data?.items ?? []), ...(expired.data?.items ?? [])].filter((row) => {
+    const id = row.decision?.id;
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
   const ids = items.map((row) => row.decision?.id).filter((id): id is number => !!id);
 
   async function agreeToPicked() {
@@ -92,7 +115,7 @@ export function Queue() {
         <Failed error={approve.error} what="That could not be agreed to." />
       )}
 
-      {items.length === 0 ? (
+      {items.length === 0 && stopped.length === 0 ? (
         <Empty
           title="Nothing is waiting."
           detail="A claim needing a second person, a deferral that has run out, or a decision the code moved out from under would appear here."
@@ -116,7 +139,70 @@ export function Queue() {
           ))}
         </div>
       )}
+
+      {stopped.length > 0 && (
+        <>
+          <div className="screen-head" style={{ marginTop: 22 }}>
+            <h2>Decisions that stopped applying</h2>
+            <p>
+              {stopped.length} · nobody has to agree to these again — two people already did —
+              but each needs a fresh reason, because what it was a claim about has moved.
+            </p>
+          </div>
+          <div className="queue">
+            {stopped.map((row) => (
+              <Stopped key={row.decision?.id} row={row} />
+            ))}
+          </div>
+        </>
+      )}
     </>
+  );
+}
+
+// A decision the code moved out from under, or a deferral whose date passed.
+//
+// It links to the decision rather than offering the judgment here: saying it
+// still applies is a claim about one place in one build, and a decision is
+// keyed structurally rather than to a build (MDL-08), so this row cannot know
+// which build somebody means. The decision screen is where its places are.
+function Stopped({ row }: { row: Standing }) {
+  const it = row.decision;
+  const lapsed = it?.state === "lapsed";
+  return (
+    <article className="qcard lapsedcard">
+      <header>
+        <Link to={`/decisions/${it?.id}`} className="id linkish">
+          {row.place?.vulnerability}
+        </Link>
+        <span style={{ color: "var(--muted)" }}>
+          {row.place?.product} · {it?.outcome}
+        </span>
+        <span className="state lapsed" style={{ marginLeft: "auto" }}>
+          {lapsed ? "Lapsed" : "Deferral ran out"}
+        </span>
+      </header>
+      {row.reasoning && (
+        <div className="why">
+          <Markdown source={row.reasoning} />
+        </div>
+      )}
+      <div className="qmeta">
+        <span>Proposed by <b>{row.proposed_by}</b></span>
+        <span>Stood <b>{row.age_days} days</b></span>
+        {it?.deferred_until && <span>Put off until <b>{it.deferred_until}</b></span>}
+      </div>
+      <p style={{ margin: 0, fontSize: "var(--step--1)", color: "var(--muted)" }}>
+        {lapsed
+          ? "The code moved out from under this judgment. Re-affirming needs no second person — two people already agreed — but it does need a fresh reason."
+          : "The date this was put off until has passed, so it is open again."}
+      </p>
+      <div className="actions">
+        <Link to={`/decisions/${it?.id}`} className="btn ghost">
+          Open the decision →
+        </Link>
+      </div>
+    </article>
   );
 }
 
@@ -125,6 +211,9 @@ export function Queue() {
 // The items live inside the response body, so it is named by reaching into
 // it rather than by restating the fields.
 type Row = NonNullable<Body<"QueueOutputBody">["items"]>[number];
+
+// The decisions list returns the same detail in a different envelope.
+type Standing = NonNullable<Body<"DecisionsOutputBody">["items"]>[number];
 
 function Card({
   row,
