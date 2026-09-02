@@ -4127,6 +4127,47 @@ paths:
           schema:
             description: Keep only what is open against components of this name, whatever version
             type: string
+        - description: Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name
+          explode: false
+          in: query
+          name: q
+          schema:
+            description: Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name
+            maxLength: 200
+            type: string
+        - description: Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier
+          explode: false
+          in: query
+          name: ecosystem
+          schema:
+            description: Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier
+            type: string
+        - description: Keep only what sits inside the container of this name
+          explode: false
+          in: query
+          name: under
+          schema:
+            description: Keep only what sits inside the container of this name
+            type: string
+        - description: Keep only what the build holds directly, which is what has no container above it
+          explode: false
+          in: query
+          name: under_build
+          schema:
+            description: Keep only what the build holds directly, which is what has no container above it
+            type: boolean
+        - description: "Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"
+          explode: false
+          in: query
+          name: state
+          schema:
+            description: "Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"
+            enum:
+              - undecided
+              - waiting
+              - agreed
+              - lapsed
+            type: string
         - description: "Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows"
           explode: false
           in: query
@@ -4232,6 +4273,47 @@ paths:
           schema:
             description: Include what this product does not consider worth triaging
             type: boolean
+        - description: Keep only components whose name contains this, ignoring capitals
+          explode: false
+          in: query
+          name: q
+          schema:
+            description: Keep only components whose name contains this, ignoring capitals
+            maxLength: 200
+            type: string
+        - description: Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier
+          explode: false
+          in: query
+          name: ecosystem
+          schema:
+            description: Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier
+            type: string
+        - description: Keep only what sits inside the container of this name
+          explode: false
+          in: query
+          name: under
+          schema:
+            description: Keep only what sits inside the container of this name
+            type: string
+        - description: Keep only what the build holds directly, which is what has no container above it
+          explode: false
+          in: query
+          name: under_build
+          schema:
+            description: Keep only what the build holds directly, which is what has no container above it
+            type: boolean
+        - description: "Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"
+          explode: false
+          in: query
+          name: state
+          schema:
+            description: "Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"
+            enum:
+              - undecided
+              - waiting
+              - agreed
+              - lapsed
+            type: string
         - description: Drop components of these names
           explode: false
           in: query
