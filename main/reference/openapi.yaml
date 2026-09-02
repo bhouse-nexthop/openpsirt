@@ -4212,6 +4212,13 @@ paths:
           schema:
             description: Which version, where the build ships that name at more than one
             type: string
+        - description: Which ecosystem, for the few names one build holds at one version as two components — a source repository and the package built from it
+          explode: false
+          in: query
+          name: ecosystem
+          schema:
+            description: Which ecosystem, for the few names one build holds at one version as two components — a source repository and the package built from it
+            type: string
       responses:
         "200":
           content:
