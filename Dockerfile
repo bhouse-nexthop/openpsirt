@@ -1,3 +1,26 @@
+# The interface, built here rather than taken from the build context.
+#
+# The Go build embeds whatever `internal/webui/dist` holds, and that directory
+# is git-ignored — so building this image from a clean checkout produced an
+# image with no interface in it at all, which is what CI was testing. Nothing
+# said so, because an API-only binary is a supported build and the embed
+# tolerates an empty directory on purpose.
+#
+# Building it here also means the image needs nothing of the builder's machine
+# but docker, which is what lets one command stand a working instance up.
+FROM node:24-alpine AS web
+
+WORKDIR /web
+
+# The lockfile first, so a source-only change does not reinstall. `npm ci`
+# installs exactly what is pinned rather than re-resolving ranges, for the same
+# reason every other tool here is pinned.
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+
+COPY web/ ./
+RUN npm run build
+
 # Build. Pinned to the same Go the module asks for.
 FROM golang:1.27-alpine AS build
 
@@ -8,6 +31,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+
+# Over whatever the build context carried, so the interface in the image is the
+# one just built rather than one left in a working tree.
+COPY --from=web /web/dist/ ./internal/webui/dist/
 
 ARG VERSION=dev
 ARG COMMIT=unknown
@@ -93,7 +120,13 @@ EXPOSE 8080
 # This asks the running server, not a new process. Running "openpsirt -version"
 # proved only that the binary was on disk and executable — a deadlocked or
 # non-listening server passed it forever.
+# Never through a proxy. A deployment that sets HTTP_PROXY so the scanner can
+# fetch its vulnerability database sets it for everything in the image, and
+# busybox wget honours the proxy variables while ignoring no_proxy — so the
+# container asks a proxy about itself, is told 403, and reports unhealthy while
+# serving every request correctly. An orchestrator acting on that restarts a
+# working container in a loop.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget -q -O- http://127.0.0.1:8080/healthz || exit 1
+  CMD wget -q --proxy=off -O- http://127.0.0.1:8080/healthz || exit 1
 
 ENTRYPOINT ["/usr/local/bin/openpsirt"]

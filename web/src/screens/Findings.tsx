@@ -676,7 +676,13 @@ function Peek({
       <div className="legend">
         {(it?.places ?? []).slice(0, 6).map((place) => (
           <span key={place.place}>
-            {place.consumer ? `under ${place.consumer}` : "nothing recorded what pulls this in"}
+            {place.consumer
+              ? `under ${place.consumer}`
+              : // No consumer means the build itself contains it, which the
+                // chain states; only an empty chain means nothing was recorded.
+                place.chain?.[0]?.component
+                ? `under ${place.chain[0].component}`
+                : "nothing records what pulls this in"}
           </span>
         ))}
       </div>

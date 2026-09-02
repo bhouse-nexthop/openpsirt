@@ -56,18 +56,27 @@ place to triage what it finds and track it through to a fix.
 
 ## Trying it
 
-    make demo                    # build, start, seed with a real image, print the address
+    make demo                    # build the image, start it, seed a real switch image, print the address
     make demo DEMO_HOST=yourbox  # if you browse by something other than localhost
 
-Brings up a throwaway deployment with a real switch image in it, signed in
-without an identity provider. `make demo-status` says what it found,
-`make demo-down` stops it, `make demo-reset` starts over. Findings need
-[grype](https://github.com/anchore/grype) on the path; without it the
-inventory still loads and the scan reports why it could not run.
+**Docker is the only thing you need installed.** The image builds the interface
+and the binary inside itself and carries the scanner, so there is nothing to
+set up first — and it builds from your working tree, so what comes up is your
+change.
+
+`make demo-status` says what it found, `make demo-down` stops it, and
+`make demo-reset` starts over while keeping the scanner's vulnerability
+database, which is large and slow to fetch. Everything it writes stays in a
+git-ignored directory in the checkout.
+
+`make dev` is the other one: this machine's binary plus the interface's own dev
+server, for editing the interface and watching it reload. It needs Go, node and
+a scanner installed locally, and it does not exercise the interface the binary
+embeds — `make demo` does.
 
 It is a demonstration deployment rather than a small production one — plain
-HTTP, and administration handed to whoever sets a header. `DESIGN-interface.md`
-says what that costs.
+HTTP, and administration handed to whoever the proxy in front of it says they
+are. `DESIGN-interface.md` says what that costs.
 
 ## Documentation
 

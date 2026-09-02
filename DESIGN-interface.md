@@ -341,9 +341,20 @@ not, so each says what is true of it.
 
 **Where it sits shows the chain, not the immediate parent.** The same parent
 can be reached by several routes, and a screen naming only the nearest one
-cannot tell them apart. Where nothing records what pulls a component in, it
-says that — rather than claiming the product itself does, which was a
-comfortable sentence and not a true one.
+cannot tell them apart.
+
+**Three situations, and they are not one.** A component with a named consumer
+is drawn under it. A component the build contains directly has no consumer and
+a chain of two — the build, then the component — and that chain *is* the answer
+to what pulls it in. A component the inventory placed nowhere has no chain at
+all, and only that one is told "nothing recorded what pulls this in".
+
+The middle case was folded into the last, so a package the image demonstrably
+contains was reported as having no recorded consumer — on the same screen that
+drew the chain underneath it. Claiming the product itself pulls something in
+was the earlier error and is still wrong where nothing was recorded; saying
+nothing was recorded where the build itself is the answer is the same mistake
+pointing the other way.
 
 **The review queue carries three kinds, not one.** A claim waiting for
 agreement, a deferral whose date has passed, and a decision the code moved out
@@ -461,58 +472,80 @@ deleting, or clicking elsewhere in the line.
 
 ## Running it locally
 
-    make demo                       # build, start, seed, and say where to go
+    make demo                       # build the image, start it, seed it, say where to go
     make demo DEMO_HOST=yourbox     # if you browse by something but localhost
 
-`make demo` is the whole of it. It builds the interface and the binary, starts
-both, declares somewhere to file scans against, sends the full-size fixture
-from `internal/sbom/testdata`, and prints the address. `make demo-status` says
-whether the scan has landed and how much it found; `make demo-down` stops it;
-`make demo-reset` throws the database away.
+**The only thing it needs on the machine is docker.** Testing a change is
+ordinary development rather than something done once before a release, so
+standing an instance up has to be something anybody can do anywhere — a demo
+that needs a page of prerequisites is one that gets run by the person who wrote
+it and nobody else.
+
+It builds the image from the working tree, so what comes up is the change being
+tested rather than something published earlier. The interface and the binary
+are built *inside* the image: the Go build embeds the interface, and the
+directory it embeds is git-ignored, so an image built from a clean checkout
+would otherwise carry no interface at all — which is what was happening.
+
+`make demo-status` says whether the scan has landed and how much it found;
+`make demo-down` stops it; `make demo-reset` throws the database away and keeps
+the scanner's vulnerability database, which is a gigabyte and is not what
+anybody is resetting.
+
+Everything it writes lives in a git-ignored directory in the tree, so deleting
+the checkout deletes the state. A command run from a checkout that writes to
+somebody's home directory is a surprise.
 
 Seeding is idempotent — declaring something that exists succeeds and changes
 nothing, and a document already ingested is recognized rather than read again —
 so it can be run repeatedly without tearing anything down.
 
-Four things it settles, each of which is a wrong answer somebody would
-otherwise arrive at by experiment:
+### It is the real thing behind a real proxy
 
-**Signing in without an identity provider.** The server supports a trusted
-header — a deployment behind a proxy that authenticates for it — and in
-development the Vite dev server is that proxy. It injects the header only when
-`OPENPSIRT_DEV_USER` is set, and that only means anything if the server was
-started trusting the header from that address. Two deliberate settings, neither
-of which a real deployment has, in a file that configures the dev server rather
-than the thing that serves the built interface.
+The application is authenticated by a trusted header: a deployment puts it
+behind something that has already identified the caller and states who they are
+(ACC-19, ACC-20). The demo runs exactly that — the image, with a small proxy in
+front of it adding the header — rather than a development server standing in
+for one. Two consequences worth stating:
 
-The header's identity is prefixed by the path it arrives on, so `X-User: dev`
-becomes `proxy:dev` — and that is the name the administrator has to be
+**No mode in the application trusts anybody.** The alternative was a
+development switch that assumes an identity, and that is a hole nobody should
+ship even switched off by default. The proxy is where this belongs, because it
+is where it belongs in a real deployment too.
+
+**The header's identity is prefixed by the path it arrives on**, so `X-User:
+dev` becomes `proxy:dev` — and that is the name the administrator has to be
 bootstrapped under.
 
 **A write needs an `Origin` the server recognizes.** The trusted-header path
 carries no session to hold an echoed token, so the forgery guard falls back to
-where the request came from, and answers a state-changing request only when it
-has been told which origins it serves. The browser's origin is the dev
-server's, not the API's, so `OPENPSIRT_BASE_URL` names the former. Reads work
-without this and writes return 401 — a confusing way to find out, which is why
-`DEMO_HOST` sets all three places at once.
+where the request came from and answers a state-changing request only when it
+has been told which origins it serves. Reads work without this and writes
+return 401 — a confusing way to find out, which is why `DEMO_HOST` sets every
+place that needs it at once.
 
-**The dev server refuses a Host it does not know.** That is protection against
-a hostile page resolving a name to this machine, so browsing by anything but
-localhost has to name the host — a hostname rather than a wildcard, so the
-protection still means something.
+**The scanner is in the image**, so findings appear rather than the triage
+screens sitting empty. Its vulnerability database is fetched once into the
+git-ignored directory and kept between runs, because a demo that downloads a
+gigabyte every time is one people stop running. On a machine that reaches the
+network through a proxy, the demo passes that through — a container inherits
+nothing of the shell that started it.
 
-**Findings need a scanner.** Without `grype` on the path the upload is
-accepted, the graph is stored, and the scan step fails with a receipt saying
-so. That is the honest outcome and it is what the scans list is for, but the
-triage screens stay empty until one is installed.
+### The developer loop is a different command
+
+    make dev                        # this machine's binary, and the interface's dev server
+
+`make dev` is for editing the interface and watching it reload. It needs Go,
+node and a scanner installed here, and it serves the interface from the dev
+server rather than from the binary — **so it does not exercise the artifact
+that ships**, which is the whole point of the embed (UIX-37). It is the faster
+loop and the less true one, and the names now say which is which.
 
 ### What it is not
 
-A demonstration deployment, not a small production one. It serves plain HTTP,
-trusts a header from loopback, and hands administration to whoever sets that
-header. Every one of those is a hole; together they are a machine somebody can
-click around on.
+A demonstration deployment, not a small production one. It serves plain HTTP
+and hands administration to whoever the proxy in front of it says they are.
+Both are holes; together they are a machine somebody can click around on.
 
 ## What the order is, and why it has to show its working
 

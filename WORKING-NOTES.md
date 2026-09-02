@@ -17,6 +17,8 @@ be picked up:
 | **Built** | `ING-41`, end to end: the `upstream.currency` setting (off by default), the pass that fills the columns, a third worker beside the reader and the runner, and the finding screen showing both what upstream has released and why there is no fix |
 | **Done** | `DESIGN-interface.md` is level with the code again: the picker and what a partial scope refuses, home's order, the upstream and age columns, the decided count, the currency panel, the ambiguous-name chooser, and the finding-split divergence recorded as a divergence |
 | **Done** | `make engines-up` stands the four servers up and writes `local.mk`, so a fresh machine is one command rather than a document followed by hand |
+| **Done** | `make demo` is the image behind a proxy and needs only docker; `make dev` is the old native loop. The image builds the interface itself, which it was not doing at all |
+| **Done** | The fixture is the 2026-09-02 build: valid CycloneDX 1.6, toolchain in `formulation`, 219 fewer findings rows measured against the same scanner and database |
 
 **How `ING-41` ended up built**, since the shape is not obvious from the
 decision:
@@ -75,9 +77,10 @@ only in its full document, which for `@types/node` is eleven megabytes — a fou
 megabyte read bound was silently truncating it into invalid JSON.
 
 
-The interface is built out and running. `make demo` brings it up; the details
-and the two settings people get wrong are in `DESIGN-interface.md` under
-"Running it locally".
+The interface is built out and running. `make demo` brings it up — the image,
+behind a proxy that signs you in, needing nothing installed but docker — and
+`DESIGN-interface.md` under "Running it locally" says what it settles and how
+`make dev` differs.
 
 **Every screen the mockup has now exists.** People and access, release
 comparison and "who is working on what" were built in this stretch, and the
@@ -346,21 +349,90 @@ right for its own reasons and stays. The namespace is meaningful — it is the
 scope in npm and the groupId in Maven — and the tempting option, ignoring it for
 OS-package ecosystems, would have hidden a producer bug behind a rule.
 
-**Pending: the fixture still holds the bad data.** Everything measured against
-`internal/sbom/testdata/switch-image.cdx.json.xz` — and everything in the demo
-database seeded from it — was produced by the generator before the fix, so the
-duplicate packages and their doubled findings are still in every number the
-interface shows. A fresh SBOM is being built. When it lands:
+## The rebuilt SBOM with the toolchain split out, and what it measured
 
-1. `xz -9` it over `internal/sbom/testdata/switch-image.cdx.json.xz`, which is
-   the path `make demo-seed` decompresses and uploads and the path
-   `internal/sbom/fullsize_test.go` reads.
-2. `make demo-reset` to rebuild the demo database from it, since `urgency` is
-   computed at ingest and nothing already stored moves.
-3. Re-check the counts quoted in `DECISIONS.md` `ING-36` and `ING-37` — 8,374
-   described components naming 7,858 packages, 516 collisions, 30 pedigree
-   against 535 qualifier — because they were measured on the old file and the
-   first two of them will have moved.
+Built 2026-09-02 and **in as the fixture**. It carries the two fixes made after
+the last one: build tooling moved to `formulation`, and the patch digest moved
+off `pedigree.patches[].diff.hashes` to a property.
+
+| | previous fixture | this one |
+|---|---:|---:|
+| components | 7,693 | **7,035** |
+| duplicate package URLs | 0 | **0** |
+| patch diffs carrying `hashes` | 530 | **0** |
+| `sonic:patch_sha256` properties | 0 | **530** |
+| formulation components | 0 | **667** |
+| dangling references | 0 | **0** |
+| validates against CycloneDX 1.6 | **no** | **yes** |
+
+The validator is the one the build itself now runs, cached under
+`sonic-buildimage/target/sbom-tools/`. It was pointed at both documents: the
+new one passes and **the previous fixture fails**, on exactly the field the fix
+moved. A validator that had passed both would have proved nothing.
+
+**Nothing shipped went with the toolchain.** Checked set-wise rather than by
+count: 658 moved to `formulation`, and the 34 that appear to have vanished are
+the same OCI metadata components with a new build hash in the version. The
+sharpest case is `golang.org/x/net`, which was misdiagnosed once before — 12
+shipped copies stayed in `components`, 3 toolchain copies moved, and the
+fifteen origins are still fifteen.
+
+**What it changed here, isolated.** The obvious comparison is against the
+numbers recorded for the previous fixture, and it is wrong: the vulnerability
+database has moved since, so the delta would mix two causes. Scanning the
+previous fixture again today, with the same scanner and the same database, is
+what separates them — which the demo now makes cheap enough to bother with:
+
+| | previous fixture | this one |
+|---|---:|---:|
+| findings list rows | 7,593 | **7,374** |
+| finding places | 241,240 | **241,021** |
+
+**219 rows and 219 places**, against the 216 predicted from matching name and
+version. Each toolchain finding sat at exactly one place, which is what a
+lockfile component with a single consumer looks like. Of the apparent
+difference against the recorded 7,546, **47 rows were the vulnerability
+database moving** rather than anything about the document.
+
+## What the demo turned out to be
+
+`make demo` ran the binary on this machine plus the interface's dev server, and
+needed Go, node and grype installed here. Two things were wrong with that, and
+neither was a trade-off:
+
+**Its documented failure mode was the thing it exists to show.** Without grype
+on the path the triage screens stay empty — and the design document called that
+"the honest outcome", which is a limitation written up as a virtue.
+
+**It never ran the artifact that ships.** Serving the interface from the dev
+server means it did not exercise the embed (UIX-37) at all.
+
+It is now the image, behind a small proxy that adds the sign-in header — the
+shape a deployment actually has — and the only thing it needs is docker. The
+old loop is `make dev`, which is what it always was.
+
+**The image did not contain the interface, and CI was testing that image.** The
+Go build embeds a git-ignored directory and CI builds from a clean checkout
+with no `make web` first, so the image it built and asserted things about had
+no interface in it. Nothing said so, because an API-only binary is a supported
+build. The image builds the interface itself now, and both `check-packaging`
+and CI check that it serves one — verified by building an image without it and
+watching the check refuse: the page's own path answers 401 rather than a page.
+
+**State lives in a git-ignored `.demo/` in the tree**, not under `$HOME`. The
+scanner's vulnerability database is 2.0 GB, is fetched once, and `demo-reset`
+keeps it deliberately: it is the slow part and not what anybody is resetting.
+The host's proxy variables are passed into the container, without which grype
+cannot fetch that database on a network like this one.
+
+**Done, twice over.** The fixture was replaced when the merge fix landed and
+again when the toolchain moved to `formulation`; both are recorded above. The
+steps that replacement needs, kept because the next one will need them too:
+`xz -9` over `internal/sbom/testdata/switch-image.cdx.json.xz`, `make
+demo-reset` and re-seed, re-check the counts quoted in `DECISIONS.md` `ING-36`
+and `ING-37` and in `internal/sbom/testdata/README.md`, and update the measured
+constants in `internal/sbom/fullsize_test.go` — checking *why* each one moved or
+did not, rather than pasting whatever the test reports.
 
 **Measured and left alone: `/v1/running-out` takes about eight seconds.** It is
 the query behind "due soon, still undecided", and it is slow for a reason no

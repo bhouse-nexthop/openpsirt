@@ -101,14 +101,32 @@ NPM ?= npm
 #   DEMO_USER   who you arrive as. The trusted-header path prefixes it, so the
 #               administrator is proxy:$(DEMO_USER)
 DEMO_HOST ?= localhost
-DEMO_PORT ?= 5173
-DEMO_API  ?= 127.0.0.1:8080
+DEMO_PORT ?= 8080
 DEMO_USER ?= dev
-DEMO_DIR  ?= $(HOME)/openpsirt-dev
-DEMO_DB   ?= $(DEMO_DIR)/dev.db
-DEMO_URL  := http://$(DEMO_HOST):$(DEMO_PORT)
+# In the tree rather than under $HOME: a command that writes to somebody's home
+# directory from a checkout is a surprise, and everything here is throwaway
+# state that should be deleted by deleting the checkout. Git-ignored.
+DEMO_DIR   ?= $(CURDIR)/.demo
+DEMO_IMAGE ?= openpsirt:demo
+DEMO_NET   ?= openpsirt-demo
+# Fixed so the application can be told which addresses to trust the sign-in
+# header from. A range docker hands out at random cannot be named in advance.
+DEMO_SUBNET ?= 172.31.71.0/24
+DEMO_URL    := http://$(DEMO_HOST):$(DEMO_PORT)
 
-.PHONY: unreachable all build test vet lint fmt openapi openapi-current run clean check check-packaging check-engines engines-up engines-down engines-status engines-check tools govulncheck licenses sbom web web-deps web-api web-check demo demo-up demo-down demo-seed demo-reset demo-status
+# The developer loop is a different thing and says so. It runs the binary and
+# the interface's own dev server on this machine, for the fast edit-and-reload
+# cycle; it needs Go, node and a scanner installed here, and it serves the
+# interface from the dev server rather than from the binary — so it exercises a
+# configuration nobody deploys.
+DEV_HOST ?= localhost
+DEV_PORT ?= 5173
+DEV_API  ?= 127.0.0.1:8081
+DEV_DIR  ?= $(DEMO_DIR)/dev
+DEV_DB   ?= $(DEV_DIR)/dev.db
+DEV_URL  := http://$(DEV_HOST):$(DEV_PORT)
+
+.PHONY: unreachable all build test vet lint fmt openapi openapi-current run clean check check-packaging check-engines engines-up engines-down engines-status engines-check tools govulncheck licenses sbom web web-deps web-api web-check demo demo-image demo-up demo-down demo-seed demo-reset demo-status dev dev-up dev-down dev-seed dev-reset dev-status
 
 all: check build
 
@@ -383,6 +401,27 @@ check-packaging:
 	  || { echo "image runs as root"; exit 1; }
 	@docker run --rm --entrypoint /usr/local/bin/grype openpsirt:check version >/dev/null \
 	  || { echo "image carries no working scanner, so it could ingest and never scan"; exit 1; }
+	@# That the image serves the interface, not merely that it starts. The Go
+	@# build embeds a git-ignored directory, so an image built from a clean
+	@# checkout carried no interface at all and every other check here passed.
+	@set -e; \
+	  id=$$(docker run -d --rm -p 127.0.0.1:0:8080 \
+	         --tmpfs /tmp \
+	         -e OPENPSIRT_DATABASE_URL="sqlite:///tmp/check.db" \
+	         -e OPENPSIRT_ADDR="0.0.0.0:8080" \
+	         -e OPENPSIRT_PLAIN_HTTP=1 \
+	         -e OPENPSIRT_BOOTSTRAP_ADMINS=check \
+	         openpsirt:check); \
+	  trap 'docker rm -f $$id >/dev/null 2>&1 || true' EXIT; \
+	  port=$$(docker port $$id 8080/tcp | head -1 | sed 's/.*://'); \
+	  waited=0; \
+	  until curl -fsS --noproxy '*' "http://127.0.0.1:$$port/readyz" >/dev/null 2>&1; do \
+	    waited=$$((waited + 1)); \
+	    [ $$waited -gt 60 ] && { echo "the image never became ready"; exit 1; }; \
+	    sleep 1; \
+	  done; \
+	  curl -fsS --noproxy '*' "http://127.0.0.1:$$port/" | grep -qi '<!doctype html' \
+	    || { echo "the image serves no interface: it was built without one"; exit 1; }
 	helm lint deploy/helm/openpsirt --set database.url=postgres://u:p@h:5432/d \
 	  --set auth.bootstrapAdmins='{admin}' --set auth.trustedHeader.name=X-Forwarded-User \
 	  --set auth.trustedHeader.sources='{10.0.0.0/8}'
@@ -410,31 +449,100 @@ run:
 	$(GO) run ./cmd/openpsirt
 
 # Bring up something to look at, seed it, and say where to go.
-demo: build web demo-up demo-seed demo-status
+# Somewhere to click around in, as the thing that actually ships.
+#
+# One command, and the only thing it needs on this machine is docker: the image
+# builds the interface and the binary inside itself, and carries the scanner.
+# Testing a change is ordinary development, so standing an instance up has to be
+# something anybody can do anywhere rather than a page of prerequisites.
+#
+# It is the real image behind a real proxy, which is the shape a deployment
+# actually has (ACC-19, ACC-20) — not a development server standing in for one.
+demo: demo-image demo-up demo-seed demo-status
+
+# Built from the working tree, so what comes up is the change being tested.
+demo-image:
+	@command -v $(DOCKER) >/dev/null 2>&1 \
+	  || { echo "$(DOCKER) is needed to run the demo"; exit 1; }
+	@echo "building $(DEMO_IMAGE) — the interface and the binary build inside it"
+	@$(DOCKER) build -q -t $(DEMO_IMAGE) \
+	  --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) \
+	  --build-arg DATE=$(DATE) . >/dev/null
 
 demo-up: demo-down
-	@mkdir -p $(DEMO_DIR)
-	@OPENPSIRT_DATABASE_URL="sqlite://$(DEMO_DB)" \
-	 OPENPSIRT_ADDR="$(DEMO_API)" \
-	 OPENPSIRT_PLAIN_HTTP=1 \
-	 OPENPSIRT_BOOTSTRAP_ADMINS="proxy:$(DEMO_USER)" \
-	 OPENPSIRT_TRUSTED_HEADER="X-User" \
-	 OPENPSIRT_TRUSTED_SOURCES="127.0.0.0/8" \
-	 OPENPSIRT_BASE_URL="$(DEMO_URL)" \
-	 nohup ./$(BIN) > $(DEMO_DIR)/api.log 2>&1 & echo $$! > $(DEMO_DIR)/api.pid
-	@OPENPSIRT_DEV_USER="$(DEMO_USER)" \
-	 OPENPSIRT_DEV_HOSTS="$(DEMO_HOST)" \
-	 nohup $(NPM) --prefix web run dev -- --host --port $(DEMO_PORT) \
-	   > $(DEMO_DIR)/web.log 2>&1 & echo $$! > $(DEMO_DIR)/web.pid
-	@sleep 6
-	@echo "api  $(DEMO_API)   log $(DEMO_DIR)/api.log"
-	@echo "web  $(DEMO_URL)   log $(DEMO_DIR)/web.log"
+	@mkdir -p $(DEMO_DIR)/data $(DEMO_DIR)/grype
+	@$(DOCKER) network create --subnet $(DEMO_SUBNET) $(DEMO_NET) >/dev/null 2>&1 || true
+	@# The vulnerability database is a gigabyte and does not change hourly, so
+	@# it is kept between runs. Removing it is "make demo-reset --hard", which
+	@# is deliberately not a thing: deleting .demo does it.
+	@#
+	@# Run as the invoking user rather than the image's own account, because
+	@# the two mounts below come from the host and would otherwise be owned by
+	@# somebody the container is not.
+	@# The scanner fetches its vulnerability database on first use, so a
+	@# machine that reaches the network through a proxy has to say so —
+	@# a container inherits nothing of the shell that started it.
+	@#
+	@# And loopback is always excluded from it. Everything in the image that
+	@# speaks HTTP honours these, including the health check, so passing a
+	@# proxy through without this sends the container's own probe of itself to
+	@# the proxy — which answers 403, and the container reports unhealthy while
+	@# serving every request correctly.
+	@$(DOCKER) run -d --name openpsirt-demo --network $(DEMO_NET) \
+	  --user "$$(id -u):$$(id -g)" \
+	  -e NO_PROXY="127.0.0.1,localhost,$${NO_PROXY}" \
+	  -e no_proxy="127.0.0.1,localhost,$${no_proxy}" \
+	  $${HTTP_PROXY:+-e HTTP_PROXY="$$HTTP_PROXY"} \
+	  $${HTTPS_PROXY:+-e HTTPS_PROXY="$$HTTPS_PROXY"} \
+	  $${http_proxy:+-e http_proxy="$$http_proxy"} \
+	  $${https_proxy:+-e https_proxy="$$https_proxy"} \
+	  -v "$(DEMO_DIR)/data:/data" \
+	  -v "$(DEMO_DIR)/grype:/var/cache/openpsirt/grype" \
+	  -e OPENPSIRT_DATABASE_URL="sqlite:///data/dev.db" \
+	  -e OPENPSIRT_ADDR="0.0.0.0:8080" \
+	  -e OPENPSIRT_PLAIN_HTTP=1 \
+	  -e OPENPSIRT_BOOTSTRAP_ADMINS="proxy:$(DEMO_USER)" \
+	  -e OPENPSIRT_TRUSTED_HEADER="X-User" \
+	  -e OPENPSIRT_TRUSTED_SOURCES="$(DEMO_SUBNET)" \
+	  -e OPENPSIRT_BASE_URL="$(DEMO_URL)" \
+	  $(DEMO_IMAGE) >/dev/null
+	@# What authenticates. A deployment puts this application behind something
+	@# that has already identified the caller and states who they are in a
+	@# header; this is the smallest honest version of that, rather than a mode
+	@# in the application that trusts anybody — which is a hole nobody should
+	@# ship even switched off by default.
+	@printf '%s\n' \
+	  'server {' \
+	  '  listen 80;' \
+	  '  location / {' \
+	  '    proxy_pass http://openpsirt-demo:8080;' \
+	  '    proxy_set_header X-User $(DEMO_USER);' \
+	  '    proxy_set_header Host $$host;' \
+	  '    proxy_set_header X-Forwarded-For $$remote_addr;' \
+	  '    client_max_body_size 256m;' \
+	  '    proxy_read_timeout 300s;' \
+	  '  }' \
+	  '}' > $(DEMO_DIR)/proxy.conf
+	@$(DOCKER) run -d --name openpsirt-demo-proxy --network $(DEMO_NET) \
+	  -p $(DEMO_PORT):80 \
+	  -v "$(DEMO_DIR)/proxy.conf:/etc/nginx/conf.d/default.conf:ro" \
+	  nginx:1.29-alpine >/dev/null
+	@# A container reported "Up" is not one that answers, the same trap the
+	@# database servers have.
+	@waited=0; \
+	  until curl -fsS --noproxy '*' "$(DEMO_URL)/readyz" >/dev/null 2>&1; do \
+	    waited=$$((waited + 1)); \
+	    if [ $$waited -gt 60 ]; then \
+	      echo "  it never answered. '$(DOCKER) logs openpsirt-demo' says why."; \
+	      exit 1; \
+	    fi; \
+	    sleep 1; \
+	  done
+	@echo "  up at $(DEMO_URL)"
 
 demo-down:
-	@-pkill -f "$(BIN)" 2>/dev/null || true
-	@-pkill -f "vite.*--port $(DEMO_PORT)" 2>/dev/null || true
-	@rm -f $(DEMO_DIR)/api.pid $(DEMO_DIR)/web.pid
-	@sleep 1
+	@-$(DOCKER) rm -f openpsirt-demo openpsirt-demo-proxy >/dev/null 2>&1 || true
+	@-$(DOCKER) network rm $(DEMO_NET) >/dev/null 2>&1 || true
 
 # Declares somewhere to file scans against and sends the full-size fixture.
 # Idempotent: declaring something that exists succeeds and changes nothing, so
@@ -448,29 +556,93 @@ demo-seed:
 	  '/v1/products/sonic/variants|{"name":"broadcom","customer_facing":true}'; do \
 	  path=$${spec%%|*}; body=$${spec#*|}; \
 	  curl -sS --noproxy '*' -o /dev/null -w "  $$path %{http_code}\n" \
-	    -X POST -H "X-User: $(DEMO_USER)" -H "Origin: $(DEMO_URL)" \
+	    -X POST -H "Origin: $(DEMO_URL)" \
 	    -H 'Content-Type: application/json' -d "$$body" \
-	    "http://$(DEMO_API)$$path"; \
+	    "$(DEMO_URL)$$path"; \
 	done
 	@curl -sS --noproxy '*' -o /dev/null -w "  upload %{http_code}\n" \
-	  -X POST -H "X-User: $(DEMO_USER)" -H "Origin: $(DEMO_URL)" \
+	  -X POST -H "Origin: $(DEMO_URL)" \
 	  -F "inventory=@$(DEMO_DIR)/image.cdx.json" \
-	  "http://$(DEMO_API)/v1/products/sonic/streams/master/variants/broadcom/scans"
+	  "$(DEMO_URL)/v1/products/sonic/streams/master/variants/broadcom/scans"
 	@echo "  the scan runs in the background; make demo-status shows when it lands"
 
 demo-status:
-	@printf "  scan   "; curl -sS --noproxy '*' -H "X-User: $(DEMO_USER)" \
-	  "http://$(DEMO_API)/v1/products/sonic/streams/master/variants/broadcom/scans" \
+	@printf "  scan   "; curl -sS --noproxy '*' \
+	  "$(DEMO_URL)/v1/products/sonic/streams/master/variants/broadcom/scans" \
 	  | sed -e 's/.*"state":"\([a-z]*\)".*/\1/' -e 's/^{.*/no scans yet/'
-	@printf "  open   "; curl -sS --noproxy '*' -H "X-User: $(DEMO_USER)" \
-	  "http://$(DEMO_API)/v1/products/sonic/streams/master/variants/broadcom/findings?limit=1" \
+	@printf "  open   "; curl -sS --noproxy '*' \
+	  "$(DEMO_URL)/v1/products/sonic/streams/master/variants/broadcom/findings?limit=1" \
 	  | sed -e 's/.*"total":\([0-9]*\).*/\1 findings/' -e 's/^{.*/unreadable/'
 	@echo "  open $(DEMO_URL) — you arrive as proxy:$(DEMO_USER), no sign-in"
 
-# Start over. The database is the only state, so removing it is the whole of it.
+# Start over, keeping the vulnerability database: it is a gigabyte, it is not
+# what anybody is resetting, and downloading it again is the slow part.
 demo-reset: demo-down
-	@rm -f $(DEMO_DB)
-	@echo "  removed $(DEMO_DB)"
+	@rm -rf $(DEMO_DIR)/data $(DEMO_DIR)/image.cdx.json
+	@echo "  removed the demo database. The scanner cache in $(DEMO_DIR)/grype was kept."
+
+# The developer loop: this machine's binary and the interface's dev server, for
+# editing the interface and seeing it reload. Needs Go, node and a scanner
+# here. It does not exercise the embedded interface, so what it shows is not
+# quite what ships — "make demo" is.
+dev: build web dev-up dev-seed dev-status
+
+dev-up: dev-down
+	@mkdir -p $(DEV_DIR)
+	@OPENPSIRT_DATABASE_URL="sqlite://$(DEV_DB)" \
+	 OPENPSIRT_ADDR="$(DEV_API)" \
+	 OPENPSIRT_PLAIN_HTTP=1 \
+	 OPENPSIRT_BOOTSTRAP_ADMINS="proxy:$(DEMO_USER)" \
+	 OPENPSIRT_TRUSTED_HEADER="X-User" \
+	 OPENPSIRT_TRUSTED_SOURCES="127.0.0.0/8" \
+	 OPENPSIRT_BASE_URL="$(DEV_URL)" \
+	 nohup ./$(BIN) > $(DEV_DIR)/api.log 2>&1 & echo $$! > $(DEV_DIR)/api.pid
+	@OPENPSIRT_DEV_USER="$(DEMO_USER)" \
+	 OPENPSIRT_DEV_HOSTS="$(DEV_HOST)" \
+	 OPENPSIRT_DEV_API="http://$(DEV_API)" \
+	 nohup $(NPM) --prefix web run dev -- --host --port $(DEV_PORT) \
+	   > $(DEV_DIR)/web.log 2>&1 & echo $$! > $(DEV_DIR)/web.pid
+	@sleep 6
+	@echo "api  $(DEV_API)   log $(DEV_DIR)/api.log"
+	@echo "web  $(DEV_URL)   log $(DEV_DIR)/web.log"
+
+dev-down:
+	@-pkill -f "$(BIN)" 2>/dev/null || true
+	@-pkill -f "vite.*--port $(DEV_PORT)" 2>/dev/null || true
+	@rm -f $(DEV_DIR)/api.pid $(DEV_DIR)/web.pid
+	@sleep 1
+
+dev-seed:
+	@command -v xz >/dev/null || { echo "xz is needed to read the fixture"; exit 1; }
+	@xz -dc internal/sbom/testdata/switch-image.cdx.json.xz > $(DEV_DIR)/image.cdx.json
+	@for spec in \
+	  '/v1/products|{"name":"sonic","display_name":"SONiC"}' \
+	  '/v1/products/sonic/streams|{"name":"master","kind":"branch"}' \
+	  '/v1/products/sonic/variants|{"name":"broadcom","customer_facing":true}'; do \
+	  path=$${spec%%|*}; body=$${spec#*|}; \
+	  curl -sS --noproxy '*' -o /dev/null -w "  $$path %{http_code}\n" \
+	    -X POST -H "X-User: $(DEMO_USER)" -H "Origin: $(DEV_URL)" \
+	    -H 'Content-Type: application/json' -d "$$body" \
+	    "http://$(DEV_API)$$path"; \
+	done
+	@curl -sS --noproxy '*' -o /dev/null -w "  upload %{http_code}\n" \
+	  -X POST -H "X-User: $(DEMO_USER)" -H "Origin: $(DEV_URL)" \
+	  -F "inventory=@$(DEV_DIR)/image.cdx.json" \
+	  "http://$(DEV_API)/v1/products/sonic/streams/master/variants/broadcom/scans"
+	@echo "  the scan runs in the background; make dev-status shows when it lands"
+
+dev-status:
+	@printf "  scan   "; curl -sS --noproxy '*' -H "X-User: $(DEMO_USER)" \
+	  "http://$(DEV_API)/v1/products/sonic/streams/master/variants/broadcom/scans" \
+	  | sed -e 's/.*"state":"\([a-z]*\)".*/\1/' -e 's/^{.*/no scans yet/'
+	@printf "  open   "; curl -sS --noproxy '*' -H "X-User: $(DEMO_USER)" \
+	  "http://$(DEV_API)/v1/products/sonic/streams/master/variants/broadcom/findings?limit=1" \
+	  | sed -e 's/.*"total":\([0-9]*\).*/\1 findings/' -e 's/^{.*/unreadable/'
+	@echo "  open $(DEV_URL) — you arrive as proxy:$(DEMO_USER), no sign-in"
+
+dev-reset: dev-down
+	@rm -f $(DEV_DB)
+	@echo "  removed $(DEV_DB)"
 
 clean-web:
 	rm -rf web/node_modules web/dist internal/webui/dist/assets internal/webui/dist/index.html

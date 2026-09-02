@@ -388,13 +388,28 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: now
   white-space: nowrap;
 }
 
-.floor .seg { display: flex; border: 1px solid var(--line-strong); border-radius: 100px; overflow: hidden; }
-.floor .seg button {
+/* A segmented control: two or three choices where exactly one is on.
+ *
+ * Not scoped to the one place the approved design happens to draw it. It was
+ * lifted as `.floor .seg`, which is where the severity floor sits, so the
+ * by-issue and by-component switch — a control the design does not have, added
+ * beside it — matched the class and got none of the rules: plain black text
+ * with nothing to say it was a control or which half was on.
+ *
+ * The lesson is the one already learned lifting `.panels`: a rule taken by
+ * matching a selector brings its scope with it, and the scope is invisible at
+ * the call site. */
+.seg { display: flex; border: 1px solid var(--line-strong); border-radius: 100px; overflow: hidden; }
+.seg button {
   border: 0; background: var(--surface); cursor: pointer;
   padding: 3px 10px; font-size: var(--step--1); color: var(--muted);
 }
-.floor .seg button + button { border-left: 1px solid var(--line-strong); }
-.floor .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.seg button + button { border-left: 1px solid var(--line-strong); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+/* The pointer says it is a control before anything is clicked; the pressed
+   state says which one is on. Both were missing, and either alone reads as
+   text that happens to be dark. */
+.seg button:hover { background: var(--raised); color: var(--ink); }
 
 .chain { color: var(--muted); display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .chain .hop { color: var(--ink); }

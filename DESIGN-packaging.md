@@ -6,7 +6,16 @@ Satisfies SCP-03, SCP-12 to SCP-14, and the probe behavior DAT-10 requires.
 
 ## The image
 
-Multi-stage: built with the Go toolchain the module asks for, run on Alpine.
+Multi-stage: the interface built with node, the binary built with the Go
+toolchain the module asks for, and the result run on Alpine.
+
+**The interface is built here rather than taken from the build context.** The
+Go build embeds a directory that is git-ignored, so an image built from a clean
+checkout — which is what CI builds — carried no interface at all, and nothing
+said so: an API-only binary is a supported build and the embed tolerates an
+empty directory on purpose. Building it in the image also means the image needs
+nothing of the builder's machine but docker, which is what makes standing an
+instance up one command.
 
 The binary is **fully static** — CGO is off, which is part of why the pure-Go
 SQLite driver was chosen. That means the runtime image could be `scratch` or
@@ -26,6 +35,11 @@ surface. It is one line to change if that trade ever stops being worth it.
 CI builds the image, runs it, **checks it is not running as root**, and
 **checks the scanner in it actually runs**. Those are the only places those
 claims are tested rather than asserted.
+
+It also **checks the image serves the interface**, which is the check whose
+absence let an image with no interface in it pass for as long as it did. An
+image built without one answers the page's own path with a credential refusal
+rather than a page, so the difference is visible from outside.
 
 ### The scanner ships with it
 

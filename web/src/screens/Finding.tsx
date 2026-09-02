@@ -647,6 +647,10 @@ function Decide({
 // image because it has nowhere better to put it. What is actually known is
 // that nothing recorded a consumer, and saying so points at the producer
 // rather than inventing a relationship.
+//
+// This is for a component the inventory placed nowhere — no chain at all. A
+// component the build contains directly has a chain of two and is drawn like
+// any other: the build, then the component under it.
 const UNPLACED = "nothing recorded what pulls this in";
 
 function Places({
@@ -672,9 +676,14 @@ function Places({
       <div className="tree">
         {places.map((place) => {
           const chain = place.chain ?? [];
-          // Nothing above it but the build. The chain would be two rows saying
-          // nothing, so it says the one true thing instead.
-          const bare = chain.length <= 1 || !place.consumer;
+          // Only where the inventory placed it nowhere at all. Having no
+          // consumer is a different thing: it means the build itself contains
+          // it, and the chain says so in two steps — which is the answer to
+          // "what pulls this in", not the absence of one. Treating the two as
+          // one told somebody that nothing recorded what pulls in a package
+          // the image demonstrably contains, on the same screen that drew the
+          // chain underneath it.
+          const bare = chain.length <= 1;
           if (bare) {
             return (
               <div key={place.place} className="node here">
