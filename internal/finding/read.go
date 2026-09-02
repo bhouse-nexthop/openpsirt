@@ -297,13 +297,13 @@ func (f Filter) narrow(q *bun.SelectQuery) *bun.SelectQuery {
 	// do not agree on what a case-insensitive comparison is, and one that is
 	// spelled the same way everywhere behaves the same way everywhere (MDL-21).
 	if term := strings.TrimSpace(f.Search); term != "" {
-		q = q.Where("LOWER(c.name) LIKE ?", "%"+strings.ToLower(term)+"%")
+		q = q.Where(`LOWER(c.name) LIKE ? ESCAPE '\'`, "%"+contains(term)+"%")
 	}
 	if names := trimmed(f.Exclude); len(names) > 0 {
 		q = q.Where("c.name NOT IN (?)", bun.List(names))
 	}
 	if eco := strings.TrimSpace(f.Ecosystem); eco != "" {
-		q = q.Where("LOWER(c.purl) LIKE ?", "pkg:"+strings.ToLower(eco)+"/%")
+		q = q.Where(`LOWER(c.purl) LIKE ? ESCAPE '\'`, "pkg:"+contains(eco)+"/%")
 	}
 	// What holds it. A place records the component that pulls it in, so asking
 	// what is inside a container is asking for places whose consumer is that
@@ -418,12 +418,16 @@ func (f Filter) byState(q *bun.SelectQuery) *bun.SelectQuery {
 	)
 	// One place, one answer: whether a claim of ours, in this product, at this
 	// place, about this issue, is in the state being asked about.
-	at := func(want string, live bool) string {
+	// Bound rather than spelled into the statement. These are two compile-time
+	// constants and nothing a caller supplies, so there is nothing to inject —
+	// but a value in a placeholder is the rule (SEC-01), and a literal here is
+	// the shape somebody copies to a place where it does matter.
+	at := func(live bool) string {
 		clause := `SUM(CASE WHEN EXISTS (SELECT 1 FROM "decision" AS de
 			WHERE de.product_id = ?
 			  AND de.vulnerability_id = f.vulnerability_id
 			  AND de.place_identity = f.place_identity
-			  AND de.state = '` + want + `'`
+			  AND de.state = ?`
 		if live {
 			// Only the claim that currently stands. Without it a judgment
 			// withdrawn eighteen months ago still answers for this place.
@@ -438,16 +442,39 @@ func (f Filter) byState(q *bun.SelectQuery) *bun.SelectQuery {
 
 	switch state {
 	case "agreed":
-		return q.Having(at(approved, true)+" = COUNT(*)", f.ProductID)
+		return q.Having(at(true)+" = COUNT(*)", f.ProductID, approved)
 	case "waiting":
-		return q.Having(at(proposed, false)+" > 0", f.ProductID)
+		return q.Having(at(false)+" > 0", f.ProductID, proposed)
 	case "lapsed":
-		return q.Having(at(lapsed, false)+" > 0 AND "+at(approved, true)+" = 0",
-			f.ProductID, f.ProductID)
+		return q.Having(at(false)+" > 0 AND "+at(true)+" = 0",
+			f.ProductID, lapsed, f.ProductID, approved)
 	case "undecided":
 		return q.Having(anyClaim+" = 0", f.ProductID)
 	}
 	return q
+}
+
+// contains prepares a term to be searched for literally.
+//
+// A search box is not a pattern language. Typing `50%` means a component whose
+// name contains "50%", not every component containing "50" — and `a_b` means
+// what it says rather than "a, anything, b". So the wildcards are escaped and
+// the escape character is stated: every engine here takes `ESCAPE`, and SQLite
+// has no default escape character at all, so leaving it out makes a backslash
+// mean one thing on three engines and another on the fourth.
+//
+// **Case is folded here and again by the engine**, which is a compromise worth
+// naming. MDL-21 says to normalize the stored value rather than ask an engine
+// to compare loosely, and there is no folded column on a component to compare
+// against — adding one is a migration and a backfill. Folding the term in Go
+// is Unicode-aware; `LOWER()` on the column is ASCII-only on SQLite. So a
+// component named with a non-ASCII capital is found on three engines and
+// missed on the fourth. Component names are ASCII in every producer seen so
+// far, which is why this is written down rather than fixed: the day that stops
+// being true, the fix is a folded column.
+func contains(term string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+	return replacer.Replace(strings.ToLower(term))
 }
 
 // trimmed drops blanks from a list of names, so a stray separator in a query

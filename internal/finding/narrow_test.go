@@ -204,6 +204,103 @@ func TestAClaimInAnotherProductDoesNotDecideThisOne(t *testing.T) {
 	})
 }
 
+func TestEachDecisionStateSelectsWhatItNames(t *testing.T) {
+	// The states asserted positively rather than by all being empty.
+	//
+	// Nothing-is-decided is a fixture where "correct" and "always false" look
+	// identical, so three of the four states were pinned by a condition that
+	// could have been anything. This records a claim at a place and walks it:
+	// proposed reads as waiting, approved and live reads as agreed, and a
+	// claim that stopped applying reads as lapsed and not as agreed.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(ctx, f.target, f.run(t), []finding.Reported{
+			found("CVE-2026-1", swss),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		who := f.holding(t, access.PublicTriage)
+
+		somebody, err := access.NewStore(f.db.DB).Ensure(ctx, "them@example.com", "Them", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var issueID int64
+		if err := f.db.DB.NewSelect().TableExpr("vulnerability AS v").
+			Column("v.id").Where("v.identifier = ?", "CVE-2026-1").
+			Scan(ctx, &issueID); err != nil {
+			t.Fatal(err)
+		}
+		place := finding.PlaceIdentity(swss.Name, "")
+
+		record := func(state string, live bool) {
+			t.Helper()
+			if _, err := f.db.DB.NewDelete().Table("decision").
+				Where("vulnerability_id = ?", issueID).Exec(ctx); err != nil {
+				t.Fatal(err)
+			}
+			row := map[string]any{
+				"product_id": f.productID, "vulnerability_id": issueID,
+				"place_identity": place, "visibility": "public",
+				"outcome": "not-applicable", "state": state,
+				"needs_approval": true, "proposed_by": somebody.ID,
+				"proposed_at": time.Now().UTC(),
+			}
+			if live {
+				// What makes a claim the one standing here.
+				row["live_key"] = state + "-live-key"
+			}
+			if _, err := f.db.DB.NewInsert().Model(&row).
+				TableExpr("decision").Exec(ctx); err != nil {
+				t.Fatalf("record a %s claim: %v", state, err)
+			}
+		}
+		count := func(state string) int {
+			t.Helper()
+			_, n, err := f.store.Groups(ctx, who, f.target, 50, 0, finding.Filter{State: state})
+			if err != nil {
+				t.Fatalf("%s: %v", state, err)
+			}
+			return n
+		}
+
+		record("proposed", false)
+		if n := count("waiting"); n != 1 {
+			t.Errorf("a proposed claim: waiting kept %d, want 1", n)
+		}
+		if n := count("undecided"); n != 0 {
+			t.Errorf("a proposed claim: undecided kept %d, want 0", n)
+		}
+		if n := count("agreed"); n != 0 {
+			t.Errorf("a proposed claim is not agreed, yet agreed kept %d", n)
+		}
+
+		record("approved", true)
+		if n := count("agreed"); n != 1 {
+			t.Errorf("an approved live claim: agreed kept %d, want 1", n)
+		}
+		if n := count("waiting"); n != 0 {
+			t.Errorf("an approved claim is not waiting, yet waiting kept %d", n)
+		}
+
+		record("lapsed", false)
+		if n := count("lapsed"); n != 1 {
+			t.Errorf("a lapsed claim: lapsed kept %d, want 1", n)
+		}
+		if n := count("agreed"); n != 0 {
+			t.Errorf("a lapsed claim is not agreed, yet agreed kept %d", n)
+		}
+
+		// And a claim that was withdrawn long ago answers for nothing: it is
+		// not live, so the place is undecided again.
+		record("withdrawn", false)
+		if n := count("agreed"); n != 0 {
+			t.Errorf("a withdrawn claim read as agreed: %d", n)
+		}
+	})
+}
+
 func TestNarrowingByHowFarDecided(t *testing.T) {
 	// A group covers every place an issue sits at in one component, so its
 	// state is a statement about all of them: undecided means no place has a

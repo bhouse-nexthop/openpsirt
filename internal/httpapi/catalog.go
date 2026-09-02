@@ -252,7 +252,7 @@ func registerCatalog(api huma.API, d Declaring) {
 		for _, row := range rows {
 			ids = append(ids, row.ID)
 		}
-		shapes, err := store.Shapes(ctx, ids)
+		shapes, err := store.Shapes(ctx, subject, ids)
 		if err != nil {
 			return nil, wentWrong(d.Logger, "cannot count what the products hold", err)
 		}

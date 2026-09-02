@@ -543,7 +543,8 @@ type coverageOutput struct {
 		Items []CoverageBody `json:"items"`
 		// Quiet is how many of the rows are, so a caller can say so without
 		// counting them again.
-		Quiet          int `json:"quiet" doc:"How many of these have gone quiet"`
+		Quiet          int `json:"quiet" doc:"How many have gone quiet, across every build and not only this page"`
+		Total          int `json:"total" doc:"How many builds there are to report on"`
 		QuietAfterDays int `json:"quiet_after_days" doc:"How long this deployment allows, in days"`
 	}
 }
@@ -574,10 +575,15 @@ func registerCoverage(api huma.API, in Ingest) {
 		Tags: []string{"Scans"},
 	}, func(ctx context.Context, input *struct {
 		ScopeQuery
+		Limit  int `query:"limit" default:"200" minimum:"1" maximum:"500" doc:"How many to return. Quietest first, so the default is the answer for any estate somebody reads by hand"`
+		Offset int `query:"offset" minimum:"0" doc:"How many to skip"`
 	}) (*coverageOutput, error) {
 		subject, err := reading(ctx)
 		if err != nil {
 			return nil, err
+		}
+		if in.DB == nil {
+			return nil, huma.Error500InternalServerError("this process cannot read scans")
 		}
 		scope, err := scoped(ctx, in, subject, input.ScopeQuery)
 		if err != nil {
@@ -594,8 +600,26 @@ func registerCoverage(api huma.API, in Ingest) {
 		}
 
 		out := &coverageOutput{}
-		out.Body.Items = make([]CoverageBody, 0, len(rows))
 		out.Body.QuietAfterDays = int(quietAfter.Hours() / 24)
+		out.Body.Total = len(rows)
+		// Counted before the page is cut, and the quiet ones counted across
+		// the whole answer rather than the page: a badge that said "3" because
+		// three quiet builds happened to fall on the first page would be
+		// answering a different question from the one it looks like.
+		for _, row := range rows {
+			if row.Quiet {
+				out.Body.Quiet++
+			}
+		}
+		if input.Offset < len(rows) {
+			rows = rows[input.Offset:]
+		} else {
+			rows = nil
+		}
+		if len(rows) > input.Limit {
+			rows = rows[:input.Limit]
+		}
+		out.Body.Items = make([]CoverageBody, 0, len(rows))
 		for _, row := range rows {
 			body := CoverageBody{
 				Product:    row.Product,
@@ -607,9 +631,6 @@ func registerCoverage(api huma.API, in Ingest) {
 			}
 			if row.LastReceivedAt != nil {
 				body.LastReceivedAt = stamp(*row.LastReceivedAt)
-			}
-			if row.Quiet {
-				out.Body.Quiet++
 			}
 			out.Body.Items = append(out.Body.Items, body)
 		}

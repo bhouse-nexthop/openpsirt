@@ -402,8 +402,21 @@ engines-check:
 # Point it at a real server. SQLite answers a different question: one writer,
 # one connection, and nothing a deployment runs on.
 measure:
-	$(GO) test -tags measure -count=1 -v -timeout 60m \
-	  -run 'TestMeasure' ./internal/finding/
+ifneq ($(ENGINES_MISSING),)
+	@echo "Not configured: $(ENGINES_MISSING). A measurement taken on SQLite alone"
+	@echo "describes one writer on one connection, which is not what a deployment"
+	@echo "runs — so this refuses rather than producing a number that reads like"
+	@echo "four engines and is one. Run 'make engines-up'."
+	@exit 1
+endif
+	@# -run has to match something. A renamed test or a mistyped tag makes
+	@# "no tests to run" a green exit, which is the same green as a
+	@# measurement nobody took.
+	@out=$$(mktemp); trap 'rm -f "$$out"' EXIT; \
+	  $(GO) test -tags measure -count=1 -v -timeout 60m \
+	    -run 'TestMeasure' ./internal/finding/ 2>&1 | tee "$$out"; \
+	  grep -q "^=== RUN   TestMeasure" "$$out" \
+	    || { echo "no measurement ran: -run matched nothing"; exit 1; }
 
 # Requires docker and helm. Skipped by "check" so that a machine without them
 # can still run everything else.

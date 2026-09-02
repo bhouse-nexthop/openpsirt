@@ -57,6 +57,9 @@ func registerNotifications(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
+		if in.DB == nil {
+			return nil, huma.Error500InternalServerError("this process cannot read notifications")
+		}
 		rows, total, err := notify.NewStore(in.DB.DB).
 			Waiting(ctx, subject, input.Limit, input.Offset)
 		if err != nil {
@@ -92,6 +95,9 @@ func registerNotifications(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
+		if in.DB == nil {
+			return nil, huma.Error500InternalServerError("this process cannot read notifications")
+		}
 		if err := notify.NewStore(in.DB.DB).Acknowledge(ctx, subject, input.ID); err != nil {
 			// The same answer whether it is somebody else's or not there,
 			// which is what stops this being a way to find out which
@@ -116,6 +122,9 @@ func registerNotifications(api huma.API, in Ingest) {
 		subject, err := reading(ctx)
 		if err != nil {
 			return nil, err
+		}
+		if in.DB == nil {
+			return nil, huma.Error500InternalServerError("this process cannot read notifications")
 		}
 		n, err := notify.NewStore(in.DB.DB).AcknowledgeAll(ctx, subject)
 		if err != nil {

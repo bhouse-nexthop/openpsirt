@@ -230,3 +230,41 @@ func TestAPipelineKeyIsToldNothing(t *testing.T) {
 		}
 	})
 }
+
+func TestTwoSweepsAtOnceStillSayOneThing(t *testing.T) {
+	// A deployment runs more than one of these — the chart ships two replicas
+	// and each sweeps — so two processes deriving the same true thing at the
+	// same moment is ordinary. The unique index is what makes it one row, and
+	// nothing exercised it: the in-memory check inside a single Reconcile
+	// satisfied every other test, so the index could have been absent.
+	//
+	// This runs the passes concurrently and asserts two things: one row, and
+	// no error. A duplicate is not retryable, so before this was handled the
+	// loser did not merely lose — it aborted the sweep, and every
+	// administrator after it in the list was told nothing that cycle.
+	each(t, func(t *testing.T, s *notify.Store, me, _ access.Subject) {
+		ctx := t.Context()
+		holding := []notify.Holds{{About: "sonic/master/broadcom", Body: "not scanned"}}
+
+		const sweeps = 4
+		errs := make(chan error, sweeps)
+		start := make(chan struct{})
+		for range sweeps {
+			go func() {
+				<-start
+				_, _, err := s.Reconcile(ctx, me.ID, notify.BuildQuiet, holding)
+				errs <- err
+			}()
+		}
+		close(start)
+		for range sweeps {
+			if err := <-errs; err != nil {
+				t.Errorf("a sweep failed because another was saying the same thing: %v", err)
+			}
+		}
+
+		if _, total, err := s.Waiting(ctx, me, 50, 0); err != nil || total != 1 {
+			t.Errorf("%d rows say the same true thing (err %v), want 1", total, err)
+		}
+	})
+}

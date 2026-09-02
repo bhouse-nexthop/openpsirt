@@ -93,6 +93,20 @@ func registerAssignment(api huma.API, in Ingest) {
 		// (NTF-10), and it is the one category that deserves interrupting
 		// somebody for (NTF-02).
 		//
+		// **Only if they can see what they are being told about.** A
+		// notification carries the product, the branch, the variant and the
+		// issue, and it is stored as written rather than derived on read — so
+		// there is no visibility filter downstream that could repair it, and
+		// the check belongs here. Without it, assigning an undisclosed finding
+		// to somebody who holds nothing on that product hands them its name,
+		// its releases and a live vulnerability against it: a product they
+		// hold nothing on is meant to read as one that does not exist.
+		//
+		// The assignment itself is left alone. Whether work may be handed to
+		// somebody who cannot yet see it is a question about assignment, not
+		// about this channel, and quietly refusing it here would be deciding
+		// it in the wrong place.
+		//
 		// Nobody is told they were unassigned: a name being removed is not an
 		// action directed at the person who held it, and a queue that gets
 		// shorter says so already. Telling somebody something was taken away
@@ -101,7 +115,7 @@ func registerAssignment(api huma.API, in Ingest) {
 		// A failure here is logged and not returned. The assignment happened;
 		// answering with an error would invite a retry that assigns it again,
 		// and the notification is the lesser half of the two.
-		if to != nil && *to != subject.ID {
+		if to != nil && *to != subject.ID && seenBy(ctx, in, input.Body.Person, product) {
 			if err := notify.NewStore(in.DB.DB).Tell(ctx, notify.Telling{
 				PersonID: *to, Kind: notify.Assigned,
 				Body: input.Vulnerability + " in " + input.Component +
@@ -311,4 +325,17 @@ func refusedFinding(in Ingest, err error) error {
 		return huma.Error422UnprocessableEntity(err.Error())
 	}
 	return wentWrong(in.Logger, "that could not be recorded", err)
+}
+
+// seenBy reports whether the person being told may see the product it is about.
+//
+// Read as that person rather than as the caller: what the caller can see says
+// nothing about what the recipient can, and it is the recipient who receives
+// the text.
+func seenBy(ctx context.Context, in Ingest, identity string, productID int64) bool {
+	them, err := access.NewStore(in.DB.DB).Resolve(ctx, identity)
+	if err != nil {
+		return false
+	}
+	return them.Sees(productID)
 }

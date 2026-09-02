@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/uptrace/bun"
 
@@ -123,15 +124,25 @@ func (s *Store) Receipts(ctx context.Context, subject access.Subject, targetID i
 		return nil, 0, err
 	}
 
+	// Which upload each run is attributed to, worked out over *every* scan
+	// rather than over this page.
+	//
+	// A page is a window on the same history, so deciding "the newest upload
+	// this run covered" from the rows in front of us gave a different answer
+	// on page two: a run claimed on page one was claimed again by the first
+	// older upload it also covered, and the same opened and closed counts
+	// rendered twice. The claim has to be a property of the scan, not of the
+	// page it appears on.
+	claimed, err := s.claims(ctx, targetID, credential, runs)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	receipts := make([]Receipt, 0, len(scans))
-	claimed := make(map[int64]bool, len(runs))
 	for _, sc := range scans {
 		state, failure, run := progressOf(sc, read[strconv.FormatInt(sc.ID, 10)], runs)
 		receipt := Receipt{Scan: sc, State: state, Failure: failure}
-		// Scans arrive newest first, so the first upload a run answers is the
-		// newest one it covered.
-		if run != nil && !claimed[*run] {
-			claimed[*run] = true
+		if run != nil && claimed[*run] == sc.ID {
 			receipt.RunID = run
 		}
 		receipts = append(receipts, receipt)
@@ -206,4 +217,48 @@ func productOf(ctx context.Context, db bun.IDB, targetID int64) (int64, error) {
 		return 0, fmt.Errorf("no build is declared there")
 	}
 	return productID, nil
+}
+
+// claims says which upload each run's numbers belong to: the newest one it
+// covered, decided over the whole history rather than over one page of it.
+//
+// Two columns for every scan filed here, which the target index answers
+// directly. Arrival stands in for the moment a document was parsed — they are
+// seconds apart, and what is being decided is only which of two uploads a run
+// came after, so the distinction cannot change the answer without the two
+// having arrived either side of the run finishing, in which case arrival is
+// the more truthful of the two anyway.
+func (s *Store) claims(ctx context.Context, targetID int64, credential string,
+	runs []finding.Run) (map[int64]int64, error) {
+
+	var filed []struct {
+		ID         int64     `bun:"id"`
+		ReceivedAt time.Time `bun:"received_at"`
+	}
+	q := s.db.NewSelect().TableExpr("scan AS sc").
+		Column("sc.id", "sc.received_at").
+		Where("sc.target_id = ?", targetID)
+	if credential != "" {
+		q = q.Where("sc.credential = ?", credential)
+	}
+	if err := q.Order("sc.id DESC").Scan(ctx, &filed); err != nil {
+		return nil, fmt.Errorf("read what has been filed here: %w", err)
+	}
+
+	claimed := make(map[int64]int64, len(runs))
+	for i := range runs {
+		run := runs[i]
+		if run.FinishedAt == nil {
+			continue
+		}
+		// Scans are newest first, so the first one this run finished after is
+		// the newest upload it covered.
+		for _, sc := range filed {
+			if !sc.ReceivedAt.After(*run.FinishedAt) {
+				claimed[run.ID] = sc.ID
+				break
+			}
+		}
+	}
+	return claimed, nil
 }

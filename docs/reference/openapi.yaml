@@ -487,16 +487,21 @@ components:
             - array
             - "null"
         quiet:
-          description: How many of these have gone quiet
+          description: How many have gone quiet, across every build and not only this page
           format: int64
           type: integer
         quiet_after_days:
           description: How long this deployment allows, in days
           format: int64
           type: integer
+        total:
+          description: How many builds there are to report on
+          format: int64
+          type: integer
       required:
         - items
         - quiet
+        - total
         - quiet_after_days
       type: object
     Decide-togetherRequest:
@@ -5412,6 +5417,26 @@ paths:
           schema:
             description: Limit to one variant. Only meaningful with a product, and independent of the branch
             type: string
+        - description: How many to return. Quietest first, so the default is the answer for any estate somebody reads by hand
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 200
+            description: How many to return. Quietest first, so the default is the answer for any estate somebody reads by hand
+            format: int64
+            maximum: 500
+            minimum: 1
+            type: integer
+        - description: How many to skip
+          explode: false
+          in: query
+          name: offset
+          schema:
+            description: How many to skip
+            format: int64
+            minimum: 0
+            type: integer
       responses:
         "200":
           content:

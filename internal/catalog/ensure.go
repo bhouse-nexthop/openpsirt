@@ -237,8 +237,21 @@ type Shape struct {
 // A catalogue row saying only a name makes somebody open it to find out
 // whether there is anything there, which for a list whose whole job is to say
 // what exists is the question it should have answered.
-func (s *Store) Shapes(ctx context.Context, productIDs []int64) (map[int64]Shape, error) {
+// It carries a subject like every other read here. The caller passes ids it
+// already narrowed, which is why nothing leaked — but "the filtering is in the
+// handler" is the arrangement the non-negotiable exists to prevent, and it is
+// one careless caller from being a count of products somebody cannot see.
+func (s *Store) Shapes(ctx context.Context, subject access.Subject,
+	productIDs []int64) (map[int64]Shape, error) {
+
 	out := make(map[int64]Shape, len(productIDs))
+	held := make([]int64, 0, len(productIDs))
+	for _, id := range productIDs {
+		if subject.Sees(id) {
+			held = append(held, id)
+		}
+	}
+	productIDs = held
 	if len(productIDs) == 0 {
 		return out, nil
 	}

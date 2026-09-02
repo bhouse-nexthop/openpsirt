@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
+import { label, waiting } from "./notices";
 
 // What is waiting on you, with the count on the way in.
 //
@@ -18,7 +19,7 @@ export function Notices() {
   const [open, setOpen] = useState(false);
   const queries = useQueryClient();
 
-  const waiting = useQuery({
+  const mine = useQuery({
     queryKey: ["notifications"],
     queryFn: async () => unwrap(await api.GET("/v1/notifications", {})),
     // Asked for again on a cadence, because most of what lands here is put
@@ -26,8 +27,8 @@ export function Notices() {
     // else assigning work, a build going quiet.
     refetchInterval: 60_000,
   });
-  const total = waiting.data?.total ?? 0;
-  const items = waiting.data?.items ?? [];
+  const total = mine.data?.total ?? 0;
+  const items = mine.data?.items ?? [];
 
   const forget = useMutation({
     mutationFn: async (id: number) =>
@@ -49,10 +50,7 @@ export function Notices() {
         title={total > 0 ? `${total} waiting on you` : "Nothing waiting on you"}
         onClick={() => setOpen(!open)}
       >
-        {/* A count rather than a dot: "three things" and "something" are
-            different amounts of interruption, and the number is what decides
-            whether somebody opens it now or later. */}
-        {total > 99 ? "99+" : total > 0 ? total : "·"}
+        {waiting(total)}
       </button>
 
       {open && (
@@ -112,19 +110,4 @@ export function Notices() {
       )}
     </div>
   );
-}
-
-// The words the server sends are for a machine to match on; these are for
-// somebody to read.
-function label(kind?: string): string {
-  switch (kind) {
-    case "assigned":
-      return "assigned to you";
-    case "sent-back":
-      return "sent back";
-    case "build-quiet":
-      return "not being scanned";
-    default:
-      return kind ?? "";
-  }
 }

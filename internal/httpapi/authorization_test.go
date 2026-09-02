@@ -150,7 +150,32 @@ func eachReach(t *testing.T, fn func(t *testing.T, r *reach)) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := cat.DeclareStream(ctx, theirs.ID, "master", catalog.Branch, nil); err != nil {
+		theirBranch, err := cat.DeclareStream(ctx, theirs.ID, "master", catalog.Branch, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		theirVariant, err := cat.DeclareVariant(ctx, theirs.ID, "mellanox", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// A build under each product, so that anything answering "what exists
+		// here" has something to answer with. Without these the catalogue has
+		// products and no builds, and every test of what a reader may see is
+		// satisfied by an empty list — which is also what a missing visibility
+		// filter looks like.
+		mineBranch, err := cat.StreamByName(ctx, mine.ID, "master")
+		if err != nil {
+			t.Fatal(err)
+		}
+		mineVariant, err := cat.VariantByName(ctx, mine.ID, "broadcom")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := cat.TargetFor(ctx, mineBranch.ID, mineVariant.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := cat.TargetFor(ctx, theirBranch.ID, theirVariant.ID); err != nil {
 			t.Fatal(err)
 		}
 
@@ -527,7 +552,15 @@ func TestScanningShowsOnlyTheBuildsTheAskerHolds(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("a reader could not ask what has been scanned: %d", rec.Code)
 		}
-		if body := rec.Body.String(); contains(body, "theirs") {
+		body := rec.Body.String()
+		// Both directions. "Theirs is absent" is also what an endpoint that
+		// answers nothing to everybody looks like, and that endpoint would
+		// have passed this test for as long as the fixture built no builds at
+		// all — which it did.
+		if !contains(body, "mine") {
+			t.Errorf("the build they hold something on is missing: %s", body)
+		}
+		if contains(body, "theirs") {
 			t.Errorf("a product they hold nothing on was listed: %s", body)
 		}
 	})

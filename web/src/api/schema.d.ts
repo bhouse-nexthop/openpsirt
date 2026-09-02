@@ -1750,7 +1750,7 @@ export interface components {
             items: components["schemas"]["CoverageBody"][] | null;
             /**
              * Format: int64
-             * @description How many of these have gone quiet
+             * @description How many have gone quiet, across every build and not only this page
              */
             quiet: number;
             /**
@@ -1758,6 +1758,11 @@ export interface components {
              * @description How long this deployment allows, in days
              */
             quiet_after_days: number;
+            /**
+             * Format: int64
+             * @description How many builds there are to report on
+             */
+            total: number;
         };
         "Decide-togetherRequest": {
             /**
@@ -5221,6 +5226,10 @@ export interface operations {
                 stream?: string;
                 /** @description Limit to one variant. Only meaningful with a product, and independent of the branch */
                 variant?: string;
+                /** @description How many to return. Quietest first, so the default is the answer for any estate somebody reads by hand */
+                limit?: number;
+                /** @description How many to skip */
+                offset?: number;
             };
             header?: never;
             path?: never;

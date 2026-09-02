@@ -634,6 +634,25 @@ months, and where a product has said what is worth triaging at all, a downgrade
 across that line takes the finding off the working list and off any clock
 entirely.
 
+## What the interface does not have tests for
+
+Worth stating rather than leaving to be discovered, because a green build says
+more than it means here.
+
+`make check` type-checks every screen against a client generated from the API
+document, so a screen cannot disagree with the shape the server sends and a
+drifted endpoint is a compile error rather than a blank panel. That is real
+coverage and it is most of what the frontend needs.
+
+What it is not is a test of what a screen *says*. Two pieces are pulled out and
+tested on their own — what a notification is called, and the count on the
+control that opens it — because saying the wrong thing there is a defect rather
+than a matter of taste. Everything else is checked by a person looking at it.
+
+The honest summary: several thousand lines of interface, two test files. Where
+a screen computes something rather than draws it, that computation should come
+out into a function beside them.
+
 ## Where this diverges from the mockup
 
 **A finding is one screen in the mockup and three here.** The finding
