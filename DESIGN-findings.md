@@ -462,7 +462,7 @@ components, each sitting in 34 containers, so 23,800 places; 260 issues open at
 the start; 365 nightly rebuilds; 1% of components changing version each night;
 three new issues a night arriving from the vulnerability database and matching
 something already shipped. That is a real image at about a tenth of its size:
-7,035 components become 700, 241,021 places become 23,800, and roughly 2,600
+6,845 components become 700, 241,021 places become 23,800, and roughly 2,600
 issues become 260. The shape is kept and the constant shrunk, so the *growth*
 is measurable in an hour.
 

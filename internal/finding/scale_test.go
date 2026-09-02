@@ -38,13 +38,20 @@ import (
 // operation with a bigger constant. Every number this prints says which scale
 // it was taken at.
 const (
-	// components is how many packages a build ships. The real image has 7,035.
+	// components is how many packages a build ships. The real image has 6,845.
 	components = 700
 	// consumers is how many containers each package sits in on average. A real
-	// image reaches 241,021 places from 7,035 components, so about 34.
+	// image reached 241,021 places from 7,035 components, so about 34.
+	//
+	// That reach was measured against the previous fixture and has not been
+	// re-measured against the current one, which describes 190 fewer
+	// components. The average is what this model uses and it is not sensitive
+	// to that difference, but the 241,021 is a figure from the older document
+	// rather than from the one in testdata now.
 	consumers = 34
-	// issues is how many distinct vulnerabilities are open. The real image has
-	// about 2,600 across 7,374 issue-at-component rows.
+	// issues is how many distinct vulnerabilities are open. The real image had
+	// about 2,600 across 7,374 issue-at-component rows, on the same older
+	// document as the line above.
 	issues = 260
 	// nights is how many rebuilds to simulate.
 	nights = 365

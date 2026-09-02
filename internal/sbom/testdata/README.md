@@ -9,7 +9,7 @@ nobody can tell a producer quirk from a typo in.
 | `build-fragment.cdx.json` | Real output. One artifact a build step produced, on its way into an inventory. It names no component of its own, which is why it is refused |
 | `suppression-from-patch.openvex.json` | Real output. One claim a build extracted from a patch of its own. It names a source tree rather than a package, which is what makes matching a claim to a component something that can fail |
 | `image.cdx.json` | Written by hand, in the shape of the aggregate inventory a switch operating-system build emits: an image at the root, containers under it, packages under those, a shared library reached from several of them, and a forked component whose pedigree carries the version it was forked from. Not a producer's output, and not a substitute for one |
-| `switch-image.cdx.json.xz` | Real output, and the full-size one. The public SONiC network operating-system image, 7,035 components and 18,467 edges over 18 MB, from an upstream build. Compressed because the shape is the point and 18 MB of it is not. See below |
+| `switch-image.cdx.json.xz` | Real output, and the full-size one. The public SONiC network operating-system image, 6,845 components and 18,561 edges over 17 MB, from a build of sonic-buildimage#29237. Compressed because the shape is the point and 18 MB of it is not. See below |
 
 `producer-paths.txt` records every key path these documents contain and what
 the reader does with it. Regenerate with `go test ./internal/sbom -update`,
@@ -23,11 +23,19 @@ every decision already made alone.
 it is here because a hand-written one cannot stand in for it. What it holds
 that nothing written on purpose would:
 
-**A graph rather than a tree.** 1,078 of its components have more than one
+**A graph rather than a tree.** 1,095 of its components have more than one
 direct consumer, which is what makes "why is this here" a question with more
 than one answer, and what a reader assuming a tree gets wrong.
 
-**Build tooling kept apart from what ships.** 667 components sit under
+**A hierarchy rather than a root with everything under it.** The image root has
+30 direct children — 29 containers and the host filesystem — and the packages
+installed on the host hang off the host rather than off the image. The previous
+build gave the root 5,198 direct children and left 237 components with no
+consumer at all, which is a shape no reader can answer "why is this here" from.
+39 are still unreached, and they are lockfile and recipe fragments the build
+emits without saying what consumed them.
+
+**Build tooling kept apart from what ships.** 849 components sit under
 `formulation` — Go and Rust dependencies harvested from inside the build
 containers — rather than in `components` beside the image's contents. The
 question a scanner answers is what shipped; the question a build-chain

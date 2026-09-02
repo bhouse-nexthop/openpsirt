@@ -74,17 +74,26 @@ func TestARealImageReadsAsOneComponentPerPackage(t *testing.T) {
 	}
 
 	// Measured against this image when the fixture was taken. The document
-	// describes 7,035 components and they name 7,035 packages — the reader
+	// describes 6,845 components and they name 6,845 packages — the reader
 	// collapses nothing, because there is nothing left to collapse.
 	//
-	// It described 7,693 before. The 658 that went are the build container's
+	// It described 7,693, then 7,035, and now 6,845, and each drop was the
+	// producer being fixed. The 658 that went first are the build container's
 	// own toolchain — Go and Rust dependencies harvested from `usr/` and
 	// `root/.cargo` trees inside the build slaves, which the image does not
-	// ship. They are still in the document, moved to `formulation`, which is
-	// where CycloneDX puts how a thing was built: the data stays answerable
-	// for a build-chain question and stops being scanned as though it shipped.
-	// Marking them `scope: excluded` instead would have been correct for a
-	// human and inert for the scanner, which ignores scope entirely.
+	// ship. The 190 that went next are lockfile entries under source trees
+	// this image does not build at all. Both are still in the document, moved
+	// to `formulation`, which is where CycloneDX puts how a thing was built:
+	// the data stays answerable for a build-chain question and stops being
+	// scanned as though it shipped. Marking them `scope: excluded` instead
+	// would have been correct for a human and inert for the scanner, which
+	// ignores scope entirely.
+	//
+	// The count below is the only assertion in this file that moved. What a
+	// package says it was built from and what identifier a scanner matches on
+	// did not, and that is checked rather than assumed: none of the 190 states
+	// an upstream or carries a CPE, so the three constants further down stayed
+	// where they were.
 	//
 	// That is the change, and it is upstream rather than here. The previous
 	// fixture spelled 516 packages twice, under two package-URL namespaces for
@@ -107,7 +116,7 @@ func TestARealImageReadsAsOneComponentPerPackage(t *testing.T) {
 	// The number is written down rather than expressed as a tolerance: a
 	// change in it is a change in what identity means, and that is something
 	// to look at rather than absorb.
-	const packages = 7035
+	const packages = 6845
 	if len(snapshot.Components) != packages {
 		t.Errorf("the image read as %d components, expected %d — has the fixture or the rule changed?",
 			len(snapshot.Components), packages)

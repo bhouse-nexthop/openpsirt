@@ -18,11 +18,11 @@ be picked up:
 | **Done** | `DESIGN-interface.md` is level with the code again: the picker and what a partial scope refuses, home's order, the upstream and age columns, the decided count, the currency panel, the ambiguous-name chooser, and the finding-split divergence recorded as a divergence |
 | **Done** | `make engines-up` stands the four servers up and writes `local.mk`, so a fresh machine is one command rather than a document followed by hand |
 | **Done** | `make demo` is the image behind a proxy and needs only docker; `make dev` is the old native loop. The image builds the interface itself, which it was not doing at all |
-| **Done** | The fixture is the 2026-09-02 build: valid CycloneDX 1.6, toolchain in `formulation`, 219 fewer findings rows measured against the same scanner and database |
+| **Done** | The fixture before that one was the 2026-09-02 16:13 build: valid CycloneDX 1.6, toolchain in `formulation`, 219 fewer findings rows measured against the same scanner and database |
 | **Done** | The in-app notification area, both lifetimes, two event producers and the sweep that derives conditions. Mail and chat are not built; see `DESIGN-notifications.md` for what is told and what is not |
 | **Done** | An adversarial review over everything since the last one, and every finding worked through — see below. One was refused, and the gate then caught a regression in one of the fixes |
 | **Next** | **Re-run `make measure`.** The published year-of-scans figures are withdrawn: the harness applied twice the churn it documented, so they measure a model nobody described. The harness is fixed and the numbers are not taken yet — `DESIGN-findings.md` says so at the top of that section rather than carrying figures nobody can defend |
-| **Next** | Rebuild the SBOM once the two producer commits on sonic-buildimage#29237 are in a real build. Both are verified by replaying the changed functions over the existing document, not by a build that ran them; when one lands, swap the fixture and re-check the counts |
+| **Done** | The fixture is the 2026-09-02 21:21 build, which is the first one to have *run* the producer fixes rather than have them replayed over an old document. The image root's direct children went 5,198 → 30, unreached components 237 → 39, and 190 lockfile entries under unbuilt source trees moved to `formulation`. `packages` was the only asserted constant that moved; the upstream and CPE counts held because none of the 190 stated either, which was checked against the old fixture rather than assumed |
 
 **How `ING-41` ended up built**, since the shape is not obvious from the
 decision:
