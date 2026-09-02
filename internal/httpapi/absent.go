@@ -55,52 +55,60 @@ func nothingScannedThere() error {
 // first is something the caller can fix by saying which version, and the
 // second is not. Telling them apart discloses nothing — whoever is asking has
 // already been authorized to read this build.
-// ambiguousAmong offers a named set of versions rather than every version of
-// the name.
-func ambiguousAmong(name string, versions []string) error {
-	if len(versions) == 1 {
-		// One choice is not a choice. Whoever followed the link wanted this.
-		return huma.Error409Conflict(fmt.Sprintf(
-			"this build ships %q at more than one version, and this issue is open at "+
-				"one of them — add ?version=%s", name, versions[0]),
-			&huma.ErrorDetail{Location: "version", Message: versions[0]})
-	}
-	detail := make([]error, 0, len(versions))
-	for _, version := range versions {
-		detail = append(detail, &huma.ErrorDetail{Location: "version", Message: version})
+// ambiguousAmong offers the ways a name could be meant, having narrowed them
+// to the ones that answer the question being asked.
+func ambiguousAmong(name string, choices []graph.Choice) error {
+	detail := make([]error, 0, len(choices))
+	for _, choice := range choices {
+		detail = append(detail, &huma.ErrorDetail{
+			// "carrying" rather than "component", because these have been
+			// narrowed to the ones this issue is actually open at. The screen
+			// says different things about the two, and saying the wrong one is
+			// telling somebody an issue affects a version it does not.
+			Location: "carrying", Message: choice.Version,
+			Value: map[string]string{"ecosystem": choice.Ecosystem},
+		})
 	}
 	return huma.Error409Conflict(fmt.Sprintf(
 		"this build ships %q at more than one version, and this issue is open at %d of "+
-			"them — say which one with ?version=", name, len(versions)), detail...)
+			"them — say which one with ?version=", name, len(choices)), detail...)
 }
 
+// ambiguousOrMissing answers a component lookup that could not settle on one.
+//
+// A name matching several is a different answer from a name matching none: the
+// first is something the caller can fix by saying which one, and the second is
+// not. Telling them apart discloses nothing — whoever is asking has already
+// been authorized to read this build.
 func ambiguousOrMissing(err error) error {
-	// The versions, not only the fact. "Say which version" is not answerable
-	// by somebody who does not know what the choices are, and this is usually
-	// reached by following a link — so whoever hit it has nothing else to go
-	// on. Naming them discloses nothing further: the versions in a build are
-	// already readable by anyone who can read the build.
+	// The choices as structured detail rather than a sentence listing them. A
+	// real image ships one library at fifteen versions, and fifteen of them in
+	// prose is a paragraph nobody reads — as a list the screen can offer each
+	// as a link, which is the thing the reader actually wants. Naming them
+	// discloses nothing further: the versions in a build are already readable
+	// by anyone who can read the build.
+	//
+	// Each choice carries its ecosystem, because a version alone does not
+	// always resolve one: 13 names in a real image are held at one version by
+	// two components, a source repository and the package built from it. Left
+	// as versions alone, the refusal offered a choice that led straight back
+	// to the same refusal.
 	var several *graph.Ambiguous
 	if errors.As(err, &several) {
-		// The versions as structured detail rather than a sentence listing
-		// them. A real image ships one library at fifteen versions, and
-		// fifteen of them in prose is a paragraph nobody reads — as a list the
-		// screen can offer each as a link, which is the thing the reader
-		// actually wants. Naming them discloses nothing further: the versions
-		// in a build are already readable by anyone who can read the build.
-		detail := make([]error, 0, len(several.Versions))
-		for _, version := range several.Versions {
+		detail := make([]error, 0, len(several.Choices))
+		for _, choice := range several.Choices {
 			detail = append(detail, &huma.ErrorDetail{
-				Location: "version", Message: version,
+				// Every component of that name, *not* narrowed to the issue —
+				// which is why the location differs from the narrowed list
+				// above. Some of these may not carry it at all.
+				Location: "component", Message: choice.Version,
+				Value: map[string]string{"ecosystem": choice.Ecosystem},
 			})
 		}
 		return huma.Error409Conflict(fmt.Sprintf(
-			"this build ships %q at %d versions — say which one with ?version=",
-			several.Name, len(several.Versions)), detail...)
-	}
-	if errors.Is(err, graph.ErrAmbiguous) {
-		return huma.Error409Conflict(
-			"this build ships that name at more than one version — say which with ?version=")
+			"this build ships %q as %d different components — say which one with "+
+				"?version= and, where two share a version, &ecosystem=",
+			several.Name, len(several.Choices)), detail...)
 	}
 	return noSuchFinding()
 }

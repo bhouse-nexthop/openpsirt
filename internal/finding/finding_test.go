@@ -72,6 +72,59 @@ func (f *fixture) shipped(t *testing.T, snap graph.Snapshot) {
 	f.lastScan = scan.ID
 }
 
+// anotherBuild declares a second release of the same product and returns its
+// target.
+//
+// Anything reporting *per build* has to be tested against more than one, or
+// the grouping is enforced by there being nothing to group.
+func (f *fixture) anotherBuild(t *testing.T, stream string) int64 {
+	t.Helper()
+	cat := catalog.NewStore(f.db.DB)
+	declared, err := cat.DeclareStream(t.Context(), f.productID, stream, catalog.Tag, nil)
+	if err != nil {
+		t.Fatalf("declare %s: %v", stream, err)
+	}
+	variant, err := cat.VariantByName(t.Context(), f.productID, "broadcom")
+	if err != nil {
+		t.Fatalf("variant: %v", err)
+	}
+	target, err := cat.TargetFor(t.Context(), declared.ID, variant.ID)
+	if err != nil {
+		t.Fatalf("target for %s: %v", stream, err)
+	}
+	return target.ID
+}
+
+// shippedTo stores a graph against a build other than the fixture's own.
+func (f *fixture) shippedTo(t *testing.T, target int64, snap graph.Snapshot) {
+	t.Helper()
+	f.seq++
+	f.built = f.built.Add(time.Hour)
+	scan, outcome, err := f.scans.Record(t.Context(), ingest.Arriving{
+		TargetID: target, ContentHash: fmt.Sprintf("hash-%d", f.seq), BuiltAt: f.built,
+		ParserVersion: "test",
+	})
+	if err != nil || outcome != ingest.Accept {
+		t.Fatalf("record scan: %v %v", outcome, err)
+	}
+	if _, err := f.graph.Apply(t.Context(), target, scan.ID, snap); err != nil {
+		t.Fatalf("apply graph: %v", err)
+	}
+}
+
+// runOn starts a scan run against a build other than the fixture's own.
+func (f *fixture) runOn(t *testing.T, target int64) int64 {
+	t.Helper()
+	r, err := f.store.Begin(t.Context(), finding.Run{
+		TargetID: target, Scanner: "grype", ScannerVersion: "0.100.0",
+		DatabaseVersion: "2026-08-28", RanHere: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r.ID
+}
+
 // twoConsumers is the graph most of these tests use.
 func twoConsumers() graph.Snapshot {
 	return graph.Snapshot{
@@ -1145,6 +1198,10 @@ func (f *fixture) byState(t *testing.T) (closed, opened []finding.Finding) {
 // and not whether the estate was getting better or worse across all of them.
 func TestWhatIsOpenIsReportedPerBuild(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
+		// A **second** build, because "per build" tested against one build
+		// proves nothing: collapsing the grouping key to a constant passed.
+		second := f.anotherBuild(t, "202411")
+
 		f.shipped(t, twoConsumers())
 		if _, err := f.store.Apply(t.Context(), f.target, f.run(t), []finding.Reported{
 			found("CVE-2026-1", libnl),
@@ -1152,58 +1209,92 @@ func TestWhatIsOpenIsReportedPerBuild(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
+		// One issue on the other build, so the two must not be added together.
+		f.shippedTo(t, second, twoConsumers())
+		if _, err := f.store.Apply(t.Context(), second, f.runOn(t, second),
+			[]finding.Reported{found("CVE-2026-3", libnl)}); err != nil {
+			t.Fatal(err)
+		}
 
-		releases, err := f.store.Releases(t.Context(), f.holding(t, access.PublicRead), f.productID)
+		releases, err := f.store.Releases(t.Context(),
+			f.holding(t, access.PublicRead), f.productID)
 		if err != nil {
 			t.Fatalf("releases: %v", err)
 		}
-		if len(releases) != 1 {
-			t.Fatalf("reported %d builds, expected 1", len(releases))
+		if len(releases) != 2 {
+			t.Fatalf("reported %d builds, expected 2: %+v", len(releases), releases)
 		}
-		open := f.open(t)
-		if releases[0].Open != len(open) {
-			t.Errorf("counted %d open, but %d findings are open — a chart that "+
-				"disagrees with the list is worse than no chart",
-				releases[0].Open, len(open))
+		by := map[string]finding.Release{}
+		for _, r := range releases {
+			by[r.Stream] = r
 		}
-		// The split has to add up to the total, or the chart's segments and its
-		// height are two different numbers.
-		summed := 0
-		for _, n := range releases[0].BySeverity {
-			summed += n
+		// Two issues at one component is two rows on the findings list, not
+		// the six places they sit at. Counting places is the mistake the trend
+		// chart already made and recorded.
+		if got := by["master"].Open; got != 2 {
+			t.Errorf("master reports %d open, expected 2 — one per issue at a "+
+				"component, not one per place", got)
 		}
-		if summed != releases[0].Open {
-			t.Errorf("the severity split adds to %d, the total says %d", summed, releases[0].Open)
+		if got := by["202411"].Open; got != 1 {
+			t.Errorf("202411 reports %d open, expected 1", got)
 		}
-		if releases[0].Stream == "" || releases[0].Variant == "" {
-			t.Errorf("a build with no name: %+v", releases[0])
+		// The split has to name the band, not merely add up: incrementing both
+		// counters from the same value in the same loop is a tautology, and
+		// renaming the band to nonsense used to pass.
+		if got := by["master"].BySeverity["high"]; got != 2 {
+			t.Errorf("master reports %d high, expected 2 (by_severity: %v)",
+				got, by["master"].BySeverity)
 		}
 	})
 }
 
-// A count nobody may read is not a smaller count, and a total is as much a
-// disclosure as a row: "there are six here" tells a reader there are six.
 func TestWhatIsOpenPerBuildIsNarrowedToWhatSomebodyMayRead(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		f.shipped(t, twoConsumers())
-		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
-			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t), []finding.Reported{
+			found("CVE-2026-1", libnl),
+			found("CVE-2026-2", libnl),
+		}); err != nil {
 			t.Fatal(err)
 		}
+		// One of the two issues undisclosed, so a reader sees a *smaller*
+		// number rather than none. With everything hidden the checks below
+		// never had a positive case, and the test could only fail by returning
+		// something it should not — never by returning the wrong number.
+		//
+		// Every place of that issue, not one row: an issue sits at several
+		// places, and hiding one leaves it visible through another, which is
+		// correct and is what this counts.
 		if _, err := f.db.DB.NewUpdate().Model((*finding.Finding)(nil)).
 			Set("visibility = ?", access.Private).
-			Where("target_id = ?", f.target).Exec(t.Context()); err != nil {
+			Where("vulnerability_id = ?", f.issueID(t, "CVE-2026-1")).
+			Exec(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 
-		releases, err := f.store.Releases(t.Context(), f.holding(t, access.PublicRead), f.productID)
-		if err != nil {
-			t.Fatalf("releases: %v", err)
-		}
-		for _, r := range releases {
-			if r.Open != 0 {
-				t.Errorf("a reader who may not see it was told there are %d", r.Open)
+		open := func(who access.Subject) int {
+			t.Helper()
+			releases, err := f.store.Releases(t.Context(), who, f.productID)
+			if err != nil {
+				t.Fatalf("releases: %v", err)
 			}
+			total := 0
+			for _, r := range releases {
+				total += r.Open
+			}
+			return total
+		}
+
+		// Two issues at one component: two rows for somebody who may read
+		// both, one for somebody who may read only what is disclosed.
+		if got := open(f.holding(t, access.PrivateRead)); got != 2 {
+			t.Errorf("a reader of everything was told %d, expected 2", got)
+		}
+		if got := open(f.holding(t, access.PublicRead)); got != 1 {
+			t.Errorf("a reader of disclosed findings only was told %d, expected 1", got)
+		}
+		if got := open(access.NewPerson(2, "stranger", false, nil)); got != 0 {
+			t.Errorf("somebody with no rights was told %d", got)
 		}
 	})
 }
@@ -1213,24 +1304,30 @@ func TestWhatIsOpenPerBuildIsNarrowedToWhatSomebodyMayRead(t *testing.T) {
 func TestTheLastRunSaysWhatItWasMeasuredWith(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		who := f.holding(t, access.PublicRead)
-
-		// Nothing has finished, so there is nothing to say — absent rather
-		// than invented.
-		before, err := f.store.LatestRun(t.Context(), who, f.target)
-		if err != nil {
-			t.Fatalf("latest run: %v", err)
-		}
-		if before != nil {
-			t.Fatalf("a run was reported before any had finished: %+v", before)
-		}
-
 		f.shipped(t, twoConsumers())
-		runID := f.run(t)
-		if _, err := f.store.Apply(t.Context(), f.target, runID,
+
+		// A run that has started and not finished is not an answer. Reporting
+		// it would say the build was measured against a database version that
+		// nothing has been measured against yet.
+		running := f.run(t)
+		if _, err := f.store.Apply(t.Context(), f.target, running,
 			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
 			t.Fatal(err)
 		}
-		if err := f.store.Finish(t.Context(), runID, "0.100.1", "2026-08-29", nil); err != nil {
+		unfinished, err := f.store.LatestRun(t.Context(), who, f.target)
+		if err != nil {
+			t.Fatalf("latest run: %v", err)
+		}
+		if unfinished != nil {
+			t.Fatalf("an unfinished run was reported: %+v", unfinished)
+		}
+		if err := f.store.Finish(t.Context(), running, "0.100.1", "2026-08-29", nil); err != nil {
+			t.Fatal(err)
+		}
+
+		// A second, later run. "Most recent" is untestable with one.
+		later := f.run(t)
+		if err := f.store.Finish(t.Context(), later, "0.101.0", "2026-09-02", nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -1239,17 +1336,26 @@ func TestTheLastRunSaysWhatItWasMeasuredWith(t *testing.T) {
 			t.Fatalf("latest run: %v", err)
 		}
 		if last == nil {
-			t.Fatal("nothing reported after a run finished")
+			t.Fatal("nothing reported after two runs finished")
 		}
-		if last.Scanner != "grype" {
-			t.Errorf("scanner is %q, expected grype", last.Scanner)
+		if last.ID != later {
+			t.Errorf("reported run %d, expected the most recent (%d)", last.ID, later)
 		}
-		if last.DatabaseVersion != "2026-08-29" {
-			t.Errorf("database version is %q, expected the one the run finished with",
+		if last.DatabaseVersion != "2026-09-02" {
+			t.Errorf("database version is %q, expected the later run's",
 				last.DatabaseVersion)
 		}
-		if last.FinishedAt == nil {
-			t.Error("a finished run with no finishing time")
+		if last.Scanner != "grype" || last.FinishedAt == nil {
+			t.Errorf("a finished run reported without its scanner or time: %+v", last)
+		}
+
+		// And somebody who may not see this product is told nothing, on the
+		// query rather than by the caller remembering to ask.
+		stranger := access.NewPerson(2, "stranger", false, nil)
+		if hidden, err := f.store.LatestRun(t.Context(), stranger, f.target); err != nil {
+			t.Fatalf("latest run for a stranger: %v", err)
+		} else if hidden != nil {
+			t.Errorf("somebody with no rights was told what it was measured with: %+v", hidden)
 		}
 	})
 }
@@ -1259,36 +1365,100 @@ func TestTheLastRunSaysWhatItWasMeasuredWith(t *testing.T) {
 // finding" — which is a worse answer than the refusal it replaced.
 func TestOnlyTheVersionsCarryingTheIssueAreOffered(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
-		// One name at two versions, and the issue at only one of them.
-		older := graph.Described{
+		// Enough that every filter has something to exclude. With one finding
+		// and one component this test passed with **every** filter deleted —
+		// the vulnerability, the closed check, the name and the visibility —
+		// because a join through `finding` could not return anything else
+		// whatever the query said. Absent data was doing the work the code was
+		// supposed to do.
+		carrying := graph.Described{
 			Purl: "pkg:golang/example.com/lib@v1", Name: "example.com/lib", Version: "v1",
 		}
-		newer := graph.Described{
+		clean := graph.Described{
 			Purl: "pkg:golang/example.com/lib@v2", Name: "example.com/lib", Version: "v2",
+		}
+		// Same version, different ecosystem: the source repository and the
+		// package built from it, which is why a version alone cannot pick one.
+		sibling := graph.Described{
+			Purl: "pkg:github/example.com/lib@v1", Name: "example.com/lib", Version: "v1",
+		}
+		// Another name entirely, so the name filter has something to drop.
+		elsewhere := graph.Described{
+			Purl: "pkg:golang/example.com/other@v9", Name: "example.com/other", Version: "v9",
 		}
 		f.shipped(t, graph.Snapshot{
 			Root:       root,
-			Components: []graph.Described{older, newer},
+			Components: []graph.Described{carrying, clean, sibling, elsewhere},
 			Dependencies: []graph.Dependency{
-				{Parent: root, Child: older},
-				{Parent: root, Child: newer},
+				{Parent: root, Child: carrying}, {Parent: root, Child: clean},
+				{Parent: root, Child: sibling}, {Parent: root, Child: elsewhere},
 			},
 		})
-		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
-			[]finding.Reported{found("CVE-2026-9", older)}); err != nil {
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t), []finding.Reported{
+			found("CVE-2026-9", carrying),
+			// A different issue at the clean version: the vulnerability filter
+			// has to drop this, not the absence of a row.
+			found("CVE-2026-8", clean),
+			// The same issue under a different name.
+			found("CVE-2026-9", elsewhere),
+			// And the same issue at the same version in another ecosystem.
+			found("CVE-2026-9", sibling),
+		}); err != nil {
 			t.Fatal(err)
 		}
 
-		versions, err := f.store.VersionsWithIssue(t.Context(),
-			f.holding(t, access.PublicRead), f.target, f.issueID(t, "CVE-2026-9"),
+		who := f.holding(t, access.PublicRead)
+		issue := f.issueID(t, "CVE-2026-9")
+		got, err := f.store.VersionsWithIssue(t.Context(), who, f.target, issue,
 			"example.com/lib")
 		if err != nil {
 			t.Fatalf("versions: %v", err)
 		}
-		if len(versions) != 1 || versions[0] != "v1" {
-			t.Errorf("offered %v, expected only the version carrying it", versions)
+		want := []graph.Choice{
+			{Version: "v1", Ecosystem: "golang"},
+			{Version: "v1", Ecosystem: "github"},
+		}
+		if !sameChoices(got, want) {
+			t.Errorf("offered %v, expected %v", got, want)
+		}
+
+		// Closed findings are not offered: following one leads to a finding
+		// that is not there.
+		if _, err := f.db.DB.NewUpdate().Model((*finding.Finding)(nil)).
+			Set("closed_run_id = ?", f.run(t)).
+			Where("target_id = ?", f.target).Exec(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		closed, err := f.store.VersionsWithIssue(t.Context(), who, f.target, issue,
+			"example.com/lib")
+		if err != nil {
+			t.Fatalf("versions after closing: %v", err)
+		}
+		if len(closed) != 0 {
+			t.Errorf("offered %v after every finding closed", closed)
 		}
 	})
+}
+
+// sameChoices compares without caring about order, which the query does not
+// promise beyond being stable.
+func sameChoices(got, want []graph.Choice) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	seen := map[graph.Choice]int{}
+	for _, c := range got {
+		seen[c]++
+	}
+	for _, c := range want {
+		seen[c]--
+	}
+	for _, n := range seen {
+		if n != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // issueID resolves an issue by the name it was reported under.

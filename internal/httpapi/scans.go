@@ -474,6 +474,15 @@ func registerReceipts(api huma.API, in Ingest) {
 		// What those numbers were arrived at with. Read separately because it
 		// describes the build rather than any upload, and absent rather than
 		// invented where nothing has finished running yet.
+		// Not for a credential that is only allowed to see its own uploads.
+		// This endpoint deliberately narrows receipts to what a key sent —
+		// "a key sees the receipts for what it sent and nothing more" — and a
+		// key that has uploaded nothing would otherwise still learn when the
+		// build was last scanned and with what, which is a report about the
+		// product rather than an acknowledgement of its own upload.
+		if sender != "" {
+			return out, nil
+		}
 		last, err := finding.NewStore(in.DB.DB).LatestRun(ctx, subject, target.ID)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "the last run could not be read", err)

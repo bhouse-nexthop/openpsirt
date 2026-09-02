@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
+import type { Body } from "../api/client";
 import { unwrap } from "../api/queries";
 import { useApprove, useSendBack } from "../api/mutations";
 import { Empty } from "../ui/Empty";
@@ -119,15 +120,11 @@ export function Queue() {
   );
 }
 
-type Row = {
-  decision?: { id?: number; outcome?: string; justification?: string; deferred_until?: string };
-  place?: { product?: string; vulnerability?: string };
-  reasoning?: string;
-  proposed_by?: string;
-  previously_approved?: boolean;
-  deferred_days?: number;
-  age_days?: number;
-};
+// The server's own shape rather than a copy of it, so a field the server
+// grows arrives here instead of being silently absent.
+// The items live inside the response body, so it is named by reaching into
+// it rather than by restating the fields.
+type Row = NonNullable<Body<"QueueOutputBody">["items"]>[number];
 
 function Card({
   row,

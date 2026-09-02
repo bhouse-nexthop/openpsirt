@@ -80,11 +80,20 @@ func TestARealImageReadsAsOneComponentPerPackage(t *testing.T) {
 	// That is the change, and it is upstream rather than here. The previous
 	// fixture spelled 516 packages twice, under two package-URL namespaces for
 	// one .deb, and this reader absorbed it; the generator now merges them at
-	// the source (sonic-buildimage #29237). What this asserts is therefore no
-	// longer "the reader dedupes correctly" but "the reader has nothing to
-	// dedupe", which is the stronger statement of the two — a duplicate
-	// arriving again would show up as identities being fewer than components,
-	// which is the check below.
+	// the source (sonic-buildimage #29237).
+	//
+	// **So this test no longer proves the merge works**, and saying otherwise
+	// was the mistake in the last version of this comment. With nothing left
+	// to merge, deleting the merging code entirely leaves both assertions
+	// below passing — verified by doing it. What they prove now is narrower
+	// and still worth having: that this fixture arrives as one component per
+	// package and that the reader adds no duplicates of its own.
+	//
+	// The merge itself is proved by TestTwoSpellingsOfOnePackageAreOneComponent
+	// below, which constructs the duplicates rather than depending on a
+	// fixture to contain them — which is where a rule of this kind belongs,
+	// because a fixture is somebody else's output and can stop exercising it
+	// without anybody deciding to.
 	//
 	// The number is written down rather than expressed as a tolerance: a
 	// change in it is a change in what identity means, and that is something
@@ -228,9 +237,15 @@ func TestWhatAPackageWasBuiltFromIsReadHoweverItIsStated(t *testing.T) {
 	// not against the binaries cut from it.
 	//
 	// Producers state it two ways. The format has a place for it, and several
-	// producers hang it off the identifier instead. In this image the two do
-	// not overlap at all: 30 state it the first way, 535 the second, and
-	// reading only the first captures a twentieth of what is there.
+	// producers hang it off the identifier instead. In this image 30 state it
+	// the first way and 537 the second, 16 of them both, so reading only the
+	// format's own mechanism captures 30 of the 551 that say anything — a
+	// twentieth of what is there.
+	//
+	// The counts below are asserted; this sentence is not computed from
+	// anything, so it is a claim about the fixture that goes stale silently.
+	// It said 30 and 535 — which add to the number this file used to assert —
+	// after the fixture had moved.
 	f := openFullSize(t)
 	snapshot, err := sbom.Read(f, sbom.Limits{})
 	if err != nil {

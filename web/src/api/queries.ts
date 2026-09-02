@@ -11,19 +11,29 @@ export class Refused extends Error {
     // What the server said was wrong, item by item, where it said so. A
     // refusal that names fifteen versions is a paragraph as a sentence and a
     // list of choices as a list — the screen can only offer the second.
-    readonly details: { location?: string; message?: string }[] = [],
+    readonly details: {
+      location?: string;
+      message?: string;
+      value?: Record<string, unknown>;
+    }[] = [],
   ) {
     super(message);
     this.name = "Refused";
   }
 }
 
-// at returns the detail entries the server attached to one location.
-export function at(error: unknown, location: string): string[] {
+// A choice the server offered, with whatever else it takes to pick one.
+export type Choice = { version: string; ecosystem?: string };
+
+// at returns the choices the server attached to one location.
+export function at(error: unknown, location: string): Choice[] {
   if (!(error instanceof Refused)) return [];
   return error.details
     .filter((d) => d.location === location && d.message)
-    .map((d) => d.message as string);
+    .map((d) => ({
+      version: d.message as string,
+      ecosystem: typeof d.value?.ecosystem === "string" ? d.value.ecosystem : undefined,
+    }));
 }
 
 type Answer<T> = { data?: T; error?: unknown; response: Response };
@@ -38,12 +48,15 @@ export function unwrap<T>({ data, error, response }: Answer<T>): T {
   return data as T;
 }
 
-function detailsOf(error: unknown): { location?: string; message?: string }[] {
+function detailsOf(
+  error: unknown,
+): { location?: string; message?: string; value?: Record<string, unknown> }[] {
   if (typeof error === "object" && error !== null && "errors" in error) {
     const list = (error as { errors?: unknown }).errors;
     if (Array.isArray(list)) {
-      return list.filter((e): e is { location?: string; message?: string } =>
-        typeof e === "object" && e !== null,
+      return list.filter(
+        (e): e is { location?: string; message?: string; value?: Record<string, unknown> } =>
+          typeof e === "object" && e !== null,
       );
     }
   }

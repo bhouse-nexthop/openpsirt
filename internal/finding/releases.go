@@ -7,6 +7,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 )
 
 // Release is one build of a product and how much stands open against it.
@@ -14,9 +15,15 @@ type Release struct {
 	Stream  string
 	Kind    string
 	Variant string
-	// Open is every open finding at this build, whatever its severity — the
-	// same population the findings list counts before any triage line is
-	// applied, so the two agree.
+	// Open is what the findings list would show for this build, before any
+	// triage line: one per issue at a component, however many places it sits
+	// at there.
+	//
+	// **Not a row count.** Rows are places, and a component reached twenty
+	// ways carries the same issue twenty times — counting them reported
+	// 241,161 for a build every other screen reports at 7,546. The trend chart
+	// made exactly this mistake and its comment records the fix; this is the
+	// same lesson arriving in a second place.
 	Open int
 	// BySeverity is that total split the four ways everything else here ranks
 	// by, folded through the one expression the line and the deadline use so a
@@ -49,7 +56,11 @@ func (s *Store) Releases(ctx context.Context, subject access.Subject,
 		Band    string `bun:"band"`
 		Open    int    `bun:"open"`
 	}
-	query := s.db.NewSelect().
+	// The distinct pairs first, counted after. Counting distinct over two
+	// columns at once is not something every engine spells the same way, and
+	// concatenating them into one string is a portability trap of its own.
+	inner := s.db.NewSelect().
+		Distinct().
 		TableExpr("finding AS f").
 		Join("JOIN target AS tg ON tg.id = f.target_id").
 		Join("JOIN stream AS st ON st.id = tg.stream_id").
@@ -59,15 +70,24 @@ func (s *Store) Releases(ctx context.Context, subject access.Subject,
 		ColumnExpr("st.kind AS kind").
 		ColumnExpr("va.name AS variant").
 		ColumnExpr(BandExpr+" AS band").
-		ColumnExpr("COUNT(*) AS open").
+		ColumnExpr("f.vulnerability_id AS vulnerability_id").
+		ColumnExpr("f.component_id AS component_id").
 		Where("st.product_id = ?", productID).
-		Where("f.closed_run_id IS NULL").
-		GroupExpr("st.name, st.kind, va.name, " + BandExpr).
+		Where("f.closed_run_id IS NULL")
+	inner = onlyVisible(inner, subject, products, all)
+
+	query := s.db.NewSelect().
+		TableExpr("(?) AS at", inner).
+		ColumnExpr("at.stream AS stream").
+		ColumnExpr("at.kind AS kind").
+		ColumnExpr("at.variant AS variant").
+		ColumnExpr("at.band AS band").
+		ColumnExpr("COUNT(*) AS open").
+		GroupExpr("at.stream, at.kind, at.variant, at.band").
 		// Ordered here rather than in the caller, so every reader of this gets
 		// the same sequence. A chart whose points move between requests is
 		// worse than one that is wrong in a fixed way.
-		OrderExpr("st.name, va.name")
-	query = onlyVisible(query, subject, products, all)
+		OrderExpr("at.stream, at.variant")
 
 	if err := query.Scan(ctx, &rows); err != nil {
 		return nil, fmt.Errorf("read what is open against each build: %w", err)
@@ -107,7 +127,12 @@ func (s *Store) LatestRun(ctx context.Context, subject access.Subject,
 	if err != nil {
 		return nil, err
 	}
-	if !subject.Sees(productID) {
+	// A person, and one who may see this product. `Sees` alone is true for a
+	// pipeline credential naming the product, which ignores the stream and
+	// variant that credential is pinned to — `Releases` beside this checks the
+	// kind explicitly and this did not. No route reaches it as a pipeline
+	// today; the next one added would.
+	if subject.Kind != access.Person || !subject.Sees(productID) {
 		return nil, nil
 	}
 	var runs []Run
@@ -135,7 +160,7 @@ func (s *Store) LatestRun(ctx context.Context, subject access.Subject,
 // given issue — offering all fifteen is a list where four in five choices lead
 // to "no such finding", which is a worse answer than the refusal it replaced.
 func (s *Store) VersionsWithIssue(ctx context.Context, subject access.Subject,
-	targetID, vulnerabilityID int64, name string) ([]string, error) {
+	targetID, vulnerabilityID int64, name string) ([]graph.Choice, error) {
 
 	productID, err := productOf(ctx, s.db, targetID)
 	if err != nil {
@@ -146,20 +171,31 @@ func (s *Store) VersionsWithIssue(ctx context.Context, subject access.Subject,
 		return nil, nil
 	}
 
-	var versions []string
+	var rows []struct {
+		Version string `bun:"version"`
+		Purl    string `bun:"purl"`
+	}
 	err = s.db.NewSelect().
+		Distinct().
 		TableExpr("finding AS f").
 		Join("JOIN component AS c ON c.id = f.component_id").
-		ColumnExpr("DISTINCT c.version").
+		ColumnExpr("c.version AS version").
+		ColumnExpr("c.purl AS purl").
 		Where("f.target_id = ?", targetID).
 		Where("f.vulnerability_id = ?", vulnerabilityID).
 		Where("f.closed_run_id IS NULL").
 		Where("c.name = ?", name).
 		Where("f.visibility IN (?)", bun.List(visible)).
-		OrderExpr("c.version").
-		Scan(ctx, &versions)
+		OrderExpr("c.version, c.purl").
+		Scan(ctx, &rows)
 	if err != nil {
 		return nil, fmt.Errorf("read which versions carry this issue: %w", err)
 	}
-	return versions, nil
+	choices := make([]graph.Choice, 0, len(rows))
+	for _, row := range rows {
+		choices = append(choices, graph.Choice{
+			Version: row.Version, Ecosystem: graph.EcosystemOf(row.Purl),
+		})
+	}
+	return choices, nil
 }

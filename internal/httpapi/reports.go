@@ -95,7 +95,13 @@ func registerReports(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
-		named, err := catalog.NewStore(in.DB.DB).ProductByName(ctx, input.Product)
+		// The visible lookup, so a product somebody may not see answers the
+		// same way as one that was never declared. Resolving the name first
+		// and authorizing afterwards is how the difference gets out: this
+		// answered 200 with an empty list for a product held by somebody else
+		// and 404 for a name nobody has, which hands anyone holding one
+		// product the name of every other by guessing.
+		named, err := catalog.NewStore(in.DB.DB).VisibleProduct(ctx, subject, input.Product)
 		if err != nil {
 			return nil, noSuchProduct()
 		}

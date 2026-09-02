@@ -4235,6 +4235,8 @@ export interface operations {
             query?: {
                 /** @description Which version, where the build ships that name at more than one */
                 version?: string;
+                /** @description Which ecosystem, for the few names one build holds at one version as two components — a source repository and the package built from it */
+                ecosystem?: string;
             };
             header?: never;
             path: {

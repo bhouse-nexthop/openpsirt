@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
+import type { Body } from "../api/client";
 import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
@@ -222,13 +223,9 @@ function Pick({
   );
 }
 
-type Changed = {
-  vulnerability?: string;
-  component?: string;
-  severity?: string;
-  because?: string;
-  arrived_from?: string;
-};
+// The server's own shape rather than a copy of it, so a field the server
+// grows arrives here instead of being silently absent.
+type Changed = Body<"ChangedBody">;
 
 // Marks read as sentences rather than as field values, because a reader of a
 // release note is being told what happened rather than shown a column.

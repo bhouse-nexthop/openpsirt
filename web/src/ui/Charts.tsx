@@ -13,6 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import type { Body } from "../api/client";
 
 // The three shapes the reporting decisions name, drawn small. They sit inside
 // panels rather than on a page of their own, so they carry no title and no
@@ -185,13 +186,11 @@ export function Ring({ point }: { point?: Point }) {
   );
 }
 
-export type Release = {
-  stream?: string;
-  kind?: string;
-  variant?: string;
-  open?: number;
-  by_severity?: Record<string, number>;
-};
+// The server's own shape. Restating it here is the bug this codebase has
+// already been bitten by once — a hand-copied row type compiles perfectly
+// while quietly missing whatever the server grew since it was written — and
+// it was re-introduced in the same change that declared the class fixed.
+export type Release = Body<"ReleaseBody">;
 
 // What is open at each build, side by side.
 //

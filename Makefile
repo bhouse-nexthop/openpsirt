@@ -1,6 +1,14 @@
 # Everything CI runs is reachable from here, so a developer can reproduce any
 # failure with one command using the same versions.
 
+# bash with pipefail, because a recipe that pipes takes the *last* command's
+# status by default. "go test | tee" therefore reported the status of tee,
+# which is always 0 — so the engines gate announced "every engine ran" while
+# the suite it had just run was failing. That is the exact shape of bug the
+# gate exists to catch, in the gate itself.
+SHELL       := /usr/bin/env bash
+.SHELLFLAGS := -eo pipefail -c
+
 # Machine-local settings, chiefly the database URLs below. Ignored by git, so
 # a checkout with one is not different from a checkout without one. Absent is
 # fine: the dash means "if it exists".
@@ -19,6 +27,13 @@ export OPENPSIRT_TEST_MYSQL_URL
 export OPENPSIRT_TEST_MARIADB_URL
 export OPENPSIRT_TEST_TOO_OLD_URL
 ENGINES_SET := $(strip $(OPENPSIRT_TEST_POSTGRES_URL)$(OPENPSIRT_TEST_MYSQL_URL)$(OPENPSIRT_TEST_MARIADB_URL))
+# Named one at a time, because "all three are missing" and "one is missing" are
+# different states and only the first used to be reported. With postgres alone
+# configured the warning stayed silent and the run tested two engines of four.
+ENGINES_MISSING := $(strip \
+  $(if $(OPENPSIRT_TEST_POSTGRES_URL),,postgres) \
+  $(if $(OPENPSIRT_TEST_MYSQL_URL),,mysql) \
+  $(if $(OPENPSIRT_TEST_MARIADB_URL),,mariadb))
 
 BIN          := bin/openpsirt
 VERSION      ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -122,10 +137,10 @@ openapi:
 # are included because CI runs them; omitting them meant four of nine jobs
 # could not be reproduced locally.
 check: build vet lint unreachable test govulncheck licenses openapi-current sbom web-check
-ifeq ($(ENGINES_SET),)
+ifneq ($(ENGINES_MISSING),)
 	@echo
-	@echo "PASSED ON SQLITE ONLY. The other three engines were not configured,"
-	@echo "so nothing here tested them. Run 'make check-engines' before committing."
+	@echo "NOT TESTED ON: $(ENGINES_MISSING). Those engines were not configured,"
+	@echo "so nothing here exercised them. Run 'make check-engines' before committing."
 endif
 
 # The interface, built into the directory the binary embeds. Kept out of
@@ -183,33 +198,45 @@ openapi-current: openapi
 # suite is green" and "the suite ran" are two different facts with one command
 # behind them. This is the command to run before committing.
 check-engines:
-ifeq ($(ENGINES_SET),)
-	@echo "No engine URLs set. See local.mk in AGENTS.md — SQLite alone tests"
-	@echo "none of the portability traps, so this refuses rather than passing."
+ifneq ($(ENGINES_MISSING),)
+	@echo "Not configured: $(ENGINES_MISSING). SQLite alone tests none of the"
+	@echo "portability traps, so this refuses rather than passing. See AGENTS.md."
 	@exit 1
 endif
-	$(GO) test ./internal/schema/ -count=1 -v -run TestMigrationsApplyOnEveryEngine \
-	  | tee /tmp/openpsirt-engines.txt >/dev/null
-	@for engine in sqlite postgres mysql mariadb; do \
-	  grep -q "PASS: TestMigrationsApplyOnEveryEngine/$$engine" /tmp/openpsirt-engines.txt \
-	    || { echo "$$engine did not run"; exit 1; }; \
-	done
-	$(GO) test ./internal/database/migrate/ -count=1 -v -run TestLockExcludes \
-	  | tee /tmp/openpsirt-lock.txt >/dev/null
-	@for engine in postgres mysql mariadb; do \
-	  grep -q "PASS: TestLockExcludesAnotherConnection/$$engine" /tmp/openpsirt-lock.txt \
-	    || { echo "the migration lock was not exercised on $$engine"; exit 1; }; \
-	done
+	@out=$$(mktemp); trap 'rm -f "$$out"' EXIT; \
+	  $(GO) test ./internal/schema/ -count=1 -v -run TestMigrationsApplyOnEveryEngine \
+	    > "$$out" 2>&1 || { cat "$$out"; exit 1; }; \
+	  for engine in sqlite postgres mysql mariadb; do \
+	    grep -q "PASS: TestMigrationsApplyOnEveryEngine/$$engine" "$$out" \
+	      || { echo "$$engine did not run"; exit 1; }; \
+	  done
+	@out=$$(mktemp); trap 'rm -f "$$out"' EXIT; \
+	  $(GO) test ./internal/database/migrate/ -count=1 -v -run TestLockExcludes \
+	    > "$$out" 2>&1 || { cat "$$out"; exit 1; }; \
+	  for engine in postgres mysql mariadb; do \
+	    grep -q "PASS: TestLockExcludesAnotherConnection/$$engine" "$$out" \
+	      || { echo "the migration lock was not exercised on $$engine"; exit 1; }; \
+	  done
+	@out=$$(mktemp); trap 'rm -f "$$out"' EXIT; \
+	  $(GO) test ./internal/dbtest/ -count=1 -v -run TestEachEngineIsTheEngineItSaysItIs \
+	    > "$$out" 2>&1 || { cat "$$out"; exit 1; }; \
+	  for engine in sqlite postgres mysql mariadb; do \
+	    grep -q "PASS: TestEachEngineIsTheEngineItSaysItIs/$$engine" "$$out" \
+	      || { echo "$$engine was not checked for being itself"; exit 1; }; \
+	  done
 ifneq ($(strip $(OPENPSIRT_TEST_TOO_OLD_URL)),)
-	$(GO) test ./internal/database/ -count=1 -v -run TestOpenRefuses \
-	  | tee /tmp/openpsirt-floor.txt >/dev/null
-	@grep -q "PASS: TestOpenRefusesAServerBelowTheFloor" /tmp/openpsirt-floor.txt \
-	  || { echo "the version floor test did not run"; exit 1; }
+	@out=$$(mktemp); trap 'rm -f "$$out"' EXIT; \
+	  $(GO) test ./internal/database/ -count=1 -v -run TestOpenRefuses \
+	    > "$$out" 2>&1 || { cat "$$out"; exit 1; }; \
+	  grep -q "PASS: TestOpenRefusesAServerBelowTheFloor" "$$out" \
+	    || { echo "the version floor test did not run"; exit 1; }
+	@echo "every engine ran, and each was the engine it claimed to be"
 else
 	@echo "note: OPENPSIRT_TEST_TOO_OLD_URL unset, so the version floor refusal"
 	@echo "      was not exercised here. CI runs it against postgres:13."
+	@echo "every engine ran, and each was the engine it claimed to be,"
+	@echo "except the version floor, which is noted above as not run."
 endif
-	@echo "every engine ran"
 
 # Requires docker and helm. Skipped by "check" so that a machine without them
 # can still run everything else.

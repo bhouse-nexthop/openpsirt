@@ -1,5 +1,15 @@
 name: CI
 
+# bash with pipefail everywhere. GitHub's default shell is `bash -e`, which
+# takes the *last* command's status in a pipeline — so `go test | tee` reports
+# tee's status, which is always 0. The engine guards below pipe into tee, and
+# without this they announce success over a failing suite. Measured, not
+# assumed: the local gate had the same hole and passed a deliberately broken
+# test.
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
+
 on:
   push:
     branches: [main]
@@ -85,10 +95,27 @@ jobs:
         run: |
           go test ./internal/schema/ -count=1 -v -run TestMigrationsApplyOnEveryEngine \
             | tee /tmp/engines.txt
+          if grep -q "^FAIL" /tmp/engines.txt; then
+            echo "::error::the migration suite failed"; exit 1
+          fi
           for engine in sqlite postgres mysql mariadb; do
             grep -q "PASS: TestMigrationsApplyOnEveryEngine/$engine" /tmp/engines.txt \
               || { echo "::error::$engine did not run"; exit 1; }
           done
+      - name: Confirm each engine is the engine it claims to be
+        # The guards above grep for a subtest *label*. The label comes from a
+        # list in the test harness and the connection comes from an
+        # environment variable, and nothing checked the two agreed — so four
+        # URLs differing by a port digit, one pasted over another, produced
+        # four green lines while one server was tested three times.
+        run: |
+          go test ./internal/dbtest/ -count=1 -v \
+            -run TestEachEngineIsTheEngineItSaysItIs | tee /tmp/whoare.txt
+          for engine in sqlite postgres mysql mariadb; do
+            grep -q "PASS: TestEachEngineIsTheEngineItSaysItIs/$engine" /tmp/whoare.txt \
+              || { echo "::error::$engine was not checked for being itself"; exit 1; }
+          done
+
       - name: Confirm the version floor was exercised, not skipped
         # A skipped test passes. This one guards the claim that an unsupported
         # server is refused, so a silent skip would make the claim untrue.

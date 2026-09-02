@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
+import type { Body } from "../api/client";
 import { unwrap } from "../api/queries";
 import { Failed } from "../ui/Failed";
 import { Crumbs } from "../ui/Crumbs";
@@ -98,13 +99,9 @@ export function PlaceDecision() {
   );
 }
 
-type Detail = {
-  decision?: { id?: number; outcome?: string; state?: string; needs_approval?: boolean; deferred_until?: string };
-  reasoning?: string;
-  proposed_by?: string;
-  proposed_at?: string;
-  age_days?: number;
-};
+// The server's own shape rather than a copy of it, so a field the server
+// grows arrives here instead of being silently absent.
+type Detail = Body<"DecisionDetail">;
 
 function Standing({ detail }: { detail: Detail }) {
   return (

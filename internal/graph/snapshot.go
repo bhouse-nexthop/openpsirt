@@ -228,12 +228,40 @@ var ErrAmbiguous = errors.New("this build contains that name at more than one ve
 // answerable by somebody who does not know what the choices are — and this is
 // reached from a link, where whoever followed it has nothing else to go on.
 type Ambiguous struct {
-	Name     string
-	Versions []string
+	Name string
+	// Choices are the ways the name could be meant, each one enough to
+	// resolve it. A version alone is not always enough: 13 names in a real
+	// image are held at one version by two components — a source repository
+	// and the package built from it — so offering only the version hands
+	// somebody a choice that leads back to the same refusal.
+	Choices []Choice
+}
+
+// Choice is one component a name could mean.
+type Choice struct {
+	Version   string
+	Ecosystem string
 }
 
 func (a *Ambiguous) Error() string {
-	return fmt.Sprintf("%s: %q at %s", ErrAmbiguous, a.Name, strings.Join(a.Versions, ", "))
+	said := make([]string, 0, len(a.Choices))
+	for _, c := range a.Choices {
+		said = append(said, c.Ecosystem+" "+c.Version)
+	}
+	return fmt.Sprintf("%s: %q as %s", ErrAmbiguous, a.Name, strings.Join(said, ", "))
+}
+
+// Versions are the distinct versions among the choices, in order.
+func (a *Ambiguous) Versions() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, c := range a.Choices {
+		if !seen[c.Version] {
+			seen[c.Version] = true
+			out = append(out, c.Version)
+		}
+	}
+	return out
 }
 
 // Is makes errors.Is(err, ErrAmbiguous) hold for this, so callers that only
@@ -255,11 +283,25 @@ func (a *Ambiguous) Is(target error) bool { return target == ErrAmbiguous }
 // with no version is an error rather than a guess. A caller that guesses on
 // behalf of somebody is worse than one that says it cannot tell.
 func (s *Store) ComponentVersionAt(ctx context.Context, targetID int64, name, version string) (int64, error) {
+	return s.ComponentAs(ctx, targetID, name, version, "")
+}
+
+// ComponentAs resolves a component by name and, where they are given, version
+// and ecosystem.
+//
+// The ecosystem is the third thing needed to tell two components apart, and
+// only because a name and a version together are not always unique: a source
+// repository and the package built from it share both. Empty means "any",
+// which is what a caller who has never needed it passes.
+func (s *Store) ComponentAs(ctx context.Context, targetID int64,
+	name, version, ecosystem string) (int64, error) {
+
 	query := s.db.NewSelect().
 		TableExpr("graph_node AS n").
 		Join("JOIN component AS c ON c.id = n.component_id").
 		ColumnExpr("c.id AS id").
 		ColumnExpr("c.version AS version").
+		ColumnExpr("c.purl AS purl").
 		Where("n.target_id = ?", targetID).
 		Where("n.closed_scan_id IS NULL").
 		Where("c.name = ?", name).
@@ -267,10 +309,14 @@ func (s *Store) ComponentVersionAt(ctx context.Context, targetID int64, name, ve
 	if version != "" {
 		query = query.Where("c.version = ?", version)
 	}
+	if ecosystem != "" {
+		query = query.Where("LOWER(c.purl) LIKE ?", "pkg:"+strings.ToLower(ecosystem)+"/%")
+	}
 
 	var rows []struct {
 		ID      int64  `bun:"id"`
 		Version string `bun:"version"`
+		Purl    string `bun:"purl"`
 	}
 	if err := query.Scan(ctx, &rows); err != nil {
 		return 0, fmt.Errorf("look up component %q: %w", name, err)
@@ -279,15 +325,26 @@ func (s *Store) ComponentVersionAt(ctx context.Context, targetID int64, name, ve
 		return 0, fmt.Errorf("this build contains no component called %q", name)
 	}
 	if len(rows) > 1 {
-		// Only reachable without a version: with one, the name and version
-		// together identify a component.
-		versions := make([]string, 0, len(rows))
+		choices := make([]Choice, 0, len(rows))
 		for _, row := range rows {
-			versions = append(versions, row.Version)
+			choices = append(choices, Choice{
+				Version: row.Version, Ecosystem: EcosystemOf(row.Purl),
+			})
 		}
-		return 0, &Ambiguous{Name: name, Versions: versions}
+		return 0, &Ambiguous{Name: name, Choices: choices}
 	}
 	return rows[0].ID, nil
+}
+
+// EcosystemOf reads the ecosystem out of a package identifier, which is the
+// only thing telling two components with one name and one version apart.
+func EcosystemOf(purl string) string {
+	rest, found := strings.CutPrefix(strings.TrimSpace(purl), "pkg:")
+	if !found {
+		return ""
+	}
+	ecosystem, _, _ := strings.Cut(rest, "/")
+	return strings.ToLower(ecosystem)
 }
 
 // Neighbour is one component next to another in the graph.

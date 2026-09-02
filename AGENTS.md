@@ -290,7 +290,7 @@ same command and the same pinned versions.
 | | |
 |---|---|
 | `make check` | Everything CI checks, except the container and chart |
-| `make check-engines` | That all four engines actually ran, rather than skipped |
+| `make check-engines` | That all four engines ran, and that each was the engine it claimed |
 | `make check-packaging` | The container image and the Helm chart. Needs docker and helm |
 | `make build` | The binary, with version information injected |
 | `make openapi` | Regenerates the API document from the code |
@@ -305,11 +305,21 @@ from tearing down each other's tables.
 
 Tests run against SQLite alone unless pointed at real servers, and **a skipped
 engine passes**. So a green suite does not mean four engines agreed; it means
-nothing failed, which is also what running almost nothing looks like. CI greps
-its own output for each engine by name for exactly this reason. `check-engines`
-runs those same greps, and refuses rather than passing when no engine is
-configured. `make check` prints a warning in that case rather than letting a
-one-engine pass read as a four-engine pass.
+nothing failed, which is also what running almost nothing looks like.
+`check-engines` greps for each engine by name, refuses when any engine is
+unconfigured rather than passing, and — because a grep for a *label* only
+proves a subtest with that label ran — asks each server what it is and compares
+that against the label. Four URLs differing by a port digit is the likeliest
+slip there is, and it used to report fully green.
+
+`make check` names the engines it did not test, rather than staying silent
+unless all three are missing.
+
+**What it does not cover.** It asserts three test functions in three packages.
+The rest of the suite runs against whatever is configured, so `check-engines`
+passing does not prove that every test ran on every engine — it proves the
+configuration is real and the migrations, the lock and the identity checks
+exercised all four.
 
 This is not hypothetical: a table added with a foreign key to `person` was
 missing from the test cleanup, and SQLite alone never noticed. It failed 40

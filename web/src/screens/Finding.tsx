@@ -2,7 +2,9 @@ import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
+import type { Body } from "../api/client";
 import { at as detailsAt, unwrap } from "../api/queries";
+import type { Choice } from "../api/queries";
 import { Failed } from "../ui/Failed";
 import { Severity } from "../ui/Severity";
 import { JUSTIFICATIONS } from "../ui/Outcome";
@@ -32,27 +34,51 @@ export function Finding() {
 
   if (finding.isPending) return <p className="hint">Loading…</p>;
   if (finding.isError) {
-    // A name that ships at several versions is answerable, and the server says
-    // which ones — so offer them rather than showing a refusal and leaving the
-    // reader to guess. This is reached by following a link, and whoever
-    // followed it has nothing else to go on.
-    const versions = detailsAt(finding.error, "version");
-    if (versions.length > 0) {
+    // A name that means more than one component is answerable, and the server
+    // says which ones — so offer them rather than showing a refusal and
+    // leaving the reader to guess. This is reached by following a link, and
+    // whoever followed it has nothing else to go on.
+    //
+    // Two different lists, and they are not interchangeable: "carrying" has
+    // been narrowed to the components this issue is actually open at, and
+    // "component" is every component of that name. Saying the first sentence
+    // about the second list tells somebody an issue affects a version it does
+    // not.
+    const carrying = detailsAt(finding.error, "carrying");
+    const named = detailsAt(finding.error, "component");
+    const choices = carrying.length > 0 ? carrying : named;
+    if (choices.length > 0) {
+      // A version alone does not always pick one out: a source repository and
+      // the package built from it share a name and a version, so the link
+      // carries the ecosystem too wherever the choices disagree about it.
+      const ecosystems = new Set(choices.map((c) => c.ecosystem ?? ""));
+      const link = (c: Choice) => {
+        const query = new URLSearchParams({ version: c.version });
+        if (ecosystems.size > 1 && c.ecosystem) query.set("ecosystem", c.ecosystem);
+        return `${window.location.pathname}?${query}`;
+      };
       return (
         <div className="card">
           <header>
             <h3>Which {component}?</h3>
           </header>
           <p className="hint">
-            This build ships that name at more than one version and the link did not say
-            which. {vulnerability} is open at {versions.length === 1 ? "this one" :
-            `these ${versions.length}`}.
+            This build ships that name as more than one component and the link did not say
+            which.{" "}
+            {carrying.length > 0
+              ? `${vulnerability} is open at ${carrying.length === 1 ? "this one" : `these ${carrying.length}`}.`
+              : `${vulnerability} may not be open at all of these.`}
           </p>
           <ul className="outcomes">
-            {versions.map((v: string) => (
-              <li key={v}>
-                <Link to={`${window.location.pathname}?version=${encodeURIComponent(v)}`}>
-                  <span className="id">{component} {v}</span>
+            {choices.map((c) => (
+              <li key={`${c.version}\u0000${c.ecosystem ?? ""}`}>
+                <Link to={link(c)}>
+                  <span className="id">
+                    {component} {c.version}
+                  </span>
+                  {ecosystems.size > 1 && c.ecosystem && (
+                    <span className="hint"> · {c.ecosystem}</span>
+                  )}
                 </Link>
               </li>
             ))}
@@ -346,13 +372,9 @@ function Assess({
   );
 }
 
-type Sitting = {
-  place: string;
-  consumer?: string;
-  decision?: number;
-  suppressed?: boolean;
-  chain?: { component: string; version?: string }[] | null;
-};
+// The server's own shape rather than a copy of it, so a field the server
+// grows arrives here instead of being silently absent.
+type Sitting = Body<"SittingBody">;
 
 // One judgment about this finding, covering every place it sits at.
 //
