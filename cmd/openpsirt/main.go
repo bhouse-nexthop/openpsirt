@@ -20,6 +20,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/httpapi"
 	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
+	"github.com/bhouse-nexthop/openpsirt/internal/notify"
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
 	"github.com/bhouse-nexthop/openpsirt/internal/scanner"
@@ -171,7 +172,12 @@ func run(args []string, stdout, stderr *os.File) error {
 	// setting is read each cycle, so turning this off takes effect without a
 	// redeploy, which matters more than turning it on does.
 	upstream := currency.NewRefresher(db.DB, logger)
-	return serve(cfg, logger, handler, reader, runner, upstream)
+	// What the tool has to say about its own health. It needs nothing
+	// configured, which is the point: an operator who never set up mail is
+	// exactly the one who would otherwise never hear that a build stopped
+	// being scanned (NTF-07, NTF-08).
+	watch := notify.NewWatch(db.DB, logger)
+	return serve(cfg, logger, handler, reader, runner, upstream, watch)
 }
 
 // readInterval is how long an idle reader waits before asking for work again.
@@ -273,7 +279,8 @@ func newLogger(cfg config.Config, w *os.File) *slog.Logger {
 }
 
 func serve(cfg config.Config, logger *slog.Logger, handler http.Handler,
-	reader *ingest.Reader, runner *scanner.Runner, upstream *currency.Refresher) error {
+	reader *ingest.Reader, runner *scanner.Runner, upstream *currency.Refresher,
+	watch *notify.Watch) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -303,6 +310,11 @@ func serve(cfg config.Config, logger *slog.Logger, handler http.Handler,
 	go func() {
 		defer workers.Done()
 		upstream.Run(ctx, askInterval)
+	}()
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		watch.Run(ctx, 0)
 	}()
 	srv := &http.Server{
 		Addr:    cfg.Addr,

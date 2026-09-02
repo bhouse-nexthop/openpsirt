@@ -535,12 +535,6 @@ func stamp(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// DefaultQuietAfter is how long a build may go unscanned before it is
-// reported, where the deployment has not said otherwise. A week: long enough
-// that a nightly build missing one night is not an alert, short enough that a
-// pipeline switched off is noticed in the week it happened.
-const DefaultQuietAfter = 7 * 24 * time.Hour
-
 // coverageOutput carries the rows and what was asked of them, because "quiet"
 // is a judgment against a threshold and a reader cannot check the judgment
 // without the threshold.
@@ -589,7 +583,7 @@ func registerCoverage(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
-		quietAfter, err := setting.NewStore(in.DB.DB).Duration(ctx, setting.QuietAfter, DefaultQuietAfter)
+		quietAfter, err := setting.NewStore(in.DB.DB).Duration(ctx, setting.QuietAfter, setting.DefaultQuietAfter)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "the settings could not be read", err)
 		}

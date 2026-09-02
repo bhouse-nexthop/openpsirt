@@ -89,6 +89,18 @@ const (
 	UpstreamCurrency = "upstream.currency"
 )
 
+// DefaultQuietAfter is how long a build may go unscanned before it is reported
+// as having gone quiet, where a deployment has not said otherwise.
+//
+// A week: long enough that a nightly build missing one night is not an alert,
+// short enough that a pipeline switched off is noticed in the week it happened.
+//
+// It lives beside the name it defaults rather than in whichever package needed
+// it first, because two now do — the endpoint that answers what has been
+// scanned, and the pass that turns going quiet into something somebody is
+// told. Two copies of a default is two policies that agree until one moves.
+const DefaultQuietAfter = 7 * 24 * time.Hour
+
 // On and Off are what a setting that is a switch may be set to.
 //
 // Words rather than true/false, because every setting is stored and returned
