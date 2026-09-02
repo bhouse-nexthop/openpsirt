@@ -297,13 +297,13 @@ func (f Filter) narrow(q *bun.SelectQuery) *bun.SelectQuery {
 	// do not agree on what a case-insensitive comparison is, and one that is
 	// spelled the same way everywhere behaves the same way everywhere (MDL-21).
 	if term := strings.TrimSpace(f.Search); term != "" {
-		q = q.Where(`LOWER(c.name) LIKE ? ESCAPE '\'`, "%"+contains(term)+"%")
+		q = q.Where("LOWER(c.name) LIKE ? ESCAPE '#'", "%"+contains(term)+"%")
 	}
 	if names := trimmed(f.Exclude); len(names) > 0 {
 		q = q.Where("c.name NOT IN (?)", bun.List(names))
 	}
 	if eco := strings.TrimSpace(f.Ecosystem); eco != "" {
-		q = q.Where(`LOWER(c.purl) LIKE ? ESCAPE '\'`, "pkg:"+contains(eco)+"/%")
+		q = q.Where("LOWER(c.purl) LIKE ? ESCAPE '#'", "pkg:"+contains(eco)+"/%")
 	}
 	// What holds it. A place records the component that pulls it in, so asking
 	// what is inside a container is asking for places whose consumer is that
@@ -463,6 +463,12 @@ func (f Filter) byState(q *bun.SelectQuery) *bun.SelectQuery {
 // has no default escape character at all, so leaving it out makes a backslash
 // mean one thing on three engines and another on the fourth.
 //
+// **The escape character is `#`, and a backslash is what it must not be.**
+// MySQL and MariaDB treat a backslash as an escape inside a string literal, so
+// `ESCAPE '\'` is an unterminated string: a syntax error there, and parsed
+// happily by the other two. Caught by the four-engine run, which is the whole
+// reason that run exists.
+//
 // **Case is folded here and again by the engine**, which is a compromise worth
 // naming. MDL-21 says to normalize the stored value rather than ask an engine
 // to compare loosely, and there is no folded column on a component to compare
@@ -473,7 +479,7 @@ func (f Filter) byState(q *bun.SelectQuery) *bun.SelectQuery {
 // far, which is why this is written down rather than fixed: the day that stops
 // being true, the fix is a folded column.
 func contains(term string) string {
-	replacer := strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+	replacer := strings.NewReplacer("#", "##", "%", "#%", "_", "#_")
 	return replacer.Replace(strings.ToLower(term))
 }
 

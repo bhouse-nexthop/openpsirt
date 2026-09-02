@@ -19,6 +19,10 @@ be picked up:
 | **Done** | `make engines-up` stands the four servers up and writes `local.mk`, so a fresh machine is one command rather than a document followed by hand |
 | **Done** | `make demo` is the image behind a proxy and needs only docker; `make dev` is the old native loop. The image builds the interface itself, which it was not doing at all |
 | **Done** | The fixture is the 2026-09-02 build: valid CycloneDX 1.6, toolchain in `formulation`, 219 fewer findings rows measured against the same scanner and database |
+| **Done** | The in-app notification area, both lifetimes, two event producers and the sweep that derives conditions. Mail and chat are not built; see `DESIGN-notifications.md` for what is told and what is not |
+| **Done** | An adversarial review over everything since the last one, and every finding worked through — see below. One was refused, and the gate then caught a regression in one of the fixes |
+| **Next** | **Re-run `make measure`.** The published year-of-scans figures are withdrawn: the harness applied twice the churn it documented, so they measure a model nobody described. The harness is fixed and the numbers are not taken yet — `DESIGN-findings.md` says so at the top of that section rather than carrying figures nobody can defend |
+| **Next** | Rebuild the SBOM once the two producer commits on sonic-buildimage#29237 are in a real build. Both are verified by replaying the changed functions over the existing document, not by a build that ran them; when one lands, swap the fixture and re-check the counts |
 
 **How `ING-41` ended up built**, since the shape is not obvious from the
 decision:
@@ -505,6 +509,71 @@ screen calls — creating a pipeline key, and the three for a person's own
 tokens. The mockup draws neither, so that is an API surface without an
 interface rather than a screen missing a panel.
 
+## The adversarial review, and what it found
+
+Three reviewers over everything since the previous one, split by dimension:
+authorization and disclosure, correctness and portability, and tests and
+claims. Everything below is fixed unless it says otherwise.
+
+**The worst of it was a filter reading the wrong table.** "How far decided" was
+computed from `suppressed_by` — which is not a decision of ours at all. It
+points at a *suppression*, a claim the **build** made in its own scan file,
+written only by the SBOM reader and never by triage. So "agreed" meant "the
+vendor's own document argued this away", by a different author, reviewed by
+nobody; and a claim actually approved by a second person matched none of the
+four states.
+
+**Worth remembering how it survived.** The name reads exactly like what it is
+not, and it had been mutation-tested: breaking the clause made the test fail,
+which proved the clause ran and nothing about it reading the right table. A
+control can be tested and still be wrong about what it controls.
+
+**A claim in one product decided findings in another.** The correlation was
+issue plus place identity, and neither carries a product — a place identity is
+`sha256(consumer\0component)`, deliberately, so a place is recognized across
+variants. A proposal in a product a reader cannot see made their rows read
+"waiting" and hid rows genuinely undecided. `due.go` had the correct form ten
+lines away, with the product *and* the live key.
+
+**And that correlation was a join, so it multiplied**: one place with three
+historical decisions reported as three places. The same shape as the 78×
+inflation recorded twice already. It is a correlated subquery now.
+
+The rest, each fixed: a failed run poisoning every older receipt for ever; two
+replicas aborting each other's sweep because a duplicate key is not retryable;
+a notification handing somebody the name of a product they cannot see; a
+condition key of three 191-character names in a 191-character column; `Shapes`
+counting without a subject; a search box that was accidentally a pattern
+language; run numbers rendering on two pages; a missing index behind a query
+four callers make; an unbounded endpoint; two notification kinds nothing could
+produce; two documented ecosystem values that match nothing.
+
+**Four tests proved nothing**, which is the half worth reading twice:
+
+- One filtered on `Under: "swss"`. Nothing is called that — `swss` is the Go
+  variable, the component is `libswsscommon`. It kept nothing, and "narrowed to
+  a subset" passed because nothing is fewer than everything.
+- An authorization test asked what a reader may see, from a catalogue whose
+  fixture built no builds at all. The endpoint answered an empty list to
+  everybody, which is also what a missing visibility filter looks like.
+- Three of four decision states were pinned by a fixture where nothing is ever
+  decided, so "correct" and "always false" are the same result.
+- The notification uniqueness index was satisfied entirely by an in-memory
+  check inside a single sweep. It could have been absent.
+
+**One finding was refused.** `make engines-up` was reported as passing when a
+server never answers, reasoned from a shell without `set -e`. The makefile sets
+`-eo pipefail` for every recipe, and the control was watched failing earlier by
+giving the wait no time to succeed.
+
+**And the gate then caught a regression in one of the fixes.** Escaping LIKE
+wildcards used `ESCAPE '\'`, which MySQL and MariaDB read as an unterminated
+string literal because a backslash escapes inside literals there — a syntax
+error on two engines, parsed happily by the other two. The escape character is
+`#` now. This is precisely what the four-engine run is for, and it is the
+second time in this stretch that a change looked right on SQLite and Postgres
+and was wrong on the MySQL pair.
+
 ## Audit: inside the screens
 
 The audit above asked whether each screen exists, and they all do. This one
@@ -737,6 +806,23 @@ as `check-engines` here: a green result that means *nothing failed* rather than
 *it was checked*, which is now the third time this has come up.
 
 ## Traps found the hard way
+
+**A name can read exactly like the thing it is not.** `finding.suppressed_by`
+sounds like the decision suppressing a finding. It points at a *suppression* —
+what the build claimed in its own scan file — and only `internal/sbom` ever
+writes one. A filter built on it reported the vendor's claims as our own
+triage. Before reading a column, check what writes it.
+
+**Two test runs against the same databases corrupt each other, and a single
+`go test` counts as a run.** This happened twice in one session, both times by
+forgetting a gate was still going in the background. `ps -eo cmd | grep '[m]ake
+check'` before starting anything. A gate started from a session task also gets
+killed when the session tidies up, so long runs want `setsid nohup`.
+
+**Escaping in SQL is engine-specific in a way that looks portable.** `ESCAPE
+'\'` parses on SQLite and PostgreSQL and is an unterminated string on MySQL
+and MariaDB, where a backslash escapes inside string literals. Any literal
+carrying a backslash is a four-engine question.
 
 **A multi-edit script that stops halfway leaves the rest unapplied, silently.**
 Twice today a Python batch failed an assertion partway and never wrote, and the
