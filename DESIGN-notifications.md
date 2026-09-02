@@ -51,9 +51,9 @@ not the same.
 |---|---|---|
 | Work arriving | event | The thing a triager most wants to notice, and the category that deserves interrupting somebody for (NTF-02) |
 | A claim sent back | event | It goes straight back into its author's queue, so silence leaves it sitting while they wait to hear (NTF-05) |
-| Somebody named you | event | Not built: the editor writes `@name` and nothing resolves it to a person yet (UIX-24) |
+| Somebody named you | event | Not built: the editor writes `@name` and nothing resolves it to a person yet (UIX-24). There is no word for it either — a name nothing can produce, advertised in an API description and drawn by a screen, is a promise the tool does not keep |
 | An approval an edit withdrew | event | Not built. NTF-13 wants the people who granted it told, so it does not quietly stop counting |
-| A build that stopped being scanned | condition | Not built as a pass yet. The signal exists — every declared build with when it was last scanned — and what is missing is the thing that runs it and reconciles |
+| A build that stopped being scanned | condition | Built. A sweep derives every declared build with when it was last scanned, compares it against how long this deployment allows, and reconciles — so a build that resumes leaves the list on its own |
 
 **Nobody is told they were unassigned.** A name being removed is not an action
 directed at the person who held it, and a queue that gets shorter says so
@@ -64,6 +64,13 @@ at what is no longer theirs.
 happened, the claim was sent back; answering the caller with an error invites a
 retry that does the first thing twice. The notification is the lesser half of
 the pair, and it says so by failing quietly and loudly in the log.
+
+**More than one process sweeps.** The chart ships two replicas and each runs
+its own watch, so two of them opening the same condition at the same moment is
+ordinary rather than a fault. The unique index is what makes it one row, and
+the pass treats a duplicate as the answer already being there — without that it
+would abort, and every administrator after the one it failed on would be told
+nothing that cycle.
 
 ## Whose is whose
 

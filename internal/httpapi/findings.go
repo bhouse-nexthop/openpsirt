@@ -112,7 +112,7 @@ func registerFindings(api huma.API, in Ingest) {
 		BelowFloor bool     `query:"below_floor" doc:"Include what this product does not consider worth triaging. Those are always recorded and counted; this asks to see them in the list"`
 		Component  string   `query:"component" doc:"Keep only what is open against components of this name, whatever version"`
 		Search     string   `query:"q" maxLength:"200" doc:"Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name"`
-		Ecosystem  string   `query:"ecosystem" doc:"Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier"`
+		Ecosystem  string   `query:"ecosystem" doc:"Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"`
 		Under      string   `query:"under" doc:"Keep only what sits inside the container of this name"`
 		UnderBuild bool     `query:"under_build" doc:"Keep only what the build holds directly, which is what has no container above it"`
 		State      string   `query:"state" enum:"undecided,waiting,agreed,lapsed" doc:"Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"`
@@ -221,7 +221,7 @@ func registerFindings(api huma.API, in Ingest) {
 		Fixable    bool     `query:"fixable" doc:"Keep only issues where an upstream fixed version is known"`
 		BelowFloor bool     `query:"below_floor" doc:"Include what this product does not consider worth triaging"`
 		Search     string   `query:"q" maxLength:"200" doc:"Keep only components whose name contains this, ignoring capitals"`
-		Ecosystem  string   `query:"ecosystem" doc:"Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier"`
+		Ecosystem  string   `query:"ecosystem" doc:"Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"`
 		Under      string   `query:"under" doc:"Keep only what sits inside the container of this name"`
 		UnderBuild bool     `query:"under_build" doc:"Keep only what the build holds directly, which is what has no container above it"`
 		State      string   `query:"state" enum:"undecided,waiting,agreed,lapsed" doc:"Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"`

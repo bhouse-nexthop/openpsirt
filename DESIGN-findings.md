@@ -461,10 +461,14 @@ year of them — `DECISIONS.md` §4 recorded it as unmeasured, with the design
 components, each sitting in 34 containers, so 23,800 places; 260 issues open at
 the start; 365 nightly rebuilds; 1% of components changing version each night;
 three new issues a night arriving from the vulnerability database and matching
-something already shipped. That is a real image at about a twenty-seventh of
-its size — the fixture reaches 241,021 places from 7,035 components, and the
-same shape scaled down so the *growth* is measurable in an hour rather than the
-constant being large.
+something already shipped. That is a real image at about a tenth of its size:
+7,035 components become 700, 241,021 places become 23,800, and roughly 2,600
+issues become 260. The shape is kept and the constant shrunk, so the *growth*
+is measurable in an hour.
+
+The earlier text here said a twenty-seventh, which came from dividing a real
+image's places by this model's first-night finding rows — two different
+quantities. Every ratio the model actually states is ten.
 
 **The table grew 28 times over the year**, from 8,840 rows to 251,124. The
 graph grew faster: 23,834 edges to 196,860, because a component whose version
@@ -506,7 +510,10 @@ and its trend is three times PostgreSQL's, which is the shape to expect from
 one writer and one connection. It is a development database and this measures
 why.
 
-**What this does not measure.** One build, not the several a deployment
+**What this does not measure.** It was read as an administrator, who sees every
+product — so the queries ran with no narrowing by product at all, which is the
+cheapest plan available rather than the one an ordinary reader gets. One build,
+not the several a deployment
 tracks — the table grows with builds, so a deployment following ten of them
 multiplies these rows by ten and the queries narrow by target before they read.
 It also assumes a churn rate rather than observing one: at 1% a night the year

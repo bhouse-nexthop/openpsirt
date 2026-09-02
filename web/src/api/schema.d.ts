@@ -2517,7 +2517,7 @@ export interface components {
              * @description What to name this when acknowledging it
              */
             id: number;
-            /** @description What happened, as a word: assigned, sent-back, mentioned, approval-withdrawn, build-quiet */
+            /** @description What happened, as a word: assigned, sent-back, build-quiet */
             kind: string;
             /**
              * @description An event happened once and is acknowledged; a condition holds until what it is about changes
@@ -4460,7 +4460,7 @@ export interface operations {
                 component?: string;
                 /** @description Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name */
                 q?: string;
-                /** @description Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier */
+                /** @description Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi */
                 ecosystem?: string;
                 /** @description Keep only what sits inside the container of this name */
                 under?: string;
@@ -4518,7 +4518,7 @@ export interface operations {
                 below_floor?: boolean;
                 /** @description Keep only components whose name contains this, ignoring capitals */
                 q?: string;
-                /** @description Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier */
+                /** @description Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi */
                 ecosystem?: string;
                 /** @description Keep only what sits inside the container of this name */
                 under?: string;

@@ -122,10 +122,6 @@ function label(kind?: string): string {
       return "assigned to you";
     case "sent-back":
       return "sent back";
-    case "mentioned":
-      return "you were named";
-    case "approval-withdrawn":
-      return "approval withdrawn";
     case "build-quiet":
       return "not being scanned";
     default:

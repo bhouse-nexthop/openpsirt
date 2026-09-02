@@ -167,22 +167,29 @@ func progressOf(sc Scan, job queue.Job, runs []finding.Run) (Progress, string, *
 		parsed = sc.ReceivedAt
 	}
 	// Runs arrive newest first, so the last one still finishing after this
-	// upload was parsed is the earliest that reflects it.
+	// upload was parsed is the earliest that reflects it — and that one is the
+	// run that answers this upload.
+	//
+	// **Whether it failed is asked of that run alone.** Asking it of every run
+	// in the loop made one bad night permanent: a scanner that fell over once
+	// finished after every upload parsed before it, so every one of those
+	// receipts reported that failure for ever, however many green runs came
+	// afterwards. The scans screen got steadily more wrong the longer a
+	// deployment ran.
 	var answered *finding.Run
 	for i := range runs {
-		run := runs[i]
-		if run.FinishedAt == nil || run.FinishedAt.Before(parsed) {
+		if runs[i].FinishedAt == nil || runs[i].FinishedAt.Before(parsed) {
 			continue
-		}
-		if run.Failure != "" {
-			return Refused, run.Failure, nil
 		}
 		answered = &runs[i]
 	}
-	if answered != nil {
-		return Scanned, "", &answered.ID
+	if answered == nil {
+		return Scanning, "", nil
 	}
-	return Scanning, "", nil
+	if answered.Failure != "" {
+		return Refused, answered.Failure, nil
+	}
+	return Scanned, "", &answered.ID
 }
 
 // productOf reads which product a build belongs to, so that reaching it can be

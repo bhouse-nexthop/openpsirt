@@ -88,7 +88,10 @@ func TestMeasureAYearOfNightlyScans(t *testing.T) {
 		store := finding.NewStore(db.DB)
 		graphs := graph.NewStore(db.DB)
 		scans := ingest.NewStore(db.DB)
-		who := access.NewPerson(1, "reader", true, nil)
+		// An administrator, and the timings say so: every product is visible to
+		// one, so the queries run without the narrowing an ordinary reader's
+		// carry. The cheapest plan available rather than the common one.
+		who := access.NewPerson(1, "an administrator", true, nil)
 
 		built := time.Now().UTC().Add(-time.Duration(nights) * 24 * time.Hour)
 		seq := 0
@@ -152,24 +155,34 @@ func TestMeasureAYearOfNightlyScans(t *testing.T) {
 		// Then a year of them. A component whose version moves closes every
 		// finding at it and opens the same number again, which is the whole of
 		// what a quiet night costs.
+		// What each component is at, carried forward. A bump is permanent: a
+		// package that moved to 1.5 does not go back to 1.0 tomorrow.
+		//
+		// The first version of this slid a window and left everything outside
+		// it at 1.0, so last night's components reverted — fourteen identities
+		// changing a night where the model says seven, and a version history
+		// no build has. The numbers it produced were real measurements of
+		// twice the churn they claimed.
+		version := make([]string, components)
+		for i := range version {
+			version[i] = "1.0"
+		}
 		moved := 0
 		var slowest time.Duration
 		var total time.Duration
 		for n := 2; n <= nights; n++ {
 			bumped := int(float64(components) * churn)
 			from := (n * bumped) % components
-			versionOf := func(i int) string {
-				if i >= from && i < from+bumped {
-					return fmt.Sprintf("1.%d", n)
-				}
-				return "1.0"
+			for i := from; i < from+bumped && i < components; i++ {
+				version[i] = fmt.Sprintf("1.%d", n)
 			}
+			versionOf := func(i int) string { return version[i] }
 			_, took := night(versionOf, (n-1)*arriving)
 			total += took
 			if took > slowest {
 				slowest = took
 			}
-			moved += bumped
+			moved += min(bumped, components-from)
 			if n%73 == 0 {
 				report(fmt.Sprintf("after night %d", n))
 			}

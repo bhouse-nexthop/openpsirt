@@ -13,7 +13,7 @@ import (
 // NotificationBody is one thing somebody was told.
 type NotificationBody struct {
 	ID   int64  `json:"id" doc:"What to name this when acknowledging it"`
-	Kind string `json:"kind" doc:"What happened, as a word: assigned, sent-back, mentioned, approval-withdrawn, build-quiet"`
+	Kind string `json:"kind" doc:"What happened, as a word: assigned, sent-back, build-quiet"`
 	// Lifetime says whether acknowledging is the way this goes away. A
 	// condition clears itself when what it is about stops being true, so
 	// acknowledging one hides it rather than resolving anything.

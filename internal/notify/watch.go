@@ -2,8 +2,11 @@ package notify
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -129,7 +132,7 @@ func (w *Watch) quietBuilds(ctx context.Context) ([]Holds, error) {
 		if !row.Quiet {
 			continue
 		}
-		where := row.Product + "/" + row.Stream + "/" + row.Variant
+		where := row.Product + " " + row.Stream + " " + row.Variant
 		days := int(row.Since.Hours() / 24)
 		body := fmt.Sprintf("%s has not been scanned for %d days. Nothing has failed — "+
 			"nothing has arrived.", where, days)
@@ -138,10 +141,23 @@ func (w *Watch) quietBuilds(ctx context.Context) ([]Holds, error) {
 				"filed against it.", where, days)
 		}
 		holding = append(holding, Holds{
-			About: where,
+			// Hashed rather than the three names joined.
+			//
+			// Each of them may be 191 characters and the column holds 191, so
+			// the obvious key does not fit — and what happens then depends on
+			// the engine: three of them refuse the write and abort the sweep,
+			// one truncates and silently collides. Joining them also collides
+			// on its own, because a name may contain the separator: product
+			// "a/b" branch "c" and product "a" branch "b/c" are one key.
+			//
+			// A hash is a fixed width, so it fits by construction, and it is
+			// only ever compared for equality — nothing reads it back. The
+			// names people read are in the body.
+			About: identify(where),
 			Body:  body,
-			Link: "/products/" + row.Product + "/streams/" + row.Stream +
-				"/variants/" + row.Variant + "/scans",
+			Link: "/products/" + url.PathEscape(row.Product) +
+				"/streams/" + url.PathEscape(row.Stream) +
+				"/variants/" + url.PathEscape(row.Variant) + "/scans",
 		})
 	}
 	return holding, nil
@@ -160,4 +176,14 @@ func (w *Watch) administrators(ctx context.Context) ([]int64, error) {
 		}
 	}
 	return admins, nil
+}
+
+// identify is the key a condition is recognized by between sweeps.
+//
+// Hashed for the reason every other identity here is: it is compared for
+// equality and never read, and a fixed width fits a column whatever the names
+// were.
+func identify(what string) string {
+	sum := sha256.Sum256([]byte(what))
+	return hex.EncodeToString(sum[:])
 }

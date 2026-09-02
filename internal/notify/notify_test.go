@@ -132,7 +132,7 @@ func TestNobodyReadsAnybodyElsesNotifications(t *testing.T) {
 	each(t, func(t *testing.T, s *notify.Store, me, them access.Subject) {
 		ctx := t.Context()
 		if err := s.Tell(ctx, notify.Telling{
-			PersonID: them.ID, Kind: notify.Mentioned, Body: "named you",
+			PersonID: them.ID, Kind: notify.Assigned, Body: "work for you",
 		}); err != nil {
 			t.Fatal(err)
 		}

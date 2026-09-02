@@ -215,6 +215,11 @@ type Filter struct {
 	// filter is: a search applied to the fifty rows already fetched searches
 	// those fifty, and the total beside it would count something else.
 	Search string
+	// ProductID is which product the query narrows inside, set by the store
+	// rather than by a caller. A place identity carries no product, so
+	// anything correlating a place to a decision has to supply one or it
+	// matches every product in the deployment.
+	ProductID int64
 	// Ecosystem keeps components of one package kind — deb, golang, python.
 	// Read from the package identifier rather than stored beside it, because
 	// the identifier is what says it and a second copy is a second thing to
@@ -341,6 +346,9 @@ func (s *Store) Hidden(ctx context.Context, subject access.Subject, targetID int
 	// The same query, with the line inverted rather than removed.
 	below := filter
 	below.Floor = Floor{}
+	// The same reason as everywhere else this narrows: a place identity
+	// carries no product, so the correlation has to be given one.
+	below.ProductID = productID
 	counted := s.db.NewSelect().
 		TableExpr("finding AS f").
 		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
@@ -369,17 +377,35 @@ func (s *Store) Hidden(ctx context.Context, subject access.Subject, targetID int
 // so they are HAVING clauses: a group is undecided when none of its places has
 // a decision, not when one of them does not.
 //
-// A standing decision is the one the finding points at; anything else is read
-// from the decisions recorded against this issue at this place. The join is
-// left, because the ordinary case is that there is nothing to join to.
+// **These read the decision table and nothing else.** The first version read
+// `suppressed_by`, which is not a decision of ours at all: it points at a
+// suppression, and a suppression is a claim the *build* made in its own scan
+// file (only internal/sbom ever writes one). So "agreed" meant "the vendor's
+// SBOM argued this away", a claim by a different author that nobody here
+// reviewed — and a decision actually approved by a second person matched none
+// of the four states. What the build argued away is a real number and the row
+// already carries it separately, as how many places are answered; it is not
+// how far *we* have decided.
+//
+// **Asked as a correlated subquery rather than a join**, for two reasons that
+// would each decide it alone.
+//
+// A decision belongs to a product and the two keys linking one to a finding do
+// not: an issue is one row per identifier for the whole deployment, and a
+// place identity is a hash of a consumer and a component with no product in it
+// (see PlaceIdentity — deliberately, so a place is recognized across
+// variants). A join on those two alone therefore matches decisions in *every*
+// product, which reports somebody else's triage as this product's state and
+// tells a reader that a claim is pending in a product they cannot see.
+//
+// And a join multiplies. Every query this narrows also aggregates over finding
+// rows — COUNT(*) for how many places, SUM for how many are answered — so one
+// place carrying three historical decisions would report itself as three
+// places, and the page would disagree with its own total.
 func (f Filter) byState(q *bun.SelectQuery) *bun.SelectQuery {
 	state := strings.TrimSpace(f.State)
 	if state == "" {
 		return q
-	}
-	standing := "SUM(CASE WHEN f.suppressed_by IS NULL THEN 0 ELSE 1 END)"
-	at := func(want string) string {
-		return "SUM(CASE WHEN de.state = '" + want + "' THEN 1 ELSE 0 END)"
 	}
 	// The words are spelled here rather than taken from the triage package,
 	// which imports this one — naming them there and reading them here is a
@@ -387,22 +413,39 @@ func (f Filter) byState(q *bun.SelectQuery) *bun.SelectQuery {
 	// enum on the endpoint is what keeps a caller from inventing a fifth.
 	const (
 		proposed = "proposed"
+		approved = "approved"
 		lapsed   = "lapsed"
 	)
-	needsDecisions := state != "agreed"
-	if needsDecisions {
-		q = q.Join("LEFT JOIN decision AS de ON de.vulnerability_id = f.vulnerability_id" +
-			" AND de.place_identity = f.place_identity")
+	// One place, one answer: whether a claim of ours, in this product, at this
+	// place, about this issue, is in the state being asked about.
+	at := func(want string, live bool) string {
+		clause := `SUM(CASE WHEN EXISTS (SELECT 1 FROM "decision" AS de
+			WHERE de.product_id = ?
+			  AND de.vulnerability_id = f.vulnerability_id
+			  AND de.place_identity = f.place_identity
+			  AND de.state = '` + want + `'`
+		if live {
+			// Only the claim that currently stands. Without it a judgment
+			// withdrawn eighteen months ago still answers for this place.
+			clause += ` AND de.live_key IS NOT NULL`
+		}
+		return clause + `) THEN 1 ELSE 0 END)`
 	}
+	anyClaim := `SUM(CASE WHEN EXISTS (SELECT 1 FROM "decision" AS de
+		WHERE de.product_id = ?
+		  AND de.vulnerability_id = f.vulnerability_id
+		  AND de.place_identity = f.place_identity) THEN 1 ELSE 0 END)`
+
 	switch state {
 	case "agreed":
-		return q.Having(standing + " = COUNT(*)")
+		return q.Having(at(approved, true)+" = COUNT(*)", f.ProductID)
 	case "waiting":
-		return q.Having(at(proposed) + " > 0")
+		return q.Having(at(proposed, false)+" > 0", f.ProductID)
 	case "lapsed":
-		return q.Having(at(lapsed) + " > 0 AND " + standing + " = 0")
+		return q.Having(at(lapsed, false)+" > 0 AND "+at(approved, true)+" = 0",
+			f.ProductID, f.ProductID)
 	case "undecided":
-		return q.Having(standing + " = 0 AND COUNT(de.id) = 0")
+		return q.Having(anyClaim+" = 0", f.ProductID)
 	}
 	return q
 }
@@ -434,6 +477,11 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 	if len(visible) == 0 {
 		return nil, 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
+	// Which product this is narrowing inside. Set here rather than trusted
+	// from the caller: a place identity carries no product, so a filter that
+	// correlates one to a decision and is handed a zero would match every
+	// product in the deployment.
+	filter.ProductID = productID
 
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -1116,6 +1164,7 @@ func (s *Store) ComponentGroups(ctx context.Context, subject access.Subject, tar
 	if len(visible) == 0 {
 		return nil, 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
+	filter.ProductID = productID
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}

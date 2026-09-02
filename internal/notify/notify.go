@@ -51,11 +51,6 @@ const (
 	// SentBack is a dismissal an approver asked more of. It goes straight back
 	// into the proposer's queue, so silence would leave it sitting (NTF-05).
 	SentBack Kind = "sent-back"
-	// Mentioned is somebody naming you where you can read it (NTF-12).
-	Mentioned Kind = "mentioned"
-	// ApprovalWithdrawn tells the people who granted an approval that an edit
-	// took it back, so it does not quietly stop counting (NTF-13).
-	ApprovalWithdrawn Kind = "approval-withdrawn"
 	// BuildQuiet is a build nothing has been filed against for longer than
 	// this deployment allows. A condition: it clears when a scan arrives.
 	BuildQuiet Kind = "build-quiet"
@@ -208,6 +203,17 @@ func (s *Store) Reconcile(ctx context.Context, personID int64, kind Kind,
 				Body: h.Body, Link: h.Link, CreatedAt: now,
 			}
 			if _, err := tx.NewInsert().Model(row).Exec(ctx); err != nil {
+				// Another process got there first. A deployment runs more than
+				// one of these — the chart ships two replicas and every one
+				// sweeps — so two saying the same true thing at the same
+				// moment is the ordinary case rather than a fault. The unique
+				// index is what makes it one row; this is what stops that
+				// being an error, and a duplicate is not retryable, so
+				// without it the whole sweep would abort and every
+				// administrator after this one would be told nothing.
+				if database.IsDuplicate(err) {
+					continue
+				}
 				return fmt.Errorf("open a condition that became true: %w", err)
 			}
 			opened++
@@ -267,7 +273,6 @@ func (s *Store) Acknowledge(ctx context.Context, subject access.Subject, id int6
 		Set("read_at = ?", s.now()).
 		Where("id = ?", id).
 		Where("person_id = ?", subject.ID).
-		Where("read_at IS NULL").
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("acknowledge: %w", err)
@@ -276,6 +281,12 @@ func (s *Store) Acknowledge(ctx context.Context, subject access.Subject, id int6
 	// count mean "the row was still there" on all four engines (DAT-35), so
 	// zero here means it is not theirs or does not exist — which are the same
 	// answer on purpose.
+	//
+	// Which is only true because the update does not also require it to be
+	// unread. With that condition, acknowledging something twice reported zero
+	// and was refused — so a second click, or a click racing the button that
+	// clears everything, answered "no notification of yours by that number"
+	// about one plainly theirs. Acknowledging is idempotent instead.
 	if n, err := res.RowsAffected(); err == nil && n == 0 {
 		return access.Denied("acknowledge a notification")
 	}
