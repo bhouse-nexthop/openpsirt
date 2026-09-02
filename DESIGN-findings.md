@@ -450,6 +450,70 @@ A run that failed is recorded as a run that failed, with the reason. A scanner
 that stopped working is otherwise indistinguishable from a product that stopped
 having problems.
 
+## What a year of nightly scans does to it
+
+The interval storage was shaped so that a rebuild changing nothing writes
+nothing, and a test asserts that. What nobody had checked was the shape after a
+year of them — `DECISIONS.md` §4 recorded it as unmeasured, with the design
+"should be fine" and *should* doing the work. It has been measured now.
+
+**The model, stated because every number below depends on it.** A build of 700
+components, each sitting in 34 containers, so 23,800 places; 260 issues open at
+the start; 365 nightly rebuilds; 1% of components changing version each night;
+three new issues a night arriving from the vulnerability database and matching
+something already shipped. That is a real image at about a twenty-seventh of
+its size — the fixture reaches 241,021 places from 7,035 components, and the
+same shape scaled down so the *growth* is measurable in an hour rather than the
+constant being large.
+
+**The table grew 28 times over the year**, from 8,840 rows to 251,124. The
+graph grew faster: 23,834 edges to 196,860, because a component whose version
+moves opens a new node and 34 new edges while the old ones stay as closed
+intervals. Neither is a leak — every row is an interval somebody can ask a
+question about — but a deployment sizing a disk should know the shape is
+multiplicative in consumers, not additive in components.
+
+Where it ends up, after 365 nights, on each engine:
+
+| | findings list | running out | trend | a night, average | a night, worst |
+|---|---:|---:|---:|---:|---:|
+| PostgreSQL | 85 ms | 44 ms | 241 ms | 1.04 s | 1.77 s |
+| SQLite | 206 ms | 79 ms | 773 ms | 0.45 s | 1.02 s |
+| MySQL | 218 ms | 119 ms | 2.03 s | 5.01 s | 12.76 s |
+| MariaDB | 325 ms | 155 ms | 1.21 s | 0.64 s | 2.06 s |
+
+**The reads hold up, and that is the answer §4 wanted.** The findings list grew
+about five times while the table grew twenty-eight, because it is indexed on
+the target and whether a finding is closed — the shape the interval storage was
+chosen for. Running out behaves the same way.
+
+**Trend is the one that grows**, and it is the slowest everywhere: it reads
+every interval overlapping the window rather than a page of them, and the open
+set itself grows as issues accumulate. It is the query to watch, and the first
+one to reshape if a deployment reports a slow front page.
+
+**Two engine differences are worth stating rather than averaging away.**
+
+*MySQL writes five times slower than PostgreSQL and eight times slower than
+MariaDB* — 5.01 s a night against 1.04 s and 0.64 s, and 12.76 s at its worst
+against 1.77 s. Its trend query is the slowest too. A nightly scan taking
+thirteen seconds is not an operational problem; the same code being five times
+more expensive on one supported engine than on its own sibling is a fact to
+have before somebody chooses one.
+
+*SQLite reads worse than it writes.* Its nights are the cheapest of the four
+and its trend is three times PostgreSQL's, which is the shape to expect from
+one writer and one connection. It is a development database and this measures
+why.
+
+**What this does not measure.** One build, not the several a deployment
+tracks — the table grows with builds, so a deployment following ten of them
+multiplies these rows by ten and the queries narrow by target before they read.
+It also assumes a churn rate rather than observing one: at 1% a night the year
+adds 2,548 component versions, and a deployment whose builds move more will
+grow faster in proportion. `make measure` re-runs it, and the constants at the
+top of the harness are the model.
+
 ## Choices the decisions did not cover
 
 | Choice | Why this way |

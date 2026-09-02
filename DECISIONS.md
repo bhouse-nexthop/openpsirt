@@ -614,14 +614,26 @@ in kind: the finding stops being work rather than becoming later work, and
 REM-27 takes its deadline away entirely. The person agreeing to it should
 probably be told which of the two they are agreeing to.
 
-**A year of nightly scans has never been measured.** Scan files are deleted
-once read, and the interval storage was shaped so that a rebuild changing
-nothing writes nothing — which is asserted by a test and was checked by
-breaking it. What has not been checked is the shape after a year of real
-nightly scans across a real number of products: how large the findings table
-actually gets, and whether the queries over it still behave. The design says it
-should be fine. "Should" is doing work in that sentence, and this project'"'"'s own
-rule is that a decision carries the measurement that forced it.
+**~~A year of nightly scans has never been measured.~~ It has now**, and the
+numbers are in `DESIGN-findings.md`. The reads hold up: over 365 simulated
+nights the findings table grew twenty-eight times and the findings list grew
+five, because it is indexed on the shape the interval storage was chosen for.
+Trend is the one that grows and the slowest everywhere, so it is the first
+thing to reshape if a front page gets slow.
+
+What the measurement turned up that nobody was looking for is an engine
+difference: **MySQL writes a night five times slower than PostgreSQL and eight
+times slower than MariaDB** — 5.01 s against 1.04 s and 0.64 s, and 12.76 s at
+its worst. Thirteen seconds for a nightly scan is not an operational problem,
+so nothing here changes; it is recorded because "the same code is five times
+more expensive on one supported engine than on its sibling" is worth knowing
+before somebody picks one, and because averaging the four together would have
+hidden it.
+
+Still open in the same area, and smaller: this measured one build, where a
+deployment tracks several, and it assumed a churn rate rather than observing
+one. Both are stated in the design document, and `make measure` re-runs it
+against a different model by changing the constants.
 
 Everything else raised so far has been answered — see Section 11 for how the
 significant ones were settled.

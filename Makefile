@@ -126,7 +126,7 @@ DEV_DIR  ?= $(DEMO_DIR)/dev
 DEV_DB   ?= $(DEV_DIR)/dev.db
 DEV_URL  := http://$(DEV_HOST):$(DEV_PORT)
 
-.PHONY: unreachable all build test vet lint fmt openapi openapi-current run clean check check-packaging check-engines engines-up engines-down engines-status engines-check tools govulncheck licenses sbom web web-deps web-api web-check demo demo-image demo-up demo-down demo-seed demo-reset demo-status dev dev-up dev-down dev-seed dev-reset dev-status
+.PHONY: unreachable all build test vet lint fmt openapi openapi-current run clean check check-packaging check-engines measure engines-up engines-down engines-status engines-check tools govulncheck licenses sbom web web-deps web-api web-check demo demo-image demo-up demo-down demo-seed demo-reset demo-status dev dev-up dev-down dev-seed dev-reset dev-status
 
 all: check build
 
@@ -391,6 +391,19 @@ engines-check:
 	  printf '%s\n' $$ours | grep -qxF "$$image" \
 	    || { echo "CI runs $$image, and nothing here starts one."; exit 1; }; \
 	done
+
+# Measurements, not gates.
+#
+# These take minutes, assert almost nothing, and produce numbers to write down.
+# They are behind a build tag so that "check" never runs them and nobody has to
+# decide whether a slow run is a failure — a decision here carries the
+# measurement that forced it, and this is where those come from.
+#
+# Point it at a real server. SQLite answers a different question: one writer,
+# one connection, and nothing a deployment runs on.
+measure:
+	$(GO) test -tags measure -count=1 -v -timeout 60m \
+	  -run 'TestMeasure' ./internal/finding/
 
 # Requires docker and helm. Skipped by "check" so that a machine without them
 # can still run everything else.

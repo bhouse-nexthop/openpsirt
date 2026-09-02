@@ -47,6 +47,7 @@ with the same command and the same pinned tool versions — CIG-05.
 | `make engines-up` | Starts the four database servers the suite needs, and records their URLs |
 | `make engines-down` | Removes them |
 | `make engines-status` | What is running, and which engines are unconfigured |
+| `make measure` | Measurements rather than gates. Behind a build tag, so `check` never runs them |
 
 ## The engines a developer tests against
 

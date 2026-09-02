@@ -290,6 +290,7 @@ same command and the same pinned versions.
 | | |
 |---|---|
 | `make check` | Everything CI checks, except the container and chart |
+| `make measure` | Measurements rather than gates: what a year of nightly scans does to the tables and the queries. Minutes, and behind a build tag so `check` never runs it |
 | `make check-engines` | That all four engines ran, and that each was the engine it claimed |
 | `make check-packaging` | The container image and the Helm chart. Needs docker and helm |
 | `make build` | The binary, with version information injected |
