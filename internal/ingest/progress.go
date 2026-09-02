@@ -177,30 +177,40 @@ func progressOf(sc Scan, job queue.Job, runs []finding.Run) (Progress, string, *
 	if parsed.IsZero() {
 		parsed = sc.ReceivedAt
 	}
-	// Runs arrive newest first, so the last one still finishing after this
-	// upload was parsed is the earliest that reflects it — and that one is the
-	// run that answers this upload.
+	// The run that answers this upload is the earliest *successful* one to
+	// finish after it was parsed. Runs arrive newest first, so the last
+	// assignment in each branch below is the earliest of its kind.
 	//
-	// **Whether it failed is asked of that run alone.** Asking it of every run
-	// in the loop made one bad night permanent: a scanner that fell over once
-	// finished after every upload parsed before it, so every one of those
-	// receipts reported that failure for ever, however many green runs came
-	// afterwards. The scans screen got steadily more wrong the longer a
-	// deployment ran.
-	var answered *finding.Run
+	// **A run that failed only answers an upload while nothing has succeeded
+	// since.** A scan run covers a build rather than an upload, and this
+	// upload is the newest document the build holds, so a later run that
+	// finished cleanly did read this document — saying otherwise makes one bad
+	// night permanent. That was the first version of this: the earliest run
+	// after parsing was taken whatever became of it, so a scanner that fell
+	// over once poisoned every receipt already waiting on it, for ever,
+	// however many green runs came afterwards, and the scans screen got
+	// steadily more wrong the longer a deployment ran.
+	//
+	// Still Refused while every run since has failed, which is the honest
+	// answer to "did anything come of my upload" at that point.
+	var answered, failed *finding.Run
 	for i := range runs {
 		if runs[i].FinishedAt == nil || runs[i].FinishedAt.Before(parsed) {
 			continue
 		}
+		if runs[i].Failure != "" {
+			failed = &runs[i]
+			continue
+		}
 		answered = &runs[i]
 	}
-	if answered == nil {
-		return Scanning, "", nil
+	if answered != nil {
+		return Scanned, "", &answered.ID
 	}
-	if answered.Failure != "" {
-		return Refused, answered.Failure, nil
+	if failed != nil {
+		return Refused, failed.Failure, nil
 	}
-	return Scanned, "", &answered.ID
+	return Scanning, "", nil
 }
 
 // productOf reads which product a build belongs to, so that reaching it can be

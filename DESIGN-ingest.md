@@ -543,6 +543,25 @@ about the deployment rather than about that key's uploads.
 approved mockup, which leads its scans screen with a product that has not been
 scanned for eleven days while nothing has failed.
 
+## Which run answers an upload
+
+A receipt says how far an upload got, and a scan run covers a *build* rather
+than an upload, so deciding which run speaks for a given upload is a rule
+rather than a lookup.
+
+**The run that answers an upload is the earliest successful one to finish
+after that upload was parsed.** A run that failed answers it only while nothing
+has succeeded since.
+
+The second half of that is not a detail. The first version took the earliest
+run to finish after parsing whatever became of it, so a scanner that fell over
+once poisoned every receipt already waiting on it — permanently, however many
+clean runs came afterwards — and the scans screen got steadily more wrong the
+longer a deployment ran. A later clean run did read this document, because the
+upload is the newest one its build holds, so reporting the old failure is
+simply untrue. While every run since has failed the receipt still reports that
+failure, which is the honest answer to "did anything come of my upload".
+
 ## What each run changed
 
 A receipt says how far an upload got. What it did — how many issues opened and

@@ -614,12 +614,21 @@ in kind: the finding stops being work rather than becoming later work, and
 REM-27 takes its deadline away entirely. The person agreeing to it should
 probably be told which of the two they are agreeing to.
 
-**~~A year of nightly scans has never been measured.~~ It has now**, and the
-numbers are in `DESIGN-findings.md`. The reads hold up: over 365 simulated
-nights the findings table grew twenty-eight times and the findings list grew
-five, because it is indexed on the shape the interval storage was chosen for.
-Trend is the one that grows and the slowest everywhere, so it is the first
-thing to reshape if a front page gets slow.
+**A year of nightly scans has been measured once and the figures withdrawn.**
+There is a harness now — `make measure`, and `DESIGN-findings.md` holds the
+model it runs — but the first run applied twice the churn it documented: it slid
+a window and let the previous night's components revert, so fourteen identities
+changed a night where the model said seven, and a version history no build has.
+The numbers it produced were real measurements of a model nobody described, so
+they are withdrawn rather than corrected in place. The harness carries a bump
+forward now; the run has not been taken.
+
+What that run did establish, and what a second one should confirm rather than
+discover: the reads hold up and trend is the one that grows. It also turned up
+something nobody was looking for — MySQL writes a night five times slower than
+PostgreSQL and eight times slower than MariaDB. That is a comparison between
+engines on identical work, so the churn error scales all four alike and does not
+explain it.
 
 What the measurement turned up that nobody was looking for is an engine
 difference: **MySQL writes a night five times slower than PostgreSQL and eight

@@ -202,19 +202,38 @@ func (s *Store) Reconcile(ctx context.Context, personID int64, kind Kind,
 				About: about, AboutOpen: &key,
 				Body: h.Body, Link: h.Link, CreatedAt: now,
 			}
-			if _, err := tx.NewInsert().Model(row).Exec(ctx); err != nil {
-				// Another process got there first. A deployment runs more than
-				// one of these — the chart ships two replicas and every one
-				// sweeps — so two saying the same true thing at the same
-				// moment is the ordinary case rather than a fault. The unique
-				// index is what makes it one row; this is what stops that
-				// being an error, and a duplicate is not retryable, so
-				// without it the whole sweep would abort and every
-				// administrator after this one would be told nothing.
+			// Each insert stands on its own savepoint, because carrying on
+			// after a failed write is not something every engine allows.
+			//
+			// Another process getting there first is the ordinary case rather
+			// than a fault: a deployment runs more than one of these — the
+			// chart ships two replicas and every one sweeps — so two saying
+			// the same true thing at the same moment is expected, the unique
+			// index is what makes it one row, and a duplicate is not
+			// retryable, so aborting the sweep would leave every
+			// administrator after this one told nothing.
+			//
+			// But on PostgreSQL a refused statement poisons the whole
+			// transaction: everything after it fails and the commit turns
+			// itself into a rollback. Simply continuing therefore threw away
+			// the clears made above and reported counts for work that had not
+			// happened — and it did so only on that one engine, which is why
+			// this is a savepoint rather than a bare `continue`. `SAVEPOINT`
+			// is plain SQL that all four engines take, so this stays engine
+			// agnostic.
+			sp, err := tx.BeginTx(ctx, nil)
+			if err != nil {
+				return fmt.Errorf("hold a point to open a condition from: %w", err)
+			}
+			if _, err := sp.NewInsert().Model(row).Exec(ctx); err != nil {
+				_ = sp.Rollback()
 				if database.IsDuplicate(err) {
 					continue
 				}
 				return fmt.Errorf("open a condition that became true: %w", err)
+			}
+			if err := sp.Commit(); err != nil {
+				return fmt.Errorf("keep a condition that was opened: %w", err)
 			}
 			opened++
 		}

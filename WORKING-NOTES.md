@@ -942,3 +942,30 @@ picker's selection; the panel label said "all products" regardless, so a
 narrowed chart claimed to be the unnarrowed one — ten lines below a comment
 saying that a narrowed page must announce itself. The rule was written, the
 page obeyed it, and a panel inside the page did not.
+
+## The four-engine gate earned its keep twice in one sitting (2026-09-02)
+
+Two defects, both invisible on the engine a quick local run uses.
+
+**A condition insert poisoned the sweep on PostgreSQL only.** `notify.Reconcile`
+tolerated a duplicate — two replicas saying the same true thing at once is the
+ordinary case — by carrying on past the failed insert. On PostgreSQL a refused
+statement aborts the whole transaction, so everything after it failed and the
+commit turned itself into a rollback: the clears made earlier in the sweep were
+thrown away and the returned counts described work that had not happened.
+SQLite, MySQL and MariaDB all allow carrying on, so three engines out of four
+said it was fine. Each insert now stands on its own `SAVEPOINT` — plain SQL that
+all four take, so no engine branch. The sibling site in `triage/decision.go`
+was already correct and says why in its own comment.
+
+**And I nearly signed off the mutation test that proves it.** Breaking the
+control and re-running looked convincing — the test passed with the fix and I
+had the failure to compare against — except the run was sqlite-only: the URLs
+live in `local.mk`, which is a *make include*, so `. ./local.mk` sets nothing in
+a shell and `go test` quietly ran one engine. A mutation test that cannot reach
+the engine the bug is on proves nothing, and it reports success while doing it.
+Exporting the three URLs first made the mutant fail as it should.
+
+So: when running `go test` by hand rather than through `make check`, export the
+engine URLs, and check the subtest names in the output actually list four
+engines before believing a result.
