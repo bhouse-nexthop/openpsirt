@@ -411,6 +411,36 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: now
    text that happens to be dark. */
 .seg button:hover { background: var(--raised); color: var(--ink); }
 
+/* The filters that are not the common ones, shown when asked for. A row that
+   wraps rather than a sidebar: the list wants the width, and a panel that is
+   always there takes it whether or not anything is set. */
+.advanced {
+  display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end;
+  margin: 0 0 10px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--raised);
+}
+.advanced .field { margin: 0; }
+.advanced .field.row { flex-direction: row; align-items: center; gap: 7px; }
+.advanced .field > span {
+  display: block; font-size: var(--step--1); color: var(--muted); margin-bottom: 3px;
+}
+.advanced .field.row > span { margin-bottom: 0; }
+
+/* The per-row hide. Quiet enough that fifty of them do not read as fifty
+   controls, and only fully visible on the row somebody is on — it is an escape
+   hatch for a package drowning the list, not a thing to reach for on every
+   row. */
+.hideit {
+  margin-left: 8px;
+  font-size: var(--step--1);
+  color: var(--faint);
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.row:hover .hideit,
+.hideit:focus-visible { opacity: 1; }
+
 .chain { color: var(--muted); display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .chain .hop { color: var(--ink); }
 .chain .gap {

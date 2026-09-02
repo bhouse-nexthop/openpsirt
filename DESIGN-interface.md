@@ -234,6 +234,46 @@ in the brand colour has nothing left that means "act on this". Being exploited
 outranks whatever the score says, which is the ordering everywhere else in this
 tool.
 
+**Searching is how somebody gets into a list of thousands**, so the findings
+list has a search box and it is the server's like every other filter. It
+matches anywhere in a component's name, ignoring capitals, and it is submitted
+rather than sent per keystroke — each one is a query over every open finding in
+the build, and a half-typed word is not a question worth asking.
+
+**The filters that are not the common ones live behind a control.** Severity,
+exploited and fix-available are what somebody uses constantly and stay one
+click away; package kind, what holds a thing, and how far it has been decided
+sit in a panel that opens. How many of those are on is written on the control
+while it is shut, because a narrowed list that looks unnarrowed is how two
+people read one screen and quote different numbers.
+
+Three of them are worth stating:
+
+**Package kind** is read from the package identifier rather than stored beside
+it — the identifier is what says it, and a second copy is a second thing to
+keep true. It is also the closest the data comes to "userland and not the
+rest": a kernel and its modules are Debian packages and a statically linked
+service is Go, and somebody triaging one is usually not triaging the other.
+
+**What holds it** is the consumer a place records, so asking what is inside a
+container asks for places whose consumer is that container. What the build
+holds directly is the other half of the same question and has no container to
+name, so it is asked for separately rather than by typing something.
+
+**How far it has been decided** had to be defined, because a group covers every
+place an issue sits at and those places can be in different states. Undecided
+means no place has a decision of any kind; waiting means a claim stands
+proposed and nobody has agreed; agreed means every place is answered; lapsed
+means a decision here stopped applying and nothing replaced it. Partly answered
+is deliberately not one of them — the row already says "12 places · 3
+answered", which is the same fact in a more useful form.
+
+**A component's name is what you click.** In both views it narrows the list to
+that component. It used to be plain text with a button beside it saying "only
+this", which is one act named twice, and the thing somebody reaches for is the
+name. Hiding sits on the findings row instead, because that is the list being
+triaged and one package drowning it is what somebody is getting past.
+
 **Filtering is the server's, not the browser's.** A list narrowed after it
 arrives is narrowed within one page of it, so "hide the kernel" would hide the
 kernel from the twenty rows already fetched and from nothing else. The filters

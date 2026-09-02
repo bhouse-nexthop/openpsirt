@@ -206,6 +206,42 @@ type Filter struct {
 	// TRI-44).
 	Floor      Floor
 	BelowFloor bool
+	// Search keeps components whose name contains this, without regard to
+	// capitals. It is how somebody finds a package in a list of thousands,
+	// where Component above is the exact name and answers a different
+	// question: "show me openssl" against "show me anything ssl-ish".
+	//
+	// Matched here rather than in the browser for the reason every other
+	// filter is: a search applied to the fifty rows already fetched searches
+	// those fifty, and the total beside it would count something else.
+	Search string
+	// Ecosystem keeps components of one package kind — deb, golang, python.
+	// Read from the package identifier rather than stored beside it, because
+	// the identifier is what says it and a second copy is a second thing to
+	// keep true.
+	//
+	// It is the closest thing the data has to "userland and not the rest": a
+	// kernel and its modules are Debian packages, a statically linked service
+	// is Go, and somebody triaging one is usually not triaging the other.
+	Ecosystem string
+	// Under keeps what sits inside one container, by its name. UnderTheBuild
+	// asks for the other case: what the build holds directly, which has no
+	// consumer to name.
+	Under         string
+	UnderTheBuild bool
+	// State keeps groups by how far they have been decided. A group is an
+	// issue in a component across every place it sits, and its places can be
+	// in different states, so what a group's state *is* had to be chosen:
+	//
+	//   undecided  no place has a decision of any kind
+	//   waiting    a claim stands proposed at a place and nobody has agreed
+	//   agreed     every place is answered by a standing decision
+	//   lapsed     a decision here stopped applying and nothing replaced it
+	//
+	// Partly answered is deliberately not a state of its own: the row already
+	// says "12 places · 3 answered", which is the more useful form of the same
+	// fact, and a fifth word would be a filter for a number people can read.
+	State string
 	// Exclude drops components of these names.
 	//
 	// This exists because one package can drown the list. Measured on a switch
@@ -252,9 +288,29 @@ func (f Filter) narrow(q *bun.SelectQuery) *bun.SelectQuery {
 	if name := strings.TrimSpace(f.Component); name != "" {
 		q = q.Where("c.name = ?", name)
 	}
+	// Lowered on both sides rather than asked to compare loosely: the engines
+	// do not agree on what a case-insensitive comparison is, and one that is
+	// spelled the same way everywhere behaves the same way everywhere (MDL-21).
+	if term := strings.TrimSpace(f.Search); term != "" {
+		q = q.Where("LOWER(c.name) LIKE ?", "%"+strings.ToLower(term)+"%")
+	}
 	if names := trimmed(f.Exclude); len(names) > 0 {
 		q = q.Where("c.name NOT IN (?)", bun.List(names))
 	}
+	if eco := strings.TrimSpace(f.Ecosystem); eco != "" {
+		q = q.Where("LOWER(c.purl) LIKE ?", "pkg:"+strings.ToLower(eco)+"/%")
+	}
+	// What holds it. A place records the component that pulls it in, so asking
+	// what is inside a container is asking for places whose consumer is that
+	// container — and what the build holds directly is the places with none.
+	if f.UnderTheBuild {
+		q = q.Where("f.consumer_id IS NULL")
+	} else if under := strings.TrimSpace(f.Under); under != "" {
+		q = q.Where("f.consumer_id IN (?)",
+			q.NewSelect().TableExpr("component AS uc").
+				Column("uc.id").Where("uc.name = ?", under))
+	}
+	q = f.byState(q)
 	if !f.BelowFloor {
 		q = f.Floor.narrow(q)
 	}
@@ -305,6 +361,50 @@ func (s *Store) Hidden(ctx context.Context, subject access.Subject, targetID int
 		return 0, fmt.Errorf("count what the line keeps out: %w", err)
 	}
 	return n, nil
+}
+
+// byState keeps groups by how far they have been decided.
+//
+// Every one of these is a condition over the *group* rather than over a place,
+// so they are HAVING clauses: a group is undecided when none of its places has
+// a decision, not when one of them does not.
+//
+// A standing decision is the one the finding points at; anything else is read
+// from the decisions recorded against this issue at this place. The join is
+// left, because the ordinary case is that there is nothing to join to.
+func (f Filter) byState(q *bun.SelectQuery) *bun.SelectQuery {
+	state := strings.TrimSpace(f.State)
+	if state == "" {
+		return q
+	}
+	standing := "SUM(CASE WHEN f.suppressed_by IS NULL THEN 0 ELSE 1 END)"
+	at := func(want string) string {
+		return "SUM(CASE WHEN de.state = '" + want + "' THEN 1 ELSE 0 END)"
+	}
+	// The words are spelled here rather than taken from the triage package,
+	// which imports this one — naming them there and reading them here is a
+	// cycle. They are the values stored in the column either way, and the
+	// enum on the endpoint is what keeps a caller from inventing a fifth.
+	const (
+		proposed = "proposed"
+		lapsed   = "lapsed"
+	)
+	needsDecisions := state != "agreed"
+	if needsDecisions {
+		q = q.Join("LEFT JOIN decision AS de ON de.vulnerability_id = f.vulnerability_id" +
+			" AND de.place_identity = f.place_identity")
+	}
+	switch state {
+	case "agreed":
+		return q.Having(standing + " = COUNT(*)")
+	case "waiting":
+		return q.Having(at(proposed) + " > 0")
+	case "lapsed":
+		return q.Having(at(lapsed) + " > 0 AND " + standing + " = 0")
+	case "undecided":
+		return q.Having(standing + " = 0 AND COUNT(de.id) = 0")
+	}
+	return q
 }
 
 // trimmed drops blanks from a list of names, so a stray separator in a query

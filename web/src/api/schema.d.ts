@@ -4265,6 +4265,16 @@ export interface operations {
                 below_floor?: boolean;
                 /** @description Keep only what is open against components of this name, whatever version */
                 component?: string;
+                /** @description Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name */
+                q?: string;
+                /** @description Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier */
+                ecosystem?: string;
+                /** @description Keep only what sits inside the container of this name */
+                under?: string;
+                /** @description Keep only what the build holds directly, which is what has no container above it */
+                under_build?: boolean;
+                /** @description Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered */
+                state?: "undecided" | "waiting" | "agreed" | "lapsed";
                 /** @description Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows */
                 exclude?: string[] | null;
                 /** @description How many to return */
@@ -4313,6 +4323,16 @@ export interface operations {
                 fixable?: boolean;
                 /** @description Include what this product does not consider worth triaging */
                 below_floor?: boolean;
+                /** @description Keep only components whose name contains this, ignoring capitals */
+                q?: string;
+                /** @description Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier */
+                ecosystem?: string;
+                /** @description Keep only what sits inside the container of this name */
+                under?: string;
+                /** @description Keep only what the build holds directly, which is what has no container above it */
+                under_build?: boolean;
+                /** @description Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered */
+                state?: "undecided" | "waiting" | "agreed" | "lapsed";
                 /** @description Drop components of these names */
                 exclude?: string[] | null;
                 /** @description How many to return */

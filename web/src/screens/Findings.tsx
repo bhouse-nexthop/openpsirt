@@ -39,6 +39,24 @@ function upstreamSays(state: string | undefined, fixedIn: string | undefined) {
 }
 const FLOORS = ["low", "medium", "high", "critical"] as const;
 
+// The package kinds a real image carries, most numerous first. Taken from a
+// switch operating-system image rather than from a registry's list of every
+// kind that exists: offering twenty when a build has eight is a menu somebody
+// reads past.
+const ECOSYSTEMS = [
+  ["", "any kind"], ["generic", "generic"], ["golang", "Go"], ["deb", "Debian"],
+  ["cargo", "Rust"], ["pypi", "Python"], ["oci", "container"],
+  ["github", "GitHub"], ["maven", "Maven"],
+] as const;
+
+// How far a group has been decided. A group covers every place an issue sits
+// at in one component, so each of these is a statement about all of them.
+const STATES = [
+  ["", "any state"], ["undecided", "nobody has decided"],
+  ["waiting", "waiting for a second person"], ["agreed", "answered everywhere"],
+  ["lapsed", "stopped applying"],
+] as const;
+
 // One row per issue in a component, not per place. A real image produced
 // 335,021 individual findings that collapse to 7,906 rows here, so the
 // grouping is not a nicety — ungrouped it is six thousand screens of rows
@@ -60,7 +78,21 @@ export function Findings() {
   // Whether to show what this product does not consider worth triaging. They
   // are always recorded and always counted; this asks to see them here.
   const below = params.get("below") === "yes";
+  const searching = params.get("q") ?? "";
+  const ecosystem = params.get("ecosystem") ?? "";
+  const under = params.get("under") ?? "";
+  const underBuild = params.get("under_build") === "yes";
+  const state = params.get("state") ?? "";
+  // How many narrowings are on beyond the chips, so the panel says so while it
+  // is shut. A filter nobody can see is how two people read one screen and
+  // quote different numbers (REJ-10).
+  const advanced = [ecosystem, under, state].filter(Boolean).length + (underBuild ? 1 : 0);
+  const [more, setMore] = useState(advanced > 0);
   const [peeking, setPeeking] = useState<string | null>(null);
+  // What is typed, before it is asked for. Submitted rather than sent per
+  // keystroke: each one is a query over every open finding in the build, and
+  // the answer to a half-typed word is not worth asking for.
+  const [typed, setTyped] = useState(searching);
 
   // The narrowing is the server's. Filtering a page that has already been
   // fetched answers a different question from the one it appears to —
@@ -73,6 +105,11 @@ export function Findings() {
     ...(floor !== "low" ? { severity: floor as (typeof FLOORS)[number] } : {}),
     ...(only === "exploited" ? { exploited: true } : {}),
     ...(only === "hasFix" ? { fixable: true } : {}),
+    ...(searching ? { q: searching } : {}),
+    ...(ecosystem ? { ecosystem } : {}),
+    ...(under ? { under } : {}),
+    ...(underBuild ? { under_build: true } : {}),
+    ...(state ? { state: state as "undecided" | "waiting" | "agreed" | "lapsed" } : {}),
     ...(hiding.length > 0 ? { exclude: hiding } : {}),
     ...(onlyComponent ? { component: onlyComponent } : {}),
     ...(below ? { below_floor: true } : {}),
@@ -108,6 +145,38 @@ export function Findings() {
   const controls = (
     <>
       <div className="filters">
+        {/* Searching is the way into a list this size, so it comes first.
+            Submitted rather than sent per keystroke, and in the URL like every
+            other filter so a link carries what somebody was looking at. */}
+        <form
+          style={{ display: "contents" }}
+          onSubmit={(event) => {
+            event.preventDefault();
+            set("q", typed.trim());
+          }}
+        >
+          <input
+            type="search"
+            value={typed}
+            onChange={(event) => setTyped(event.target.value)}
+            placeholder="Find a component — openssl, linux, python…"
+            aria-label="Find a component"
+            style={{ width: 260 }}
+          />
+          <button type="submit" className="btn ghost">Search</button>
+          {searching && (
+            <button
+              type="button"
+              className="linkish"
+              onClick={() => {
+                setTyped("");
+                set("q", "");
+              }}
+            >
+              Clear “{searching}”
+            </button>
+          )}
+        </form>
         <span className="seg">
           {[
             ["issues", "By issue"],
@@ -138,6 +207,19 @@ export function Findings() {
             {label}
           </button>
         ))}
+        {/* Behind a control rather than always on screen: the chips above are
+            what somebody uses constantly, and putting six more beside them
+            makes the common case slower to reach. What is on is said on the
+            button, so a narrowed list never looks like an unnarrowed one. */}
+        <button
+          type="button"
+          className="chip"
+          aria-pressed={more}
+          aria-expanded={more}
+          onClick={() => setMore(!more)}
+        >
+          More{advanced > 0 ? ` · ${advanced}` : ""}
+        </button>
         <span className="floor">
           <span style={{ color: "var(--faint)" }}>At least</span>
           <span className="seg">
@@ -161,6 +243,68 @@ export function Findings() {
           Dependencies →
         </Link>
       </div>
+
+      {more && (
+        <div className="advanced">
+          <label className="field">
+            <span>Package kind</span>
+            <select value={ecosystem} onChange={(e) => set("ecosystem", e.target.value)}>
+              {ECOSYSTEMS.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Inside</span>
+            <input
+              type="text"
+              value={under}
+              disabled={underBuild}
+              placeholder="a container, by name"
+              onChange={(e) => set("under", e.target.value)}
+            />
+          </label>
+
+          {/* The other half of the same question. What the build holds
+              directly has no container above it to name, so it cannot be
+              asked for by typing one. */}
+          <label className="field row">
+            <input
+              type="checkbox"
+              checked={underBuild}
+              onChange={(e) => set("under_build", e.target.checked ? "yes" : "")}
+            />
+            <span>Held by the build itself</span>
+          </label>
+
+          <label className="field">
+            <span>How far decided</span>
+            <select value={state} onChange={(e) => set("state", e.target.value)}>
+              {STATES.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+
+          {advanced > 0 && (
+            <button
+              type="button"
+              className="linkish"
+              onClick={() => {
+                const next = new URLSearchParams(params);
+                for (const key of ["ecosystem", "under", "under_build", "state"]) {
+                  next.delete(key);
+                }
+                next.delete("offset");
+                setParams(next);
+              }}
+            >
+              Clear these
+            </button>
+          )}
+        </div>
+      )}
 
       {onlyComponent && (
         <div className="filters" style={{ marginTop: -4 }}>
@@ -249,6 +393,11 @@ export function Findings() {
             ...(floor !== "low" ? { severity: floor as (typeof FLOORS)[number] } : {}),
             ...(only === "exploited" ? { exploited: true } : {}),
             ...(only === "hasFix" ? { fixable: true } : {}),
+            ...(searching ? { q: searching } : {}),
+            ...(ecosystem ? { ecosystem } : {}),
+            ...(under ? { under } : {}),
+            ...(underBuild ? { under_build: true } : {}),
+            ...(state ? { state: state as "undecided" | "waiting" | "agreed" | "lapsed" } : {}),
             ...(hiding.length > 0 ? { exclude: hiding } : {}),
           }}
           offset={offset}
@@ -401,9 +550,36 @@ export function Findings() {
                         })()}
                       </td>
                       <td>
-                        <span className="id">{row.component}</span>
+                        <button
+                          type="button"
+                          className="linkish id"
+                          title={`Everything open against ${row.component}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            set("component", row.component ?? "");
+                          }}
+                        >
+                          {row.component}
+                        </button>
                         <br />
                         <span className="id" style={{ color: "var(--faint)" }}>{row.version}</span>
+                        {/* Hiding lives here, not only on the by-component
+                            view: this is the list somebody triages, and one
+                            package drowning it is what they are getting past.
+                            On a switch image the kernel is 4,943 rows of
+                            6,822, and it is not what somebody triaging
+                            userland is looking for. */}
+                        <button
+                          type="button"
+                          className="linkish hideit"
+                          title={`Hide ${row.component} from this list`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            hide(row.component ?? "");
+                          }}
+                        >
+                          hide
+                        </button>
                       </td>
                       <td>
                         <Sits row={row} />
@@ -574,7 +750,18 @@ function ByComponent({
               return (
                 <tr key={`${name}\u0000${row.version}`}>
                   <td>
-                    <span className="id">{name}</span>
+                    {/* The name is the way in. It used to be plain text with a
+                        button beside it saying "only this", which is the same
+                        act named twice — and the thing somebody reaches for
+                        first is the name. */}
+                    <button
+                      type="button"
+                      className="linkish id"
+                      title={`What is open against ${name}`}
+                      onClick={() => onOnly(name)}
+                    >
+                      {name}
+                    </button>
                     {row.exploited && (
                       <>
                         {" "}
@@ -605,9 +792,6 @@ function ByComponent({
                   </td>
                   <td className="num">{(row.places ?? 0).toLocaleString()}</td>
                   <td>
-                    <button type="button" className="linkish" onClick={() => onOnly(name)}>
-                      Only this →
-                    </button>{" "}
                     <button
                       type="button"
                       className="linkish"

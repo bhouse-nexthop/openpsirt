@@ -111,6 +111,11 @@ func registerFindings(api huma.API, in Ingest) {
 		Fixable    bool     `query:"fixable" doc:"Keep only issues where an upstream fixed version is known"`
 		BelowFloor bool     `query:"below_floor" doc:"Include what this product does not consider worth triaging. Those are always recorded and counted; this asks to see them in the list"`
 		Component  string   `query:"component" doc:"Keep only what is open against components of this name, whatever version"`
+		Search     string   `query:"q" maxLength:"200" doc:"Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name"`
+		Ecosystem  string   `query:"ecosystem" doc:"Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier"`
+		Under      string   `query:"under" doc:"Keep only what sits inside the container of this name"`
+		UnderBuild bool     `query:"under_build" doc:"Keep only what the build holds directly, which is what has no container above it"`
+		State      string   `query:"state" enum:"undecided,waiting,agreed,lapsed" doc:"Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"`
 		Exclude    []string `query:"exclude" doc:"Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows"`
 		Limit      int      `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"How many to return"`
 		Offset     int      `query:"offset" minimum:"0" doc:"How many to skip"`
@@ -144,13 +149,18 @@ func registerFindings(api huma.API, in Ingest) {
 			return nil, wentWrong(in.Logger, "cannot tell what is worth triaging here", err)
 		}
 		narrowed := finding.Filter{
-			MinSeverity: input.Severity,
-			Exploited:   input.Exploited,
-			HasFix:      input.Fixable,
-			Component:   input.Component,
-			Exclude:     input.Exclude,
-			Floor:       floor,
-			BelowFloor:  input.BelowFloor,
+			MinSeverity:   input.Severity,
+			Exploited:     input.Exploited,
+			HasFix:        input.Fixable,
+			Component:     input.Component,
+			Search:        input.Search,
+			Ecosystem:     input.Ecosystem,
+			Under:         input.Under,
+			UnderTheBuild: input.UnderBuild,
+			State:         input.State,
+			Exclude:       input.Exclude,
+			Floor:         floor,
+			BelowFloor:    input.BelowFloor,
 		}
 		store := finding.NewStore(in.DB.DB)
 		groups, total, err := store.Groups(ctx, subject, target.ID,
@@ -210,6 +220,11 @@ func registerFindings(api huma.API, in Ingest) {
 		Exploited  bool     `query:"exploited" doc:"Keep only issues somebody is known to be exploiting"`
 		Fixable    bool     `query:"fixable" doc:"Keep only issues where an upstream fixed version is known"`
 		BelowFloor bool     `query:"below_floor" doc:"Include what this product does not consider worth triaging"`
+		Search     string   `query:"q" maxLength:"200" doc:"Keep only components whose name contains this, ignoring capitals"`
+		Ecosystem  string   `query:"ecosystem" doc:"Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier"`
+		Under      string   `query:"under" doc:"Keep only what sits inside the container of this name"`
+		UnderBuild bool     `query:"under_build" doc:"Keep only what the build holds directly, which is what has no container above it"`
+		State      string   `query:"state" enum:"undecided,waiting,agreed,lapsed" doc:"Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"`
 		Exclude    []string `query:"exclude" doc:"Drop components of these names"`
 		Limit      int      `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"How many to return"`
 		Offset     int      `query:"offset" minimum:"0" doc:"How many to skip"`
@@ -239,12 +254,17 @@ func registerFindings(api huma.API, in Ingest) {
 			return nil, wentWrong(in.Logger, "cannot tell what is worth triaging here", err)
 		}
 		narrowed := finding.Filter{
-			MinSeverity: input.Severity,
-			Exploited:   input.Exploited,
-			HasFix:      input.Fixable,
-			Exclude:     input.Exclude,
-			Floor:       floor,
-			BelowFloor:  input.BelowFloor,
+			MinSeverity:   input.Severity,
+			Exploited:     input.Exploited,
+			HasFix:        input.Fixable,
+			Search:        input.Search,
+			Ecosystem:     input.Ecosystem,
+			Under:         input.Under,
+			UnderTheBuild: input.UnderBuild,
+			State:         input.State,
+			Exclude:       input.Exclude,
+			Floor:         floor,
+			BelowFloor:    input.BelowFloor,
 		}
 		groups, total, err := finding.NewStore(in.DB.DB).ComponentGroups(ctx, subject, target.ID,
 			input.Limit, input.Offset, narrowed)
