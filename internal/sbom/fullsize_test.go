@@ -74,8 +74,17 @@ func TestARealImageReadsAsOneComponentPerPackage(t *testing.T) {
 	}
 
 	// Measured against this image when the fixture was taken. The document
-	// describes 7,693 components and they name 7,693 packages — the reader
+	// describes 7,035 components and they name 7,035 packages — the reader
 	// collapses nothing, because there is nothing left to collapse.
+	//
+	// It described 7,693 before. The 658 that went are the build container's
+	// own toolchain — Go and Rust dependencies harvested from `usr/` and
+	// `root/.cargo` trees inside the build slaves, which the image does not
+	// ship. They are still in the document, moved to `formulation`, which is
+	// where CycloneDX puts how a thing was built: the data stays answerable
+	// for a build-chain question and stops being scanned as though it shipped.
+	// Marking them `scope: excluded` instead would have been correct for a
+	// human and inert for the scanner, which ignores scope entirely.
 	//
 	// That is the change, and it is upstream rather than here. The previous
 	// fixture spelled 516 packages twice, under two package-URL namespaces for
@@ -98,7 +107,7 @@ func TestARealImageReadsAsOneComponentPerPackage(t *testing.T) {
 	// The number is written down rather than expressed as a tolerance: a
 	// change in it is a change in what identity means, and that is something
 	// to look at rather than absorb.
-	const packages = 7693
+	const packages = 7035
 	if len(snapshot.Components) != packages {
 		t.Errorf("the image read as %d components, expected %d — has the fixture or the rule changed?",
 			len(snapshot.Components), packages)

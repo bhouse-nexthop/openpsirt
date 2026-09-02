@@ -159,8 +159,11 @@ A real inventory needs this. A build that merges two sources emits the same
 package twice, once with those qualifiers and once without, sometimes escaping
 the version differently and sometimes disagreeing with itself about the
 architecture. Measured on a public switch operating-system image: 8,374
-described components name 7,858 packages, and every one of the 516 collisions
-was the same name at the same version. Taking the identifier verbatim would
+described components named 7,858 packages, and every one of the 516 collisions
+was the same name at the same version. That producer has since been fixed, so
+the image now describes one component per package — which retires the evidence
+rather than the rule, since the duplication was invisible until something
+counted it and the next inventory comes from a build nobody here has seen. Taking the identifier verbatim would
 count those packages twice, split their findings across both halves, and leave
 only one half carrying the identifier a scanner matches on.
 

@@ -9,7 +9,7 @@ nobody can tell a producer quirk from a typo in.
 | `build-fragment.cdx.json` | Real output. One artifact a build step produced, on its way into an inventory. It names no component of its own, which is why it is refused |
 | `suppression-from-patch.openvex.json` | Real output. One claim a build extracted from a patch of its own. It names a source tree rather than a package, which is what makes matching a claim to a component something that can fail |
 | `image.cdx.json` | Written by hand, in the shape of the aggregate inventory a switch operating-system build emits: an image at the root, containers under it, packages under those, a shared library reached from several of them, and a forked component whose pedigree carries the version it was forked from. Not a producer's output, and not a substitute for one |
-| `switch-image.cdx.json.xz` | Real output, and the full-size one. The public SONiC network operating-system image, 8,374 components and 25,123 edges over 20 MB, from an upstream build. Compressed because the shape is the point and 20 MB of it is not. See below |
+| `switch-image.cdx.json.xz` | Real output, and the full-size one. The public SONiC network operating-system image, 7,035 components and 18,467 edges over 18 MB, from an upstream build. Compressed because the shape is the point and 18 MB of it is not. See below |
 
 `producer-paths.txt` records every key path these documents contain and what
 the reader does with it. Regenerate with `go test ./internal/sbom -update`,
@@ -20,24 +20,31 @@ every decision already made alone.
 ## The full-size fixture
 
 `switch-image.cdx.json.xz` is what a real aggregate inventory looks like, and
-it is here because a hand-written one cannot stand in for it. Two things it
-proves that nothing written on purpose would:
+it is here because a hand-written one cannot stand in for it. What it holds
+that nothing written on purpose would:
 
-**It contains the same package twice, 516 times over.** The build merges two
-sources without reconciling them, so a package arrives once with a platform
-identifier, an upstream qualifier and a vulnerability-database identifier, and
-once with only an architecture. `acl@2.3.2-2+b1` is both
-`...?arch=amd64&distro=debian-13&package-id=7adffac816f3efd6&upstream=acl%402.3.2-2`
-and `...?arch=amd64`. One of the two carries what a scanner needs to match it;
-the other does not.
+**A graph rather than a tree.** 1,078 of its components have more than one
+direct consumer, which is what makes "why is this here" a question with more
+than one answer, and what a reader assuming a tree gets wrong.
 
-**It spells the same package identifier two ways.** One of that pair escapes
-the `+` in a version and the other leaves it, so byte comparison says they are
-different packages and they are not.
+**Build tooling kept apart from what ships.** 667 components sit under
+`formulation` — Go and Rust dependencies harvested from inside the build
+containers — rather than in `components` beside the image's contents. The
+question a scanner answers is what shipped; the question a build-chain
+compromise asks is what built it, and the document now answers both without
+either being mistaken for the other.
 
-Both are real producer behavior rather than anything anybody would think to
-write down, and both are exactly what deriving identity from content rather
-than from what a file says is meant to survive.
+**What it no longer holds is worth writing down**, because this file used to be
+the evidence for a rule and is not any more. It carried the same package twice,
+516 times over, spelled two ways — once with a platform identifier and an
+upstream qualifier, once with only an architecture, and sometimes escaping the
+`+` in a version and sometimes not. That was one producer's merge step, fixed
+upstream in sonic-buildimage #29237, and this fixture now arrives as one
+component per package. **So it no longer exercises the merging rule it was
+originally kept for** — deleting that code entirely leaves the full-size test
+passing. The rule is proved by a test that constructs the duplicates instead,
+which is where a rule of this kind belongs: a fixture is somebody else's output
+and can stop exercising a rule without anybody deciding it should.
 
-It is stored compressed. The uncompressed document is 20 MB, which is a size
+It is stored compressed. The uncompressed document is 18 MB, which is a size
 worth reading once in a test and not a size worth keeping in every checkout.
