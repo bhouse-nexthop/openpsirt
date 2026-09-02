@@ -421,6 +421,67 @@ components:
         - items
         - total
       type: object
+    CoverageBody:
+      additionalProperties: false
+      properties:
+        last_received_at:
+          description: When a scan last arrived. Absent where none ever has
+          type: string
+        product:
+          type: string
+        quiet:
+          description: Whether that is longer than this deployment allows
+          type: boolean
+        quiet_days:
+          description: How long it has been, in days, measured from the last arrival or from when the build was declared
+          format: int64
+          type: integer
+        stream:
+          type: string
+        stream_kind:
+          description: Whether this line moves
+          enum:
+            - branch
+            - tag
+          type: string
+        variant:
+          type: string
+      required:
+        - product
+        - stream
+        - stream_kind
+        - variant
+        - quiet_days
+      type: object
+    CoverageOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/CoverageOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/CoverageBody"
+          type:
+            - array
+            - "null"
+        quiet:
+          description: How many of these have gone quiet
+          format: int64
+          type: integer
+        quiet_after_days:
+          description: How long this deployment allows, in days
+          format: int64
+          type: integer
+      required:
+        - items
+        - quiet
+        - quiet_after_days
+      type: object
     Decide-togetherRequest:
       additionalProperties: false
       properties:
@@ -930,6 +991,10 @@ components:
           description: How many of those the build has already argued do not apply
           format: int64
           type: integer
+        chains:
+          description: How many distinct ways down there are. More than one means the pair above is one of them
+          format: int64
+          type: integer
         component:
           description: What carries it
           type: string
@@ -950,6 +1015,16 @@ components:
           description: Published estimate that this will be exploited, 0 to 1
           format: double
           type: number
+        middle:
+          description: How many steps sit between those two
+          format: int64
+          type: integer
+        owner:
+          description: The part of the product this belongs to. Absent where the inventory placed the component nowhere
+          type: string
+        parent:
+          description: What directly pulls it in, which is what a decision is about
+          type: string
         places:
           description: How many places this component sits at here
           format: int64
@@ -1828,14 +1903,33 @@ components:
           format: uri
           readOnly: true
           type: string
+        branches:
+          description: How many branches are declared
+          format: int64
+          type: integer
         display_name:
           description: What people see. Defaults to the name
+          type: string
+        last_scan_at:
+          description: When a scan last arrived for any of its builds
           type: string
         name:
           description: How scans name this product
           maxLength: 191
           minLength: 1
           type: string
+        open:
+          description: Issues open against it, counted at components rather than at every place they sit
+          format: int64
+          type: integer
+        tags:
+          description: How many tags are declared
+          format: int64
+          type: integer
+        variants:
+          description: How many variants are declared
+          format: int64
+          type: integer
       required:
         - name
       type: object
@@ -1936,9 +2030,17 @@ components:
         built_at:
           description: When the producer says the build was made
           type: string
+        closed:
+          description: Issues that were open and are not any more
+          format: int64
+          type: integer
         failure:
           description: Why it could not be used, where it could not
           type: string
+        opened:
+          description: Issues this run found that were not open before
+          format: int64
+          type: integer
         received_at:
           description: When it arrived here
           type: string
@@ -2276,11 +2378,18 @@ components:
             - branch
             - tag
           type: string
+        last_scan_at:
+          description: When a scan last arrived for any build of it
+          type: string
         name:
           description: How scans name this branch or tag
           maxLength: 191
           minLength: 1
           type: string
+        open:
+          description: Issues open against it, counted at components rather than at every place they sit
+          format: int64
+          type: integer
         parent:
           description: For a tag, the branch it was cut from
           type: string
@@ -2423,6 +2532,10 @@ components:
           maxLength: 191
           minLength: 1
           type: string
+        open:
+          description: Issues open against it here, counted at components rather than at every place they sit
+          format: int64
+          type: integer
       required:
         - name
       type: object
@@ -5017,6 +5130,53 @@ paths:
       summary: List findings running out of time that nobody has decided about
       tags:
         - Findings
+  /v1/scanning:
+    get:
+      description: |-
+        Returns every build you can see, longest-silent first, with when a scan last arrived for it and whether that is longer ago than this deployment allows.
+
+        A build that stops being scanned reports no new findings and fails nothing, so it looks healthier than one that is still being scanned. A build nothing has ever been filed against is measured from when it was declared.
+
+        How long counts as quiet is the `scanning.quiet-after` setting.
+      operationId: list-scanning
+      parameters:
+        - description: Limit to one product, by name. Empty means every product you can see
+          explode: false
+          in: query
+          name: product
+          schema:
+            description: Limit to one product, by name. Empty means every product you can see
+            type: string
+        - description: Limit to one branch or tag. Only meaningful with a product
+          explode: false
+          in: query
+          name: stream
+          schema:
+            description: Limit to one branch or tag. Only meaningful with a product
+            type: string
+        - description: Limit to one variant. Only meaningful with a product, and independent of the branch
+          explode: false
+          in: query
+          name: variant
+          schema:
+            description: Limit to one variant. Only meaningful with a product, and independent of the branch
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoverageOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List when each build was last scanned
+      tags:
+        - Scans
   /v1/session:
     delete:
       description: Ends the session the request arrived on, everywhere rather than in this browser alone — the session is stored, so it stops working whichever copy of the application answers next.
