@@ -420,6 +420,13 @@ run covers a build rather than an upload, so where several uploads are answered
 by one run the numbers sit on the newest of them and the rest are blank rather
 than repeating one fact three times.
 
+**What is waiting on you sits in the bar, with a count.** Everyone has one, and
+what appears in it differs by what they hold rather than by which feature they
+were given. A condition — something that is true until it stops, like a build
+that is not being scanned — is marked apart from an event, because
+acknowledging one hides it rather than resolving it. `DESIGN-notifications.md`
+says what is told and when.
+
 **"Who is working on what" is three tabs, and the third is somewhere else.**
 Nobody-assigned already had its own entry in the rail, so the tab links across
 rather than drawing the same list twice.

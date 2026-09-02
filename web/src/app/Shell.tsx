@@ -3,6 +3,7 @@ import { Link, NavLink } from "react-router-dom";
 import { useScope } from "./scope";
 import { Scope } from "./Scope";
 import { api } from "../api/client";
+import { Notices } from "../ui/Notices";
 import type { Who } from "./session";
 
 // The frame the mockup settled on: a navy bar carrying the mark, what you are
@@ -35,6 +36,7 @@ export function Shell({
         <Scope />
 
         <span className="spacer" />
+        <Notices />
         <span className="hint" style={{ color: "rgba(255,255,255,.72)" }}>{who.name}</span>
         <button
           type="button"

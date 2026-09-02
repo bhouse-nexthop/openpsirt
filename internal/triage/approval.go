@@ -338,22 +338,26 @@ func (s *Store) authorOf(ctx context.Context, decision Decision) (int64, error) 
 // It needs no approval of its own, for the same reason revising and
 // withdrawing do not: it puts risk back on the table rather than taking it
 // off.
+// It answers with who wrote the claim, because the point of sending something
+// back is that they find out: a rejected dismissal goes straight into their
+// queue, so silence leaves it sitting while they wait to hear (NTF-05). The
+// caller is what tells them; this is what says whom.
 func (s *Store) SendBack(ctx context.Context, subject access.Subject, decisionID int64,
-	because string) error {
+	because string) (author int64, err error) {
 
 	if strings.TrimSpace(because) == "" {
-		return fmt.Errorf("say what needs to change: sending something back without a reason " +
+		return 0, fmt.Errorf("say what needs to change: sending something back without a reason " +
 			"is a round trip nobody learns from")
 	}
 	if err := markdown.Check(because); err != nil {
-		return err
+		return 0, err
 	}
 
 	db, ok := s.db.(*bun.DB)
 	if !ok {
-		return fmt.Errorf("this store is already inside a transaction")
+		return 0, fmt.Errorf("this store is already inside a transaction")
 	}
-	return database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+	err = database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
 		within := &Store{db: tx, now: s.now}
 		decision, err := within.reaching(ctx, subject, decisionID, mayApprove)
 		if err != nil {
@@ -363,13 +367,14 @@ func (s *Store) SendBack(ctx context.Context, subject access.Subject, decisionID
 			return fmt.Errorf("that decision is %s, so there is nothing waiting on anybody",
 				decision.State)
 		}
-		author, err := within.authorOf(ctx, *decision)
+		wrote, err := within.authorOf(ctx, *decision)
 		if err != nil {
 			return err
 		}
-		if author == subject.ID {
+		if wrote == subject.ID {
 			return fmt.Errorf("that is your own claim to revise, not one to send back")
 		}
+		author = wrote
 
 		// The reason travels as a comment, because that is what it is: the
 		// author needs the words, and a reason recorded anywhere else is one
@@ -384,6 +389,11 @@ func (s *Store) SendBack(ctx context.Context, subject access.Subject, decisionID
 		}
 		return nil
 	})
+	if err != nil {
+		// Nothing was written, so there is nobody to tell.
+		return 0, err
+	}
+	return author, nil
 }
 
 // covering counts the open findings a claim covers right now.

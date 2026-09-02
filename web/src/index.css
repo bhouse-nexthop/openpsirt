@@ -411,6 +411,36 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: now
    text that happens to be dark. */
 .seg button:hover { background: var(--raised); color: var(--ink); }
 
+/* What is waiting on you, and the count on the way in. Anchored to the bar so
+   the list hangs under the control that opened it rather than floating. */
+.notices { position: relative; }
+.noticebell { font-variant-numeric: tabular-nums; }
+.noticelist {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 40;
+  width: min(420px, 90vw); max-height: 60vh; overflow-y: auto;
+  padding: 10px 12px;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.noticelist header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.noticelist ul { list-style: none; margin: 0; padding: 0; }
+.noticelist li {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 7px 0; border-top: 1px solid var(--line);
+}
+.noticelist li:first-child { border-top: 0; }
+.noticelist li > div { flex: 1; min-width: 0; }
+.noticelist .when { display: block; color: var(--faint); font-size: var(--step--1); }
+.noticekind {
+  display: inline-block; margin-right: 6px;
+  font-size: var(--step--1); text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted);
+}
+/* A condition reads differently on purpose: it holds until the thing it is
+   about changes, so hiding it is not the same act as dealing with it. */
+.noticekind.holds { color: var(--wait); }
+
 /* The filters that are not the common ones, shown when asked for. A row that
    wraps rather than a sidebar: the list wants the width, and a panel that is
    always there takes it whether or not anything is set. */

@@ -789,10 +789,10 @@ func TestSendingAClaimBackTakesItOutOfTheQueueUntilItIsAnswered(t *testing.T) {
 		}
 
 		// A reason is the whole point of the action.
-		if err := f.store.SendBack(ctx, f.reviewer, claimed.ID, "   "); err == nil {
+		if _, err := f.store.SendBack(ctx, f.reviewer, claimed.ID, "   "); err == nil {
 			t.Error("a claim was sent back with no reason")
 		}
-		if err := f.store.SendBack(ctx, f.reviewer, claimed.ID,
+		if _, err := f.store.SendBack(ctx, f.reviewer, claimed.ID,
 			"This does not say how the config was checked after the bump."); err != nil {
 			t.Fatal(err)
 		}
@@ -821,7 +821,7 @@ func TestAnsweringWhatWasAskedPutsItBackInTheQueue(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		ctx := t.Context()
 		claimed := f.claims(t, f.at())
-		if err := f.store.SendBack(ctx, f.reviewer, claimed.ID, "Say how you checked."); err != nil {
+		if _, err := f.store.SendBack(ctx, f.reviewer, claimed.ID, "Say how you checked."); err != nil {
 			t.Fatal(err)
 		}
 
@@ -844,7 +844,7 @@ func TestNobodySendsTheirOwnWordsBack(t *testing.T) {
 	// putting it out of everybody's sight, including your own.
 	each(t, func(t *testing.T, f *fixture) {
 		claimed := f.claims(t, f.at())
-		if err := f.store.SendBack(t.Context(), f.triager, claimed.ID,
+		if _, err := f.store.SendBack(t.Context(), f.triager, claimed.ID,
 			"Actually let me think again."); err == nil {
 			t.Error("somebody sent their own claim back")
 		}

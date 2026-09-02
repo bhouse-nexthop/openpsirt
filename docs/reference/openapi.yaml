@@ -1,5 +1,22 @@
 components:
   schemas:
+    Acknowledge-all-notificationsResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Acknowledge-all-notificationsResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        acknowledged:
+          description: How many were waiting
+          format: int64
+          type: integer
+      required:
+        - acknowledged
+      type: object
     ApprovalBody:
       additionalProperties: false
       properties:
@@ -1803,6 +1820,65 @@ components:
         - beneath
         - children
       type: object
+    NotificationBody:
+      additionalProperties: false
+      properties:
+        about:
+          description: What a condition is about. Absent for an event
+          type: string
+        at:
+          description: When it was recorded
+          type: string
+        body:
+          description: What to say. Describes the moment it was written rather than the world now
+          type: string
+        id:
+          description: What to name this when acknowledging it
+          format: int64
+          type: integer
+        kind:
+          description: "What happened, as a word: assigned, sent-back, mentioned, approval-withdrawn, build-quiet"
+          type: string
+        lifetime:
+          description: An event happened once and is acknowledged; a condition holds until what it is about changes
+          enum:
+            - event
+            - condition
+          type: string
+        link:
+          description: Where it points, where there is somewhere to go
+          type: string
+      required:
+        - id
+        - kind
+        - lifetime
+        - body
+        - at
+      type: object
+    NotificationsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/NotificationsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/NotificationBody"
+          type:
+            - array
+            - "null"
+        total:
+          description: How many are waiting on you
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
+      type: object
     PersonBody:
       additionalProperties: false
       properties:
@@ -3272,6 +3348,99 @@ paths:
       summary: Revoke an API key
       tags:
         - Administration
+  /v1/notifications:
+    delete:
+      description: Takes everything off your list at once, and says how many that was. Conditions that are still true will not come back while they hold.
+      operationId: acknowledge-all-notifications
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Acknowledge-all-notificationsResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Acknowledge everything waiting on you
+      tags:
+        - Notifications
+    get:
+      description: |-
+        Returns what you have not dealt with, newest first, and how many there are.
+
+        Everyone has one of these, and what appears in it differs by what you hold: work arriving, a dismissal sent back, an approval an edit withdrew, or — for an administrator — that the tool itself is unwell.
+
+        Two lifetimes, and the difference matters to a caller. An **event** happened once and goes away when you acknowledge it. A **condition** is true while something is true and clears itself when that stops, so a build that resumes being scanned leaves this list without anybody dismissing it.
+      operationId: list-notifications
+      parameters:
+        - description: How many to return
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            description: How many to return
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - description: How many to skip
+          explode: false
+          in: query
+          name: offset
+          schema:
+            description: How many to skip
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List what is waiting on you
+      tags:
+        - Notifications
+  /v1/notifications/{id}:
+    delete:
+      description: |-
+        Takes one off your list.
+
+        Yours only. A notification identifier is a number a caller supplies, and one belonging to somebody else answers the same way as one that does not exist.
+
+        Acknowledging a condition hides it rather than resolving it: what it is about is still true, and the pass that derives it will not raise it again while it holds.
+      operationId: acknowledge-notification
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Acknowledge one notification
+      tags:
+        - Notifications
   /v1/people:
     get:
       description: |-

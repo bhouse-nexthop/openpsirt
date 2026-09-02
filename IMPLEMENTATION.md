@@ -171,7 +171,9 @@ deadlines and what a new line would inherit.
 - Declared targets, computed resolution, reconciliation against scans
 - Reports: dismissals, coverage, metrics — **release comparison is built**
 - **Trends on calendar time are built.** Release over release is not
-- Email, digest, operational alerts, in-app notifications
+- Email, digest, operational alerts — **the in-app notification area is
+  built**, with both lifetimes and two of its producers; see
+  `DESIGN-notifications.md` for what is told and what is not yet
 
 **Proves it works:** a release comparison matches a known pair of releases; a
 declared fix that did not land shows as a missed target.

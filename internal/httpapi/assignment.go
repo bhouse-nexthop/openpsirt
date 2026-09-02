@@ -11,6 +11,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
+	"github.com/bhouse-nexthop/openpsirt/internal/notify"
 )
 
 // UnassignedBody is one finding nobody is dealing with.
@@ -86,6 +87,31 @@ func registerAssignment(api huma.API, in Ingest) {
 
 		if _, err := finding.NewStore(in.DB.DB).Assign(ctx, subject, target, issue, component, to); err != nil {
 			return nil, refusedFinding(in, err)
+		}
+
+		// Tell them. Work arriving is the thing a triager most wants to notice
+		// (NTF-10), and it is the one category that deserves interrupting
+		// somebody for (NTF-02).
+		//
+		// Nobody is told they were unassigned: a name being removed is not an
+		// action directed at the person who held it, and a queue that gets
+		// shorter says so already. Telling somebody something was taken away
+		// invites them to go and look at what is no longer theirs.
+		//
+		// A failure here is logged and not returned. The assignment happened;
+		// answering with an error would invite a retry that assigns it again,
+		// and the notification is the lesser half of the two.
+		if to != nil && *to != subject.ID {
+			if err := notify.NewStore(in.DB.DB).Tell(ctx, notify.Telling{
+				PersonID: *to, Kind: notify.Assigned,
+				Body: input.Vulnerability + " in " + input.Component +
+					", in " + input.Product + " " + input.Stream + " " + input.Variant,
+				Link: findingPath(input.Product, input.Stream, input.Variant,
+					input.Vulnerability, input.Component),
+			}); err != nil && in.Logger != nil {
+				in.Logger.Error("could not say that work was assigned",
+					"error", err, "person", *to)
+			}
 		}
 		return &struct{}{}, nil
 	})

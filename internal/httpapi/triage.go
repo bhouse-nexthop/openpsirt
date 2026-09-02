@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -14,6 +15,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/markdown"
+	"github.com/bhouse-nexthop/openpsirt/internal/notify"
 	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 	"github.com/bhouse-nexthop/openpsirt/internal/triage"
 )
@@ -797,8 +799,22 @@ func registerSendBack(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
-		if err := store.SendBack(ctx, subject, input.ID, input.Body.Because); err != nil {
+		author, err := store.SendBack(ctx, subject, input.ID, input.Body.Because)
+		if err != nil {
 			return nil, refusedDecision(err)
+		}
+
+		// A rejected dismissal goes straight back into its author's queue, so
+		// silence would leave it sitting there while they wait to hear
+		// (NTF-05). Logged rather than returned on failure: it has been sent
+		// back either way, and answering with an error invites a second one.
+		if err := notify.NewStore(in.DB.DB).Tell(ctx, notify.Telling{
+			PersonID: author, Kind: notify.SentBack,
+			Body: "A claim of yours was sent back: " + input.Body.Because,
+			Link: "/decisions/" + strconv.FormatInt(input.ID, 10),
+		}); err != nil && in.Logger != nil {
+			in.Logger.Error("could not say that a claim was sent back",
+				"error", err, "decision", input.ID)
 		}
 		return &struct{}{}, nil
 	})

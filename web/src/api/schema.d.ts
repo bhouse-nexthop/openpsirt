@@ -394,6 +394,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List what is waiting on you
+         * @description Returns what you have not dealt with, newest first, and how many there are.
+         *
+         *     Everyone has one of these, and what appears in it differs by what you hold: work arriving, a dismissal sent back, an approval an edit withdrew, or — for an administrator — that the tool itself is unwell.
+         *
+         *     Two lifetimes, and the difference matters to a caller. An **event** happened once and goes away when you acknowledge it. A **condition** is true while something is true and clears itself when that stops, so a build that resumes being scanned leaves this list without anybody dismissing it.
+         */
+        get: operations["list-notifications"];
+        put?: never;
+        post?: never;
+        /**
+         * Acknowledge everything waiting on you
+         * @description Takes everything off your list at once, and says how many that was. Conditions that are still true will not come back while they hold.
+         */
+        delete: operations["acknowledge-all-notifications"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/notifications/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Acknowledge one notification
+         * @description Takes one off your list.
+         *
+         *     Yours only. A notification identifier is a number a caller supplies, and one belonging to somebody else answers the same way as one that does not exist.
+         *
+         *     Acknowledging a condition hides it rather than resolving it: what it is about is still true, and the pass that derives it will not raise it again while it holds.
+         */
+        delete: operations["acknowledge-notification"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/people": {
         parameters: {
             query?: never;
@@ -1430,6 +1482,19 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        "Acknowledge-all-notificationsResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Acknowledge-all-notificationsResponse.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description How many were waiting
+             */
+            acknowledged: number;
+        };
         ApprovalBody: {
             approved_at: string;
             approved_by: string;
@@ -2439,6 +2504,42 @@ export interface components {
              */
             findings: number;
             version: string;
+        };
+        NotificationBody: {
+            /** @description What a condition is about. Absent for an event */
+            about?: string;
+            /** @description When it was recorded */
+            at: string;
+            /** @description What to say. Describes the moment it was written rather than the world now */
+            body: string;
+            /**
+             * Format: int64
+             * @description What to name this when acknowledging it
+             */
+            id: number;
+            /** @description What happened, as a word: assigned, sent-back, mentioned, approval-withdrawn, build-quiet */
+            kind: string;
+            /**
+             * @description An event happened once and is acknowledged; a condition holds until what it is about changes
+             * @enum {string}
+             */
+            lifetime: "event" | "condition";
+            /** @description Where it points, where there is somewhere to go */
+            link?: string;
+        };
+        NotificationsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/NotificationsOutputBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["NotificationBody"][] | null;
+            /**
+             * Format: int64
+             * @description How many are waiting on you
+             */
+            total: number;
         };
         PersonBody: {
             /**
@@ -3555,6 +3656,98 @@ export interface operations {
             header?: never;
             path: {
                 name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-notifications": {
+        parameters: {
+            query?: {
+                /** @description How many to return */
+                limit?: number;
+                /** @description How many to skip */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "acknowledge-all-notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Acknowledge-all-notificationsResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "acknowledge-notification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
             };
             cookie?: never;
         };

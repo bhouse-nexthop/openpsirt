@@ -461,6 +461,10 @@ func TestAPipelineCanReachNothingButSending(t *testing.T) {
 			// sent; when a build was last scanned by anybody is a fact about
 			// the deployment, and the answer names every build there is.
 			"/v1/scanning",
+			// Nor a notification area. A key is not a person and has nobody to
+			// tell; its identifier comes from another table and would collide
+			// with a person's.
+			"/v1/notifications",
 			"/v1/roles/mode",
 			"/v1/roles/bindings",
 		} {
@@ -550,7 +554,7 @@ func TestNothingButTheProbesAnswersWithoutACredential(t *testing.T) {
 		for _, path := range []string{
 			"/openapi.json", "/openapi.yaml", "/openapi-3.0.json", "/openapi-3.0.yaml",
 			"/schemas/VariantBody.json", "/docs",
-			"/v1/version", "/v1/products", "/v1/scanning",
+			"/v1/version", "/v1/products", "/v1/scanning", "/v1/notifications",
 		} {
 			got := r.body(t, "", http.MethodGet, path)
 			if got.code == http.StatusOK {
