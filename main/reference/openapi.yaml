@@ -1837,7 +1837,7 @@ components:
           format: int64
           type: integer
         kind:
-          description: "What happened, as a word: assigned, sent-back, mentioned, approval-withdrawn, build-quiet"
+          description: "What happened, as a word: assigned, sent-back, build-quiet"
           type: string
         lifetime:
           description: An event happened once and is acknowledged; a condition holds until what it is about changes
@@ -4304,12 +4304,12 @@ paths:
             description: Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name
             maxLength: 200
             type: string
-        - description: Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier
+        - description: "Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"
           explode: false
           in: query
           name: ecosystem
           schema:
-            description: Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier
+            description: "Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"
             type: string
         - description: Keep only what sits inside the container of this name
           explode: false
@@ -4450,12 +4450,12 @@ paths:
             description: Keep only components whose name contains this, ignoring capitals
             maxLength: 200
             type: string
-        - description: Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier
+        - description: "Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"
           explode: false
           in: query
           name: ecosystem
           schema:
-            description: Keep only components of one package kind — deb, golang, python, rust, npm. Read from the package identifier
+            description: "Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"
             type: string
         - description: Keep only what sits inside the container of this name
           explode: false
