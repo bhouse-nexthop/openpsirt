@@ -41,9 +41,54 @@ with the same command and the same pinned tool versions — CIG-05.
 | `make licenses` | Licenses of shipped dependencies against the allowlist |
 | `make openapi` | Regenerates the API document from the code |
 | `make sbom` | Generates our own CycloneDX bill of materials |
-| `make sbom` | Generates our own CycloneDX bill of materials |
 | `make check` | Everything above |
+| `make check-engines` | That all four engines ran, and that each was the engine it claimed |
 | `make check-packaging` | The container image and the Helm chart. Needs docker and helm |
+| `make engines-up` | Starts the four database servers the suite needs, and records their URLs |
+| `make engines-down` | Removes them |
+| `make engines-status` | What is running, and which engines are unconfigured |
+
+## The engines a developer tests against
+
+The suite runs against SQLite alone unless it is pointed at real servers, and
+**a skipped engine passes** — so a green run does not mean four engines agreed,
+it means nothing failed, which is also what running almost nothing looks like.
+Testing against all four is therefore ordinary development rather than
+something CI does afterwards (DAT-12), and standing the servers up is a target
+rather than a paragraph each machine follows by hand.
+
+`make engines-up` starts them, waits until each is answering, and writes their
+URLs to `local.mk`, which is git-ignored and included by the makefile if
+present. So a machine is configured once rather than once per command, and a
+checkout that has one is not different from a checkout that does not.
+
+Four properties of it are deliberate:
+
+**A container reported "Up" is not one that answers.** Each server is asked
+with its own client, inside its own container, so nothing depends on a client
+being installed on the machine — and a server that never answers fails the
+target loudly rather than leaving the suite to fail confusingly later.
+
+**`local.mk` is never overwritten.** It is machine-local, and somebody may be
+pointing at servers of their own; replacing that silently is how a run tests
+something other than what its author believes it is testing.
+
+**Starting is idempotent.** An engine already running is left alone and a
+stopped container is started again rather than replaced, so what is in it
+survives.
+
+**The images are pinned, and checked against CI's.** A local four-engine pass
+means what CI's pass means only if they are the same servers, and two pinned
+lists in two files drift — invisibly, and exactly when it matters. The check
+runs in both directions, so an engine CI adds that nothing here starts is
+caught as well as the reverse, and **CI runs it too**: a check that only fires
+on the machine that already agrees is one nobody sees fail.
+
+One of the four is deliberately **below the supported version floor**, so the
+refusal to run against an old server is exercised rather than skipped.
+
+The URLs are read when make starts, so the run that writes `local.mk` is not
+the run that uses it.
 
 ## Static analysis
 

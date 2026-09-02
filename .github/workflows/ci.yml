@@ -85,6 +85,14 @@ jobs:
           cache: true
       - run: go build ./...
       - run: go vet ./...
+      - name: Confirm a developer's engines are the engines run here
+        # The servers above are declared in this file and started locally by
+        # "make engines-up", which pins the same versions. Two pinned lists
+        # drift, and the drift is invisible exactly when it matters: a suite
+        # green locally against an engine this job no longer runs proves
+        # nothing about the one it does. The target compares the two lists in
+        # both directions, so an engine added here and nowhere else is caught.
+        run: make engines-check
       # -p 1: packages share the database servers above, and the rollback test
       # drops every table. Running them in parallel makes unrelated packages
       # fail depending on timing.

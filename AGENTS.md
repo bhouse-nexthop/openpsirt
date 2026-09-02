@@ -294,6 +294,9 @@ same command and the same pinned versions.
 | `make check-packaging` | The container image and the Helm chart. Needs docker and helm |
 | `make build` | The binary, with version information injected |
 | `make openapi` | Regenerates the API document from the code |
+| `make engines-up` | Starts the four database servers those two checks need |
+| `make engines-down` | Removes them |
+| `make engines-status` | What is running, and which engines are unconfigured |
 
 **Before committing, run `make check && make check-engines`.** Not `make lint`
 and a bare `go test`: those two pass on work that CI rejects, because `check`
@@ -325,8 +328,23 @@ This is not hypothetical: a table added with a foreign key to `person` was
 missing from the test cleanup, and SQLite alone never noticed. It failed 40
 tests on the other three the first time they were run.
 
-Set the URLs in `local.mk`, which is git-ignored and included if present, so a
-machine is configured once instead of once per command:
+### Getting the four engines
+
+    make engines-up
+
+Starts the four servers as containers at the versions CI runs, waits until each
+one answers, and writes their URLs to `local.mk` — git-ignored, included by the
+makefile if present, so a machine is configured once instead of once per
+command. `make engines-down` removes them; `make engines-status` says what is
+running and which engines are unconfigured.
+
+**Do not set this up by hand, and do not write `local.mk` yourself.** A setup
+document followed by hand is how three engines of four end up unconfigured
+while the suite reports green, which is the failure this whole area exists to
+prevent. If something about the arrangement needs to change, change the target
+so the next machine gets it too.
+
+What it writes, for reference:
 
     OPENPSIRT_TEST_POSTGRES_URL ?= postgres://postgres:test@127.0.0.1:5432/openpsirt?sslmode=disable
     OPENPSIRT_TEST_MYSQL_URL    ?= mysql://root:test@127.0.0.1:3306/openpsirt
@@ -339,6 +357,11 @@ does not.
 
 The last one is a server *below* the supported floor, so the refusal to run
 against it is exercised instead of skipped. CI runs a postgres:13 for it.
+
+An existing `local.mk` is never overwritten — it may point at servers of
+somebody's own — and the URLs are read when make starts, so the run that writes
+the file is not the run that uses it. Run `make engines-up` first, then
+`make check && make check-engines`.
 
 ### Adding a table
 

@@ -35,6 +35,27 @@ ENGINES_MISSING := $(strip \
   $(if $(OPENPSIRT_TEST_MYSQL_URL),,mysql) \
   $(if $(OPENPSIRT_TEST_MARIADB_URL),,mariadb))
 
+# The servers those URLs point at, as containers. Pinned for the same reason
+# every tool below is, and to the versions CI runs: an engine that has drifted
+# from CI's turns "it passed locally" into a different claim from "it passes".
+# Two pinned lists in two files drift silently, so "engines-check" asserts they
+# still agree rather than trusting that whoever moved one moved the other.
+DOCKER               ?= docker
+ENGINE_PG_IMAGE      ?= postgres:16-alpine
+ENGINE_MYSQL_IMAGE   ?= mysql:8.4
+ENGINE_MARIADB_IMAGE ?= mariadb:11.4
+# Deliberately below the supported floor, so the refusal to run against an old
+# server is exercised rather than skipped.
+ENGINE_FLOOR_IMAGE   ?= postgres:13-alpine
+ENGINE_PG_PORT       ?= 5432
+ENGINE_MYSQL_PORT    ?= 3306
+ENGINE_MARIADB_PORT  ?= 3307
+ENGINE_FLOOR_PORT    ?= 5433
+ENGINE_PREFIX        ?= openpsirt
+# Seconds to wait for a server to start accepting connections. A container
+# reported "Up" is not one that answers yet, and MySQL takes the longest.
+ENGINE_WAIT          ?= 120
+
 BIN          := bin/openpsirt
 VERSION      ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT       ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -87,7 +108,7 @@ DEMO_DIR  ?= $(HOME)/openpsirt-dev
 DEMO_DB   ?= $(DEMO_DIR)/dev.db
 DEMO_URL  := http://$(DEMO_HOST):$(DEMO_PORT)
 
-.PHONY: unreachable all build test vet lint fmt openapi openapi-current run clean check check-packaging check-engines tools govulncheck licenses sbom web web-deps web-api web-check demo demo-up demo-down demo-seed demo-reset demo-status
+.PHONY: unreachable all build test vet lint fmt openapi openapi-current run clean check check-packaging check-engines engines-up engines-down engines-status engines-check tools govulncheck licenses sbom web web-deps web-api web-check demo demo-up demo-down demo-seed demo-reset demo-status
 
 all: check build
 
@@ -237,6 +258,121 @@ else
 	@echo "every engine ran, and each was the engine it claimed to be,"
 	@echo "except the version floor, which is noted above as not run."
 endif
+
+# The four servers the URLs above point at, started, waited for, and written
+# into local.mk. Running against every engine is ordinary development here
+# rather than something CI does afterwards (DAT-12), so a machine that can run
+# the suite properly is one command rather than a setup document followed by
+# hand — and a document followed by hand is how three of four engines end up
+# unconfigured while the suite reports green.
+#
+# Idempotent: an engine already running is left alone, and a stopped container
+# is started rather than replaced, so whatever is in it survives.
+engines-up: engines-check
+	@set -u; \
+	up() { \
+	  name="$$1"; image="$$2"; ports="$$3"; shift 3; \
+	  if [ -n "$$($(DOCKER) ps -q -f name="^$$name$$")" ]; then \
+	    echo "  $$name: already running"; return 0; \
+	  fi; \
+	  if [ -n "$$($(DOCKER) ps -aq -f name="^$$name$$")" ]; then \
+	    $(DOCKER) start "$$name" >/dev/null; echo "  $$name: started again"; return 0; \
+	  fi; \
+	  $(DOCKER) run -d --name "$$name" -p "$$ports" "$$@" "$$image" >/dev/null; \
+	  echo "  $$name: created from $$image"; \
+	}; \
+	up $(ENGINE_PREFIX)-pg16 $(ENGINE_PG_IMAGE) $(ENGINE_PG_PORT):5432 \
+	   -e POSTGRES_PASSWORD=test -e POSTGRES_DB=openpsirt; \
+	up $(ENGINE_PREFIX)-mysql $(ENGINE_MYSQL_IMAGE) $(ENGINE_MYSQL_PORT):3306 \
+	   -e MYSQL_ROOT_PASSWORD=test -e MYSQL_DATABASE=openpsirt; \
+	up $(ENGINE_PREFIX)-mariadb $(ENGINE_MARIADB_IMAGE) $(ENGINE_MARIADB_PORT):3306 \
+	   -e MARIADB_ROOT_PASSWORD=test -e MARIADB_DATABASE=openpsirt; \
+	up $(ENGINE_PREFIX)-floor $(ENGINE_FLOOR_IMAGE) $(ENGINE_FLOOR_PORT):5432 \
+	   -e POSTGRES_PASSWORD=test -e POSTGRES_DB=openpsirt
+	@# A container reported "Up" is not one that answers. Each server is asked
+	@# with its own client, inside its own container, so nothing here depends on
+	@# a client being installed on this machine. MariaDB renamed mysqladmin to
+	@# mariadb-admin, so the two lines differ by more than the server they name.
+	@set -u; \
+	ready() { \
+	  name="$$1"; shift; waited=0; \
+	  while [ "$$waited" -lt $(ENGINE_WAIT) ]; do \
+	    if $(DOCKER) exec "$$name" "$$@" >/dev/null 2>&1; then \
+	      echo "  $$name: answering"; return 0; \
+	    fi; \
+	    sleep 1; waited=$$((waited + 1)); \
+	  done; \
+	  echo "  $$name: no answer in $(ENGINE_WAIT)s. '$(DOCKER) logs $$name' says why."; \
+	  return 1; \
+	}; \
+	ready $(ENGINE_PREFIX)-pg16 pg_isready -U postgres -d openpsirt; \
+	ready $(ENGINE_PREFIX)-floor pg_isready -U postgres -d openpsirt; \
+	ready $(ENGINE_PREFIX)-mysql mysqladmin ping -uroot -ptest --silent; \
+	ready $(ENGINE_PREFIX)-mariadb mariadb-admin ping -uroot -ptest --silent
+	@# Never overwritten. The file is machine-local and somebody may be pointing
+	@# at servers of their own; silently replacing that is how a run tests
+	@# something other than what its author thinks it is testing.
+	@if [ -e local.mk ]; then \
+	  echo; echo "local.mk already exists, so it was left alone."; \
+	else \
+	  printf '%s\n' \
+	    "# Written by 'make engines-up'. Git-ignored, so a checkout with one is" \
+	    "# not different from a checkout without one." \
+	    "#" \
+	    "# '?=' rather than ':=', so setting a URL in the environment for a" \
+	    "# single run still wins: a makefile assignment beats an environment" \
+	    "# variable, and the conditional form does not." \
+	    "OPENPSIRT_TEST_POSTGRES_URL ?= postgres://postgres:test@127.0.0.1:$(ENGINE_PG_PORT)/openpsirt?sslmode=disable" \
+	    "OPENPSIRT_TEST_MYSQL_URL    ?= mysql://root:test@127.0.0.1:$(ENGINE_MYSQL_PORT)/openpsirt" \
+	    "OPENPSIRT_TEST_MARIADB_URL  ?= mariadb://root:test@127.0.0.1:$(ENGINE_MARIADB_PORT)/openpsirt" \
+	    "# A server below the supported floor, so the refusal to run against one" \
+	    "# is exercised rather than skipped." \
+	    "OPENPSIRT_TEST_TOO_OLD_URL  ?= postgres://postgres:test@127.0.0.1:$(ENGINE_FLOOR_PORT)/openpsirt?sslmode=disable" \
+	    > local.mk; \
+	  echo; echo "wrote local.mk"; \
+	fi
+	@# The URLs are read when make starts, so this run still has none of them.
+	@echo "The URLs are read at startup, so they reach the next command, not this one:"
+	@echo "    make check && make check-engines"
+
+# Stops them. The containers are removed rather than stopped, because a
+# half-migrated database left behind by an interrupted run is a confusing thing
+# to come back to; local.mk is left alone, since it is yours.
+engines-down:
+	@$(DOCKER) rm -f $(ENGINE_PREFIX)-pg16 $(ENGINE_PREFIX)-mysql \
+	  $(ENGINE_PREFIX)-mariadb $(ENGINE_PREFIX)-floor >/dev/null 2>&1 || true
+	@echo "removed. local.mk was left alone; 'make engines-up' reuses it."
+
+engines-status:
+	@$(DOCKER) ps -a --filter "name=^$(ENGINE_PREFIX)-" \
+	  --format '{{.Names}}: {{.Image}}, {{.Status}}' | sed 's/^/  /' || true
+ifeq ($(ENGINES_MISSING),)
+	@echo "  configured: postgres, mysql, mariadb"
+else
+	@echo "  NOT configured: $(ENGINES_MISSING). The suite would skip those, and a"
+	@echo "  skipped engine passes. Run 'make engines-up'."
+endif
+ifeq ($(strip $(OPENPSIRT_TEST_TOO_OLD_URL)),)
+	@echo "  NOT configured: the below-floor server, so the version refusal is skipped."
+endif
+
+# That the engines started here are the engines CI runs. Two pinned lists in
+# two files drift, and the drift is invisible exactly when it matters: a suite
+# green against MariaDB 11.4 says nothing about the 11.8 CI moved to. Checked
+# in both directions, so an engine CI adds and this does not start is caught
+# as well as the reverse.
+engines-check:
+	@ours="$(ENGINE_PG_IMAGE) $(ENGINE_MYSQL_IMAGE) $(ENGINE_MARIADB_IMAGE) $(ENGINE_FLOOR_IMAGE)"; \
+	theirs=$$(grep -oE '^[[:space:]]+image: [^[:space:]]+' .github/workflows/ci.yml \
+	  | awk '{print $$2}' | sort -u); \
+	for image in $$ours; do \
+	  echo "$$theirs" | grep -qxF "$$image" \
+	    || { echo "$$image is pinned here, and CI runs no such server."; exit 1; }; \
+	done; \
+	for image in $$theirs; do \
+	  printf '%s\n' $$ours | grep -qxF "$$image" \
+	    || { echo "CI runs $$image, and nothing here starts one."; exit 1; }; \
+	done
 
 # Requires docker and helm. Skipped by "check" so that a machine without them
 # can still run everything else.
