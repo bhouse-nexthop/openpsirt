@@ -2,9 +2,11 @@ package finding
 
 // Rank is how urgent a finding is, as one number that sorts.
 //
-// One number because sorting tens of thousands of rows has to hit an index,
-// and a rank computed while reading cannot be indexed. It is written when a
-// scan is applied and read back as it was.
+// One number because sorting tens of thousands of rows has to hit an index, and
+// a rank computed while reading cannot be indexed. It is written when a scan is
+// applied and read back as written — and rewritten by a later scan that finds
+// the issue's record has moved, because storing it is about not recomputing it
+// on every read rather than about freezing it.
 //
 // The number is **packed rather than weighted**: each signal owns a range of
 // digits, so a signal never trades against a lower one. That is deliberate,
@@ -34,6 +36,54 @@ const (
 	maxScore      = 1_000
 	maxLikelihood = 1_000_000
 )
+
+// Rating is everything on record about an issue that decides where its
+// findings sit and how long they have.
+//
+// One type, read from the issue in one place, because the alternative is what
+// this project keeps being bitten by: the same fact spelled once at ingest and
+// again on reassessment, agreeing until one of them is changed.
+type Rating struct {
+	// Published is the word the world rated it. Never overwritten by a rating
+	// of ours — a rating of ours shown where the world's goes reads as the
+	// world's (TRI-42).
+	Published string
+	// Assessed is what we say instead, where somebody has said something.
+	Assessed string
+	// Exploited says somebody is known to be using it. Stored as the worst
+	// anybody has claimed, so a later report that does not mention it is read
+	// as a gap in that report rather than as the exploitation having stopped.
+	Exploited bool
+	// ScoreCenti and LikelihoodPPM are the published numbers, each the highest
+	// anybody has claimed.
+	ScoreCenti    int
+	LikelihoodPPM int
+}
+
+// Severity is the word in force: ours where somebody has made a rating, the
+// published word otherwise.
+func (r Rating) Severity() string {
+	if r.Assessed != "" {
+		return r.Assessed
+	}
+	return r.Published
+}
+
+// Score is the number the order compares.
+//
+// A rating of ours replaces it, because the word is the whole of what we are
+// claiming. Where there is none the published score stands, and the published
+// word stands in for it where no score was given — so an issue rated only in
+// words does not sort below everything rated at all.
+func (r Rating) Score() int {
+	if r.Assessed != "" {
+		return SeverityScore(r.Assessed)
+	}
+	if r.ScoreCenti == 0 {
+		return SeverityScore(r.Published)
+	}
+	return r.ScoreCenti
+}
 
 // Ranked is what a rank was made of, so a position can be explained.
 //

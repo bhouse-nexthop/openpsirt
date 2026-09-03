@@ -1494,3 +1494,33 @@ func (f *fixture) issueID(t *testing.T, identifier string) int64 {
 	}
 	return id
 }
+
+// backdate moves a scan run's start into the past, so that a deadline counted
+// from the opening and a deadline counted from the scan in hand land far
+// enough apart to tell apart.
+func (f *fixture) backdate(t *testing.T, runID int64, by time.Duration) {
+	t.Helper()
+	var started time.Time
+	if err := f.db.DB.NewSelect().TableExpr("scan_run AS r").
+		ColumnExpr("r.started_at").Where("r.id = ?", runID).
+		Scan(t.Context(), &started); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.DB.NewUpdate().TableExpr("scan_run").
+		Set("started_at = ?", started.Add(-by)).
+		Where("id = ?", runID).Exec(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// startedAt is when a scan run began, as stored.
+func (f *fixture) startedAt(t *testing.T, runID int64) time.Time {
+	t.Helper()
+	var started time.Time
+	if err := f.db.DB.NewSelect().TableExpr("scan_run AS r").
+		ColumnExpr("r.started_at").Where("r.id = ?", runID).
+		Scan(t.Context(), &started); err != nil {
+		t.Fatal(err)
+	}
+	return started
+}

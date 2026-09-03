@@ -84,7 +84,13 @@ func (r *Reader) Once(ctx context.Context) (*Result, error) {
 		return nil, nil
 	}
 
-	result, err := r.read(ctx, job.Reference)
+	// The claim is renewed while the read runs. A scan document measured in
+	// tens of megabytes legitimately takes longer than a claim is honored for
+	// with nothing heard from the worker, and without renewal a second worker
+	// would take the job over and read the same document alongside this one.
+	working, release := r.queue.Holding(ctx, job.ID, r.name, r.logger)
+	result, err := r.read(working, job.Reference)
+	taken := release()
 
 	// What became of the scan is recorded whatever ended the reading. A
 	// shutdown cancels the read, and the cancellation must not also stop the
@@ -101,7 +107,9 @@ func (r *Reader) Once(ctx context.Context) (*Result, error) {
 		//
 		// Not on a cancellation, though: nothing is wrong with the document,
 		// and the job goes back to be read once the process is running again.
-		if ctx.Err() == nil {
+		// Nor when the job went to another worker, which is reading the same
+		// document and will record what became of it.
+		if ctx.Err() == nil && taken == nil {
 			if marked := r.markFailed(settled, job.Reference, err); marked != nil {
 				r.logger.Error("could not record why a scan failed", "scan", job.Reference, "error", marked)
 			} else if err := r.reinstate(settled, job.Reference); err != nil {
@@ -126,6 +134,16 @@ func (r *Reader) Once(ctx context.Context) (*Result, error) {
 		if err == nil {
 			return result, ended
 		}
+	}
+	if taken != nil {
+		// The read was stopped because the job went to another worker, so the
+		// error it ended with describes that rather than anything about the
+		// document. There is nothing to retry and nothing to report: the job
+		// is in hand elsewhere. It is logged because a claim that went stale
+		// under a running read means the renewals were not landing.
+		r.logger.Warn("a read was stopped because another worker took its job over",
+			"job", job.ID, "scan", job.Reference)
+		return nil, nil
 	}
 	return result, err
 }

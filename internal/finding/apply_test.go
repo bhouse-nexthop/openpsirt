@@ -8,11 +8,16 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 )
 
-func TestAFindingWhoseLikelihoodMovedIsNotCountedAsChanged(t *testing.T) {
-	// Urgency is a fact about the moment a finding opened, and a later scan
-	// does not rewrite it. Comparing it anyway counted every finding of an
-	// issue whose likelihood moved as changed, night after night, and moved
-	// its last change forward without anything about it having moved.
+func TestAnIssueBecomingWorseMovesTheFindingsItIsOpenAgainst(t *testing.T) {
+	// A finding's rank follows what is known about its issue, and what is
+	// known moves after the finding opened (RNK-07). Frozen at opening, a
+	// finding whose likelihood was revised upward stayed where the first
+	// night put it — so the list ordered by a number nobody could reconcile
+	// with the row it was drawn beside.
+	//
+	// The deadline is not touched: score and likelihood are deliberately not
+	// in it (REM-25), and a clock reset by a revised number would never
+	// arrive.
 	each(t, func(t *testing.T, f *fixture) {
 		f.shipped(t, twoConsumers())
 		unlikely := finding.Reported{
@@ -26,8 +31,8 @@ func TestAFindingWhoseLikelihoodMovedIsNotCountedAsChanged(t *testing.T) {
 		if len(opened) != 2 {
 			t.Fatalf("opened %d findings", len(opened))
 		}
-		was := opened[0].LastChangedAt
-		urgency := opened[0].Urgency
+		was := opened[0].Urgency
+		due := opened[0].DueAt
 
 		likely := unlikely
 		likely.Issue.Likelihood = 0.9
@@ -35,18 +40,141 @@ func TestAFindingWhoseLikelihoodMovedIsNotCountedAsChanged(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !applied.Unchanged() {
-			t.Errorf("a likelihood moving wrote %+v, want nothing", applied)
+		if applied.Updated != 2 {
+			t.Errorf("a likelihood moving updated %d findings, want both", applied.Updated)
 		}
 		for _, row := range f.open(t) {
-			if !row.LastChangedAt.Equal(was) {
-				t.Error("a likelihood moving was recorded as the finding changing")
+			if row.Urgency <= was {
+				t.Errorf("urgency is %d after the likelihood rose from 0.01 to 0.9, was %d",
+					row.Urgency, was)
 			}
-			if row.Urgency != urgency {
-				t.Errorf("urgency moved from %d to %d, want it kept as of opening", urgency, row.Urgency)
+			if !sameInstant(row.DueAt, due) {
+				t.Errorf("the deadline moved to %v on a likelihood change, want %v", row.DueAt, due)
 			}
 		}
 	})
+}
+
+func TestAReportThatKnowsLessDoesNotLowerAFinding(t *testing.T) {
+	// The reason a rank that follows the issue is not a rank that flaps
+	// nightly. Reports disagree and arrive in an order nobody controls, so
+	// what is stored is the worst anybody has claimed and moves only toward
+	// worse — and the rank is read from there rather than from the report
+	// being applied. Ranked from the report, one source omitting a likelihood
+	// would demote the finding and the next night's report would promote it
+	// again, for ever.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		known := finding.Reported{
+			Issue: finding.Named{
+				Identifier: "CVE-2026-2", Severity: "high",
+				Likelihood: 0.9, Exploited: true,
+			},
+			Component: libnl, FixState: finding.NoFix,
+		}
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t), []finding.Reported{known}); err != nil {
+			t.Fatal(err)
+		}
+		opened := f.open(t)
+		if len(opened) != 2 {
+			t.Fatalf("opened %d findings", len(opened))
+		}
+		was, due := opened[0].Urgency, opened[0].DueAt
+
+		// The same issue, from a report that mentions neither.
+		quieter := known
+		quieter.Issue.Likelihood = 0
+		quieter.Issue.Exploited = false
+		applied, err := f.store.Apply(t.Context(), f.target, f.run(t), []finding.Reported{quieter})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !applied.Unchanged() {
+			t.Errorf("a report that knew less wrote %+v, want nothing", applied)
+		}
+		for _, row := range f.open(t) {
+			if row.Urgency != was {
+				t.Errorf("urgency fell from %d to %d because one report omitted what another said",
+					was, row.Urgency)
+			}
+			if !row.RankExploited {
+				t.Error("a finding stopped being exploited because one report did not mention it")
+			}
+			if !sameInstant(row.DueAt, due) {
+				t.Errorf("the deadline moved to %v because one report knew less, want %v", row.DueAt, due)
+			}
+		}
+	})
+}
+
+func TestAnIssueBecomingExploitedIsClockedFromWhenThatWasLearned(t *testing.T) {
+	// Exploitation is the one signal that decides how long there is (REM-25),
+	// and it arrives after the finding opened at least as often as with it.
+	//
+	// Counted from the opening, a finding six months old would be given three
+	// days that ran out five months ago — a deadline nobody could have met,
+	// which is the failure REM-25 names as the way to make the whole overdue
+	// figure ignorable. So the recount runs from the scan that learned it.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		quiet := finding.Reported{
+			Issue:     finding.Named{Identifier: "CVE-2026-KEV", Severity: "high"},
+			Component: libnl, FixState: finding.NoFix,
+		}
+		opening := f.run(t)
+		if _, err := f.store.Apply(t.Context(), f.target, opening, []finding.Reported{quiet}); err != nil {
+			t.Fatal(err)
+		}
+		opened := f.open(t)
+		if len(opened) != 2 {
+			t.Fatalf("opened %d findings", len(opened))
+		}
+		if opened[0].RankExploited {
+			t.Fatal("nothing said this was exploited")
+		}
+		// Two hundred days of it sitting there unremarked, so the two ways of
+		// counting land months apart rather than milliseconds.
+		f.backdate(t, opening, 200*24*time.Hour)
+
+		exploited := quiet
+		exploited.Issue.Exploited = true
+		learning := f.run(t)
+		applied, err := f.store.Apply(t.Context(), f.target, learning, []finding.Reported{exploited})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if applied.Updated != 2 {
+			t.Errorf("learning this is exploited updated %d findings, want both", applied.Updated)
+		}
+		want := f.startedAt(t, learning).Add(finding.DefaultWindows().Exploited)
+		for _, row := range f.open(t) {
+			if !row.RankExploited {
+				t.Error("a finding of an exploited issue is not marked exploited")
+			}
+			if !finding.Rank(row.Urgency).Exploited() {
+				t.Errorf("urgency %d does not read as exploited", row.Urgency)
+			}
+			if row.DueAt == nil {
+				t.Fatal("an exploited finding has no deadline")
+			}
+			if !row.DueAt.Equal(want) {
+				t.Errorf("the deadline is %s, want %s — three days from the scan that learned it",
+					row.DueAt.Format(time.RFC3339), want.Format(time.RFC3339))
+			}
+		}
+	})
+}
+
+// sameInstant compares two deadlines that may be absent.
+func sameInstant(a, b *time.Time) bool {
+	switch {
+	case a == nil && b == nil:
+		return true
+	case a == nil || b == nil:
+		return false
+	default:
+		return a.Equal(*b)
+	}
 }
 
 func TestANewFindingIsClockedByTheRatingInForce(t *testing.T) {

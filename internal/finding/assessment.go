@@ -267,21 +267,19 @@ func rerank(ctx context.Context, tx bun.Tx, vulnerabilityID int64, assessed stri
 		return fmt.Errorf("read what is published about this: %w", err)
 	}
 
-	// A rating of ours replaces the number the order compares, because the
-	// word is the whole of what we are claiming. Where there is none, the
-	// published score stands, and the published word stands in for it where
-	// no score was given.
-	score := issue.ScoreCenti
-	if assessed != "" {
-		score = SeverityScore(assessed)
-	} else if score == 0 {
-		score = SeverityScore(issue.Severity)
+	// What the order compares, worked out by the same type a scan ranks
+	// through — the rule for which of a published score, a published word and
+	// a rating of ours decides the number is one fact, and this project's bugs
+	// have all come from letting one fact into two rules.
+	rating := Rating{
+		Published: issue.Severity, Assessed: assessed,
+		ScoreCenti: issue.ScoreCenti, LikelihoodPPM: issue.Likelihood,
 	}
 
 	// Everything below the two flags, packed by the same function that packs
 	// it at ingest. The flags themselves are per finding, so they stay in the
 	// statement.
-	rest := Ranked{ScoreCenti: score, LikelihoodPPM: issue.Likelihood}.Rank()
+	rest := Ranked{ScoreCenti: rating.Score(), LikelihoodPPM: rating.LikelihoodPPM}.Rank()
 	_, err = tx.NewUpdate().
 		Model((*Finding)(nil)).
 		Set("urgency = (CASE WHEN urgency_exploited THEN ? ELSE 0 END)"+

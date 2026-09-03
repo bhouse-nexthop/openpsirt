@@ -60,7 +60,13 @@ func (r *Runner) Once(ctx context.Context) (*Outcome, error) {
 		return nil, err
 	}
 
-	outcome, err := r.scan(ctx, job.Reference)
+	// The claim is renewed while the scan runs. A scan of a large image
+	// legitimately takes longer than a claim is honored for with nothing heard
+	// from the worker, and without renewal a second worker would take the job
+	// over and scan the same target alongside this one.
+	working, release := r.queue.Holding(ctx, job.ID, r.name, r.logger)
+	outcome, err := r.scan(working, job.Reference)
+	taken := release()
 
 	// How the job ended is recorded whatever ended it. A shutdown cancels the
 	// scan, and the cancellation must not also stop the job being handed
@@ -87,6 +93,16 @@ func (r *Runner) Once(ctx context.Context) (*Outcome, error) {
 		if err == nil {
 			return outcome, ended
 		}
+	}
+	if taken != nil {
+		// The scan was stopped because the job went to another worker, so the
+		// error it ended with describes that rather than anything about the
+		// target. There is nothing to retry and nothing to report: the job is
+		// in hand elsewhere. It is logged because a claim that went stale
+		// under a running scan means the renewals were not landing.
+		r.logger.Warn("a scan was stopped because another worker took its job over",
+			"job", job.ID, "target", job.Reference)
+		return nil, nil
 	}
 	return outcome, err
 }

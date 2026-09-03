@@ -70,13 +70,13 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 		if err != nil {
 			return err
 		}
-		// The rating in force for each: ours where somebody has made one,
-		// the published one otherwise. What a finding is admitted and
-		// clocked by has to be the rating every later reading uses, or a
-		// finding opened after an assessment arrives on the published
-		// word's deadline while the ones beside it sit on ours (TRI-41,
-		// TRI-42).
-		assessed, err := assessedSeverities(ctx, tx, vulnerabilities)
+		// What is on record about each issue: the rating in force — ours
+		// where somebody has made one, the published one otherwise — and
+		// the signals that rank it. What a finding is ordered, admitted and
+		// clocked by has to be what every later reading uses, or a finding
+		// opened after an assessment arrives on the published word's
+		// deadline while the ones beside it sit on ours (TRI-41, TRI-42).
+		ratings, err := ratingsInForce(ctx, tx, vulnerabilities)
 		if err != nil {
 			return err
 		}
@@ -178,24 +178,22 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 					SuppressedBy: covering,
 					OpenedRunID:  runID,
 				}
+				rating := ratings[vulnerabilityID]
 				ranked := Ranked{
-					Exploited: r.Issue.Exploited, Shipped: shipped,
-					LikelihoodPPM: int(r.Issue.Likelihood * 1_000_000),
-					ScoreCenti:    scoreOf(r.Issue),
+					Exploited: rating.Exploited, Shipped: shipped,
+					LikelihoodPPM: rating.LikelihoodPPM,
+					ScoreCenti:    rating.Score(),
 				}
 				entry := wanted[key{vulnerabilityID, at}]
 				entry.Urgency = int64(ranked.Rank())
 				entry.RankExploited, entry.RankShipped = ranked.Exploited, ranked.Shipped
-				// Counted from this run only where the finding is new. A
-				// finding already open keeps the deadline it was given, which
-				// the update below leaves alone — a deadline that restarted
-				// every night would never arrive.
-				severity := r.Issue.Severity
-				if word := assessed[vulnerabilityID]; word != "" {
-					severity = word
-				}
-				if floor.Admits(r.Issue.Exploited, severity) {
-					due := startedAt.Add(windows.For(r.Issue.Exploited, severity))
+				// Counted from this run. For a new finding that is when it was
+				// first seen; for one already open the update below takes it
+				// only where the clock itself changed, so a deadline does not
+				// restart every night and never arrive.
+				severity := rating.Severity()
+				if floor.Admits(rating.Exploited, severity) {
+					due := startedAt.Add(windows.For(rating.Exploited, severity))
 					entry.DueAt = &due
 				}
 				wanted[key{vulnerabilityID, at}] = entry
@@ -250,18 +248,34 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 			// A finding that is already open still moves. A fix appears, or
 			// the build answers it — and somebody waiting for a fix is waiting
 			// for exactly that. Leaving the row as first written would report
-			// last month's answer indefinitely.
-			if same(already, f) {
+			// last month's answer indefinitely. The same goes for how urgent
+			// it is: what is known about an issue changes under a finding that
+			// has not (RNK-07).
+			moved, reclocked := ranking(already, f)
+			if same(already, f) && !moved {
 				continue
 			}
-			_, err := tx.NewUpdate().Model((*Finding)(nil)).
+			update := tx.NewUpdate().Model((*Finding)(nil)).
 				Set("fix_state = ?", f.FixState).
 				Set("fixed_in = ?", f.FixedIn).
 				Set("fixed_at = ?", f.FixedAt).
 				Set("suppressed_by = ?", f.SuppressedBy).
-				Set("last_changed_at = ?", now).
-				Where("id = ?", already.ID).Exec(ctx)
-			if err != nil {
+				Set("last_changed_at = ?", now)
+			if moved {
+				update = update.
+					Set("urgency = ?", f.Urgency).
+					Set("urgency_exploited = ?", f.RankExploited).
+					Set("urgency_shipped = ?", f.RankShipped)
+			}
+			if reclocked {
+				// From this run rather than from when the finding opened.
+				// Counted from the opening, an issue that became exploited
+				// after six months would land three days *before* it was
+				// known — a deadline nobody could have met, which is exactly
+				// the failure REM-25 says to design against.
+				update = update.Set("due_at = ?", f.DueAt)
+			}
+			if _, err := update.Where("id = ?", already.ID).Exec(ctx); err != nil {
 				return fmt.Errorf("update a finding that moved: %w", err)
 			}
 			applied.Updated++
@@ -327,12 +341,13 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 }
 
 // same reports whether what a scan found about a finding matches what is
-// already recorded. Only the parts the update writes are compared: everything
-// else is either what makes it that finding rather than another, or — the
-// urgency — a fact about the moment it opened, which a later scan does not
-// rewrite. Comparing something the update leaves alone would count the finding
-// as changed every night and move its last change forward without anything
-// having moved.
+// already recorded. Only what the fix half of the update writes is compared;
+// how urgent it is has its own comparison, because the two write different
+// columns and a deadline moves on a narrower condition than a rank does.
+//
+// Everything else is what makes it that finding rather than another, and
+// comparing something no update writes would count the finding as changed
+// every night and move its last change forward with nothing having moved.
 func same(held, found Finding) bool {
 	return held.FixState == found.FixState &&
 		held.FixedIn == found.FixedIn &&
@@ -340,9 +355,37 @@ func same(held, found Finding) bool {
 		equalRef(held.SuppressedBy, found.SuppressedBy)
 }
 
-// assessedSeverities reads the rating of ours in force on each interned issue,
-// by issue, leaving out those where the published rating stands.
-func assessedSeverities(ctx context.Context, tx bun.IDB, interned map[string]int64) (map[int64]string, error) {
+// ranking reports whether an open finding's place in the order has moved, and
+// whether its clock has changed with it (RNK-07).
+//
+// The two are separate, and deliberately: **every** ranking signal moves the
+// order, and **only** exploitation moves the deadline (REM-25). A score
+// somebody revised upward is worth reordering the list for and is not worth
+// resetting a clock over — likelihood and score are not in the deadline at
+// all, and a deadline recounted whenever a number was revised would never
+// arrive, which is the same failure as recounting it nightly.
+func ranking(held, found Finding) (moved, reclocked bool) {
+	moved = held.Urgency != found.Urgency ||
+		held.RankExploited != found.RankExploited ||
+		held.RankShipped != found.RankShipped
+	reclocked = held.RankExploited != found.RankExploited
+	return moved, reclocked
+}
+
+// ratingsInForce reads what is on record about each interned issue.
+//
+// Read back from the issue rather than taken from the report that is being
+// applied, and that is the point of it. A report is one source's account of
+// one moment: it may omit that something is being exploited, or carry a score
+// lower than a report last week gave. What is stored is the worst anybody has
+// claimed, moving only toward worse, plus the rating of ours where somebody
+// has made one — so the issue is the one place that knows everything known
+// about it, and ranking from anywhere else makes the order depend on which
+// scan ran last.
+//
+// Interning has already folded this report into the row, so what comes back
+// includes whatever this report knew that the row did not.
+func ratingsInForce(ctx context.Context, tx bun.IDB, interned map[string]int64) (map[int64]Rating, error) {
 	ids := make([]int64, 0, len(interned))
 	seen := map[int64]bool{}
 	for _, id := range interned {
@@ -351,36 +394,51 @@ func assessedSeverities(ctx context.Context, tx bun.IDB, interned map[string]int
 			ids = append(ids, id)
 		}
 	}
-	assessed := map[int64]string{}
+	ratings := map[int64]Rating{}
 	if len(ids) == 0 {
-		return assessed, nil
+		return ratings, nil
 	}
 	var rows []struct {
-		ID       int64  `bun:"id"`
-		Severity string `bun:"severity"`
+		ID            int64  `bun:"id"`
+		Published     string `bun:"published"`
+		Assessed      string `bun:"assessed"`
+		Exploited     bool   `bun:"exploited"`
+		ScoreCenti    int    `bun:"score_centi"`
+		LikelihoodPPM int    `bun:"likelihood_ppm"`
 	}
 	err := database.IDsInBatches(ctx, ids, func(ctx context.Context, batch []int64) error {
 		var found []struct {
-			ID       int64  `bun:"id"`
-			Severity string `bun:"severity"`
+			ID            int64  `bun:"id"`
+			Published     string `bun:"published"`
+			Assessed      string `bun:"assessed"`
+			Exploited     bool   `bun:"exploited"`
+			ScoreCenti    int    `bun:"score_centi"`
+			LikelihoodPPM int    `bun:"likelihood_ppm"`
 		}
 		err := tx.NewSelect().
 			TableExpr("vulnerability AS v").
 			ColumnExpr("v.id AS id").
-			ColumnExpr("v.assessed_severity AS severity").
+			ColumnExpr("COALESCE(v.severity, ?) AS published", "").
+			ColumnExpr("COALESCE(v.assessed_severity, ?) AS assessed", "").
+			ColumnExpr("v.exploited AS exploited").
+			ColumnExpr("COALESCE(v.score_centi, 0) AS score_centi").
+			ColumnExpr("COALESCE(v.likelihood_ppm, 0) AS likelihood_ppm").
 			Where("v.id IN (?)", bun.List(batch)).
-			Where("v.assessed_severity IS NOT NULL").
 			Scan(ctx, &found)
 		rows = append(rows, found...)
 		return err
 	})
 	if err != nil {
-		return nil, fmt.Errorf("read which ratings are ours: %w", err)
+		return nil, fmt.Errorf("read what is on record about these issues: %w", err)
 	}
 	for _, row := range rows {
-		assessed[row.ID] = row.Severity
+		ratings[row.ID] = Rating{
+			Published: row.Published, Assessed: row.Assessed,
+			Exploited: row.Exploited, ScoreCenti: row.ScoreCenti,
+			LikelihoodPPM: row.LikelihoodPPM,
+		}
 	}
-	return assessed, nil
+	return ratings, nil
 }
 
 // equalRef compares two references that may be absent.
@@ -670,16 +728,4 @@ func shippedToCustomers(ctx context.Context, tx bun.Tx, targetID int64) (bool, e
 		return false, fmt.Errorf("read whether this build reaches customers: %w", err)
 	}
 	return shipped, nil
-}
-
-// scoreOf reads the severity of an issue as a number.
-//
-// The number where a report gives one, and the word standing in where it does
-// not — so a finding rated only in words does not sort below everything rated
-// at all.
-func scoreOf(issue Named) int {
-	if issue.Score > 0 {
-		return int(issue.Score * 100)
-	}
-	return SeverityScore(issue.Severity)
 }

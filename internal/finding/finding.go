@@ -109,10 +109,14 @@ type Finding struct {
 	// than derived (REM-26) — derived, it costs a pass over every open finding
 	// per urgency band, since each band allows a different number of days.
 	//
-	// It is set once, when the finding opens, and does not move while the
-	// finding stays open. Nothing else would be a deadline. It is recomputed
-	// only when the policy that sets it changes, which is the one event that
-	// makes a stored answer wrong.
+	// It is set when the finding opens and does not move as the finding ages —
+	// nothing else would be a deadline. It is recounted on two events, both of
+	// which make the stored answer wrong rather than merely old: the policy
+	// that sets it changing, and the issue becoming known to be exploited,
+	// which is the one signal that decides how long there is (REM-25, RNK-07).
+	// A recount runs from when the change was learned, never from when the
+	// finding opened, or a fact arriving late would land a deadline in the
+	// past.
 	//
 	// Null on a finding recorded before this was stored, which reads as "not
 	// known" rather than "not due" — a finding with no deadline is left out of

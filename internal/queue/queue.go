@@ -16,6 +16,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -71,10 +72,20 @@ type Options struct {
 	// refused so a runaway producer cannot push everyone else's work behind
 	// its own.
 	MaxBacklog int
-	// ClaimTimeout is how long a claim is honored before another worker may
-	// take the job. It must exceed the longest a job legitimately takes, or
-	// two workers end up running the same work.
+	// ClaimTimeout is how long a claim is honored with nothing heard from the
+	// worker holding it, after which another worker may take the job. It
+	// bounds how long a worker may go silent, not how long a job may take:
+	// Heartbeat is what keeps a running job's claim alive.
 	ClaimTimeout time.Duration
+	// Heartbeat is how often a worker renews the claim on work it is running.
+	// Without it the claim timeout is a ceiling on how long a job may take,
+	// and a job that legitimately takes longer is handed to a second worker
+	// while the first is still doing it — which the conditional update cannot
+	// prevent, because the second claim is legitimate.
+	//
+	// Well under the claim timeout, so a renewal can fail several times over
+	// before the claim is actually at risk. Zero renews nothing.
+	Heartbeat time.Duration
 	// Backoff is how long to wait before retrying, multiplied by the attempt.
 	Backoff time.Duration
 }
@@ -86,6 +97,7 @@ func DefaultOptions() Options {
 		MaxAttempts:  5,
 		MaxBacklog:   1000,
 		ClaimTimeout: 30 * time.Minute,
+		Heartbeat:    5 * time.Minute,
 		Backoff:      30 * time.Second,
 	}
 }
@@ -230,6 +242,94 @@ func Settling(ctx context.Context) (context.Context, context.CancelFunc) {
 // else is holding them to a deadline. Long enough for a database that is
 // answering; short enough that a shutdown is not held by one that is not.
 const settleTimeout = 5 * time.Second
+
+// Renew extends this worker's claim on work it is still running, by the worker
+// that holds it.
+//
+// A claim says when the worker holding it was last heard from. Renewing it is
+// what lets a job take longer than a claim is honored for without a second
+// worker taking it over: a scan of a large image legitimately runs for a long
+// time, and the one thing the conditional update in Claim cannot prevent is a
+// second claim the database considers legitimate.
+//
+// A renewal on a job this worker no longer holds is ErrNoLongerHeld. That is
+// the answer that matters — the work is being done twice from that moment —
+// and it is what Holding watches for.
+func (q *Queue) Renew(ctx context.Context, id int64, worker string) error {
+	now := q.now().Truncate(time.Microsecond)
+	res, err := q.db.NewUpdate().Model((*Job)(nil)).
+		Set("claimed_at = ?", now).
+		Set("updated_at = ?", now).
+		Where("id = ?", id).
+		Where("state = ?", Running).
+		Where("claimed_by = ?", worker).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	return held(res)
+}
+
+// Holding renews a claim for as long as its work runs.
+//
+// The returned context is the one the work runs under, and it ends if another
+// worker takes the job over — with ErrNoLongerHeld as its cause. Stopping is
+// the right answer there: from that moment the work is being done twice, and
+// this is the copy whose ending nobody will record, so carrying on spends a
+// scanner run and a pile of writes to lose a race that is already lost.
+//
+// The returned function stops the renewals and says whether the claim was
+// lost. It must be called once the work has ended, renewals or not, and it
+// waits for the renewing to stop so that nothing writes to the job after the
+// caller starts recording how it ended.
+func (q *Queue) Holding(ctx context.Context, id int64, worker string,
+	logger *slog.Logger) (context.Context, func() error) {
+
+	working, give := context.WithCancelCause(ctx)
+	if q.opts.Heartbeat <= 0 {
+		return working, func() error { give(nil); return nil }
+	}
+
+	var lost error
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(q.opts.Heartbeat)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-working.Done():
+				return
+			case <-ticker.C:
+			}
+			// Bounded by the interval: a renewal still waiting when the next
+			// one is due has already failed, and on SQLite it is waiting for
+			// the single connection the work itself is holding.
+			bounded, done := context.WithTimeout(working, q.opts.Heartbeat)
+			err := q.Renew(bounded, id, worker)
+			done()
+			switch {
+			case errors.Is(err, ErrNoLongerHeld):
+				lost = err
+				give(err)
+				return
+			case err != nil && working.Err() == nil:
+				// Not lost yet. The claim stands until the timeout passes with
+				// nothing landing, which is several intervals away, so the
+				// next tick tries again rather than abandoning the work over
+				// one failed write.
+				logger.Warn("could not renew the claim on work in progress",
+					"job", id, "error", err)
+			}
+		}
+	}()
+
+	return working, func() error {
+		give(nil)
+		<-stopped
+		return lost
+	}
+}
 
 // Succeed marks work as finished, by the worker that holds it.
 //

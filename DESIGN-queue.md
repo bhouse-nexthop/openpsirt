@@ -2,7 +2,7 @@
 
 Durable background work, held in the application's own database.
 
-Satisfies DAT-17, DAT-25 to DAT-28, ING-03, ING-19, SEC-06.
+Satisfies DAT-17, DAT-25 to DAT-28, DAT-38, ING-03, ING-19, SEC-06.
 
 ## Why not a library
 
@@ -56,11 +56,44 @@ surrounding transaction already excludes every other claim.
 A worker that dies holds its claim. After a timeout another worker may take the
 job, so work is never stranded by a lost process.
 
-The timeout must exceed the longest a job legitimately takes. Set too short,
-two workers run the same job — which is the one thing the conditional update
-cannot prevent, because from the database's point of view the second claim is
-legitimate. A claim is not renewed while the work runs, so the timeout is a
-hard ceiling on how long a job may take rather than a heartbeat interval.
+Two workers running the same job is the one thing the conditional update cannot
+prevent, because from the database's point of view the second claim is
+legitimate: the row says the worker holding it has not been heard from.
+
+## A claim is renewed while its work runs
+
+**The timeout bounds how long a worker may go silent, not how long a job may
+take.** A running worker renews its claim on an interval well inside the
+timeout, so a renewal can fail several times over before the claim is at risk.
+
+Without renewal the two questions collapse into one, and the timeout becomes a
+ceiling on job duration: a scan that legitimately runs longer is handed to a
+second worker while the first is still doing it.
+
+**Losing the claim ends the work.** A renewal refused because another worker
+now holds the job cancels what the first worker was doing, and it is told the
+claim was lost rather than that the work failed. From that moment the work is
+being done twice, and this is the copy whose ending nobody will record —
+carrying on spends a scanner run and every write it makes to lose a race that
+is already lost.
+
+A renewal that fails for any other reason is reported and retried on the next
+interval. The claim is not lost until the timeout passes with nothing landing,
+which is several intervals away, so abandoning the work over one failed write
+would throw away a job for a database hiccup.
+
+**The renewing stops before the ending is recorded**, and the worker waits for
+it to stop. Otherwise something is still writing to the job while the worker
+writes how it ended.
+
+### Why the timeout is not shortened to match
+
+Renewal would allow a much shorter timeout — a dead worker's job recovered in
+minutes rather than half an hour. It stays generous anyway, because on SQLite
+the pool is one connection, so a renewal waits behind the job's own statement
+and a long transaction can hold it for minutes. A timeout that assumed
+renewals were prompt would take the job away from exactly the work it exists to
+protect.
 
 ## Only the holder finishes a job
 
@@ -75,7 +108,7 @@ it is being finished.
 The refused finish is reported to the worker as "no longer held" rather than as
 a failure. The work it did stands; the job's ending is the other worker's to
 write, and there is nothing to retry. It is logged, because a job that outran
-its claim is a claim timeout set too short for that job.
+its claim while renewing it means the renewals were not landing.
 
 ## How a job ended is recorded after a shutdown
 

@@ -1392,6 +1392,96 @@ So: when running `go test` by hand rather than through `make check`, export the
 engine URLs, and check the subtest names in the output actually list four
 engines before believing a result.
 
+## Urgency was three policies; it is one now (2026-09-03)
+
+Second of the 2026-09-03 review's open items, recorded as `RNK-07`. The three
+were: kept as of the moment a finding opened, rewritten in full when somebody
+assessed the issue, and compared on screen against the current published word.
+Nobody had chosen any of them, and the effect was that a finding opened before
+its issue reached an exploited catalog never got the top band or the
+three-day window until it happened to close and reopen — the finding `REM-25`
+exists for, quietly not working for the ones already open, which is most of
+them.
+
+**They became one: the rank follows the issue.** Freezing was the other
+candidate and it does not survive contact with the code — `rerank` already
+rewrote the number when *our* judgment moved, so the value was never frozen,
+only frozen against the world.
+
+Three things fell out of doing it, none of them obvious from the decision:
+
+1. **The rank is read from the issue, not from the report being applied.** This
+   is what stops it flapping. The stored signals are the worst anybody has
+   claimed and move only toward worse, so a rewrite is a real event; ranked
+   from the report in hand, one source omitting a likelihood would demote a
+   finding and the next night's report promote it again, for ever. It also
+   removed the second spelling of "which of a published score, a published word
+   and a rating of ours decides the number", which existed once at ingest and
+   once in `rerank` and had already drifted once.
+
+2. **The deadline is narrower than the rank.** Every signal moves the order;
+   only exploitation moves the clock, because only exploitation is in it. A
+   clock reset by a revised score would never arrive — the same failure as
+   resetting it nightly, which is why the comparison was dropped in the first
+   place.
+
+3. **A recount runs from the scan that learned the fact.** This was the part
+   worth getting right. Counted from the opening, an issue exploited after six
+   months would be given three days that ran out five months ago: a deadline
+   nobody could have met, across the estate, which is exactly the failure
+   `REM-25` names as the way an overdue figure stops being read within a month.
+   It is also how the published exploited catalogs are actually used — their
+   due dates run from the date an entry was added, not from when anybody
+   shipped the package.
+
+The test that pinned the old behavior was deleted rather than adjusted: it
+asserted the frozen policy by name. Three replace it, and four mutants were
+watched failing — the rank not written, the clock not recounted, the clock
+recounted from an earlier moment, and the rank taken from the report.
+
+`AGENTS.md` was wrong about this too, and is fixed: it used urgency as its
+example of a derived value stored *to be correct*, "a fact about a moment".
+Urgency is not one. Reading "stored" as "frozen" is how it ended up as three
+policies, so the paragraph now uses values that genuinely cannot be worked out
+again — what a place held before a version moved, and how many builds an
+approval reached as granted — and says that storing does not freeze.
+
+## The scan claim now renews itself (2026-09-03)
+
+First of the 2026-09-03 review's open items to be settled, recorded as
+`DAT-38`. The claim was a single shot of thirty minutes — the same thirty
+minutes the scanner itself is given — so a scan that used its whole allowance
+was re-claimable at the moment it ended, and anything slower was taken over
+while it ran.
+
+What the fix separated is two questions the single shot had confused: **is the
+worker alive**, and **how long is the job**. A running worker renews the claim
+every five minutes, so the timeout now bounds silence rather than duration.
+
+**Losing the claim ends the work.** That was the part worth thinking about: the
+renewal is refused when another worker holds the job, and from that moment the
+work is being done twice with only the other copy's ending recorded — so
+carrying on spends a scanner run and every write it makes to lose a race that
+is already lost. The work's context carries `ErrNoLongerHeld` as its
+cancellation cause, which is how the reader and the runner tell that from a
+shutdown. The reader needed it in a second place too: it marks a scan document
+as unreadable when a read fails, and a read stopped because the job moved must
+not — nothing is wrong with the document.
+
+**The timeout stays at thirty minutes**, which renewal would otherwise let us
+shorten to a few intervals. On SQLite the pool is one connection, so a renewal
+waits behind the job's own statement; a bound that assumed renewals were prompt
+would take the job away from exactly the long transaction it exists to protect.
+
+Four tests, all four engines, each watched failing under a mutant: the renewal
+made a no-op (the job is taken over 45 minutes in), the holder check dropped
+from the renewal (a worker that lost its claim renews it anyway, and a finished
+job can be renewed), and the cancellation removed (the work is never stopped).
+One of them also lands on `DAT-35` — the holder renews at the moment it
+claimed at, so the write changes no value and still has to report the row as
+matched, which is where MySQL and MariaDB would otherwise tell a worker it no
+longer holds its own job.
+
 ## The second adversarial review (2026-09-03), and what it found
 
 Four reviewers this time: three over the twenty-one commits since the first

@@ -104,13 +104,23 @@ mature tool nearby stores metric snapshots and refreshes them hourly, and
 copying that looked like prudence rather than what it was — adopting somebody
 else's constraints, from a hosted product with traffic this one will not see.
 
-**Storing a derived value to be correct is a different thing.** A finding's
-urgency is worked out when a scan is applied and kept, not because reading it
-again would be slow, but because the signals it was made from get rewritten as
-later reports revise them — so recomputing it later would compare a judgment
-against a number that has since moved. That is a fact about a moment, and it is
-stored for the same reason the scan's provenance is. The test is what the
-storing is *for*: correctness keeps it, speed has to earn it.
+**Storing a derived value to be correct is a different thing.** Some values
+cannot be worked out again later at all, because the moment they describe is
+gone. What a place held before a version moved is recorded as the scan applies,
+because that is the only point at which both versions are in hand. How many
+builds an approval reached is recorded as granted, because what the record needs
+is what somebody agreed to rather than what the matching rules would say today.
+Those are facts about a moment, stored for the same reason a scan's provenance
+is.
+
+**A value that can still be worked out is not one of those, and storing it does
+not freeze it.** A finding's urgency is stored so that a list can sort on it
+without joining four signals for every row on every page — that is speed, and it
+earns its place — and it is rewritten when the signals move, because it
+describes an issue rather than a moment (RNK-07). Reading "stored" as "frozen"
+is what left urgency as three policies at once, none of them chosen. The test is
+what the storing is *for*: correctness keeps it, speed has to earn it, and
+neither buys the right to go stale.
 
 ## Two limits that erode if they are not rules
 

@@ -4,7 +4,7 @@ What a scan run found, and where.
 
 Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, ING-02, ING-21,
 ING-29, ING-30, ING-39, ING-40, STA-03, STA-04, STA-05, STA-08, STA-17,
-RNK-01 to RNK-06, MDL-09, STA-01, STA-02, STA-06, STA-07, STA-09, STA-10,
+RNK-01 to RNK-07, MDL-09, STA-01, STA-02, STA-06, STA-07, STA-09, STA-10,
 STA-13 to STA-16, STA-18.
 
 ## A scanner reports a package; we work out the places
@@ -339,8 +339,16 @@ something occupies puts whatever is most widespread at the top, which on a real
 image is the kernel — everywhere, and not therefore the thing to look at first.
 
 So each finding carries an urgency, worked out when a scan is applied and read
-back as it was. Computing it while reading would mean joining every signal it
+back as written. Computing it while reading would mean joining every signal it
 is made of, for every row, on every page of every list.
+
+**It is worked out from what is on record about the issue, not from the report
+being applied.** A report is one source's account of one moment: it may omit
+that something is being exploited, or carry a score lower than last week's
+report gave. What the issue holds is the worst anybody has claimed, moving only
+toward worse, plus a rating of ours where somebody has made one. Ranking from
+the report in hand would make the order depend on which scan ran last, and
+would move a finding up and down as sources disagreed.
 
 **What storing it buys, stated exactly.** The list groups a target's open
 findings and orders by the worst urgency in each group, so the sort is over
@@ -383,6 +391,37 @@ so a finding rated in words does not sort below everything rated at all.
 
 A group is one decision about one issue in one component, so it takes the
 urgency of the worst place it covers.
+
+### What is known changes under a finding that has not
+
+An issue gets worse after the findings against it opened. A score is revised, a
+likelihood is published, a name lands on an exploited catalog — none of which
+is a change to the software, and all of which change what to look at first.
+
+**The rank follows the issue.** A scan that finds the record has moved rewrites
+the urgency of every open finding of that issue. Held as it was at opening, the
+list would order by a number nobody could reconcile with the row drawn beside
+it.
+
+This does not make the rank flap nightly, and the reason is the paragraph
+above: the stored signals only move toward worse, so a rewrite is a real
+event rather than two sources disagreeing in turn.
+
+**The deadline follows only exploitation**, because that is the only signal in
+it — severity is the flaw, exploitation is a fact about the world, and neither
+score nor likelihood sets a clock. A clock reset whenever a number was revised
+would never arrive, which is the same failure as resetting it nightly.
+
+**A recount runs from the scan that learned the fact, never from when the
+finding opened.** An issue that becomes exploited after six months, clocked
+from the opening, would be given three days that ran out five months ago — a
+deadline nobody could have met, applied across the estate, which is exactly how
+an overdue figure stops being read. Counted from the scan that learned it, the
+deadline says what it should: three days from now.
+
+This is also how the published exploited catalogs are used in practice. Their
+due dates run from the date an entry was added, not from when anybody first
+shipped the affected package.
 
 ## A finding carries what it takes to act on it
 
