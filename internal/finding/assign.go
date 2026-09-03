@@ -309,32 +309,109 @@ func (s *Store) Unassigned(ctx context.Context, subject access.Subject, scope Sc
 		return nil, 0, fmt.Errorf("count what nobody is dealing with: %w", err)
 	}
 
-	var rows []Owned
+	// The page in two statements: which groups, then their names. The first
+	// groups and orders over finding and the two joins the scoping needs; the
+	// names of the issue, the component and the build come from a second
+	// statement over the page rather than from four more joins under the
+	// aggregate, which is what the first version did — a text column reduced
+	// with MIN once per row of the grouping to read fifty names.
+	var heads []struct {
+		VulnerabilityID int64 `bun:"vulnerability_id"`
+		ComponentID     int64 `bun:"component_id"`
+		TargetID        int64 `bun:"target_id"`
+		Urgency         int64 `bun:"urgency"`
+		Places          int   `bun:"places"`
+	}
 	err = narrow(s.db.NewSelect()).
-		Join("JOIN variant AS va ON va.id = tg.variant_id").
-		Join("JOIN product AS p ON p.id = st.product_id").
-		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
-		Join("JOIN component AS c ON c.id = f.component_id").
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("f.component_id AS component_id").
-		ColumnExpr("MIN(v.identifier) AS vulnerability").
-		ColumnExpr("MIN(c.name) AS component").
-		ColumnExpr("MIN(c.version) AS version").
-		ColumnExpr("MIN(v.severity) AS severity").
-		ColumnExpr("MAX(CASE WHEN f.urgency_exploited THEN 1 ELSE 0 END) AS exploited").
-		ColumnExpr("MIN(p.display_name) AS product").
-		ColumnExpr("MIN(st.display_name) AS stream").
-		ColumnExpr("MIN(va.display_name) AS variant").
+		ColumnExpr("f.target_id AS target_id").
 		ColumnExpr("MAX(f.urgency) AS urgency").
 		ColumnExpr("COUNT(*) AS places").
 		GroupExpr("f.vulnerability_id, f.component_id, f.target_id").
-		OrderExpr("urgency DESC, vulnerability").
+		OrderExpr("urgency DESC, f.vulnerability_id, f.component_id, f.target_id").
 		Limit(limit).Offset(offset).
-		Scan(ctx, &rows)
+		Scan(ctx, &heads)
 	if err != nil {
 		return nil, 0, fmt.Errorf("read what nobody is dealing with: %w", err)
 	}
+
+	issues := make([]int64, 0, len(heads))
+	components := make([]int64, 0, len(heads))
+	targets := make([]int64, 0, len(heads))
+	for _, head := range heads {
+		issues = append(issues, head.VulnerabilityID)
+		components = append(components, head.ComponentID)
+		targets = append(targets, head.TargetID)
+	}
+	named, err := issuesNamed(ctx, s.db, issues)
+	if err != nil {
+		return nil, 0, err
+	}
+	shipped, err := componentsNamed(ctx, s.db, components)
+	if err != nil {
+		return nil, 0, err
+	}
+	builds, err := targetsNamed(ctx, s.db, targets)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows := make([]Owned, 0, len(heads))
+	for _, head := range heads {
+		row := Owned{
+			VulnerabilityID: head.VulnerabilityID, ComponentID: head.ComponentID,
+			Urgency: head.Urgency, Places: head.Places,
+			Exploited: Rank(head.Urgency).Exploited(),
+		}
+		if issue, held := named[head.VulnerabilityID]; held {
+			row.Vulnerability, row.Severity = issue.Identifier, issue.Severity
+		}
+		if component, held := shipped[head.ComponentID]; held {
+			row.Component, row.Version = component.Name, component.Version
+		}
+		if build, held := builds[head.TargetID]; held {
+			row.Product, row.Stream, row.Variant = build.Product, build.Stream, build.Variant
+		}
+		rows = append(rows, row)
+	}
 	return rows, total, nil
+}
+
+// buildName is what a build is called on a screen: its product, stream and
+// variant, as people know them.
+type buildName struct {
+	TargetID int64  `bun:"target_id"`
+	Product  string `bun:"product"`
+	Stream   string `bun:"stream"`
+	Variant  string `bun:"variant"`
+}
+
+// targetsNamed reads the names of the builds these targets are, by target.
+func targetsNamed(ctx context.Context, db *bun.DB, ids []int64) (map[int64]buildName, error) {
+	held := map[int64]buildName{}
+	if len(ids) == 0 {
+		return held, nil
+	}
+	var builds []buildName
+	err := db.NewSelect().
+		TableExpr("target AS tg").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		Join("JOIN variant AS va ON va.id = tg.variant_id").
+		Join("JOIN product AS p ON p.id = st.product_id").
+		ColumnExpr("tg.id AS target_id").
+		ColumnExpr("p.display_name AS product").
+		ColumnExpr("st.display_name AS stream").
+		ColumnExpr("va.display_name AS variant").
+		Where("tg.id IN (?)", bun.List(ids)).
+		Scan(ctx, &builds)
+	if err != nil {
+		return nil, fmt.Errorf("name the builds on the page: %w", err)
+	}
+	for _, build := range builds {
+		held[build.TargetID] = build
+	}
+	return held, nil
 }
 
 // onlyVisible narrows a query to what this subject may read, per product.

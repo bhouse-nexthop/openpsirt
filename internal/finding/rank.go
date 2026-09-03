@@ -89,6 +89,15 @@ func (r Ranked) Rank() Rank {
 	return Rank(rank)
 }
 
+// Exploited reports whether a rank says the issue is known to be exploited.
+//
+// The band is the fact: exploitation lifts a rank above anything the other
+// signals can add together, so the flag is readable from the number — which
+// is what lets a query that has only the urgency, from an index, answer it.
+func (r Rank) Exploited() bool {
+	return int64(r) >= exploitedBand
+}
+
 // Because says why something ranks where it does, in the order the signals
 // were applied.
 //

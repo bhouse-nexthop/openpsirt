@@ -294,12 +294,27 @@ lapsed when a decision here stopped applying and nothing replaced it. Some
 places approved and the rest never decided, with nothing waiting or lapsed, is
 none of the four and the row says nothing rather than guessing.
 
-It is counted in the statement that lists the page, as four correlated counts
-over our decisions in this product at each place — the filter's own shape —
-so the row and the filter that found it cannot disagree, and a page of fifty
-costs no query per row. Before this the row carried only what the build had
-argued away, and an interface reading that as the decision state showed
-"undecided" over forty-four proposed records.
+It is counted by the same definition the filter uses, so the row and the
+filter that found it cannot disagree, and a page of fifty costs no query per
+row. Before this the row carried only what the build had argued away, and an
+interface reading that as the decision state showed "undecided" over
+forty-four proposed records.
+
+The page itself is read in two statements. The first groups every open
+finding in the build by issue and component and keeps the fifty most urgent,
+reading only the columns a covering index on `finding` holds, so it is one
+walk of that index however large the build is; the total is the same
+grouping, counted. The second reads what the page shows about those fifty
+groups and no others: likelihood and score, the four decision counts above,
+how many ways down there are, the fix. Every filter narrows both statements
+through the same clauses, and none of them needs the issue or the component
+joined under the grouping — a rating or a name is asked as a membership test
+against the table that holds it. The decision-state filter is built from the
+decisions outward: the open rows that have a decision of ours in this
+product, with what kind, joined to the grouping by the finding's identifier,
+rather than a lookup per open row. Measured on the full-size build, 241,479
+open rows in 7,329 groups: the page went from 2.0 s to 0.34 s, and asking
+for what is undecided from 2.3 s to 0.3 s.
 
 A row also says when a live claim at one of its places is with its author,
 sent back for more. That is the row a proposer is looking for in the list, and

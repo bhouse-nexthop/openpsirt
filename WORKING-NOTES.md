@@ -226,19 +226,19 @@ mellanox build beside it, and no claims until step 4 makes some.
 
 | Request | Before | 1. Index | 2. Split |
 |---|---|---|---|
-| Findings page, warm | 2.02 s | 1.06 s | |
-| Findings page, first request after start | 2.04 s | 1.08 s | |
-| Page two | 2.05 s | 1.09 s | |
-| Findings, `exploited` | 2.01 s | 1.51 s | |
-| Findings, `search=ssl` | 2.01 s | 1.08 s | |
-| Findings, `state=undecided` | 2.33 s | 1.60 s | |
-| By component | 0.81 s | 0.79 s | |
-| The kernel's issue list | 1.08 s | 0.68 s | |
-| One finding | 0.48 s | 0.02 s | |
-| Unassigned | 0.18 s | 1.07 s | |
-| Tree root | 0.53 s | 0.81 s | |
-| Around the kernel | 0.28 s | 0.94 s | |
-| Review queue | 0.28 s | 0.00 s | |
+| Findings page, warm | 2.02 s | 1.06 s | 0.34 s |
+| Findings page, first request after start | 2.04 s | 1.08 s | 0.33 s |
+| Page two | 2.05 s | 1.09 s | 0.34 s |
+| Findings, `exploited` | 2.01 s | 1.51 s | 0.24 s |
+| Findings, `search=ssl` | 2.01 s | 1.08 s | 0.34 s |
+| Findings, `state=undecided` | 2.33 s | 1.60 s | 0.38 s |
+| By component | 0.81 s | 0.79 s | 0.26 s |
+| The kernel's issue list | 1.08 s | 0.68 s | 0.15 s |
+| One finding | 0.48 s | 0.02 s | 0.02 s |
+| Unassigned | 0.18 s | 1.07 s | 0.40 s |
+| Tree root | 0.53 s | 0.81 s | 0.82 s |
+| Around the kernel | 0.28 s | 0.94 s | 0.95 s |
+| Review queue | 0.28 s | 0.00 s | 0.00 s |
 
 *Step 1, the index.* `finding_group_idx (target_id, closed_run_id,
 visibility, vulnerability_id, component_id, urgency)` replaces
@@ -262,6 +262,29 @@ the tree's edge and pairs reads 6 ms and 52 ms on both), and the rest of the
 difference is the other suite running: those three are the ones that walk
 the graph in Go, which is what a loaded machine slows most. Step 3 takes
 them off the machine's memory and onto the database anyway.
+
+*Step 2, the split.* The findings page is two statements: the groups, from
+the covering index alone — issue, component, places, worst urgency, filtered,
+ordered and limited — and then what the page shows about those fifty and no
+others. The joins that were under the grouping are gone from every
+narrowing: a severity floor, a component name, a search, an ecosystem are
+each a membership test against the table that holds the answer, and whether
+anything is exploited is read off the urgency, whose top band is exactly
+that. The decision-state filter was the largest remaining cost — a
+correlated lookup per open row, 241,479 probes to say which groups had no
+decision on a build with none — and is now built from the decision table
+outward, one row per decided finding, joined to the grouping by identifier:
+1.4 s to 0.06 s in raw SQL. The same shape for the by-component view (its
+joins are gone), the issue list at a component (the kernel holds 222,435 of
+the build's open rows, and grouping them with three joins cost 0.35 s where
+the index alone answers in 0.04 s) and the unassigned list (four joins and
+five `MIN(name)` reductions under the grouping, now a names pass over the
+page). Statements per findings page, counted by the test's hook: 8 before
+(which product, page, count, two names passes, and three for the chain
+ends), 9 after — the page is two statements. What is
+left of the 0.34 s is mostly step 3's: the chain ends still read every edge
+of the build into memory, and the tree and the unassigned list pay the
+loaded machine as before.
 
 ## Decided on 2026-09-02, from the workflow review
 

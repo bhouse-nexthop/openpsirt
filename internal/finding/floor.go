@@ -103,9 +103,16 @@ func (f Floor) narrow(q *bun.SelectQuery) *bun.SelectQuery {
 		// aside on a rating (RNK-06, REM-25). Hiding a known-exploited
 		// finding because it was rated low is the failure this whole line is
 		// supposed to prevent, arrived at from the other side.
+		//
+		// Both halves read without joining the issue: exploitation off the
+		// urgency, whose top band is exactly that (Ranked.Rank), and the
+		// rating as a membership test against the issues the line admits. So
+		// a query this narrows can stay on finding's covering index.
 		q = q.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
-			return q.WhereOr("f.urgency_exploited = ?", true).
-				WhereOr(BandExpr+" IN (?)", bun.List(words))
+			return q.WhereOr("f.urgency >= ?", int64(exploitedBand)).
+				WhereOr("f.vulnerability_id IN (?)",
+					q.NewSelect().TableExpr("vulnerability AS v").Column("v.id").
+						Where(BandExpr+" IN (?)", bun.List(words)))
 		})
 	}
 	return q
