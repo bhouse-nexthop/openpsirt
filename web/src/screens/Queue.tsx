@@ -35,10 +35,29 @@ export function Queue() {
   const [batch, setBatch] = useState("");
   const approveClaim = useApproveClaim();
 
+  // Whose claims. The queue proper is what is waiting on you; your own are a
+  // different question — what did I propose that nobody has agreed to — and
+  // they were mixed in, which made the queue a list containing work the reader
+  // cannot do, because approving your own is refused.
+  const mine = params.get("mine") === "1";
   const queue = useQuery({
-    queryKey: ["queue", offset],
+    queryKey: ["queue", offset, mine],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/review-queue", { params: { query: { limit: PAGE, offset } } })),
+      unwrap(
+        await api.GET("/v1/review-queue", {
+          params: { query: { limit: PAGE, offset, ...(mine ? { mine: true } : {}) } },
+        }),
+      ),
+  });
+  // The other side's count, so the tab can carry it without being opened.
+  const otherSide = useQuery({
+    queryKey: ["queue", "count", !mine],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/review-queue", {
+          params: { query: { limit: 1, ...(mine ? {} : { mine: true }) } },
+        }),
+      ),
   });
 
   const found = wanted > 0 && (queue.data?.items ?? []).some((row) => claimOf(row).id === wanted);
@@ -96,8 +115,45 @@ export function Queue() {
         <p>
           {(queue.data?.total ?? claims.length).toLocaleString()} pending
           {records > claims.length && <> · {records.toLocaleString()} records between those shown</>} ·
-          across every product you may approve on
+          {mine
+            ? " proposed by you, waiting for somebody else"
+            : " across every product you may approve on"}
         </p>
+      </div>
+
+      <div className="tabs2">
+        <button
+          type="button"
+          className="tab2"
+          aria-selected={!mine}
+          onClick={() => {
+            const now = new URLSearchParams(params);
+            now.delete("mine");
+            now.delete("offset");
+            setParams(now);
+          }}
+        >
+          Waiting on me{" "}
+          <span className="n">
+            {(mine ? (otherSide.data?.total ?? 0) : (queue.data?.total ?? 0)).toLocaleString()}
+          </span>
+        </button>
+        <button
+          type="button"
+          className="tab2"
+          aria-selected={mine}
+          onClick={() => {
+            const now = new URLSearchParams(params);
+            now.set("mine", "1");
+            now.delete("offset");
+            setParams(now);
+          }}
+        >
+          Mine, pending{" "}
+          <span className="n">
+            {(mine ? (queue.data?.total ?? 0) : (otherSide.data?.total ?? 0)).toLocaleString()}
+          </span>
+        </button>
       </div>
 
       {wanted > 0 && !found && (
@@ -345,6 +401,16 @@ function Card({
         <Link to={f ? findingPath(f) : `/decisions/${claim.decisionId}`} className="linkish id">
           {claim.title}
         </Link>
+        {/* What is being claimed, in its own right rather than as the fifth
+            clause of a sentence about where the finding lives. It is the thing
+            an approver is agreeing to, and it was reading as an afterthought
+            behind the component, the version, the product, the branch and the
+            variant. */}
+        <Outcome
+          outcome={claim.outcome}
+          justification={claim.justification}
+          until={claim.deferredUntil}
+        />
         <span style={{ color: "var(--muted)" }}>
           {f?.component && (
             <>
@@ -353,15 +419,7 @@ function Card({
             </>
           )}
           {f ? `${f.product} · ${f.stream} · ${f.variant}` : claim.product}
-          {bulk && claim.issues > 1 && <> · {claim.issues.toLocaleString()} issues</>} ·{" "}
-          {OUTCOME[claim.outcome] ?? claim.outcome}
-          {claim.justification && (
-            <>
-              {" "}
-              · <span className="mono">{claim.justification}</span>
-            </>
-          )}
-          {claim.deferredUntil && <> to {claim.deferredUntil}</>}
+          {bulk && claim.issues > 1 && <> · {claim.issues.toLocaleString()} issues</>}
           {extension && claim.derivedFrom && (
             <>
               {" "}
@@ -680,5 +738,30 @@ function Ratings({ waiting }: { waiting: AssessmentRow[] }) {
         ))}
       </div>
     </>
+  );
+}
+
+// What is being claimed, said as its own thing.
+//
+// The outcome is what an approver is agreeing to, and it was the fifth clause
+// of a line that led with the component, the version, the product, the branch
+// and the variant — so the most important fact on the card read as an
+// afterthought. It leads now, in its own mark, with the recognized reason
+// beneath it in the vocabulary the record actually stores.
+function Outcome({
+  outcome,
+  justification,
+  until,
+}: {
+  outcome: string;
+  justification?: string;
+  until?: string;
+}) {
+  return (
+    <span className={`claimed ${outcome}`}>
+      <b>{OUTCOME[outcome] ?? outcome}</b>
+      {justification && <span className="why mono">{justification}</span>}
+      {until && <span className="why">until {until}</span>}
+    </span>
   );
 }

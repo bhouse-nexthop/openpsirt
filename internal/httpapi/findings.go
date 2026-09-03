@@ -128,6 +128,9 @@ func registerFindings(api huma.API, in Ingest) {
 		UnderBuild bool     `query:"under_build" doc:"Keep only what the build holds directly, which is what has no container above it"`
 		Beneath    string   `query:"beneath" doc:"Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused"`
 		State      string   `query:"state" enum:"undecided,waiting,agreed,lapsed" doc:"Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"`
+		Outcome    string   `query:"outcome" enum:"affected,not-applicable,deferred,wont-fix" doc:"Keep only groups a standing judgment of this kind covers — how to ask what has been dismissed, which state cannot answer: agreed says a judgment stands, not which one. Every place must be answered the same way, and only the claim standing now counts"`
+		Assigned   string   `query:"assigned" enum:"me,somebody,nobody" doc:"Keep only groups by who is dealing with them. A group whose places are held by different people is none of these"`
+		Reassessed bool     `query:"reassessed" doc:"Keep only groups whose issue we rated differently from the world — what has been re-prioritized here"`
 		Exclude    []string `query:"exclude" doc:"Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows"`
 		Limit      int      `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"How many to return"`
 		Offset     int      `query:"offset" minimum:"0" doc:"How many to skip"`
@@ -170,6 +173,9 @@ func registerFindings(api huma.API, in Ingest) {
 			Under:         input.Under,
 			UnderTheBuild: input.UnderBuild,
 			State:         input.State,
+			Outcome:       input.Outcome,
+			Assigned:      input.Assigned,
+			Reassessed:    input.Reassessed,
 			Exclude:       input.Exclude,
 			Floor:         floor,
 			BelowFloor:    input.BelowFloor,

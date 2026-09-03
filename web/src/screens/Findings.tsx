@@ -54,6 +54,23 @@ const STATES = [
   ["lapsed", "lapsed"],
 ] as const;
 
+// Which judgment stands, which the state cannot say: "decided" means one
+// stands, not which one. Asking what has been dismissed is this.
+const OUTCOMES = [
+  ["", "any"],
+  ["not-applicable", "dismissed — not applicable"],
+  ["wont-fix", "dismissed — will not fix"],
+  ["deferred", "deferred"],
+  ["affected", "affected"],
+] as const;
+
+const ASSIGNED = [
+  ["", "anyone or nobody"],
+  ["me", "me"],
+  ["somebody", "somebody"],
+  ["nobody", "nobody"],
+] as const;
+
 type Row = Body<"FindingBody">;
 
 // What makes a row that row, for finding it again in a list read afresh.
@@ -87,8 +104,14 @@ export function Findings() {
   const beneath = params.get("beneath") ?? "";
   const underBuild = params.get("under_build") === "yes";
   const state = params.get("state") ?? "";
+  const outcome = params.get("outcome") ?? "";
+  const assigned = params.get("assigned") ?? "";
+  const reassessed = params.get("reassessed") === "1";
   const triage = params.get("mode") === "triage";
-  const advanced = [ecosystem, under, state].filter(Boolean).length + (underBuild ? 1 : 0);
+  const advanced =
+    [ecosystem, under, state, outcome, assigned].filter(Boolean).length +
+    (underBuild ? 1 : 0) +
+    (reassessed ? 1 : 0);
   const [more, setMore] = useState(advanced > 0);
   const [peeking, setPeeking] = useState<string | null>(null);
   const [typed, setTyped] = useState(searching);
@@ -115,6 +138,11 @@ export function Findings() {
     ...(beneath ? { beneath } : {}),
     ...(underBuild ? { under_build: true } : {}),
     ...(state ? { state: state as "undecided" | "waiting" | "agreed" | "lapsed" } : {}),
+    ...(outcome
+      ? { outcome: outcome as "affected" | "not-applicable" | "deferred" | "wont-fix" }
+      : {}),
+    ...(assigned ? { assigned: assigned as "me" | "somebody" | "nobody" } : {}),
+    ...(reassessed ? { reassessed: true } : {}),
     ...(hiding.length > 0 ? { exclude: hiding } : {}),
     ...(onlyComponent ? { component: onlyComponent } : {}),
     ...(below ? { below_floor: true } : {}),
@@ -362,13 +390,55 @@ export function Findings() {
             </select>
           </label>
 
+          {/* What kind of judgment stands, which the state cannot say: "agreed"
+              means one stands, not which one. This is how somebody asks what
+              has been dismissed. */}
+          <label className="field">
+            <span>Judgment</span>
+            <select value={outcome} onChange={(e) => set("outcome", e.target.value)}>
+              {OUTCOMES.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Assigned</span>
+            <select value={assigned} onChange={(e) => set("assigned", e.target.value)}>
+              {ASSIGNED.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={reassessed}
+              onChange={(e) => set("reassessed", e.target.checked ? "1" : "")}
+            />
+            <span>Rated differently by us</span>
+          </label>
+
           {advanced > 0 && (
             <button
               type="button"
               className="linkish"
               onClick={() => {
                 const next = new URLSearchParams(params);
-                for (const key of ["ecosystem", "under", "under_build", "state"]) {
+                for (const key of [
+                  "ecosystem",
+                  "under",
+                  "under_build",
+                  "state",
+                  "outcome",
+                  "assigned",
+                  "reassessed",
+                ]) {
                   next.delete(key);
                 }
                 next.delete("offset");

@@ -5168,6 +5168,36 @@ paths:
               - agreed
               - lapsed
             type: string
+        - description: "Keep only groups a standing judgment of this kind covers — how to ask what has been dismissed, which state cannot answer: agreed says a judgment stands, not which one. Every place must be answered the same way, and only the claim standing now counts"
+          explode: false
+          in: query
+          name: outcome
+          schema:
+            description: "Keep only groups a standing judgment of this kind covers — how to ask what has been dismissed, which state cannot answer: agreed says a judgment stands, not which one. Every place must be answered the same way, and only the claim standing now counts"
+            enum:
+              - affected
+              - not-applicable
+              - deferred
+              - wont-fix
+            type: string
+        - description: Keep only groups by who is dealing with them. A group whose places are held by different people is none of these
+          explode: false
+          in: query
+          name: assigned
+          schema:
+            description: Keep only groups by who is dealing with them. A group whose places are held by different people is none of these
+            enum:
+              - me
+              - somebody
+              - nobody
+            type: string
+        - description: Keep only groups whose issue we rated differently from the world — what has been re-prioritized here
+          explode: false
+          in: query
+          name: reassessed
+          schema:
+            description: Keep only groups whose issue we rated differently from the world — what has been re-prioritized here
+            type: boolean
         - description: "Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows"
           explode: false
           in: query
@@ -6022,8 +6052,17 @@ paths:
         Each entry carries the full reasoning, whether it was previously approved and came back, how long the finding has been deferred in total, and how old the claim is. A claim over many issues also carries `outliers`: the rows that do not look like the rest, which is what to read instead of all of them.
 
         Approve, send back or set rows aside with `POST /v1/claims/{id}/approval` and `POST /v1/claims/{id}/send-back`.
+
+        **Your own claims are not here.** Approving your own is refused, so a queue containing them is a list of work you cannot do. Ask for `mine=true` to see what you proposed and nobody has agreed to yet, which is a different question.
       operationId: list-review-queue
       parameters:
+        - description: Return what you proposed and nobody has agreed to, instead of what is waiting on you
+          explode: false
+          in: query
+          name: mine
+          schema:
+            description: Return what you proposed and nobody has agreed to, instead of what is waiting on you
+            type: boolean
         - explode: false
           in: query
           name: limit

@@ -105,7 +105,7 @@ func TestOneActionIsOneClaimHoweverManyPlacesItCovers(t *testing.T) {
 			}
 		}
 
-		waiting, total, err := f.store.Queue(t.Context(), f.reviewer, 50, 0)
+		waiting, total, err := f.store.Queue(t.Context(), f.reviewer, false, 50, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -139,7 +139,7 @@ func TestApprovingAClaimApprovesEveryRowInIt(t *testing.T) {
 				t.Errorf("after approving the claim, nothing approved stands at %s", at.PlaceIdentity)
 			}
 		}
-		if _, total, _ := f.store.Queue(ctx, f.reviewer, 50, 0); total != 0 {
+		if _, total, _ := f.store.Queue(ctx, f.reviewer, false, 50, 0); total != 0 {
 			t.Errorf("an approved claim is still waiting: %d in the queue", total)
 		}
 	})
@@ -197,7 +197,7 @@ func TestRowsSetAsideReturnAsTheirOwnClaim(t *testing.T) {
 		}
 		// Sent back, so not waiting on an approver; and the approved rest is
 		// not waiting either.
-		if _, total, _ := f.store.Queue(ctx, f.reviewer, 50, 0); total != 0 {
+		if _, total, _ := f.store.Queue(ctx, f.reviewer, false, 50, 0); total != 0 {
 			t.Errorf("%d claims still waiting after approving with rows set aside", total)
 		}
 	})
@@ -234,7 +234,7 @@ func TestSendingAClaimBackTakesEveryRowOutOfTheQueue(t *testing.T) {
 		if back.Decision.ID != recorded[0].ID {
 			t.Errorf("the representative row is %d; want the earliest, %d", back.Decision.ID, recorded[0].ID)
 		}
-		if _, total, _ := f.store.Queue(ctx, f.reviewer, 50, 0); total != 0 {
+		if _, total, _ := f.store.Queue(ctx, f.reviewer, false, 50, 0); total != 0 {
 			t.Errorf("a claim sent back is still waiting: %d", total)
 		}
 	})
@@ -292,7 +292,7 @@ func TestAnExtensionCarriesOnlyAnApprovedClaimToTheSamePlaces(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		waiting, _, err := f.store.Queue(ctx, f.reviewer, 50, 0)
+		waiting, _, err := f.store.Queue(ctx, f.reviewer, false, 50, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -400,16 +400,21 @@ func TestAClaimIsShownOnlyToSomebodyWhoMayActOnAllOfIt(t *testing.T) {
 
 		// The public reviewer may agree to one row and not the other, so the
 		// claim is not theirs to act on.
-		if _, total, err := f.store.Queue(ctx, f.reviewer, 50, 0); err != nil || total != 0 {
+		if _, total, err := f.store.Queue(ctx, f.reviewer, false, 50, 0); err != nil || total != 0 {
 			t.Errorf("a claim half of which is undisclosed was shown to a public reviewer: %d (%v)", total, err)
 		}
-		// Somebody who may act on both rows is shown it, and the claim is
-		// not their own to approve only because they proposed it — that is a
-		// separate refusal, made at approval rather than in the queue. Without
-		// this the assertion above would pass on a queue that shows nothing to
+		// The person who proposed it is not shown it either, and for a
+		// different reason: approving your own is refused, so a queue holding
+		// it would be a list of work they cannot do.
+		if _, total, err := f.store.Queue(ctx, insider, false, 50, 0); err != nil || total != 0 {
+			t.Errorf("somebody was shown their own claim in the queue: %d (%v)", total, err)
+		}
+		// They find it by asking for their own, which is the other question:
+		// what did I propose that nobody has agreed to. Without this the two
+		// assertions above would pass on a queue that shows nothing to
 		// anybody.
-		if _, total, err := f.store.Queue(ctx, insider, 50, 0); err != nil || total != 1 {
-			t.Errorf("a claim somebody may act on every row of was not shown to them: %d (%v)", total, err)
+		if _, total, err := f.store.Queue(ctx, insider, true, 50, 0); err != nil || total != 1 {
+			t.Errorf("a claim's proposer could not find it among their own: %d (%v)", total, err)
 		}
 	})
 }

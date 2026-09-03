@@ -483,6 +483,23 @@ button { font: inherit; color: inherit; }
 .state.agreed  { --c: var(--ok); }
 .state.lapsed  { --c: var(--sev-high); }
 
+/* What a claim is claiming, on the review queue's card.
+   The outcome is what an approver is agreeing to, so it is a mark of its own
+   rather than a clause in the line naming where the finding lives. Coloured by
+   what it does: dismissals hide risk and read as the warm end, a deferral is
+   time, and "affected" is agreement with the world. */
+.claimed {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  font-size: 11.5px; padding: 1px 8px; border-radius: var(--pill); white-space: nowrap;
+  --c: var(--muted); color: var(--c); background: color-mix(in oklab, var(--c) 12%, transparent);
+}
+.claimed b { font-weight: 700; }
+.claimed .why { font-size: 10.5px; opacity: .85; }
+.claimed.not-applicable { --c: var(--sev-high); }
+.claimed.wont-fix       { --c: var(--sev-high); }
+.claimed.deferred       { --c: var(--wait); }
+.claimed.affected       { --c: var(--ok); }
+
 .todo {
   display: inline-block; font-size: 9.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
   color: var(--sev-high); border: 1px dashed var(--sev-high); border-radius: 4px; padding: 0 5px; vertical-align: 1px;

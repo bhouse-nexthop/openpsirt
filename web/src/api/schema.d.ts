@@ -1282,6 +1282,8 @@ export interface paths {
          *     Each entry carries the full reasoning, whether it was previously approved and came back, how long the finding has been deferred in total, and how old the claim is. A claim over many issues also carries `outliers`: the rows that do not look like the rest, which is what to read instead of all of them.
          *
          *     Approve, send back or set rows aside with `POST /v1/claims/{id}/approval` and `POST /v1/claims/{id}/send-back`.
+         *
+         *     **Your own claims are not here.** Approving your own is refused, so a queue containing them is a list of work you cannot do. Ask for `mine=true` to see what you proposed and nobody has agreed to yet, which is a different question.
          */
         get: operations["list-review-queue"];
         put?: never;
@@ -5180,6 +5182,12 @@ export interface operations {
                 beneath?: string;
                 /** @description Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered */
                 state?: "undecided" | "waiting" | "agreed" | "lapsed";
+                /** @description Keep only groups a standing judgment of this kind covers — how to ask what has been dismissed, which state cannot answer: agreed says a judgment stands, not which one. Every place must be answered the same way, and only the claim standing now counts */
+                outcome?: "affected" | "not-applicable" | "deferred" | "wont-fix";
+                /** @description Keep only groups by who is dealing with them. A group whose places are held by different people is none of these */
+                assigned?: "me" | "somebody" | "nobody";
+                /** @description Keep only groups whose issue we rated differently from the world — what has been re-prioritized here */
+                reassessed?: boolean;
                 /** @description Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows */
                 exclude?: string[] | null;
                 /** @description How many to return */
@@ -5736,6 +5744,8 @@ export interface operations {
     "list-review-queue": {
         parameters: {
             query?: {
+                /** @description Return what you proposed and nobody has agreed to, instead of what is waiting on you */
+                mine?: boolean;
                 limit?: number;
                 offset?: number;
             };

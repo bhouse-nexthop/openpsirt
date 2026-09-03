@@ -272,6 +272,23 @@ type Filter struct {
 	// says "12 places · 3 answered", which is the more useful form of the same
 	// fact, and a fifth word would be a filter for a number people can read.
 	State string
+	// Outcome keeps groups a standing decision of this kind covers — the way
+	// to ask "what have we dismissed", which State cannot answer: "agreed"
+	// says a judgment stands, not which judgment. Read against what stands
+	// now, so a dismissal withdrawn last year does not answer for its place.
+	Outcome string
+	// Assigned keeps groups by who is dealing with them: "me", "somebody" or
+	// "nobody". A findings list that cannot say "mine" makes somebody go to a
+	// second screen to find the work they already know is theirs.
+	Assigned string
+	// HeldBy is who "me" means, set by the store from the subject rather than
+	// by a caller — for the same reason ProductID is: a caller supplying it
+	// could ask for somebody else's while saying "mine".
+	HeldBy int64
+	// Reassessed keeps groups whose issue we rated differently from the
+	// world. It is how somebody finds what has been re-prioritized here,
+	// which is a question auditors ask and nothing else answers.
+	Reassessed bool
 	// Exclude drops components of these names.
 	//
 	// This exists because one package can drown the list. Measured on a switch
@@ -354,6 +371,28 @@ func (f Filter) narrow(q *bun.SelectQuery) *bun.SelectQuery {
 		q = q.Where("f.consumer_id IS NULL")
 	} else if under := strings.TrimSpace(f.Under); under != "" {
 		q = q.Where("f.consumer_id IN (?)", componentsWhere(q, "c.name = ?", under))
+	}
+	// Who is dealing with it. Set for the whole group at once, so a group is
+	// held when its places are — asked as MIN and MAX rather than as one row,
+	// because a group whose places disagree is not "mine" and saying so would
+	// hand somebody work that is half theirs.
+	switch strings.TrimSpace(f.Assigned) {
+	case "nobody":
+		q = q.Having("COUNT(f.assigned_to) = 0")
+	case "somebody":
+		q = q.Having("COUNT(f.assigned_to) = COUNT(*)")
+	case "me":
+		if f.HeldBy != 0 {
+			q = q.Having("COUNT(f.assigned_to) = COUNT(*)").
+				Having("MIN(f.assigned_to) = ? AND MAX(f.assigned_to) = ?", f.HeldBy, f.HeldBy)
+		}
+	}
+	// What we said about the issue, as against what was published. A rating of
+	// ours is the record of a priority somebody changed here.
+	if f.Reassessed {
+		q = q.Where("f.vulnerability_id IN (?)",
+			q.NewSelect().TableExpr("vulnerability AS v").Column("v.id").
+				Where("v.assessed_severity IS NOT NULL"))
 	}
 	if f.Beneath != nil {
 		// The subtree as the engine walks it, not as a list of identifiers
@@ -507,7 +546,8 @@ const coversHere = "(de.live_key IS NULL OR (" + keyMatches + "))"
 // product is a condition on the decision for that reason.
 func (f Filter) byState(q *bun.SelectQuery) *bun.SelectQuery {
 	state := strings.TrimSpace(f.State)
-	if state == "" {
+	outcome := strings.TrimSpace(f.Outcome)
+	if state == "" && outcome == "" {
 		return q
 	}
 	// The words are spelled here rather than taken from the triage package,
@@ -544,12 +584,24 @@ func (f Filter) byState(q *bun.SelectQuery) *bun.SelectQuery {
 		ColumnExpr("MAX(CASE WHEN de.state = ? AND de.live_key IS NOT NULL THEN 1 ELSE 0 END) AS approved",
 			approved).
 		ColumnExpr("MAX(CASE WHEN de.state = ? THEN 1 ELSE 0 END) AS lapsed", lapsed).
+		// Which kind of judgment stands here, counted only for the claim that
+		// currently stands: a dismissal withdrawn eighteen months ago must not
+		// answer for its place, which is the same rule "approved" above holds.
+		ColumnExpr("MAX(CASE WHEN de.live_key IS NOT NULL AND de.outcome = ? THEN 1 ELSE 0 END) AS this_outcome",
+			outcome).
 		Where("de.product_id = ?", f.ProductID).
 		Where("f2.closed_run_id IS NULL").
 		Where(coversHere).
 		GroupExpr("f2.id")
 	q = q.Join("LEFT JOIN (?) AS dd ON dd.finding_id = f.id", decided)
 
+	if outcome != "" {
+		// Every place answered the same way, not merely one of them: a group
+		// where one place is dismissed and the rest are open is not a
+		// dismissal, and listing it under "dismissed" is how a number stops
+		// being one somebody can act on.
+		q = q.Having("SUM(COALESCE(dd.this_outcome, 0)) = COUNT(*)")
+	}
 	switch state {
 	case "agreed":
 		return q.Having("SUM(COALESCE(dd.approved, 0)) = COUNT(*)")
@@ -629,6 +681,8 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 	// product in the deployment.
 	filter.ProductID = productID
 	filter.TargetID = targetID
+	// Who "mine" means, from the subject rather than from the request.
+	filter.HeldBy = subject.ID
 
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -1532,6 +1586,8 @@ func (s *Store) ComponentGroups(ctx context.Context, subject access.Subject, tar
 	}
 	filter.ProductID = productID
 	filter.TargetID = targetID
+	// Who "mine" means, from the subject rather than from the request.
+	filter.HeldBy = subject.ID
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}

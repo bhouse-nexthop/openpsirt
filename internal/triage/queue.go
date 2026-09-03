@@ -91,7 +91,14 @@ const outlierRows = 20
 // a claim is acting on the argument, which does not come in halves: shown the
 // part they may approve, a reader would agree to words whose other half stays
 // waiting on somebody else, and the count beside the card would be wrong.
-func (s *Store) Queue(ctx context.Context, subject access.Subject, limit, offset int) ([]Waiting, int, error) {
+//
+// **And not their own.** Approving your own claim is refused, because a control
+// one person completes alone is not one (TRI-41) — so a queue containing them
+// is a work list of things the reader cannot do, which teaches them to skip
+// rows. `mine` asks for exactly those instead: somebody wants to find what they
+// proposed and nobody has agreed to yet, and that is a different question from
+// what is waiting on them.
+func (s *Store) Queue(ctx context.Context, subject access.Subject, mine bool, limit, offset int) ([]Waiting, int, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
@@ -105,6 +112,13 @@ func (s *Store) Queue(ctx context.Context, subject access.Subject, limit, offset
 			ColumnExpr("MAX(de.id) AS newest").
 			GroupExpr("de.claim_id")
 		q = approvableBy(waiting(q, s.now()), subject, "de")
+		// Whose claims. The same statement either way, so the count and the
+		// page cannot disagree about which question was asked.
+		if mine {
+			q = q.Where("de.proposed_by = ?", subject.ID)
+		} else {
+			q = q.Where("de.proposed_by <> ?", subject.ID)
+		}
 		return q.Where("NOT EXISTS (?)", notApprovableBy(
 			s.db.NewSelect().TableExpr(`"decision" AS "other"`).ColumnExpr("1").
 				Where(`"other".claim_id = de.claim_id`), subject, `"other"`))

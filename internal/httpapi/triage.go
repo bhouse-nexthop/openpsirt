@@ -177,18 +177,22 @@ func registerTriage(api huma.API, in Ingest) {
 			"claim over many issues also carries `outliers`: the rows that do not look like the " +
 			"rest, which is what to read instead of all of them.\n\n" +
 			"Approve, send back or set rows aside with `POST /v1/claims/{id}/approval` and " +
-			"`POST /v1/claims/{id}/send-back`.",
+			"`POST /v1/claims/{id}/send-back`.\n\n" +
+			"**Your own claims are not here.** Approving your own is refused, so a queue " +
+			"containing them is a list of work you cannot do. Ask for `mine=true` to see what " +
+			"you proposed and nobody has agreed to yet, which is a different question.",
 		Tags: []string{"Triage"},
 	}, func(ctx context.Context, input *struct {
-		Limit  int `query:"limit" default:"50" minimum:"1" maximum:"200"`
-		Offset int `query:"offset" minimum:"0"`
+		Mine   bool `query:"mine" doc:"Return what you proposed and nobody has agreed to, instead of what is waiting on you"`
+		Limit  int  `query:"limit" default:"50" minimum:"1" maximum:"200"`
+		Offset int  `query:"offset" minimum:"0"`
 	}) (*QueueOutput, error) {
 		subject, store, err := triaging(ctx, in)
 		if err != nil {
 			return nil, err
 		}
 
-		waiting, total, err := store.Queue(ctx, subject, input.Limit, input.Offset)
+		waiting, total, err := store.Queue(ctx, subject, input.Mine, input.Limit, input.Offset)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "the review queue could not be read", err)
 		}
