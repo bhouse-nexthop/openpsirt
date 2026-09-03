@@ -460,6 +460,52 @@ in this plan:
   `finding` on SQLite needs to be checked with `EXPLAIN QUERY PLAN` on a
   full-size database, which is what this work did.
 
+*Step 5, the same numbers on PostgreSQL.* The image from before this work
+(3689ed2) and the image after step 4, each stood up against its own
+database on the PostgreSQL 16 server `make engines-up` runs, the same two
+switch builds sent to each and scanned there, the same forty deferral
+claims made, the same requests timed the same way. Both under the same
+load (4 to 7), so read the comparison. The SQLite columns beside them are
+the demo's before and after from the table above.
+
+| Request | PostgreSQL before | PostgreSQL after | SQLite before | SQLite after |
+|---|---|---|---|---|
+| Findings page, warm | 1.07 s | **0.18 s** | 2.02 s | **0.13 s** |
+| Page two | 1.08 s | 0.19 s | 2.05 s | 0.12 s |
+| Findings, `exploited` | 1.08 s | 0.17 s | 2.01 s | 0.10 s |
+| Findings, `search=ssl` | 1.12 s | 0.18 s | 2.01 s | 0.13 s |
+| Findings, `state=undecided` | 1.36 s | 0.14 s | 2.33 s | 0.20 s |
+| Findings, `beneath` the root | 1.14 s | 0.12 s | | 0.23 s |
+| By component | 0.21 s | 0.07 s | 0.81 s | 0.17 s |
+| The kernel's issue list | 0.22 s | 0.03 s | 1.08 s | 0.10 s |
+| One finding, with claims standing | 0.04 s | 0.02 s | 0.48 s | 0.01 s |
+| Unassigned | 0.25 s | 0.09 s | 0.18 s | 0.24 s |
+| Tree root | 0.14 s | 0.15 s | 0.53 s | 0.42 s |
+| Around the kernel | 0.09 s | 0.19 s | 0.28 s | 0.43 s |
+| Review queue, 32 claims | 0.83 s | **0.03 s** | 0.28 s | **0.06 s** |
+
+PostgreSQL was never as far behind as SQLite, because it plans with
+statistics and its old plans were merely doing too much work rather than
+the wrong work; the findings page is six times faster there and the queue
+thirty times, for the same reasons as on SQLite. Two rows read the other
+way and are worth saying plainly. **The neighbours of the kernel are
+slower on PostgreSQL than before** (0.09 s to 0.19 s): the kernel has
+forty-odd parents, each row carries what is beneath it, and the recursive
+statement walks forty subtrees that mostly contain the kernel's own,
+where the old code walked an in-memory map it had already paid to read.
+`EXPLAIN ANALYZE` puts the recursion at 86 ms for the root's thirty
+children; on SQLite the same screen halved because reading 18,561 edges
+through its driver was the larger cost there. The tree's first screen is
+a wash on PostgreSQL for the same reason. The fix, if it matters, is the
+one named above: ask what is beneath a row when it is opened. And the
+unassigned list is the one screen where SQLite reads slower after than
+before; the before number was on the earlier database with a different
+set of open rows and no claims, so it is the after column that is the
+measurement, and its statement is a grouping over every open row in the
+deployment with two joins under it, which is the shape step 1 removed
+from the findings list and could remove here with the same index led by
+`assigned_to`.
+
 ## Decided on 2026-09-02, from the workflow review
 
 The mockup was restyled and then reviewed as a workflow against thousands of
