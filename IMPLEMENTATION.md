@@ -189,7 +189,10 @@ declared fix that did not land shows as a missed target.
   vulnerability database: one replica asks, on an interval that is a setting,
   for every build holding an inventory that has not been scanned within it.
   `DESIGN-ingest.md` records what it deliberately does not do
-- Retention of release inventories and their suppressions
+- **Retention of release inventories and their suppressions is built** — a
+  tagged release keeps both, a branch build's contents are let go once they
+  have been read, and the record of what arrived outlives them either way.
+  `DESIGN-ingest.md` says what is kept and why
 - **End-of-life dates are built** — a date on a release or on its product,
   inherited rather than copied, reversible, and switching off two things:
   a deadline on anything the release holds, and reporting a build of it as

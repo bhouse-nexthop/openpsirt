@@ -311,12 +311,24 @@ supplied describes the file they meant to send, not the one that arrived.
 
 ### Retention is not symmetric
 
-A nightly scan's documents are deleted once it has been read: the next night
+A nightly scan's *contents* are deleted once it has been read: the next night
 supersedes it, and keeping them grows storage with the calendar rather than
 with what is being tracked. A tagged release keeps both its inventory and its
 suppressions, because re-scanning it years later needs what it contained *and*
 what the build had already argued about its own carried patches. Keeping only
 the first would quietly undo every one of those arguments on the next re-scan.
+
+**The record of what arrived outlives the contents.** What kind of document it
+was, how large it was, and the hash of the bytes as they were received are kept
+either way, and an upload reports them (ING-07). Two things need that. A
+re-parse means asking the build to send the file again — that is the whole
+recovery path for a document that has been let go — and without the hash the
+second copy is taken on trust. And an upload whose contents are gone otherwise
+reads back as an upload that arrived with nothing, which is indistinguishable
+from one that failed to store anything.
+
+It costs a few hundred bytes against tens of megabytes, so it is kept for every
+upload rather than for the ones somebody might ask about later.
 
 
 ## Reading a document

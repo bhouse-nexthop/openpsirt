@@ -2229,3 +2229,29 @@ soak that is too short makes the test weaker; a budget that is too short makes
 it fail.
 
 Verified by deleting the lease check: six asks instead of three.
+
+## The hash ING-07 keeps went with the bytes (2026-09-03)
+
+ING-07 says a nightly scan's documents are deleted once read, and that "for
+deleted files we keep a hash, stamp records with the parser version, and
+re-upload from the build if a re-parse is needed". The parser version is
+stamped. The hash was not kept: `Discard` deleted the document row along with
+its contents, so the field whose own comment says it "makes a re-upload
+recognizable without reading it again" existed for tagged releases — where the
+file is still there to hash — and was destroyed for branch builds, which is
+where re-uploading is the only recovery there is.
+
+Two effects, and the second is the one somebody would actually hit. Asking a
+build to send a file again leaves nothing to check the second copy against. And
+an upload whose contents were let go read back as an upload with no documents,
+which is exactly what a failed one looks like.
+
+`Discard` now marks the row rather than deleting it. `List` means "still held",
+so ingest asking for an inventory to parse is unchanged; `Sent` is the record,
+and the receipt carries it — kind, size, hash, and whether the contents are
+still here. A few hundred bytes against tens of megabytes, so it is kept for
+every upload rather than for the ones somebody might ask about.
+
+Stage 7's retention bullet was already built otherwise, and is now marked as
+such. Verified by putting the delete back: the receipt reports zero documents
+after reading, and the store test loses the hash.

@@ -47,10 +47,15 @@ type Document struct {
 	// arrive as a directory rather than a file, so there is rarely one.
 	Ordinal int `bun:"ordinal,notnull"`
 	// ContentHash is over the bytes as received, which is what makes a
-	// re-upload recognizable without reading it again.
+	// re-upload recognizable without reading it again. It outlives the bytes:
+	// a nightly scan's contents are let go once they have been read, and the
+	// hash is the whole reason the row stays behind (ING-07).
 	ContentHash string    `bun:"content_hash,notnull"`
 	SizeBytes   int64     `bun:"size_bytes,notnull"`
 	CreatedAt   time.Time `bun:"created_at,notnull"`
+	// DiscardedAt says the contents are gone and when they went. Nil is a
+	// document still held whole.
+	DiscardedAt *time.Time `bun:"discarded_at"`
 }
 
 // chunk is a bounded piece of a document.
@@ -120,17 +125,58 @@ func (d *Documents) Write(ctx context.Context, scanID int64, kind Kind, ordinal 
 	return doc, nil
 }
 
-// List returns a scan's documents, in the order they were sent.
+// List returns the documents of a scan that are still held whole, in the order
+// they were sent.
+//
+// A document whose contents have been let go is not one of these. It is still
+// a record of what arrived — Sent answers that — but it is not something
+// anything can read, and a caller looking for an inventory to parse wants the
+// question answered rather than a row that will hand it nothing.
 func (d *Documents) List(ctx context.Context, scanID int64) ([]Document, error) {
 	var docs []Document
 	err := d.db.NewSelect().Model(&docs).
 		Where("scan_id = ?", scanID).
+		Where("discarded_at IS NULL").
 		Order("kind", "ordinal").
 		Scan(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list documents: %w", err)
 	}
 	return docs, nil
+}
+
+// Sent returns everything a scan arrived with, held or not.
+//
+// The record rather than the contents: what kind of document it was, how large
+// it was, the hash of the bytes that arrived, and whether they are still here.
+// It outlives them deliberately — a build asked to send a file again can be
+// told whether what it sends is what was read, and a scan whose contents have
+// been let go still says what it was made of instead of looking like one that
+// arrived with nothing.
+func (d *Documents) Sent(ctx context.Context, scanIDs []int64) (map[int64][]Document, error) {
+	sent := map[int64][]Document{}
+	if len(scanIDs) == 0 {
+		return sent, nil
+	}
+	var docs []Document
+	err := database.IDsInBatches(ctx, scanIDs, func(ctx context.Context, batch []int64) error {
+		var page []Document
+		if err := d.db.NewSelect().Model(&page).
+			Where("scan_id IN (?)", bun.List(batch)).
+			Order("scan_id", "kind", "ordinal").
+			Scan(ctx); err != nil {
+			return err
+		}
+		docs = append(docs, page...)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read what these scans arrived with: %w", err)
+	}
+	for _, doc := range docs {
+		sent[doc.ScanID] = append(sent[doc.ScanID], doc)
+	}
+	return sent, nil
 }
 
 // Open reads a document back as a stream.
@@ -141,13 +187,19 @@ func (d *Documents) Open(ctx context.Context, documentID int64) io.Reader {
 	return &chunkReader{ctx: ctx, db: d.db, documentID: documentID}
 }
 
-// Discard removes a scan's documents.
+// Discard lets go of a scan's contents, keeping the record of what arrived.
 //
 // What a nightly build sent is superseded the next night, so keeping it costs
 // storage that grows with the calendar. What a tagged release sent is kept,
 // because re-scanning it years from now needs both what it contained and what
 // the build had already argued about its own patches — so this is called for
 // one and not the other.
+//
+// The rows describing the documents stay either way, marked as let go. They
+// are a few hundred bytes against tens of megabytes, and they carry the hash
+// of what arrived — which is what ING-07 keeps them for: a re-parse means
+// asking the build to send the file again, and without the hash there is
+// nothing to check the second copy against.
 func (d *Documents) Discard(ctx context.Context, scanID int64) error {
 	docs, err := d.List(ctx, scanID)
 	if err != nil {
@@ -168,9 +220,12 @@ func (d *Documents) Discard(ctx context.Context, scanID int64) error {
 	if err != nil {
 		return fmt.Errorf("discard document content: %w", err)
 	}
-	if _, err := d.db.NewDelete().Model((*Document)(nil)).
-		Where("scan_id = ?", scanID).Exec(ctx); err != nil {
-		return fmt.Errorf("discard documents: %w", err)
+	now := d.now().UTC()
+	if _, err := d.db.NewUpdate().Model((*Document)(nil)).
+		Set("discarded_at = ?", now).
+		Where("scan_id = ?", scanID).
+		Where("discarded_at IS NULL").Exec(ctx); err != nil {
+		return fmt.Errorf("record that the contents were let go: %w", err)
 	}
 	return nil
 }

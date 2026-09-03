@@ -414,6 +414,27 @@ type ReceiptBody struct {
 	// newer one: a run covers a build rather than an upload.
 	Opened int `json:"opened,omitempty" doc:"Issues this run found that were not open before"`
 	Closed int `json:"closed,omitempty" doc:"Issues that were open and are not any more"`
+	// Sent is what the upload was made of. It outlives the files themselves:
+	// a branch build's contents are let go once they have been read, and this
+	// still says what arrived and what its bytes hashed to.
+	Sent []SentBody `json:"sent,omitempty" doc:"The documents this upload was made of"`
+}
+
+// SentBody is one document an upload was made of, as a record rather than as
+// contents.
+//
+// The hash is here so a build can check a file it is asked to send again
+// against the one that was read. That is the whole point of keeping it: a
+// re-parse means asking for the file back, and without something to compare
+// against, the second copy is taken on trust.
+type SentBody struct {
+	Kind      string `json:"kind" enum:"inventory,suppressions" doc:"What the document is"`
+	SizeBytes int64  `json:"size_bytes" doc:"How large it was"`
+	Hash      string `json:"hash" doc:"SHA-256 of the bytes as they arrived"`
+	// Held says the contents are still here. A tagged release keeps them,
+	// because re-scanning it years from now needs what it contained; a branch
+	// build's are let go, because the next night supersedes them.
+	Held bool `json:"held" doc:"Whether the contents are still kept"`
 }
 
 // MeasuredBody is what the numbers on a build were arrived at with.
@@ -513,6 +534,19 @@ func registerReceipts(api huma.API, in Ingest) {
 			return nil, wentWrong(in.Logger, "what the scans changed could not be read", err)
 		}
 
+		// What each upload was made of, for the page at once. The record
+		// survives the contents, so a branch build reads back as what it sent
+		// rather than as nothing — which is what it looked like before, and
+		// looks identical to an upload that failed to store anything.
+		ids := make([]int64, 0, len(receipts))
+		for _, r := range receipts {
+			ids = append(ids, r.Scan.ID)
+		}
+		sent, err := ingest.NewDocuments(in.DB.DB).Sent(ctx, ids)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "what the scans arrived with could not be read", err)
+		}
+
 		for _, r := range receipts {
 			body := ReceiptBody{
 				ScanID:     r.Scan.ID,
@@ -525,6 +559,12 @@ func registerReceipts(api huma.API, in Ingest) {
 			if r.RunID != nil {
 				change := changed[*r.RunID]
 				body.Opened, body.Closed = change.Opened, change.Closed
+			}
+			for _, doc := range sent[r.Scan.ID] {
+				body.Sent = append(body.Sent, SentBody{
+					Kind: string(doc.Kind), SizeBytes: doc.SizeBytes,
+					Hash: doc.ContentHash, Held: doc.DiscardedAt == nil,
+				})
 			}
 			out.Body.Items = append(out.Body.Items, body)
 		}

@@ -553,6 +553,17 @@ button { font: inherit; color: inherit; }
 .vchip.differs { border-color: var(--sev-high); color: var(--sev-high); background: color-mix(in oklab, var(--sev-high) 10%, transparent); }
 .variants { display: flex; gap: 5px; flex-wrap: wrap; }
 
+/* What an upload was made of. Not a chip: a chip is something you press, and
+   these are a reading of what arrived. Struck through once the contents have
+   been let go, because the row is then a record rather than a file. */
+.sent { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.doc {
+  display: inline-flex; align-items: center; padding: 2px 7px;
+  border: 1px solid var(--line); border-radius: var(--pill);
+  font-size: var(--step--2); color: var(--muted); white-space: nowrap;
+}
+.doc.letgo { color: var(--faint); border-style: dashed; }
+
 /* ---------- filters ---------- */
 
 .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }

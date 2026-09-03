@@ -99,6 +99,7 @@ export function Inventories() {
                 <th>State</th>
                 <th className="num">Opened</th>
                 <th className="num">Closed</th>
+                <th>Sent</th>
                 <th>Serial</th>
               </tr>
             </thead>
@@ -113,6 +114,9 @@ export function Inventories() {
                   </td>
                   <td className="num">{scan.opened || (scan.state === "scanned" ? "—" : "")}</td>
                   <td className="num">{scan.closed || (scan.state === "scanned" ? "—" : "")}</td>
+                  <td>
+                    <Sent sent={scan.sent ?? []} />
+                  </td>
                   <td className="id hint">{scan.serial}</td>
                 </tr>
               ))}
@@ -153,6 +157,44 @@ export function Inventories() {
       <UploadDrawer open={uploading} onClose={() => setUploading(false)} />
     </>
   );
+}
+
+// What an upload was made of, and whether it is still here.
+//
+// The record outlives the files: a branch build's contents are let go once
+// they have been read, because the next night supersedes them, and a tagged
+// release keeps them because re-scanning it years from now needs what it
+// contained. Both read back as what arrived, so an upload whose files are gone
+// does not look like one that arrived with nothing.
+//
+// The hash is on the title rather than on the row. Somebody needs it about
+// once — when a build is asked to send a file again and the second copy has to
+// be checked against the first — and a column of hexadecimal on every row for
+// that is a table nobody can read.
+function Sent({ sent }: { sent: { kind?: string; size_bytes?: number; hash?: string; held?: boolean }[] }) {
+  if (sent.length === 0) return <span className="hint">—</span>;
+  return (
+    <span className="sent">
+      {sent.map((doc, i) => (
+        <span
+          key={`${doc.kind}-${i}`}
+          className={doc.held ? "doc" : "doc letgo"}
+          title={`${doc.hash ?? ""}${doc.held ? "" : " — contents let go; the record of what arrived is kept"}`}
+        >
+          {doc.kind === "suppressions" ? "suppressions" : "inventory"} {size(doc.size_bytes ?? 0)}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+// Bytes as somebody reads them. Whole units below a thousand of the next one,
+// because "1.2 MB" is the answer to how large a file is and "1,234,567 bytes"
+// is the answer to a question nobody asked.
+function size(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // The states an upload passes through, and the one it can end in.

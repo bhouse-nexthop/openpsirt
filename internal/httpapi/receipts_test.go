@@ -198,3 +198,61 @@ func TestAPinnedKeyReadsNoWiderThanItSends(t *testing.T) {
 		}
 	})
 }
+
+func TestAReceiptSaysWhatArrivedAfterTheContentsAreGone(t *testing.T) {
+	// A branch build's contents are let go once they have been read, because
+	// the next night supersedes them. What arrived is still answerable: what
+	// kind of document, how large, and what its bytes hashed to.
+	//
+	// The hash is the point. A re-parse means asking the build to send the
+	// file again, and without something to compare against the second copy is
+	// taken on trust — so a receipt that forgot what it had read left the
+	// producer no way to prove it was sending back the same file (ING-07).
+	eachIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
+		if code, _ := f.send(t, upload(t, f.path,
+			inventory(nowish(), "libc6"), suppression, suppression)); code != http.StatusAccepted {
+			t.Fatal("the upload was not taken")
+		}
+
+		// Before it is read, everything is held.
+		_, out := receipts(t, f, f.key, f.path)
+		if len(out.Body.Items) != 1 {
+			t.Fatalf("got %d receipts, want 1", len(out.Body.Items))
+		}
+		sent := out.Body.Items[0].Sent
+		if len(sent) != 3 {
+			t.Fatalf("the upload reads back as %d documents, want 3 (an inventory and two "+
+				"suppressions)", len(sent))
+		}
+		for _, doc := range sent {
+			if !doc.Held {
+				t.Errorf("a %s document is reported let go before anything read it", doc.Kind)
+			}
+		}
+
+		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+		reader := ingest.NewReader(f.db, f.queue, sbom.Limits{}, quiet, "test")
+		if _, err := reader.Once(t.Context()); err != nil {
+			t.Fatalf("reading: %v", err)
+		}
+
+		_, out = receipts(t, f, f.key, f.path)
+		after := out.Body.Items[0].Sent
+		if len(after) != len(sent) {
+			t.Fatalf("after reading, the upload reads back as %d documents, want %d",
+				len(after), len(sent))
+		}
+		for i, doc := range after {
+			if doc.Held {
+				t.Errorf("a %s document of a branch build is still held after it was read", doc.Kind)
+			}
+			if doc.Hash == "" || doc.Hash != sent[i].Hash {
+				t.Errorf("the %s document hashes to %q, want %q", doc.Kind, doc.Hash, sent[i].Hash)
+			}
+			if doc.SizeBytes != sent[i].SizeBytes || doc.SizeBytes == 0 {
+				t.Errorf("the %s document reads back as %d bytes, want %d",
+					doc.Kind, doc.SizeBytes, sent[i].SizeBytes)
+			}
+		}
+	})
+}

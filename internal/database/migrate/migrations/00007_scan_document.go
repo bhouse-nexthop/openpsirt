@@ -24,9 +24,15 @@ func init() {
 // already has.
 //
 // Retention is not symmetric. A nightly scan is superseded the next night and
-// its documents are deleted once it has been read; a tagged release keeps
-// them, because re-scanning it years later needs both what it contained and
-// what the build had already argued about its own patches.
+// its contents are deleted once it has been read; a tagged release keeps them,
+// because re-scanning it years later needs both what it contained and what the
+// build had already argued about its own patches.
+//
+// What is deleted is the contents. The row describing the document stays, with
+// the hash of the bytes that arrived and when they were let go — so a build
+// asked to send a file again can be told whether what it sent is what we read,
+// and so a scan whose contents are gone still says what it was made of rather
+// than looking like a scan that arrived with nothing (ING-07).
 //
 // Content is split across rows. A single value of tens of megabytes runs into
 // a server's maximum packet size on two of the four engines, and the limit is
@@ -49,6 +55,7 @@ func upScanDocument(ctx context.Context, tx *sql.Tx) error {
 			"content_hash" ` + t.hash + ` NOT NULL,
 			size_bytes   BIGINT NOT NULL,
 			"created_at"   ` + t.timestamp + ` NOT NULL,
+			"discarded_at" ` + t.timestamp + `,
 			CONSTRAINT "scan_document_place_unique" UNIQUE ("scan_id", "kind", "ordinal"),
 			CONSTRAINT "scan_document_scan_id_fk" FOREIGN KEY ("scan_id") REFERENCES "scan"("id")
 		)` + t.suffix,

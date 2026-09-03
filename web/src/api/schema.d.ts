@@ -3180,6 +3180,8 @@ export interface components {
              * @description The scan this upload became
              */
             scan_id: number;
+            /** @description The documents this upload was made of */
+            sent?: components["schemas"]["SentBody"][] | null;
             /** @description The identity the inventory carries for itself */
             serial?: string;
             /**
@@ -3348,6 +3350,22 @@ export interface components {
             readonly $schema?: string;
             /** @description What needs to change, in markdown */
             because: string;
+        };
+        SentBody: {
+            /** @description SHA-256 of the bytes as they arrived */
+            hash: string;
+            /** @description Whether the contents are still kept */
+            held: boolean;
+            /**
+             * @description What the document is
+             * @enum {string}
+             */
+            kind: "inventory" | "suppressions";
+            /**
+             * Format: int64
+             * @description How large it was
+             */
+            size_bytes: number;
         };
         "Set-settingRequest": {
             /**

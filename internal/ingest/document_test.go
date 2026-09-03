@@ -120,10 +120,14 @@ func TestASuppressionSetIsSeveralDocuments(t *testing.T) {
 	})
 }
 
-func TestDiscardingLeavesNothingBehind(t *testing.T) {
-	// A nightly scan is superseded the next night, so its documents go. Rows
-	// left behind would grow storage with the calendar rather than with what
-	// is being tracked.
+func TestDiscardingLetsGoOfTheContentsAndKeepsTheRecord(t *testing.T) {
+	// A nightly scan is superseded the next night, so its contents go: keeping
+	// them grows storage with the calendar rather than with what is tracked.
+	//
+	// The record of what arrived stays. It is a few hundred bytes against tens
+	// of megabytes, and it carries the hash — which is what a re-parse needs,
+	// because a re-parse means asking the build to send the file again and the
+	// second copy is otherwise taken on trust (ING-07).
 	each(t, func(t *testing.T, s *ingest.Store, targetID int64) {
 		ctx := t.Context()
 		rec, _, err := s.Record(ctx, arriving(targetID, "hash-1", time.Now().UTC().Add(-time.Hour)))
@@ -145,6 +149,25 @@ func TestDiscardingLeavesNothingBehind(t *testing.T) {
 		}
 		if got, _ := io.ReadAll(docs.Open(ctx, doc.ID)); len(got) != 0 {
 			t.Errorf("%d bytes of content survived the discard", len(got))
+		}
+
+		// And what arrived is still answerable.
+		sent, err := docs.Sent(ctx, []int64{rec.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sent[rec.ID]) != 1 {
+			t.Fatalf("the scan reads back as %d documents sent, want 1", len(sent[rec.ID]))
+		}
+		kept := sent[rec.ID][0]
+		if kept.ContentHash != doc.ContentHash || kept.ContentHash == "" {
+			t.Errorf("the hash of what arrived is %q, want %q", kept.ContentHash, doc.ContentHash)
+		}
+		if kept.SizeBytes != doc.SizeBytes {
+			t.Errorf("what arrived reads back as %d bytes, want %d", kept.SizeBytes, doc.SizeBytes)
+		}
+		if kept.DiscardedAt == nil {
+			t.Errorf("the record does not say the contents were let go")
 		}
 		// Discarding what is already gone is not an error: the retention sweep
 		// and a re-run of it must agree.
