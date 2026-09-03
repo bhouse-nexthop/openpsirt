@@ -179,9 +179,12 @@ func TestAnAcceptedScanBecomesStoredGraph(t *testing.T) {
 	})
 }
 
-func TestABranchScanDoesNotKeepWhatItWasSent(t *testing.T) {
-	// The next night supersedes it, so keeping it grows storage with the
-	// calendar rather than with what is being tracked.
+func TestABranchScanKeepsTheRecordAndNotTheContents(t *testing.T) {
+	// The next night supersedes what it was sent, so keeping the files grows
+	// storage with the calendar rather than with what is being tracked. The
+	// record of what arrived stays: without it the upload reads back as one
+	// that arrived with nothing, which is what a failed one looks like, and
+	// the hash a re-parse would check a resent file against is gone (ING-07).
 	eachReader(t, func(t *testing.T, f *readerFixture) {
 		scanID := f.accept(t, f.branch, time.Now().UTC().Add(-time.Hour), anInventory, aSuppression)
 		result, err := f.reader.Once(t.Context())
@@ -191,9 +194,26 @@ func TestABranchScanDoesNotKeepWhatItWasSent(t *testing.T) {
 		if result.Retained {
 			t.Error("a branch scan kept what it was sent")
 		}
-		held, err := ingest.NewDocuments(f.db.DB).List(t.Context(), scanID)
+		docs := ingest.NewDocuments(f.db.DB)
+		held, err := docs.List(t.Context(), scanID)
 		if err != nil || len(held) != 0 {
 			t.Errorf("%d documents survived a branch scan (%v)", len(held), err)
+		}
+		sent, err := docs.Sent(t.Context(), []int64{scanID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sent[scanID]) != 2 {
+			t.Fatalf("the scan reads back as %d documents sent, want the inventory and its "+
+				"suppressions", len(sent[scanID]))
+		}
+		for _, doc := range sent[scanID] {
+			if doc.ContentHash == "" {
+				t.Errorf("the %s document reads back with no hash of what arrived", doc.Kind)
+			}
+			if doc.DiscardedAt == nil {
+				t.Errorf("the %s document does not say its contents were let go", doc.Kind)
+			}
 		}
 	})
 }
