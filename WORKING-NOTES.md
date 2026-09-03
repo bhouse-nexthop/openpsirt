@@ -187,14 +187,43 @@ fixing the second helps production as much as it helps the loop.
 
 The surprise was where the SQLite time actually went. Migrating per test was
 about a second, as measured — but with that gone the API package still took
-37 s on SQLite, and its whole run was I/O wait: SQLite as we open it syncs
-the file at every commit, a test is nothing but small commits, and `Reset`
-alone was thirty of them. On a memory-backed directory the same package
-takes about one second. So `dbtest` puts every SQLite test file on
-`/dev/shm` when it exists, falls back to the ordinary temporary directory
-when it does not, and empties the tables in one transaction. The migrated
-template is kept as bytes in the process rather than as a file, because a
-test binary has no hook after its last test and a file would outlive it.
+37 s on SQLite, and its whole run was I/O wait: SQLite as we opened it synced
+the file twice at every commit, a test is nothing but small commits, and
+`Reset` alone was thirty of them. On a memory-backed directory the same
+package took about one second, which named the cost. The fix is not the
+directory — a container's `/dev/shm` is often 64 MB — but the syncing: a test
+database is thrown away at the end of the test, so `dbtest` opens it with
+`synchronous(OFF)` on the ordinary temporary directory, which measures the
+same as shared memory did (the SQLite-only suite, cache off, 2.8 to 4.4 s
+across runs; the machine was scanning at the time). `Reset` empties the
+tables in one transaction, and the migrated template is kept as bytes in the
+process rather than as a file, because a test binary has no hook after its
+last test and a file would outlive it.
+
+The same finding reached the application: it opened SQLite with only
+`busy_timeout` and `foreign_keys`, so the demo ran in the default
+rollback-journal mode with `synchronous=FULL`, the slowest write path SQLite
+has, and a scan applies 240,000 rows through it. It now opens with
+`journal_mode=WAL` and `synchronous=NORMAL` (DESIGN-database.md says why),
+and a URL may add `_pragma` entries of its own after the defaults.
+
+Measured on the demo, `make demo-reset && make demo`, from the upload's
+timestamp in the proxy log to the scanner's "scanned a target" line, which
+includes the scanner's own run over the cached vulnerability database:
+
+| | Rollback journal, FULL | WAL, NORMAL |
+|---|---|---|
+| The switch image read in (6,845 components, 18,561 edges) | 4.6 s | 4.3 s |
+| The switch image scanned and 241,479 findings applied | 41.5 s | 39.5 s |
+| The second image scanned and 31,060 findings applied | 17.6 s | 17.7 s |
+
+No change worth the name, and the reason is instructive: an apply is one
+transaction of 500-row batches, so it commits a handful of times however many
+rows it carries, and the syncing that dominated the tests — thousands of tiny
+commits — is not what a scan does. The setting stays because it is the right
+one: a reader no longer waits on a writer, and a commit appends rather than
+rewriting pages. What the scan's time actually is — the scanner's run, then
+the Go work of matching and the inserts — is the application plan's business.
 
 The four-engine run is now bounded by the servers: twenty binaries hit three
 servers at once, and MySQL takes about seven seconds to drop, create and

@@ -186,10 +186,35 @@ func driverDSN(engine Engine, u *url.URL, raw string) (string, error) {
 		default:
 			return "", fmt.Errorf("database URL names no file")
 		}
-		// Wait for a held lock rather than failing at once. Without this,
-		// anything concurrent gets an immediate "database is locked" instead
-		// of queueing, which looks like a bug and is really impatience.
-		return path + "?_pragma=busy_timeout(10000)&_pragma=foreign_keys(1)", nil
+		// Every connection is opened with these, in this order; a URL may
+		// add its own _pragma entries after them, and SQLite takes the last
+		// setting of a name, so a URL can override any of them.
+		//
+		// busy_timeout: wait for a held lock rather than failing at once.
+		// Without this, anything concurrent gets an immediate "database is
+		// locked" instead of queueing, which looks like a bug and is really
+		// impatience.
+		//
+		// foreign_keys: not enforced unless asked, and the schema relies on
+		// them.
+		//
+		// journal_mode WAL and synchronous NORMAL: the default is a rollback
+		// journal synced to disk twice per commit, the slowest write path
+		// SQLite has, and a scan applies hundreds of thousands of rows
+		// through it. In WAL mode a commit appends to the log, readers do
+		// not block the writer, and NORMAL syncs the log at a checkpoint
+		// rather than at every commit. A crash of the process loses
+		// nothing; a power loss can lose the last commits, never the
+		// database's consistency. That is the right trade for the only
+		// place SQLite runs, which is development and the demo.
+		pragmas := []string{
+			"busy_timeout(10000)",
+			"foreign_keys(1)",
+			"journal_mode(WAL)",
+			"synchronous(NORMAL)",
+		}
+		pragmas = append(pragmas, u.Query()["_pragma"]...)
+		return path + "?_pragma=" + strings.Join(pragmas, "&_pragma="), nil
 	}
 	return "", fmt.Errorf("unsupported database %q", engine)
 }

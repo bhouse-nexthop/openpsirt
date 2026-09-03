@@ -167,7 +167,7 @@ func prepared(t *testing.T, engine database.Engine, base string) string {
 		if err := os.WriteFile(path, template, 0o600); err != nil {
 			t.Fatalf("copy the SQLite template: %v", err)
 		}
-		return "sqlite://" + path
+		return "sqlite://" + path + sqliteTestPragmas
 	}
 	own, err := serverDatabase(engine, base)
 	if err != nil {
@@ -185,24 +185,21 @@ var (
 	serverURLs = map[database.Engine]string{}
 )
 
-// memoryBacked is where SQLite files go when the machine offers a directory
-// that is memory rather than disk. SQLite as opened here syncs the file at
-// every commit, and a test is nothing but commits: on a disk the API package
-// took 37 seconds on SQLite alone and on tmpfs it takes one. Absent, or not
-// writable, the test's ordinary temporary directory is used and the tests
-// are merely slower.
-const memoryBacked = "/dev/shm"
+// sqliteTestPragmas is what a test database adds to the pragmas every SQLite
+// connection gets: no syncing at all. A test database is thrown away at the
+// end of the test, so durability across a crash buys nothing, and SQLite's
+// syncing was most of what a test cost — the API package took 37 s on
+// SQLite with it and takes about one without. The journal mode is the one
+// the application uses, so a test sees the same locking it does.
+const sqliteTestPragmas = "?_pragma=synchronous(OFF)&_pragma=journal_mode(WAL)"
 
-// sqliteDir returns a directory of the test's own for its SQLite file,
-// removed when the test ends.
+// sqliteDir returns a directory of the test's own for its SQLite file, removed
+// when the test ends. The ordinary temporary directory: with syncing off the
+// disk is not what a test waits on, and a memory-backed directory in a
+// container is often 64 MB.
 func sqliteDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp(memoryBacked, "openpsirt-dbtest-")
-	if err != nil {
-		return t.TempDir()
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return dir
+	return t.TempDir()
 }
 
 // sqliteTemplate migrates one file per binary, the first time it is asked,
@@ -211,17 +208,14 @@ func sqliteDir(t *testing.T) string {
 // is a few hundred kilobytes.
 func sqliteTemplate() ([]byte, error) {
 	sqliteOnce.Do(func() {
-		dir, err := os.MkdirTemp(memoryBacked, "openpsirt-dbtest-")
-		if err != nil {
-			dir, err = os.MkdirTemp("", "openpsirt-dbtest-")
-		}
+		dir, err := os.MkdirTemp("", "openpsirt-dbtest-")
 		if err != nil {
 			sqliteErr = err
 			return
 		}
 		defer func() { _ = os.RemoveAll(dir) }()
 		path := filepath.Join(dir, "template.db")
-		if sqliteErr = migrateFresh("sqlite://" + path); sqliteErr != nil {
+		if sqliteErr = migrateFresh("sqlite://" + path + sqliteTestPragmas); sqliteErr != nil {
 			return
 		}
 		sqliteBytes, sqliteErr = os.ReadFile(path) //nolint:gosec // G304: the path is one this function just chose inside its own temporary directory

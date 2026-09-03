@@ -259,6 +259,19 @@ Two things had to be set explicitly, both found by testing rather than assumed:
   "database is locked" rather than waiting its turn. That reads as a bug and is
   really impatience.
 
+And one thing set for speed, found by measuring:
+
+- **Write-ahead log, synchronous NORMAL.** SQLite's default is a rollback
+  journal synced to disk twice per commit — its slowest write path — and a
+  scan applies hundreds of thousands of rows through it. In WAL mode a commit
+  appends to the log, readers do not block the writer, and NORMAL syncs the
+  log at a checkpoint rather than at every commit. A crash of the process
+  loses nothing; a power loss can lose the last commits, never the database's
+  consistency. Right for the only place SQLite runs. The pragmas are set on
+  the connection string, and a URL may add its own `_pragma` entries after
+  them — the test harness adds `synchronous(OFF)`, since a test database is
+  thrown away.
+
 ## Testing
 
 The portability harness runs a test against every database available to it. SQLite

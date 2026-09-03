@@ -80,3 +80,31 @@ func containsFold(haystack, needle string) bool {
 	}
 	return false
 }
+
+// SQLite is opened in write-ahead-log mode with NORMAL syncing, and a URL
+// may add pragmas of its own after those, the last setting of a name winning.
+func TestSQLiteIsOpenedForSpeedAndAURLMayOverrideIt(t *testing.T) {
+	read := func(t *testing.T, url, pragma string) string {
+		t.Helper()
+		db := dbtest.Open(t, url)
+		var value string
+		if err := db.QueryRowContext(t.Context(), "PRAGMA "+pragma).Scan(&value); err != nil {
+			t.Fatalf("PRAGMA %s: %v", pragma, err)
+		}
+		return value
+	}
+	base := "sqlite://" + t.TempDir() + "/pragmas.db"
+	if got := read(t, base, "journal_mode"); got != "wal" {
+		t.Errorf("journal_mode = %q, wanted wal", got)
+	}
+	// synchronous reads back as a number: 1 is NORMAL, 0 is OFF.
+	if got := read(t, base, "synchronous"); got != "1" {
+		t.Errorf("synchronous = %q, wanted 1 (NORMAL)", got)
+	}
+	if got := read(t, base+"?_pragma=synchronous(OFF)", "synchronous"); got != "0" {
+		t.Errorf("synchronous with the URL's own pragma = %q, wanted 0 (OFF)", got)
+	}
+	if got := read(t, base, "foreign_keys"); got != "1" {
+		t.Errorf("foreign_keys = %q, wanted 1", got)
+	}
+}
