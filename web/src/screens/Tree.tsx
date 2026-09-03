@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
+import { sharedVersion } from "../ui/versions";
 import { Crumbs } from "../ui/Crumbs";
 import { Icon } from "../ui/Icons";
 
@@ -37,17 +38,6 @@ const CHILDREN = 400;
 // The version every component at one level carries, where they all carry the
 // same one, and empty otherwise.
 //
-// A version shared by components of different names is not describing any of
-// them. It is the producer describing the build — a build identifier, a batch
-// stamp — and drawn on every row it is noise that makes the level unreadable
-// while telling the reader nothing they could act on. One entry is not a
-// level, so a single child keeps its own version.
-function sharedVersion(kids: Node[]): string {
-  const first = kids.length < 2 ? "" : kids[0]?.version;
-  if (!first) return "";
-  return kids.every((kid) => kid.version === first) ? first : "";
-}
-
 // A count past this is emphasised, so the branch worth descending is visible
 // without reading every number on the way down.
 const HOT = 500;
@@ -356,9 +346,10 @@ function Branches({
   // in, and a graph with any sharing at all never finishes.
   const seen = new Set<string>();
 
-  // sharedHere says every component at this node's own level carries the same
-  // version, so this row leaves it out — the level says it once instead.
-  function walk(node: Node, depth: number, path: string, sharedHere = false) {
+  // sharedHere is the version every versioned component at this node's own
+  // level carries, where they all carry one. This row leaves it out; the level
+  // says it once instead. A row whose version differs still shows its own.
+  function walk(node: Node, depth: number, path: string, sharedHere = "") {
     const name = node.component;
     const repeated = seen.has(name);
     seen.add(name);
@@ -391,7 +382,7 @@ function Branches({
           {name}
         </span>
         <span className="ver" title={node.version}>
-          {sharedHere ? "" : node.version}
+          {sharedHere !== "" && node.version === sharedHere ? "" : node.version}
         </span>
         {repeated && <span className="repeat">shown above</span>}
         {/* What is open in everything under it, not only on it. A container
@@ -461,7 +452,7 @@ function Branches({
         </button>,
       );
     }
-    shown.forEach((kid, i) => walk(kid, depth + 1, `${path}/${i}:${kid.component}`, !!common));
+    shown.forEach((kid, i) => walk(kid, depth + 1, `${path}/${i}:${kid.component}`, common));
   }
 
   walk(root, 0, root.component);

@@ -2384,6 +2384,12 @@ column is noise. A version shared by components of *different names* is not
 describing any of them, so the level says it once and each row keeps it on
 hover.
 
+The first version of that rule was wrong and shipped wrong: it asked whether
+*every* child carried the same version, and the root's one versionless child
+made that false, so all twenty-nine stamps drew anyway. Components with no
+version draw nothing either way and are left out of the decision. The rule is
+its own module with its own tests now, including that case.
+
 **The list was alphabetical because it was ranked on the wrong number.** A
 container holds no findings of its own, so ranking rows on their own count put
 every container at zero and the order fell back to the name. Rows are ranked on
