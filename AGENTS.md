@@ -314,6 +314,8 @@ same command and the same pinned versions.
 
 | | |
 |---|---|
+| `make test` | The quick loop: SQLite only, packages in parallel, cached. Seconds |
+| `make test-all` | Every configured engine, race detector on, nothing cached. What `check` runs |
 | `make check` | Everything CI checks, except the container and chart |
 | `make measure` | Measurements rather than gates: what a year of nightly scans does to the tables and the queries. Minutes, and behind a build tag so `check` never runs it |
 | `make check-engines` | That all four engines ran, and that each was the engine it claimed |
@@ -324,11 +326,25 @@ same command and the same pinned versions.
 | `make engines-down` | Removes them |
 | `make engines-status` | What is running, and which engines are unconfigured |
 
+**While working, run `make test`.** It is the SQLite-only, parallel, cached
+run — a few seconds — and it is what to run after every change. It does not
+prove portability, and it says so: every server engine is reported as skipped
+by `OPENPSIRT_TEST_ENGINES`, which is a different message from an engine that
+is not configured.
+
 **Before committing, run `make check && make check-engines`.** Not `make lint`
-and a bare `go test`: those two pass on work that CI rejects, because `check`
-also runs `unreachable`, the OpenAPI drift check and the frontend, and because
-a bare `go test` drops the race detector and the `-p 1` that keeps packages
-from tearing down each other's tables.
+and `make test`: those two pass on work that CI rejects, because `check` also
+runs `unreachable`, the OpenAPI drift check and the frontend, and because the
+quick loop drops the race detector and the three server engines. `check` runs
+`make test-all` for the tests: every configured engine, race detector on,
+nothing cached.
+
+Packages run in parallel in both. Each test binary builds the schema once — a
+migrated SQLite file copied per test, and on each server a database of the
+binary's own, named for the package, dropped and recreated on first use — so
+no package can tear down another's tables (see `internal/dbtest`). The one
+thing that still collides is running the *same* package twice at once against
+the same server.
 
 ### Why the second command exists
 

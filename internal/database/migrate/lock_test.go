@@ -6,8 +6,30 @@ import (
 	"testing"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
-	"github.com/bhouse-nexthop/openpsirt/internal/dbtest"
 )
+
+// This package cannot use dbtest: dbtest builds the schema, the schema is
+// applied through this package, and Go allows no such cycle in a test. So
+// the two helpers it needs are here, in the smallest form that works.
+const (
+	postgresURLEnv = "OPENPSIRT_TEST_POSTGRES_URL"
+	mysqlURLEnv    = "OPENPSIRT_TEST_MYSQL_URL"
+	mariadbURLEnv  = "OPENPSIRT_TEST_MARIADB_URL"
+)
+
+func open(t *testing.T, url string) *database.DB {
+	t.Helper()
+	target, err := database.ParseURL(url)
+	if err != nil {
+		t.Fatalf("parse %q: %v", url, err)
+	}
+	db, err := database.Open(context.Background(), target)
+	if err != nil {
+		t.Fatalf("open %s: %v", target.Redacted, err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
 
 // TestLockExcludesAnotherConnection is the only test that exercises the
 // advisory lock.
@@ -23,9 +45,9 @@ func TestLockExcludesAnotherConnection(t *testing.T) {
 	t.Cleanup(func() { lockWaitSeconds = restore })
 
 	for name, env := range map[string]string{
-		"postgres": dbtest.PostgresURLEnv,
-		"mysql":    dbtest.MySQLURLEnv,
-		"mariadb":  dbtest.MariaDBURLEnv,
+		"postgres": postgresURLEnv,
+		"mysql":    mysqlURLEnv,
+		"mariadb":  mariadbURLEnv,
 	} {
 		t.Run(name, func(t *testing.T) {
 			url := os.Getenv(env)
@@ -35,8 +57,8 @@ func TestLockExcludesAnotherConnection(t *testing.T) {
 			ctx := t.Context()
 
 			// Two pools, as two instances would be.
-			first := dbtest.Open(t, url)
-			second := dbtest.Open(t, url)
+			first := open(t, url)
+			second := open(t, url)
 
 			release, err := acquire(ctx, first)
 			if err != nil {
@@ -68,7 +90,7 @@ func TestLockExcludesAnotherConnection(t *testing.T) {
 }
 
 func TestSQLiteNeedsNoAdvisoryLock(t *testing.T) {
-	db := dbtest.Open(t, "sqlite://"+t.TempDir()+"/lock.db")
+	db := open(t, "sqlite://"+t.TempDir()+"/lock.db")
 	release, err := acquire(context.Background(), db)
 	if err != nil {
 		t.Fatalf("acquire on sqlite: %v", err)

@@ -64,7 +64,7 @@ server configuration. Each engine gets the column it should have.
 | Lock | Excludes | How |
 |---|---|---|
 | Migration mutex | Other goroutines in this process | An ordinary mutex |
-| Advisory lock | Other instances | `pg_advisory_lock`, `GET_LOCK`, or nothing on SQLite |
+| Advisory lock | Other instances on the same database | `pg_advisory_lock`, which belongs to the database; `GET_LOCK` on a name that carries the database, since a MySQL named lock belongs to the server; nothing on SQLite |
 
 **The advisory lock is taken on a pinned connection**, not on the pool. These
 are session locks: released from the pool, the release can land on a different

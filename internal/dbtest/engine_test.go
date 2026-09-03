@@ -85,3 +85,33 @@ func TestEachEngineIsTheEngineItSaysItIs(t *testing.T) {
 		}
 	})
 }
+
+// Two is skipping, not silently running fewer engines: the two it leaves out
+// are reported, with a reason that is not "unconfigured".
+func TestTwoReportsTheEnginesItLeavesOut(t *testing.T) {
+	ran := map[database.Engine]bool{}
+	dbtest.Two(t, func(t *testing.T, db *database.DB) {
+		ran[db.Server.Engine] = true
+	})
+	for _, engine := range []database.Engine{database.MySQL, database.MariaDB} {
+		if ran[engine] {
+			t.Errorf("%s ran under Two", engine)
+		}
+	}
+	if !ran[database.SQLite] {
+		t.Error("sqlite did not run under Two")
+	}
+}
+
+// The quick loop narrows the engines through the environment, and an engine
+// left out that way is skipped whether or not it is configured.
+func TestTheEnvironmentNarrowsWhichEnginesRun(t *testing.T) {
+	t.Setenv(dbtest.EnginesEnv, "sqlite")
+	ran := map[database.Engine]bool{}
+	dbtest.Each(t, func(t *testing.T, db *database.DB) {
+		ran[db.Server.Engine] = true
+	})
+	if len(ran) != 1 || !ran[database.SQLite] {
+		t.Errorf("ran %v, wanted sqlite alone", ran)
+	}
+}

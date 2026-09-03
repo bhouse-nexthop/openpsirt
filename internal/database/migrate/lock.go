@@ -2,7 +2,9 @@ package migrate
 
 import (
 	"context"
+	"crypto/sha1" //nolint:gosec // G505: a name, not a signature; the choice is the length of the hex, and the input is a database name
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
@@ -10,10 +12,29 @@ import (
 
 // lockName identifies the migration lock. The numeric form is for engines that
 // take an integer; the text form is for those that take a name.
+//
+// A PostgreSQL advisory lock belongs to the database it is taken in. A MySQL
+// or MariaDB named lock belongs to the server, so the name there carries the
+// database: the lock is about one schema, and two databases on one server
+// migrating at once are not in each other's way. Named locks are capped at
+// 64 characters, so a long database name is hashed rather than cut.
 const (
 	lockName = "openpsirt_migrate"
 	lockID   = 8_147_263_001
 )
+
+func namedLock(ctx context.Context, conn *sql.Conn) (string, error) {
+	var current sql.NullString
+	if err := conn.QueryRowContext(ctx, "SELECT DATABASE()").Scan(&current); err != nil {
+		return "", fmt.Errorf("read the current database: %w", err)
+	}
+	name := lockName + ":" + current.String
+	if len(name) > 64 {
+		sum := sha1.Sum([]byte(current.String)) //nolint:gosec // G401: see the import
+		name = lockName + ":" + hex.EncodeToString(sum[:])
+	}
+	return name, nil
+}
 
 // lockWaitSeconds bounds how long we wait for another instance to finish. A
 // variable rather than a constant only so tests can shorten it; nothing in the
@@ -90,8 +111,13 @@ func acquire(ctx context.Context, db *database.DB) (unlock, error) {
 		// GET_LOCK returns 1 when granted, 0 on timeout, NULL on error. A
 		// timeout means another instance is migrating, which is not our
 		// failure but does mean we must not proceed.
+		name, err := namedLock(ctx, conn)
+		if err != nil {
+			closeConn()
+			return nil, err
+		}
 		var granted *int
-		row := conn.QueryRowContext(ctx, "SELECT GET_LOCK(?, ?)", lockName, lockWaitSeconds)
+		row := conn.QueryRowContext(ctx, "SELECT GET_LOCK(?, ?)", name, lockWaitSeconds)
 		if err := row.Scan(&granted); err != nil {
 			closeConn()
 			return nil, fmt.Errorf("take migration lock: %w", err)
@@ -106,7 +132,7 @@ func acquire(ctx context.Context, db *database.DB) (unlock, error) {
 			// when no such lock exists. Neither is an error to the driver.
 			var released *int
 			if err := conn.QueryRowContext(ctx,
-				"SELECT RELEASE_LOCK(?)", lockName).Scan(&released); err != nil {
+				"SELECT RELEASE_LOCK(?)", name).Scan(&released); err != nil {
 				return fmt.Errorf("release migration lock: %w", err)
 			}
 			if released == nil || *released != 1 {

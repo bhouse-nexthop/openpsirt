@@ -135,7 +135,7 @@ DEV_DIR  ?= $(DEMO_DIR)/dev
 DEV_DB   ?= $(DEV_DIR)/dev.db
 DEV_URL  := http://$(DEV_HOST):$(DEV_PORT)
 
-.PHONY: unreachable all build test vet lint fmt openapi openapi-current run clean check check-packaging check-engines measure engines-up engines-down engines-status engines-check tools govulncheck licenses sbom web web-deps web-api web-check demo demo-image demo-up demo-down demo-seed demo-reset demo-status dev dev-up dev-down dev-seed dev-reset dev-status
+.PHONY: unreachable all build test test-all vet lint fmt openapi openapi-current run clean check check-packaging check-engines measure engines-up engines-down engines-status engines-check tools govulncheck licenses sbom web web-deps web-api web-check demo demo-image demo-up demo-down demo-seed demo-reset demo-status dev dev-up dev-down dev-seed dev-reset dev-status
 
 all: check build
 
@@ -147,8 +147,17 @@ build:
 # database server, and the rollback test drops every table while another
 # package is using them. Isolating each package into its own database would
 # also work; serializing is one flag, and the suite is seconds long.
+# The quick loop: SQLite only, packages in parallel, the build cache on, no
+# race detector. Seconds, so it is run after every change. The four-engine,
+# race-detected, uncached run is test-all, and the gate uses that.
 test:
-	$(GO) test -race -count=1 -p 1 ./...
+	OPENPSIRT_TEST_ENGINES=sqlite $(GO) test ./...
+
+# Every configured engine, race detector on, nothing cached. Packages run in
+# parallel: each test binary gets a database of its own on every engine
+# (internal/dbtest), so they share nothing.
+test-all:
+	$(GO) test -race -count=1 ./...
 
 vet:
 	$(GO) vet ./...
@@ -184,7 +193,7 @@ openapi:
 # Everything CI runs, reachable from one command. Container and chart checks
 # are included because CI runs them; omitting them meant four of nine jobs
 # could not be reproduced locally.
-check: build vet lint unreachable test govulncheck licenses openapi-current sbom web-check
+check: build vet lint unreachable test-all govulncheck licenses openapi-current sbom web-check
 ifneq ($(ENGINES_MISSING),)
 	@echo
 	@echo "NOT TESTED ON: $(ENGINES_MISSING). Those engines were not configured,"

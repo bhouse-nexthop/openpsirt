@@ -35,7 +35,8 @@ with the same command and the same pinned tool versions — CIG-05.
 | Target | Does |
 |---|---|
 | `make build` | Builds the binary with version information injected |
-| `make test` | Tests with the race detector |
+| `make test` | The quick loop: SQLite only, packages in parallel, cached. Seconds, so it runs after every change |
+| `make test-all` | Every configured engine, race detector on, nothing cached. What `check` runs |
 | `make lint` | Static analysis, pinned version |
 | `make govulncheck` | Known vulnerabilities in dependencies |
 | `make licenses` | Licenses of shipped dependencies against the allowlist |
