@@ -1455,6 +1455,27 @@ components:
         - items
         - total
       type: object
+    GrantBody:
+      additionalProperties: false
+      properties:
+        product:
+          description: The product the role is held against
+          minLength: 1
+          type: string
+        role:
+          description: What they may do with it
+          enum:
+            - reporting
+            - approver
+            - public-read
+            - private-read
+            - public-triage
+            - private-triage
+          type: string
+      required:
+        - product
+        - role
+      type: object
     HeldBody:
       additionalProperties: false
       properties:
@@ -2380,13 +2401,6 @@ components:
     PersonBody:
       additionalProperties: false
       properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/schemas/PersonBody.json
-          format: uri
-          readOnly: true
-          type: string
         admin:
           description: Whether they administer this deployment
           type: boolean
@@ -2675,6 +2689,42 @@ components:
       required:
         - items
         - total
+      type: object
+    RecordBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/RecordBody.json
+          format: uri
+          readOnly: true
+          type: string
+        admin:
+          description: Whether they administer this deployment
+          type: boolean
+        display_name:
+          description: What to show instead of the identity
+          type: string
+        holds:
+          items:
+            $ref: "#/components/schemas/GrantBody"
+          type:
+            - array
+            - "null"
+        identity:
+          description: What to call them here
+          maxLength: 191
+          minLength: 1
+          type: string
+        provider:
+          description: Which sign-in path they will arrive by, such as proxy for a trusted header
+          type: string
+        username:
+          description: What that provider calls them. Defaults to the identity
+          type: string
+      required:
+        - identity
       type: object
     ReferenceBody:
       additionalProperties: false
@@ -4342,7 +4392,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/PersonBody"
+              $ref: "#/components/schemas/RecordBody"
         required: true
       responses:
         "201":

@@ -104,6 +104,24 @@ NPM ?= npm
 DEMO_HOST ?= localhost
 DEMO_PORT ?= 8080
 DEMO_USER ?= dev
+# The rest of the cast, one per line as port:identity:roles.
+#
+# **One person cannot demonstrate this tool.** Approving your own claim is
+# refused, because a control one person completes alone is not one (TRI-41) —
+# so a demo with a single identity can propose a judgment and can never show it
+# agreed to, and the record an auditor reads says "same person" against every
+# row. Somebody has to be somebody else.
+#
+# A port each rather than a switcher: the trusted-header path is a proxy
+# stating who you are, and the smallest honest version of two people is two
+# doors. Open two browser windows and you are two people, which is also what
+# lets one of them watch the other's claim arrive.
+#
+# Roles are granted per product, so the seed grants each of these on every
+# product it declares. Nobody is an administrator but the first: an approver
+# who could also change the settings would not be exercising anything.
+DEMO_CAST ?= 8081:ana:public-read,public-triage,approver \
+             8082:ben:public-read,public-triage,approver
 # What the demo and the dev loop seed, one build per entry:
 #   inventory,product,display name,branch,variant
 # The inventory is an .xz of a CycloneDX file under the SBOM package's
@@ -560,25 +578,49 @@ demo-up: demo-down
 	@# header; this is the smallest honest version of that, rather than a mode
 	@# in the application that trusts anybody — which is a hole nobody should
 	@# ship even switched off by default.
-	@printf '%s\n' \
-	  'server {' \
-	  '  listen 80;' \
-	  '  location / {' \
-	  '    proxy_pass http://openpsirt-demo:8080;' \
-	  '    proxy_set_header X-User $(DEMO_USER);' \
-	  '    # $$http_host, not $$host: nginx strips the port from $$host, so a' \
-	  '    # browser at name:8080 reaches an application that thinks it answers' \
-	  '    # to name. Reads work and every write is refused by the forgery' \
-	  '    # guard, which compares the origin the browser states against where' \
-	  '    # this deployment believes it answers.' \
-	  '    proxy_set_header Host $$http_host;' \
-	  '    proxy_set_header X-Forwarded-For $$remote_addr;' \
-	  '    client_max_body_size 256m;' \
-	  '    proxy_read_timeout 300s;' \
-	  '  }' \
-	  '}' > $(DEMO_DIR)/proxy.conf
+	@# One server block per person, each on its own port inside the proxy, so
+	@# a second browser window is a second person. Written by a loop because
+	@# the cast is configuration: adding somebody is adding a line to
+	@# DEMO_CAST, not editing this three times.
+	@: > $(DEMO_DIR)/proxy.conf
+	@for entry in $(DEMO_USER):80 $(foreach c,$(DEMO_CAST),$(word 2,$(subst :, ,$(c))):$(word 1,$(subst :, ,$(c)))); do \
+	    who=$${entry%%:*}; port=$${entry##*:}; \
+	    printf '%s\n' \
+	      'server {' \
+	      "  listen $$port;" \
+	      '  location / {' \
+	      '    proxy_pass http://openpsirt-demo:8080;' \
+	      "    proxy_set_header X-User $$who;" \
+	      '    # $$http_host, not $$host: nginx strips the port from $$host, so a' \
+	      '    # browser at name:8080 reaches an application that thinks it answers' \
+	      '    # to name. Reads work and every write is refused by the forgery' \
+	      '    # guard, which compares the origin the browser states against where' \
+	      '    # this deployment believes it answers.' \
+	      '    proxy_set_header Host $$http_host;' \
+	      '    proxy_set_header X-Forwarded-For $$remote_addr;' \
+	      '    client_max_body_size 256m;' \
+	      '    proxy_read_timeout 300s;' \
+	      '  }' \
+	      '}' >> $(DEMO_DIR)/proxy.conf; \
+	  done
+	@# Said plainly before docker says it obscurely. A port already taken comes
+	@# back as "driver failed programming external connectivity", which names
+	@# neither the port nor what holds it — and the cast's ports are ordinary
+	@# numbers somebody else's container may well be on.
+	@# The "|| true" is load-bearing: recipes run under "-eo pipefail", so a
+	@# grep that matches nothing — a free port, the good case — would otherwise
+	@# end the recipe right here, before a word of any of this is printed.
+	@for want in $(DEMO_PORT) $(foreach c,$(DEMO_CAST),$(word 1,$(subst :, ,$(c)))); do \
+	  held=$$($(DOCKER) ps --format '{{.Names}} {{.Ports}}' | grep ":$$want->" | cut -d' ' -f1 || true); \
+	  if [ -n "$$held" ]; then \
+	    echo "  port $$want is already held by $$held."; \
+	    echo "  Stop it, or set DEMO_PORT / DEMO_CAST to ports that are free."; \
+	    exit 1; \
+	  fi; \
+	done
 	@$(DOCKER) run -d --name openpsirt-demo-proxy --network $(DEMO_NET) \
 	  -p $(DEMO_PORT):80 \
+	  $(foreach c,$(DEMO_CAST),-p $(word 1,$(subst :, ,$(c))):$(word 1,$(subst :, ,$(c))) ) \
 	  -v "$(DEMO_DIR)/proxy.conf:/etc/nginx/conf.d/default.conf:ro" \
 	  nginx:1.29-alpine >/dev/null
 	@# A container reported "Up" is not one that answers, the same trap the
@@ -639,6 +681,27 @@ demo-seed:
 	  -X POST -H "Origin: $(DEMO_URL)" \
 	  -F "inventory=@$(DEMO_DIR)/openpsirt.cdx.json" \
 	  "$(DEMO_URL)/v1/products/openpsirt/streams/main/variants/linux-amd64/scans"
+	@# The rest of the cast, with roles on every product just declared.
+	@#
+	@# Recorded rather than created on arrival: nobody appears here by having
+	@# authenticated (ACC-21), so somebody who signs in through the proxy with
+	@# no record is refused. The administrator records them, which is also the
+	@# honest demonstration of how access works.
+	@for entry in $(DEMO_CAST); do \
+	  port=$${entry%%:*}; rest=$${entry#*:}; who=$${rest%%:*}; roles=$${rest#*:}; \
+	  holds=""; \
+	  products=$$(for b in $(DEMO_BUILDS); do IFS=',' read -r _ p _ <<< "$$b"; echo "$$p"; done | sort -u); \
+	  for product in $$products openpsirt; do \
+	    IFS=',' read -ra each <<< "$$roles"; \
+	    for role in "$${each[@]}"; do \
+	      holds="$$holds{\"product\":\"$$product\",\"role\":\"$$role\"},"; \
+	    done; \
+	  done; \
+	  curl -sS --noproxy '*' -o /dev/null -w "  person $$who %{http_code}\n" \
+	    -X POST -H "Origin: $(DEMO_URL)" -H 'Content-Type: application/json' \
+	    -d "{\"identity\":\"$$who\",\"display_name\":\"$$who\",\"provider\":\"proxy\",\"username\":\"$$who\",\"holds\":[$${holds%,}]}" \
+	    "$(DEMO_URL)/v1/people"; \
+	done
 	@echo "  the scans run in the background; make demo-status shows when they land"
 
 demo-status:
@@ -655,6 +718,19 @@ demo-status:
 	    | sed -e 's/.*"total":\([0-9]*\).*/\1 findings/' -e 's/^{.*/unreadable/'; \
 	done
 	@echo "  open $(DEMO_URL) — you arrive as proxy:$(DEMO_USER), no sign-in"
+	@# The rest of the cast, one door each. Two windows is two people, which is
+	@# what it takes to show a claim being agreed to: approving your own is
+	@# refused, so a single identity can propose a judgment and never finish
+	@# one.
+	@#
+	@# Named without the provider, unlike the line above: the administrator is
+	@# named in configuration, where an identity says which path it arrives by,
+	@# and the cast is recorded through the API, where the identity is the bare
+	@# name and the path is recorded beside it.
+	@for entry in $(DEMO_CAST); do \
+	  port=$${entry%%:*}; rest=$${entry#*:}; who=$${rest%%:*}; roles=$${rest#*:}; \
+	  echo "       http://$(DEMO_HOST):$$port — as $$who ($$roles)"; \
+	done
 
 
 # Start over, keeping the vulnerability database: it is a gigabyte, it is not

@@ -322,6 +322,22 @@ func (s *Store) People(ctx context.Context) ([]Account, map[int64][]Grant, error
 	return people, held, nil
 }
 
+// Grants lists what one person holds, inactive grants included and marked as
+// such, the same way People reports them.
+//
+// Asked when a person has just been changed and the answer has to describe
+// them: what is in force, and where each role came from, are the store's to
+// say. Reading them back is the difference between reporting the record and
+// repeating the request that changed it.
+func (s *Store) Grants(ctx context.Context, personID int64) ([]Grant, error) {
+	var grants []Grant
+	if err := s.db.NewSelect().Model(&grants).
+		Where("person_id = ?", personID).Order("product_id").Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read what they hold: %w", err)
+	}
+	return grants, nil
+}
+
 // Withdraw takes a role away.
 //
 // The row is removed rather than marked. A grant is a statement about now, and

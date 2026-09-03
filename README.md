@@ -68,10 +68,21 @@ and the binary inside itself and carries the scanner, so there is nothing to
 set up first — and it builds from your working tree, so what comes up is your
 change.
 
-`make demo-status` says what it found, `make demo-down` stops it, and
-`make demo-reset` starts over while keeping the scanner's vulnerability
-database, which is large and slow to fetch. Everything it writes stays in a
-git-ignored directory in the checkout.
+**One person cannot demonstrate this tool.** A judgment is proposed by one
+person and agreed to by another, and approving your own is refused — so a
+single identity can propose a decision and never finish one. The demo therefore
+opens a door per person: `http://localhost:8080` arrives as an administrator,
+`:8081` as Ana and `:8082` as Ben, both triagers who may approve. Two browser
+windows are two people. Change or extend the cast with `DEMO_CAST`, which takes
+`port:name:roles` entries:
+
+    make demo DEMO_CAST="8091:ana:public-read,public-triage,approver \
+                         8092:ben:public-read,public-triage,approver"
+
+`make demo-status` says what it found and lists every door, `make demo-down`
+stops it, and `make demo-reset` starts over while keeping the scanner's
+vulnerability database, which is large and slow to fetch. Everything it writes
+stays in a git-ignored directory in the checkout.
 
 `make dev` is the other one: this machine's binary plus the interface's own dev
 server, for editing the interface and watching it reload. It needs Go, node and

@@ -2138,3 +2138,49 @@ for the "open" scan the planner takes; dropping it is a measured trade, not
 a fix. And the interface's "Partly" pill is not a state the server refuses
 to send — it is the row the design says is none of the four, labeled; the
 design now says so.
+
+## The demo can now be two people (2026-09-03)
+
+One person cannot demonstrate this tool. A judgment is proposed and then agreed
+to, and approving your own is refused (TRI-41) — so a single identity walks up
+to the point the tool exists to reach and stops. Every demonstration so far
+ended with "and then somebody else approves it".
+
+The demo authenticates by trusted header, and the proxy in front of it is what
+says who you are. So the cast is server blocks: one per person, each listening
+on its own port inside the same proxy, each setting `X-User` to a different
+name. A second browser window at a different port is a second person. `DEMO_CAST`
+holds it as `port:name:roles` entries, written by a loop, because adding
+somebody should be adding a line rather than editing three places.
+
+Basic authentication in the application was the other idea and is worse. It
+would be a mode that trusts a password list, in a tool whose entire access story
+is that something in front has already identified the caller — a hole nobody
+should ship even switched off by default, added to make testing convenient.
+
+**Three things went wrong, each of which looked like something else.**
+
+*The pre-flight check that printed nothing.* `make demo-up` exited 1 with no
+message. Recipes run under `-eo pipefail`, so the check's own
+`docker ps | grep ":$port->"` ended the recipe the moment it found nothing —
+which is the good case, a free port. The check worked perfectly and was
+incapable of saying so. `|| true` on the assignment.
+
+*`POST /v1/people` refused every grant.* Recording somebody with a role answered
+422: "expected required property effective to be present". One body shape served
+both directions, so granting a role required stating whether the role being
+granted works. Everything that granted one sent `"effective": true` to be
+allowed to — including our own interface, which had been doing it since the
+screen was written. The shapes are split now (API-21), and the reply describes
+what is on record rather than echoing the request; the echo meant a request
+refused for being in group-bound mode came back claiming its grant was in force.
+
+*A stale container held port 8081.* An nginx from an earlier session, its
+configuration in a scratchpad directory that no longer exists. The check now
+names it and what holds it, which is what docker's "driver failed programming
+external connectivity" does not.
+
+**Verified end to end**: ana proposes a dismissal across 44 rows, her own
+approval is refused with "the person who proposed a claim may not be the one who
+agrees to it", ben's is accepted, and the audit record reports both names, both
+timestamps and `two_people: true`.

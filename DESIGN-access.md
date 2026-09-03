@@ -409,6 +409,25 @@ grant for the same role on the same product — what makes a grant unique
 includes where it came from. Keying without that forbids exactly the pair this
 is built to keep.
 
+### Granting a role and reading one are different shapes
+
+A grant is written with two things: which product, and which role. It is read
+back with two more the writer cannot decide — whether it is in force, and
+whether an administrator assigned it or a group derived it (API-21).
+
+Both matter to a reader and neither is a request. Whether a grant is in force
+is the deployment's answer, and the case where it is "no" is exactly the one
+above: an assignment set aside by a switch to group binding is kept, and grants
+nothing while it sits there. Where it came from is the first question an access
+review asks. A caller recording somebody has no way to know either, so neither
+is asked for.
+
+Recording somebody answers with what is now on record rather than with the
+request that changed it — how they can arrive, and every role they hold, read
+back. The distinction is not cosmetic: a request refused the right to grant a
+role, because roles are derived from groups here, would otherwise be answered
+with its own claim that the role was granted and in force.
+
 ### Somebody named in configuration keeps administration
 
 Naming administrators in configuration applies at **every** startup, not the

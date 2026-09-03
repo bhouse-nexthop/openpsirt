@@ -57,7 +57,7 @@ export function People() {
         await api.POST("/v1/people", {
           body: {
             identity: who.identity,
-            holds: [{ product: who.product, role: who.role as (typeof ROLES)[number], effective: true }],
+            holds: [{ product: who.product, role: who.role as (typeof ROLES)[number] }],
           },
         }),
       ),

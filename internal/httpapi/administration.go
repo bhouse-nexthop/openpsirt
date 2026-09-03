@@ -13,6 +13,41 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 )
 
+// described says who somebody is, how they can arrive and what they hold, by
+// reading it. named maps a product to what it is called, because a grant
+// stores an identifier and a reader wants a name.
+func described(ctx context.Context, a Administering, store *access.Store,
+	person *access.Account,
+) (*PersonBody, error) {
+	named, err := productNames(ctx, a)
+	if err != nil {
+		return nil, err
+	}
+	doors, err := store.Identities(ctx, person.ID)
+	if err != nil {
+		return nil, err
+	}
+	held, err := store.Grants(ctx, person.ID)
+	if err != nil {
+		return nil, err
+	}
+	body := &PersonBody{
+		Identity: person.Identity, DisplayName: person.DisplayName, Admin: person.IsAdmin,
+	}
+	for _, door := range doors {
+		body.SignsInBy = append(body.SignsInBy, SignInBody{
+			Provider: door.Provider, Username: door.Username, Pinned: door.Subject != nil,
+		})
+	}
+	for _, grant := range held {
+		body.Holds = append(body.Holds, HeldBody{
+			Product: named[grant.ProductID], Role: string(grant.Role),
+			Effective: grant.Active, Source: string(grant.Source),
+		})
+	}
+	return body, nil
+}
+
 // Administering is what the endpoints for people and credentials need.
 type Administering struct {
 	Access  func() *access.Store
@@ -45,8 +80,33 @@ type PersonBody struct {
 	Username string `json:"username,omitempty" doc:"What that provider calls them. Defaults to the identity"`
 	// Holds is what they may do, listed as product and role.
 	Holds []HeldBody `json:"holds,omitempty"`
-	// SignsInBy lists the ways they can arrive, when reading.
+	// SignsInBy lists the ways they can arrive.
 	SignsInBy []SignInBody `json:"signs_in_by,omitempty"`
+}
+
+// RecordBody is somebody being recorded, and what they are to hold.
+//
+// Separate from PersonBody because a request states less than an answer
+// reports. Reading a person also says how they sign in and whether each role
+// is in force; neither is anything a caller can decide, and one type for both
+// directions put them in the request — where "effective" was required, so
+// granting a role meant stating whether the role you are granting works.
+// Everything that granted one sent "effective": true to be allowed to, and
+// the reply then echoed that back as though it were the answer.
+type RecordBody struct {
+	Identity    string `json:"identity" minLength:"1" maxLength:"191" doc:"What to call them here"`
+	DisplayName string `json:"display_name,omitempty" doc:"What to show instead of the identity"`
+	Admin       bool   `json:"admin,omitempty" doc:"Whether they administer this deployment"`
+	Provider    string `json:"provider,omitempty" doc:"Which sign-in path they will arrive by, such as proxy for a trusted header"`
+	Username    string `json:"username,omitempty" doc:"What that provider calls them. Defaults to the identity"`
+	// Holds is what to grant them, listed as product and role.
+	Holds []GrantBody `json:"holds,omitempty"`
+}
+
+// GrantBody is one role against one product, as a request states it.
+type GrantBody struct {
+	Product string `json:"product" minLength:"1" doc:"The product the role is held against"`
+	Role    string `json:"role" enum:"reporting,approver,public-read,private-read,public-triage,private-triage" doc:"What they may do with it"`
 }
 
 // SignInBody is one way somebody may arrive.
@@ -100,7 +160,7 @@ func registerAdministration(api huma.API, a Administering) {
 			"list is what an administrator has decided rather than who has turned up.",
 		Tags: []string{"Administration"},
 	}, func(ctx context.Context, _ *struct{}) (*listOutput[PersonBody], error) {
-		store, names, err := administerable(ctx, a)
+		store, _, err := administerable(ctx, a)
 		if err != nil {
 			return nil, err
 		}
@@ -109,13 +169,9 @@ func registerAdministration(api huma.API, a Administering) {
 			return nil, wentWrong(a.Logger, "cannot list people", err)
 		}
 
-		products, err := names.Products(ctx, access.NewPerson(0, "", true, nil))
+		named, err := productNames(ctx, a)
 		if err != nil {
-			return nil, wentWrong(a.Logger, "cannot read the products roles are held against", err)
-		}
-		named := map[int64]string{}
-		for _, product := range products {
-			named[product.ID] = product.DisplayName
+			return nil, err
 		}
 
 		out := &listOutput[PersonBody]{}
@@ -151,7 +207,7 @@ func registerAdministration(api huma.API, a Administering) {
 			"Recording the same person again confirms them and adds any roles named.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, in *struct {
-		Body PersonBody
+		Body RecordBody
 	}) (*declaredOutput[PersonBody], error) {
 		store, names, err := administerable(ctx, a)
 		if err != nil {
@@ -206,7 +262,17 @@ func registerAdministration(api huma.API, a Administering) {
 				return nil, huma.Error400BadRequest(err.Error())
 			}
 		}
-		return answer(created, in.Body), nil
+
+		// Read back rather than echoed. What is in force and where a role came
+		// from are answers, and a reply that repeated the request reported the
+		// caller's own words as the state of the deployment — including for a
+		// grant set aside by group-bound mode, which the request had just been
+		// told grants nothing.
+		body, err := described(ctx, a, store, person)
+		if err != nil {
+			return nil, wentWrong(a.Logger, "cannot read back the person just recorded", err)
+		}
+		return answer(created, *body), nil
 	})
 
 	huma.Register(api, huma.Operation{

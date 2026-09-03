@@ -2530,6 +2530,15 @@ export interface components {
             /** Format: int64 */
             total: number;
         };
+        GrantBody: {
+            /** @description The product the role is held against */
+            product: string;
+            /**
+             * @description What they may do with it
+             * @enum {string}
+             */
+            role: "reporting" | "approver" | "public-read" | "private-read" | "public-triage" | "private-triage";
+        };
         HeldBody: {
             /** @description Whether this grants anything right now */
             effective: boolean;
@@ -3013,12 +3022,6 @@ export interface components {
             unmatched: number;
         };
         PersonBody: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/PersonBody.json
-             */
-            readonly $schema?: string;
             /** @description Whether they administer this deployment */
             admin?: boolean;
             /** @description What to show instead of the identity */
@@ -3190,6 +3193,25 @@ export interface components {
             measured_against?: components["schemas"]["MeasuredBody"];
             /** Format: int64 */
             total: number;
+        };
+        RecordBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RecordBody.json
+             */
+            readonly $schema?: string;
+            /** @description Whether they administer this deployment */
+            admin?: boolean;
+            /** @description What to show instead of the identity */
+            display_name?: string;
+            holds?: components["schemas"]["GrantBody"][] | null;
+            /** @description What to call them here */
+            identity: string;
+            /** @description Which sign-in path they will arrive by, such as proxy for a trusted header */
+            provider?: string;
+            /** @description What that provider calls them. Defaults to the identity */
+            username?: string;
         };
         ReferenceBody: {
             /**
@@ -4524,7 +4546,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PersonBody"];
+                "application/json": components["schemas"]["RecordBody"];
             };
         };
         responses: {
