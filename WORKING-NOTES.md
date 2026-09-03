@@ -2211,3 +2211,21 @@ Ironically, `AssignedTo` already carried the comment naming this exact failure �
 "how a screen ends up saying somebody holds ninety things because it counted
 places where the other counted judgments" — written about the function that was
 made consistent and not about the one that was not.
+
+## A four-engine gate caught a test waiting on a clock (2026-09-03)
+
+`TestOneReplicaAsksTheIndexes` failed once on MariaDB reporting one component
+asked of three, and passed thirteen runs in a row afterwards. Not a race in the
+code: the test ran both replicas for a fixed 300ms and then asserted all three
+components had been asked, so a slower engine under load simply did not finish
+in the budget. It was the pass working and being interrupted.
+
+Split into the two waits it always contained. Getting through the three
+components is waited *for* — how long that takes belongs to the engine and the
+machine. The 300ms is kept afterwards as what it actually is: a soak with both
+replicas running and nothing left to do, which is when a replica asking without
+the lease, or a pass that failed to store what it learned, would ask again. A
+soak that is too short makes the test weaker; a budget that is too short makes
+it fail.
+
+Verified by deleting the lease check: six asks instead of three.

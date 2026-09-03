@@ -513,8 +513,25 @@ func TestOneReplicaAsksTheIndexes(t *testing.T) {
 				r.Run(running, 10*time.Millisecond)
 			}()
 		}
-		// Long enough for many cycles on both, so a replica that asks without
-		// the lease has every chance to.
+		// Two waits, and they are different in kind.
+		//
+		// The first is for the pass to get through all three components. How
+		// long that takes belongs to the engine and the machine, not to the
+		// behaviour being pinned, so it is waited for rather than budgeted:
+		// under load on MariaDB three cycles did not fit in 300ms and the test
+		// failed reporting one component asked of three, which is this pass
+		// working and being interrupted.
+		//
+		// The second is the measurement. Both replicas keep running with
+		// nothing left to do, which is when a replica that asks without the
+		// lease, or a pass that failed to store what it learned, would ask
+		// again. That one is a stretch of wall clock on purpose — it is a
+		// soak, and a short one only makes the test weaker rather than wrong.
+		waited := 0
+		for index.times() < 3 && waited < 10_000 {
+			time.Sleep(time.Millisecond)
+			waited++
+		}
 		time.Sleep(300 * time.Millisecond)
 		stop()
 		wg.Wait()
