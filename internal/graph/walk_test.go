@@ -194,3 +194,71 @@ func TestADocumentInALoopIsWalkedOnceAndStops(t *testing.T) {
 		}
 	})
 }
+
+func TestContainersAreOrderedByWhatIsInsideThem(t *testing.T) {
+	// A container holds no findings of its own. Ranked on its own count every
+	// one of them is zero, the order falls back to the name, and the tree
+	// opens as an alphabetical list of containers that says nothing about
+	// which is worth opening — which is what it looked like on a real image.
+	//
+	// The number a row is ranked on is the number that describes it: for a
+	// branch, everything open beneath it.
+	each(t, func(t *testing.T, f *fixture) {
+		// Named so that alphabetical and by-findings are opposite orders, or
+		// the test passes on either.
+		quiet, busy := at("aaa-container", "1"), at("zzz-container", "1")
+		small, large := at("libsmall", "1.0"), at("liblarge", "1.0")
+		snap := graph.Snapshot{
+			Root:       root,
+			Components: []graph.Described{quiet, busy, small, large},
+			Dependencies: []graph.Dependency{
+				{Parent: root, Child: quiet}, {Parent: root, Child: busy},
+				{Parent: quiet, Child: small}, {Parent: busy, Child: large},
+			},
+		}
+		if _, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), snap); err != nil {
+			t.Fatal(err)
+		}
+		findings := finding.NewStore(f.store.DB())
+		run, err := findings.Begin(t.Context(), finding.Run{
+			TargetID: f.targetID, Scanner: "grype", ScannerVersion: "0.100.0",
+			DatabaseVersion: "2026-08-28", RanHere: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		reported := func(id string, component graph.Described) finding.Reported {
+			return finding.Reported{
+				Issue:     finding.Named{Identifier: id, Severity: "high"},
+				Component: component, FixState: finding.FixedUpstream, FixedIn: "2.0",
+			}
+		}
+		if _, err := findings.Apply(t.Context(), f.targetID, run.ID, []finding.Reported{
+			reported("CVE-2026-1", large), reported("CVE-2026-2", large),
+			reported("CVE-2026-3", small),
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		_, kids, err := f.store.Roots(t.Context(), everyone(), f.targetID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(kids) != 2 {
+			t.Fatalf("%d children of the root, want the two containers", len(kids))
+		}
+		if kids[0].Name != busy.Name {
+			t.Errorf("the tree opens with %q holding %d, ahead of %q holding %d — "+
+				"ordered by the name rather than by what is inside",
+				kids[0].Name, kids[0].Beneath, kids[1].Name, kids[1].Beneath)
+		}
+		// And neither container holds anything of its own, which is the whole
+		// reason its own count cannot be what it is ranked on.
+		for _, kid := range kids {
+			if kid.Findings != 0 {
+				t.Errorf("%s holds %d findings of its own, so this proves nothing",
+					kid.Name, kid.Findings)
+			}
+		}
+	})
+}

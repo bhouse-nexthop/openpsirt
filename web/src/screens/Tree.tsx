@@ -20,16 +20,33 @@ type Node = {
   children: number;
 };
 
-// How many of a wide node's leaves are drawn before it says how many more
-// there are. A build's root has thousands, and drawing them all is how a tree
-// stops being readable at the first step.
-const LEAVES = 5;
+// How many children of one node are drawn before it offers the rest.
+//
+// A level is shown whole. An inventory that describes a build honestly has
+// tens of things at a level, not hundreds, and truncating those hid entries
+// for no reason — the reader could not tell a level they had all of from one
+// they had five of, which is worse than a long list.
+//
+// The cap is still here, high, for the inventory that is not honest: a real
+// image has been seen with 5,270 components directly under its root, and
+// drawing five thousand rows inside an expandable tree is a page that stops
+// responding rather than a page that is long. Past this the node says how many
+// there are and offers all of them.
+const CHILDREN = 400;
 
-// How many of its branches are drawn. Everything that opens is structure
-// rather than contents, and hiding structure behind "show all" is what made
-// this a list: the root has 96 children that open and 5,174 that do not, so a
-// truncation that does not tell them apart shows none of the 96.
-const BRANCHES = 15;
+// The version every component at one level carries, where they all carry the
+// same one, and empty otherwise.
+//
+// A version shared by components of different names is not describing any of
+// them. It is the producer describing the build — a build identifier, a batch
+// stamp — and drawn on every row it is noise that makes the level unreadable
+// while telling the reader nothing they could act on. One entry is not a
+// level, so a single child keeps its own version.
+function sharedVersion(kids: Node[]): string {
+  const first = kids.length < 2 ? "" : kids[0]?.version;
+  if (!first) return "";
+  return kids.every((kid) => kid.version === first) ? first : "";
+}
 
 // A count past this is emphasised, so the branch worth descending is visible
 // without reading every number on the way down.
@@ -339,7 +356,9 @@ function Branches({
   // in, and a graph with any sharing at all never finishes.
   const seen = new Set<string>();
 
-  function walk(node: Node, depth: number, path: string) {
+  // sharedHere says every component at this node's own level carries the same
+  // version, so this row leaves it out — the level says it once instead.
+  function walk(node: Node, depth: number, path: string, sharedHere = false) {
     const name = node.component;
     const repeated = seen.has(name);
     seen.add(name);
@@ -371,7 +390,9 @@ function Branches({
         <span className="id" style={{ cursor: "pointer" }} onClick={() => onSelect(name)}>
           {name}
         </span>
-        <span className="ver">{node.version}</span>
+        <span className="ver" title={node.version}>
+          {sharedHere ? "" : node.version}
+        </span>
         {repeated && <span className="repeat">shown above</span>}
         {/* What is open in everything under it, not only on it. A container
             holds none of its own, so counting only itself said every one of
@@ -401,16 +422,32 @@ function Branches({
       return;
     }
 
-    // Branches and leaves are truncated separately, because they answer
-    // different questions: what this is made of, and what is wrong inside it.
-    // One limit over both hides the first at the second's expense.
-    const branches = kids.filter((kid) => kid.children > 0);
-    const leaves = kids.filter((kid) => kid.children === 0);
+    // The server has already put these in the order somebody reads them:
+    // what opens first, then the most findings. Truncation, where it happens
+    // at all, therefore takes from the end rather than from the middle.
     const all = widened.has(name);
-    const shown = all
-      ? kids
-      : [...branches.slice(0, BRANCHES), ...leaves.slice(0, LEAVES)];
+    const shown = all ? kids : kids.slice(0, CHILDREN);
     const hidden = kids.length - shown.length;
+
+    // A version every child at this level shares is not a version of any of
+    // them — it is the producer describing the build, and repeating it on
+    // every row is the noise it looks like. Said once instead, and still on
+    // each row's tooltip.
+    const common = sharedVersion(kids);
+    if (common) {
+      rows.push(
+        <div
+          key={`${path}/version`}
+          className="node"
+          style={{ paddingLeft: (depth + 1) * 20 }}
+        >
+          <span className="rule">·</span>
+          <span className="hint">
+            all at <span className="id">{common}</span>
+          </span>
+        </div>,
+      );
+    }
     if (hidden > 0) {
       rows.push(
         <button
@@ -424,7 +461,7 @@ function Branches({
         </button>,
       );
     }
-    shown.forEach((kid, i) => walk(kid, depth + 1, `${path}/${i}:${kid.component}`));
+    shown.forEach((kid, i) => walk(kid, depth + 1, `${path}/${i}:${kid.component}`, !!common));
   }
 
   walk(root, 0, root.component);

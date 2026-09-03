@@ -406,6 +406,10 @@ func (s *Store) Around(ctx context.Context, subject access.Subject, targetID int
 	if err := s.filled(ctx, targetID, readable, above, below); err != nil {
 		return nil, nil, err
 	}
+	// Ordered after that, not before: what a branch is ranked on is what is
+	// beneath it, which nothing knows until here.
+	ordered(above)
+	ordered(below)
 	return above, below, nil
 }
 
@@ -476,6 +480,13 @@ func (s *Store) Roots(ctx context.Context, subject access.Subject, targetID int6
 		return nil, nil, err
 	}
 	if root == nil {
+		// A document that named no root of its own. The children are still
+		// what somebody reads, so they are still filled in and ordered — the
+		// list is the screen either way.
+		if err := s.filled(ctx, targetID, readable, kids); err != nil {
+			return nil, nil, err
+		}
+		ordered(kids)
 		return nil, kids, nil
 	}
 	// The root and its children counted in the one statement. The root's own
@@ -486,6 +497,7 @@ func (s *Store) Roots(ctx context.Context, subject access.Subject, targetID int6
 		return nil, nil, err
 	}
 	root.Beneath = top[0].Beneath
+	ordered(kids)
 	return root, kids, nil
 }
 
@@ -602,33 +614,53 @@ func (s *Store) step(ctx context.Context, readable []access.Visibility, targetID
 		return nil, fmt.Errorf("walk the graph: %w", err)
 	}
 
-	// What is beneath each is filled in by the caller, for every list it
-	// holds in one statement (filled).
+	// Ordered by ordered(), after the caller has filled in what is beneath
+	// each — the number a branch is ranked on is not known until then.
+	return rows, nil
+}
 
-	// What opens comes first, then leaves by what is open against them.
-	//
-	// **Branches are ordered by name, not by what is beneath them**, and that
-	// is deliberate. Ordering by the rollup was tried and made the screen
-	// worse: an edge here means "contains or depends on", the two are not
-	// distinguished in the document, and forty kernel-module packages each
-	// depend on the one kernel — so every one of them reported the kernel's
-	// 425,098 and they filled the first screen, putting the containers back
-	// out of sight. That is the defect this ordering was changed to fix,
-	// arriving from the other side.
-	//
-	// A leaf has nothing under it, so for leaves the rollup and the count are
-	// the same number and ordering by it follows the findings as it should.
+// ordered puts a list of neighbours in the order somebody reads it: what opens
+// first, and within each group the most findings first.
+//
+// **The number a row is ranked on is the number that describes it**: for a
+// branch, everything open beneath it, and for a leaf, its own count — which
+// for a leaf are the same number anyway. A container holds nothing of its own,
+// so ranking it on that put every container at zero and the list fell back to
+// alphabetical, which is what it looked like.
+//
+// **What opens still comes before what does not.** A container holds no
+// findings of its own, and on a real image the root's 5,270 children put the
+// first thing that opens at position 546 when structure was not held above
+// contents. A tree whose first screen contains no branches is a list, and the
+// reader never learns the build has containers in it.
+//
+// The cost, stated because it was the reason branches were ordered by name
+// before: an edge here means "contains or depends on" and the document does
+// not distinguish the two, so forty kernel-module packages each depending on
+// the one kernel each report the kernel's findings beneath them. Deep in a
+// tree that groups them together at the top. Ranking by name instead avoided
+// that and produced a worse problem everywhere else — an alphabetical list of
+// containers, which is what the ordering exists to prevent.
+func ordered(rows []Neighbour) {
 	sort.SliceStable(rows, func(i, j int) bool {
 		a, b := rows[i], rows[j]
 		if (a.Children > 0) != (b.Children > 0) {
 			return a.Children > 0
 		}
-		if a.Children == 0 && a.Findings != b.Findings {
-			return a.Findings > b.Findings
+		if ranks(a) != ranks(b) {
+			return ranks(a) > ranks(b)
 		}
 		return a.Name < b.Name
 	})
-	return rows, nil
+}
+
+// ranks is what a row is ordered on: everything open beneath it, which for a
+// leaf is its own count.
+func ranks(n Neighbour) int {
+	if n.Beneath > n.Findings {
+		return n.Beneath
+	}
+	return n.Findings
 }
 
 // visibleIn reports the visibilities this subject may read in a build, and

@@ -417,12 +417,38 @@ from findings and findings move: something dismissed, something assigned, a
 rating reconsidered. A stored total is right at the moment a scan ends and
 drifts from the screen beside it thereafter.
 
-Branches are ordered by name rather than by that total. Ordering by it was
-tried and reverted: an edge means "contains *or* depends on" and the document
-does not distinguish them, so forty kernel-module packages each depending on
-the one kernel all reported its total and filled the first screen — putting the
-containers out of sight again, which is the same fault arrived at from the
-other side.
+**Every row is ordered on the number that describes it**: for a branch, what
+is open beneath it, and for a leaf, its own count — which for a leaf are the
+same number. What opens still comes before what does not, so the structure of
+a build is on the first screen rather than buried under its contents.
+
+That is a reversal, and the reason it was the other way is worth keeping. It
+was once ordered on the row's own count, which is zero for every container, so
+the tree opened as an alphabetical list of containers saying nothing about
+which was worth opening. The correction before this one made branches
+alphabetical on purpose, to avoid a different fault: an edge means "contains
+*or* depends on" and the document does not distinguish them, so forty
+kernel-module packages each depending on the one kernel all report its total.
+That fault is back, deep in the tree, and it is the lesser of the two — a
+group of modules ranked together is a reader stepping past them, where an
+alphabetical first screen is a reader who never learns which container to open.
+
+**A level is drawn whole.** An inventory that describes a build honestly has
+tens of components at a level, and truncating those hid entries for no reason:
+a reader could not tell a level they had all of from one they had five of. The
+cap that remains is high and exists for the inventory that is not honest — a
+real image has been seen with 5,270 components directly under its root, and
+drawing five thousand rows inside an expandable tree is a page that stops
+responding rather than a page that is long. Past it the node says how many
+there are and offers all of them.
+
+**A version every component at a level shares is drawn once, not on every
+row.** A version shared by components of different names is not describing any
+of them; it is the producer describing the build, and the real case is a
+switch image whose thirty containers all carry one build stamp where a version
+should be. Repeated down the column it is noise that makes the level hard to
+read while telling nobody anything they could act on. It is not hidden — the
+level says it above the rows, and each row still carries it on hover.
 
 **The count is every open issue, answered or not.** A dismissal does not
 subtract from it. That is the behavior the screen has always had rather than a

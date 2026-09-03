@@ -2369,3 +2369,36 @@ One tooling note worth keeping: `grep` (ugrep here) silently matches nothing in
 consumer and were dead code — they are imported and rendered on line 7 and
 below. Read the file, or use another tool, before concluding something is
 unreachable.
+
+## Three things wrong with the dependency tree (2026-09-03)
+
+Reported from the running demo.
+
+**The meaningless version is the producer's own.** Every entry under the root
+carries `sbom-consumer-metadata.0-f3811cc13`, and that string is in the
+inventory: every component of type `container` in the switch image has it as
+its `version`. Their build had no version for those container images and
+emitted a build stamp. We store what the producer supplies and never invent, so
+there is nothing to fix in the reader — but drawing it thirty times down a
+column is noise. A version shared by components of *different names* is not
+describing any of them, so the level says it once and each row keeps it on
+hover.
+
+**The list was alphabetical because it was ranked on the wrong number.** A
+container holds no findings of its own, so ranking rows on their own count put
+every container at zero and the order fell back to the name. Rows are ranked on
+the number that describes them now: what is beneath, for a branch.
+
+This reverses a previous correction, and the reason for it is real: an edge
+means "contains or depends on" and the document does not distinguish them, so
+forty kernel-module packages each depending on the one kernel all report the
+kernel's total. That fault is back, deep in the tree. It is the lesser of the
+two — a group of modules ranked together is a reader stepping past them, an
+alphabetical first screen is a reader who never learns which container to open
+— and it is written down in `DESIGN-interface.md` rather than left to be
+rediscovered.
+
+**Truncation hid entries for no reason.** Fifteen branches and five leaves per
+level, which on a container with 324 children showed twenty. A level is drawn
+whole now, with the cap raised to 400 and kept only for the inventory that
+describes 5,270 components under one root.
