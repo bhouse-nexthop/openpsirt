@@ -48,21 +48,33 @@ type Match struct {
 	ComponentUpstream string
 	ConsumerUpstream  string
 	Places            int
+	// Here says this is in the build being decided in — another version of the
+	// same component, sitting beside the one in hand rather than in another
+	// release or variant.
+	Here bool
 }
 
-// Elsewhere finds the same issue at the same place in other builds of a
-// product, where a decision made here would not already cover it.
+// Reaching finds the same issue at the same place held at a version this
+// decision would not already cover.
 //
 // A decision is keyed on the combination of code rather than on the release it
-// was made in, so a build running the same versions picks it up by looking it
+// was made in, so anything running the same versions picks it up by looking it
 // up — nothing is copied, nothing syncs, and nobody is asked. What this returns
-// is the remainder: builds where the versions differ, so the decision does not
-// reach them and somebody has to say whether the same reasoning holds.
+// is the remainder: the same issue at the same place at *another version*, so
+// the decision does not reach it and somebody has to say whether the same
+// reasoning holds.
 //
-// Offered one at a time rather than as one answer. A component may be used in
-// a later release and not an earlier one, and the reasoning that made something
-// harmless in one build is not automatically true in another.
-func (s *Store) Reaching(ctx context.Context, subject access.Subject, at Deciding, exceptTargetID int64) (Reach, error) {
+// **The build this is being decided in is searched too**, and that is the
+// point. A build commonly ships one name at several versions — the reference
+// image carries the Go standard library at four — so the same issue at the
+// same place sits at versions right beside the one being decided. Looking only
+// at other builds asked about a second variant's other version and said
+// nothing about this build's, which reads as a question about variants when
+// every question here is about a version.
+//
+// What is skipped is the decision itself: the rows in this build at the very
+// versions being decided are what `at.Places` already counts.
+func (s *Store) Reaching(ctx context.Context, subject access.Subject, at Deciding, hereTargetID int64) (Reach, error) {
 	if !subject.Sees(at.ProductID) {
 		return Reach{}, access.Denied(fmt.Sprintf("read findings in product %d", at.ProductID))
 	}
@@ -105,7 +117,6 @@ func (s *Store) Reaching(ctx context.Context, subject access.Subject, at Decidin
 		Where("st.product_id = ?", at.ProductID).
 		Where("f.vulnerability_id = ?", at.VulnerabilityID).
 		Where("f.place_identity = ?", at.PlaceIdentity).
-		Where("f.target_id <> ?", exceptTargetID).
 		Where("f.closed_run_id IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		GroupExpr("f.target_id, st.display_name, va.display_name, c.version, "+
@@ -122,12 +133,23 @@ func (s *Store) Reaching(ctx context.Context, subject access.Subject, at Decidin
 			TargetID: row.TargetID, Stream: row.Stream, Variant: row.Variant, Version: row.Version,
 			ComponentUpstream: row.ComponentUpstream, ConsumerUpstream: row.ConsumerUpstream,
 			Places: row.Places,
+			// Whether it is somewhere else or right here. A screen leads with
+			// the version, because that is what differs, and says where as an
+			// aside — but it still has to be able to say "here".
+			Here: row.TargetID == hereTargetID,
 		}
-		// Where the versions are identical the decision reaches it by
-		// matching, so there is nothing to agree to — but somebody deciding
-		// should still be told, because it is how far their judgment travels.
-		if row.ComponentUpstream == at.ComponentUpstream &&
-			row.ConsumerUpstream == at.ConsumerUpstream {
+		matches := row.ComponentUpstream == at.ComponentUpstream &&
+			row.ConsumerUpstream == at.ConsumerUpstream
+		if matches {
+			// In this build at these versions, this *is* what is being
+			// decided: at.Places already counts it, and listing it as
+			// somewhere the judgment travels to would count it twice.
+			if match.Here {
+				continue
+			}
+			// Elsewhere at these versions the decision reaches it by matching,
+			// so there is nothing to agree to — but somebody deciding should
+			// still be told, because it is how far their judgment travels.
 			reach.Automatic = append(reach.Automatic, match)
 			continue
 		}

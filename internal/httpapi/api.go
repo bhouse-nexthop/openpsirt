@@ -146,6 +146,24 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 			// key are exempt: nothing sends those automatically, so the guard
 			// would protect nothing and break every build (ACC-18).
 			if !meantToBeSent(r, session, in.BaseURL) {
+				// Logged, because the answer a caller gets cannot tell them
+				// why without telling somebody else's page the same thing —
+				// and a deployment reached by a name it was not told about
+				// refuses every write while every read works, which looks
+				// like nothing at all from the outside. Somebody loses a
+				// half-written decision at submit and the only clue is
+				// "not authorized".
+				//
+				// What is logged is what the browser said and what this
+				// deployment answers to. Both are already known to whoever
+				// can read the log.
+				if in.Logger != nil {
+					in.Logger.Warn("a write was refused because it did not come from a page this deployment served",
+						"origin", r.Header.Get("Origin"),
+						"referer", r.Header.Get("Referer"),
+						"answers_to", strings.Join(origins(r, in.BaseURL), ", "),
+						"path", r.URL.Path)
+				}
 				refuse(w)
 				return
 			}

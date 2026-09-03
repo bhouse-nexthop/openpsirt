@@ -745,7 +745,7 @@ func decidingAbout(ctx context.Context, in Ingest, subject access.Subject,
 type ReachBody struct {
 	Here      int         `json:"here" doc:"Places in this build the judgment covers"`
 	Automatic []MatchBody `json:"automatic" doc:"Other builds it reaches by matching. Nothing to agree to"`
-	Differing []MatchBody `json:"differing" doc:"Same issue, another version. Each is a separate judgment"`
+	Differing []MatchBody `json:"differing" doc:"The same issue at the same place held at another version — in this build or in another. Each is a separate judgment, because the code differs"`
 }
 
 func reachBody(r finding.Reach) ReachBody {
@@ -756,12 +756,12 @@ func reachBody(r finding.Reach) ReachBody {
 	}
 	for _, m := range r.Automatic {
 		body.Automatic = append(body.Automatic, MatchBody{
-			Stream: m.Stream, Variant: m.Variant, Version: m.Version, Places: m.Places,
+			Stream: m.Stream, Variant: m.Variant, Version: m.Version, Places: m.Places, Here: m.Here,
 		})
 	}
 	for _, m := range r.Differing {
 		body.Differing = append(body.Differing, MatchBody{
-			Stream: m.Stream, Variant: m.Variant, Version: m.Version, Places: m.Places,
+			Stream: m.Stream, Variant: m.Variant, Version: m.Version, Places: m.Places, Here: m.Here,
 		})
 	}
 	return body
@@ -777,6 +777,10 @@ type MatchBody struct {
 	// caller applying the decision there passes it back as ?version=.
 	Version string `json:"version,omitempty" doc:"The version that build ships under this name — pass it as ?version= when applying a decision there"`
 	Places  int    `json:"places" doc:"How many places it sits at there"`
+	// Here says this is another version in the build being decided in, rather
+	// than in another release or variant. A build commonly ships one name at
+	// several versions, and those sit beside the one in hand.
+	Here bool `json:"here,omitempty" doc:"This is another version in the same build, not another build"`
 }
 
 func registerElsewhere(api huma.API, in Ingest) {

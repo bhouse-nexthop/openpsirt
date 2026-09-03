@@ -1112,6 +1112,9 @@ components:
         assessed:
           description: What we rate it, where we have said something. This is what ranks; severity is what was published
           type: string
+        assigned_to:
+          description: Who is dealing with this, by sign-in identity. Empty means nobody, or not everywhere the same person
+          type: string
         component:
           type: string
         description:
@@ -1629,6 +1632,29 @@ components:
         - due
         - days_left
       type: object
+    List-assignedResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/List-assignedResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/UnassignedBody"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
+      type: object
     List-issues-at-componentResponse:
       additionalProperties: false
       properties:
@@ -2020,6 +2046,9 @@ components:
     MatchBody:
       additionalProperties: false
       properties:
+        here:
+          description: This is another version in the same build, not another build
+          type: boolean
         places:
           description: How many places it sits at there
           format: int64
@@ -2429,7 +2458,7 @@ components:
             - array
             - "null"
         differing:
-          description: Same issue, another version. Each is a separate judgment
+          description: The same issue at the same place held at another version — in this build or in another. Each is a separate judgment, because the code differs
           items:
             $ref: "#/components/schemas/MatchBody"
           type:
@@ -4152,6 +4181,74 @@ paths:
       summary: List all users' API tokens
       tags:
         - Administration
+  /v1/people/{identity}/assignments:
+    get:
+      description: |-
+        The open findings assigned to somebody, most urgent first, in the same units as what nobody is dealing with: **one item per issue in a component in a product**, not one per build. The same code built several ways is one piece of work, and it was taken on as one.
+
+        Send `me` as the identity for your own.
+      operationId: list-assigned
+      parameters:
+        - description: Their sign-in identity, or 'me' for your own
+          in: path
+          name: identity
+          required: true
+          schema:
+            description: Their sign-in identity, or 'me' for your own
+            type: string
+        - description: Limit to one product, by name. Empty means every product you can see
+          explode: false
+          in: query
+          name: product
+          schema:
+            description: Limit to one product, by name. Empty means every product you can see
+            type: string
+        - description: Limit to one branch or tag. Only meaningful with a product
+          explode: false
+          in: query
+          name: stream
+          schema:
+            description: Limit to one branch or tag. Only meaningful with a product
+            type: string
+        - description: Limit to one variant. Only meaningful with a product, and independent of the branch
+          explode: false
+          in: query
+          name: variant
+          schema:
+            description: Limit to one variant. Only meaningful with a product, and independent of the branch
+            type: string
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: offset
+          schema:
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/List-assignedResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List what one person is dealing with
+      tags:
+        - Findings
   /v1/people/{identity}/assignments/release:
     post:
       description: |-

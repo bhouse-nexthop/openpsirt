@@ -528,7 +528,16 @@ export function Findings() {
   return (
     <>
       <div className="screen-head">
-        <h2>Findings</h2>
+        <h2>
+          Findings{" "}
+          {/* Beside the heading, not only at the foot of the list. Choosing a
+              filter is the moment somebody wants to know what it did, and a
+              count that lives under a page of rows is a scroll away from the
+              control that changed it. */}
+          <span className="n" title="Matching the filters in force">
+            {findings.isPending ? "…" : total.toLocaleString()}
+          </span>
+        </h2>
         <p>
           {product} · {stream} · {variant} — one row per issue and component, however many
           locations it sits at.

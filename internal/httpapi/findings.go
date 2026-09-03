@@ -394,6 +394,17 @@ type EvidenceBody struct {
 
 	Places []SittingBody `json:"places"`
 
+	// AssignedTo is who is dealing with this, by sign-in identity. Empty means
+	// nobody — and it is the same field the assignment route writes, so the
+	// screen somebody reads a finding on is the screen they can hand it over
+	// from. Being able to record a judgment about something and not to say who
+	// is dealing with it is a strange half of the same job.
+	//
+	// One name for the whole finding, because assignment is set for the whole
+	// group at once. Where the places somehow disagree it is left empty rather
+	// than naming one of them, which is the same rule the deadline list uses.
+	AssignedTo string `json:"assigned_to,omitempty" doc:"Who is dealing with this, by sign-in identity. Empty means nobody, or not everywhere the same person"`
+
 	// What has been decided here, so the finding is the working screen after
 	// a decision as well as before it (UIX-46): the live claims covering any
 	// of its places, the decisions that stopped applying with their reasoning
@@ -525,8 +536,9 @@ func evidenceBody(e finding.Evidence) EvidenceBody {
 		Component: e.Component, Version: e.Version, Upstream: e.Upstream,
 		FixState: string(e.FixState), FixedIn: e.FixedIn, ArrivedFrom: e.ArrivedFrom,
 		LatestVersion: e.LatestVersion, NothingSince: e.NothingSince,
-		Places:   make([]SittingBody, 0, len(e.Places)),
-		Standing: []StandingClaimBody{}, Previous: []EarlierBody{}, Similar: []SimilarBody{},
+		AssignedTo: e.AssignedTo,
+		Places:     make([]SittingBody, 0, len(e.Places)),
+		Standing:   []StandingClaimBody{}, Previous: []EarlierBody{}, Similar: []SimilarBody{},
 	}
 	if e.LatestReleasedAt != nil {
 		body.LatestReleasedAt = e.LatestReleasedAt.Format(time.DateOnly)

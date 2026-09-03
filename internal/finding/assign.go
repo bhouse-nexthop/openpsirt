@@ -318,6 +318,25 @@ type Owned struct {
 // that is answered separately.
 func (s *Store) Unassigned(ctx context.Context, subject access.Subject, scope Scope,
 	limit, offset int) ([]Owned, int, error) {
+	return s.work(ctx, subject, scope, nil, limit, offset)
+}
+
+// AssignedTo reports what one person is dealing with, in the same units as
+// what nobody is.
+//
+// The same shape deliberately. "What is waiting for me" and "what is waiting
+// for nobody" are the same question asked of a different holder, and answering
+// them in two shapes is how a screen ends up saying somebody holds ninety
+// things because it counted places where the other counted judgments.
+func (s *Store) AssignedTo(ctx context.Context, subject access.Subject, personID int64,
+	scope Scope, limit, offset int) ([]Owned, int, error) {
+
+	return s.work(ctx, subject, scope, &personID, limit, offset)
+}
+
+// work is what somebody holds, or what nobody does.
+func (s *Store) work(ctx context.Context, subject access.Subject, scope Scope,
+	holder *int64, limit, offset int) ([]Owned, int, error) {
 
 	products, all := subject.Products()
 	if subject.Kind != access.Person || (!all && len(products) == 0) {
@@ -331,8 +350,12 @@ func (s *Store) Unassigned(ctx context.Context, subject access.Subject, scope Sc
 		q = q.TableExpr("finding AS f").
 			Join("JOIN target AS tg ON tg.id = f.target_id").
 			Join("JOIN stream AS st ON st.id = tg.stream_id").
-			Where("f.closed_run_id IS NULL").
-			Where("f.assigned_to IS NULL")
+			Where("f.closed_run_id IS NULL")
+		if holder == nil {
+			q = q.Where("f.assigned_to IS NULL")
+		} else {
+			q = q.Where("f.assigned_to = ?", *holder)
+		}
 		if !all {
 			q = q.Where("st.product_id IN (?)", bun.List(products))
 		}

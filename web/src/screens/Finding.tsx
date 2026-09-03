@@ -344,6 +344,8 @@ export function Finding() {
           </>
         )}
 
+        <Holder at={at} assigned={it.assigned_to ?? ""} />
+
         {places.some((p) => p.decision == null) && (
           <>
             <Assess vulnerability={vulnerability} published={it.severity ?? ""} assessed={it.assessed ?? ""} />
@@ -1208,6 +1210,72 @@ function References({ advisory, refs }: { advisory?: string; refs: { url?: strin
         ))}
       </ul>
       <p className="hint">Patches first.</p>
+    </div>
+  );
+}
+
+// Who is dealing with this, and a way to change it.
+//
+// On the finding rather than only on the list of what nobody holds. Being able
+// to record a judgment about something and not to say who is dealing with it is
+// a strange half of the same job — and the screen somebody reads a finding on
+// is the one they are on when they decide it needs a person.
+//
+// It covers every build of the product holding this component, which is what
+// assigning means: the same code built several ways is one piece of work.
+function Holder({
+  at,
+  assigned,
+}: {
+  at: { product: string; stream: string; variant: string; vulnerability: string; component: string };
+  assigned: string;
+}) {
+  const queries = useQueryClient();
+  const people = useQuery({
+    queryKey: ["people"],
+    queryFn: async () => unwrap(await api.GET("/v1/people", {})),
+  });
+  const hand = useMutation({
+    mutationFn: async (person: string) =>
+      unwrap(
+        await api.PUT(
+          "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/assignment",
+          { params: { path: at }, body: { person } },
+        ),
+      ),
+    onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: ["finding"] });
+      void queries.invalidateQueries({ queryKey: ["findings"] });
+      void queries.invalidateQueries({ queryKey: ["unassigned"] });
+      void queries.invalidateQueries({ queryKey: ["holdings"] });
+    },
+  });
+
+  return (
+    <div className="card">
+      <h3>Who is dealing with it</h3>
+      {hand.error != null && <Failed error={hand.error} what="That could not be recorded." />}
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <select
+          value={assigned}
+          aria-label="Who is dealing with this"
+          disabled={hand.isPending}
+          onChange={(event) => hand.mutate(event.target.value)}
+        >
+          <option value="">Nobody</option>
+          {(people.data?.items ?? []).map((each) => (
+            <option key={each.identity} value={each.identity}>
+              {each.display_name || each.identity}
+            </option>
+          ))}
+        </select>
+        {hand.isPending && <span className="hint">Recording…</span>}
+      </div>
+      <p className="hint" style={{ margin: "8px 0 0" }}>
+        Covers every place this sits at, and every build of the product holding the same component
+        — the same code built several ways is one piece of work. Handing it back to nobody is the
+        same action.
+      </p>
     </div>
   );
 }

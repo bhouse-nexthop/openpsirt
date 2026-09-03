@@ -2,16 +2,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, type Body } from "../api/client";
 import { scopeQuery, useScope } from "../app/scope";
+import { useWho } from "../app/session";
 import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
 import { Severity, Exploited } from "../ui/Severity";
-import { Paged } from "../ui/Paged";
 
 // The most the server returns of what is running out. A cap rather than a
 // page — the list has no total — so a full list is said to be a cap and not
 // a count.
-const LATE_LIMIT = 200;
+const PAGE = 50;
 
 // Assignments: what is running out of time undecided, and what each person
 // holds. Unassigned already has its own entry in the rail, so the third tab
@@ -23,19 +23,36 @@ const LATE_LIMIT = 200;
 // action rather than something the tool discovers (ACC-43 to ACC-45).
 export function Work() {
   const [params, setParams] = useSearchParams();
+  const who = useWho();
   const tab = params.get("tab") ?? "due";
-  const days = Number(params.get("days") ?? 30);
 
   const at = useScope();
   const scope = scopeQuery(at);
-  const due = useQuery({
-    queryKey: ["running-out", days, scope],
-    queryFn: async () =>
-      unwrap(await api.GET("/v1/running-out", { params: { query: { days, limit: LATE_LIMIT, ...scope } } })),
-  });
   const holdings = useQuery({
     queryKey: ["holdings"],
     queryFn: async () => unwrap(await api.GET("/v1/assignments", {})),
+  });
+  // Whose work is being looked at on the second tab. Empty is the roll-up of
+  // everybody; a name is that person's list.
+  const person = params.get("person") ?? "";
+  const mine = useQuery({
+    queryKey: ["assigned", "me", scope],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/people/{identity}/assignments", {
+          params: { path: { identity: "me" }, query: { limit: PAGE, ...scope } },
+        }),
+      ),
+  });
+  const theirs = useQuery({
+    enabled: person !== "",
+    queryKey: ["assigned", person, scope],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/people/{identity}/assignments", {
+          params: { path: { identity: person }, query: { limit: PAGE, ...scope } },
+        }),
+      ),
   });
 
   function go(next: string) {
@@ -45,8 +62,13 @@ export function Work() {
     setParams(now);
   }
 
-  const lateRows = due.data?.items ?? [];
   const peopleRows = holdings.data?.items ?? [];
+  // Nobody's work appears on this screen. What is waiting for nobody is its
+  // own screen and its own question — mixing it in here made "assignments" a
+  // list of things that are not assigned, which is the one thing it should
+  // not be.
+  const others = peopleRows.filter((row) => row.person !== who.data?.identity);
+  const myCount = peopleRows.find((row) => row.person === who.data?.identity)?.open ?? 0;
 
   return (
     <>
@@ -61,27 +83,57 @@ export function Work() {
 
       <div className="tabs2">
         <button type="button" className="tab2 urgent" aria-selected={tab === "due"} onClick={() => go("due")}>
-          Due soon, undecided{" "}
-          <span className="n">{lateRows.length >= LATE_LIMIT ? `${LATE_LIMIT}+` : lateRows.length}</span>
+          Assigned to me <span className="n">{(mine.data?.total ?? myCount).toLocaleString()}</span>
         </button>
         <button type="button" className="tab2" aria-selected={tab === "people"} onClick={() => go("people")}>
-          By assignee <span className="n">{peopleRows.length}</span>
+          Assigned to others <span className="n">{others.length}</span>
         </button>
       </div>
 
       {tab === "due" ? (
-        <Due
-          days={days}
-          rows={lateRows}
-          query={due}
-          onDays={(next) => {
+        <Held
+          rows={mine.data?.items ?? []}
+          total={mine.data?.total ?? 0}
+          query={mine}
+          empty="Nothing is assigned to you."
+          detail="Work you take on from a finding, or that somebody hands you, appears here."
+        />
+      ) : person ? (
+        <>
+          <div className="filters" style={{ marginBottom: 10 }}>
+            <button
+              type="button"
+              className="linkish"
+              onClick={() => {
+                const now = new URLSearchParams(params);
+                now.delete("person");
+                setParams(now);
+              }}
+            >
+              ← Everybody
+            </button>
+            <span className="hint">
+              What <b>{person}</b> is dealing with
+            </span>
+          </div>
+          <Held
+            rows={theirs.data?.items ?? []}
+            total={theirs.data?.total ?? 0}
+            query={theirs}
+            empty="They are not holding anything."
+            detail="Either it has been decided, or somebody handed it back."
+          />
+        </>
+      ) : (
+        <ByPerson
+          rows={others}
+          query={holdings}
+          onPick={(identity) => {
             const now = new URLSearchParams(params);
-            now.set("days", String(next));
+            now.set("person", identity);
             setParams(now);
           }}
         />
-      ) : (
-        <ByPerson rows={peopleRows} query={holdings} />
       )}
     </>
   );
@@ -89,133 +141,15 @@ export function Work() {
 
 type Query = { isPending: boolean; isError: boolean; error: unknown };
 
-// A deadline that has been answered — deferred to a date, or dismissed — is not
-// on this list. What is left is time passing with nothing said.
-function Due({
-  days,
+function ByPerson({
   rows,
   query,
-  onDays,
+  onPick,
 }: {
-  days: number;
-  rows: Body<"LateBody">[];
+  rows: { person?: string; open?: number; overdue?: number }[];
   query: Query;
-  onDays: (days: number) => void;
+  onPick: (identity: string) => void;
 }) {
-  if (query.isPending) return <p className="hint">Loading…</p>;
-  if (query.isError) {
-    return <Failed error={query.error} what="What is running out of time could not be read." />;
-  }
-
-  return (
-    <>
-      <div className="filters" style={{ marginBottom: 10 }}>
-        <span style={{ color: "var(--faint)" }}>Within</span>
-        <span className="seg">
-          {[0, 7, 30, 90].map((window) => (
-            <button key={window} type="button" aria-pressed={days === window} onClick={() => onDays(window)}>
-              {window === 0 ? "Overdue" : `${window} days`}
-            </button>
-          ))}
-        </span>
-        <span className="hint">
-          Undecided findings only: a dismissal takes a finding off the clock and a deferral replaces the
-          deadline with its own date.
-        </span>
-      </div>
-
-      {rows.length === 0 ? (
-        <Empty
-          title="Nothing is running out inside that window."
-          detail="Either everything close to its deadline has been decided, or nothing is close."
-        />
-      ) : (
-        <div className="tablewrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Due</th>
-                <th>Severity</th>
-                <th>Issue</th>
-                <th>Component</th>
-                <th>Build</th>
-                <th>Assigned to</th>
-                <th className="num">Locations</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const late = (row.days_left ?? 0) < 0;
-                return (
-                  <tr key={`${row.product} ${row.stream} ${row.variant} ${row.vulnerability} ${row.component} ${row.version}`} className="row">
-                    <td>
-                      <span className={late ? "due over" : (row.days_left ?? 0) <= 7 ? "due soon" : "due fine"}>
-                        {late ? `${Math.abs(row.days_left ?? 0)} days overdue` : `in ${row.days_left ?? 0} days`}
-                      </span>
-                      <br />
-                      <span className="hint">{row.due}</span>
-                    </td>
-                    <td>
-                      <Severity word={row.severity} />
-                    </td>
-                    <td>
-                      <Link
-                        className="id"
-                        to={
-                          `/products/${encodeURIComponent(row.product ?? "")}` +
-                          `/streams/${encodeURIComponent(row.stream ?? "")}` +
-                          `/variants/${encodeURIComponent(row.variant ?? "")}` +
-                          `/findings/${encodeURIComponent(row.vulnerability ?? "")}` +
-                          `/components/${encodeURIComponent(row.component ?? "")}` +
-                          (row.version ? `?version=${encodeURIComponent(row.version)}` : "")
-                        }
-                      >
-                        {row.vulnerability}
-                      </Link>{" "}
-                      <Exploited when={row.exploited} />
-                    </td>
-                    <td>
-                      <span className="id">{row.component}</span>
-                    </td>
-                    <td className="hint">
-                      {row.product} · {row.stream} · {row.variant}
-                    </td>
-                    <td>
-                      {row.assigned_to ? (
-                        <span className="who2">
-                          <span className="avatar">{initials(row.assigned_to)}</span>
-                          {row.assigned_to}
-                        </span>
-                      ) : (
-                        // Not a person, so not drawn as one. Nobody holds it,
-                        // and the list of everything nobody holds is its own
-                        // screen in the rail.
-                        <span className="hint">unassigned</span>
-                      )}
-                    </td>
-                    <td className="num">{row.places}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <Paged shown={rows.length} limit={LATE_LIMIT} />
-    </>
-  );
-}
-
-function initials(name: string): string {
-  const parts = name.replace(/^[a-z]+:/, "").split(/[\s._@-]+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return (parts[0] ?? "").slice(0, 2).toUpperCase();
-  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();
-}
-
-// What each person is holding, and the one action nothing else offers: giving
-// their work back when they have gone.
-function ByPerson({ rows, query }: { rows: { person?: string; open?: number; overdue?: number }[]; query: Query }) {
   const queries = useQueryClient();
   const release = useMutation({
     mutationFn: async (identity: string) =>
@@ -236,7 +170,12 @@ function ByPerson({ rows, query }: { rows: { person?: string; open?: number; ove
     return <Failed error={query.error} what="What people are holding could not be read." />;
   }
   if (rows.length === 0) {
-    return <Empty title="Nobody is holding anything." detail="Every open finding is unassigned." />;
+    return (
+      <Empty
+        title="Nobody else is holding anything."
+        detail="What is waiting for nobody is on the unassigned screen; this one is about work somebody has taken on."
+      />
+    );
   }
 
   return (
@@ -256,10 +195,17 @@ function ByPerson({ rows, query }: { rows: { person?: string; open?: number; ove
             {rows.map((row) => (
               <tr key={row.person} className="row">
                 <td>
-                  <span className="who2">
-                    <span className="avatar">{initials(row.person ?? "")}</span>
-                    {row.person}
-                  </span>
+                  <button
+                    type="button"
+                    className="linkish"
+                    onClick={() => onPick(row.person ?? "")}
+                    title="See what they are dealing with"
+                  >
+                    <span className="who2">
+                      <span className="avatar">{initials(row.person ?? "")}</span>
+                      {row.person}
+                    </span>
+                  </button>
                 </td>
                 <td className="num">{(row.open ?? 0).toLocaleString()}</td>
                 <td className="num">
@@ -291,4 +237,102 @@ function ByPerson({ rows, query }: { rows: { person?: string; open?: number; ove
       </p>
     </>
   );
+}
+
+// What one person is dealing with, in the same units as what nobody is: one
+// row per issue in a component in a product, not one per build. The same code
+// built several ways is one piece of work and was taken on as one.
+function Held({
+  rows,
+  total,
+  query,
+  empty,
+  detail,
+}: {
+  rows: Body<"UnassignedBody">[];
+  total: number;
+  query: Query;
+  empty: string;
+  detail: string;
+}) {
+  if (query.isPending) return <p className="hint">Loading…</p>;
+  if (query.isError) {
+    return <Failed error={query.error} what="What is assigned could not be read." />;
+  }
+  if (rows.length === 0) return <Empty title={empty} detail={detail} />;
+
+  return (
+    <>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Severity</th>
+              <th>Issue</th>
+              <th>Component</th>
+              <th>Where</th>
+              <th className="num">Locations</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={`${row.product} ${row.vulnerability} ${row.component} ${row.version}`} className="row">
+                <td>
+                  <Severity word={row.severity} />
+                </td>
+                <td>
+                  <Link
+                    to={
+                      `/products/${encodeURIComponent(row.product ?? "")}` +
+                      `/streams/${encodeURIComponent(row.stream ?? "")}` +
+                      `/variants/${encodeURIComponent(row.variant ?? "")}` +
+                      `/findings/${encodeURIComponent(row.vulnerability ?? "")}` +
+                      `/components/${encodeURIComponent(row.component ?? "")}` +
+                      (row.version ? `?version=${encodeURIComponent(row.version)}` : "")
+                    }
+                    className="id"
+                  >
+                    {row.vulnerability}
+                  </Link>{" "}
+                  <Exploited when={row.exploited} />
+                </td>
+                <td>
+                  <span className="id">{row.component}</span>{" "}
+                  <span className="id" style={{ color: "var(--faint)" }}>
+                    {row.version}
+                  </span>
+                </td>
+                <td className="hint">
+                  {row.product}
+                  {(row.builds ?? 1) > 1 ? (
+                    <> · {row.builds} builds</>
+                  ) : (
+                    <>
+                      {" "}
+                      · {row.stream} · {row.variant}
+                    </>
+                  )}
+                </td>
+                <td className="num">{row.places}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="filters" style={{ margin: "10px 0 0" }}>
+        <span className="hint">
+          Showing {rows.length.toLocaleString()} of {total.toLocaleString()}
+        </span>
+      </div>
+    </>
+  );
+}
+
+// Two letters for the corner. A display name people set is usually a full
+// name; an identity is usually not, and either has to fit in a small circle.
+function initials(name: string): string {
+  const parts = name.replace(/^[a-z]+:/, "").split(/[\s._@-]+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return (parts[0] ?? "").slice(0, 2).toUpperCase();
+  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();
 }

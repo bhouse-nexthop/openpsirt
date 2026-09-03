@@ -128,10 +128,14 @@ export function Decide({
     for (const each of reach) {
       for (const m of each.data?.automatic ?? []) auto.set(`${m.stream} · ${m.variant}`, true);
       for (const m of each.data?.differing ?? []) {
-        const build = `${m.stream} · ${m.variant}`;
-        // One question per version the build ships, not one per build: a
-        // build carrying the component at two versions is two claims about
-        // different code, and each is posted with its own version.
+        // Where it is, said as an aside. What is being asked about is the
+        // version — a build at matching versions never reaches this list — so
+        // "this build" is the honest label for another version sitting beside
+        // the one in hand, rather than the build's own name repeated back.
+        const build = m.here ? "this build" : `${m.stream} · ${m.variant}`;
+        // One question per version, not one per build: a build carrying the
+        // component at four versions is four claims about different code, and
+        // each is posted with its own version.
         const key = `${build} @ ${m.version ?? ""}`;
         const had = diff.get(key);
         differing.add(build);

@@ -196,6 +196,70 @@ func registerAssignment(api huma.API, in Ingest) {
 	})
 
 	huma.Register(api, huma.Operation{
+		OperationID: "list-assigned", Method: http.MethodGet,
+		Path:    "/v1/people/{identity}/assignments",
+		Summary: "List what one person is dealing with",
+		Description: "The open findings assigned to somebody, most urgent first, in the same " +
+			"units as what nobody is dealing with: **one item per issue in a component in a " +
+			"product**, not one per build. The same code built several ways is one piece of " +
+			"work, and it was taken on as one.\n\n" +
+			"Send `me` as the identity for your own.",
+		Tags: []string{"Findings"},
+	}, func(ctx context.Context, input *struct {
+		Identity string `path:"identity" doc:"Their sign-in identity, or 'me' for your own"`
+		ScopeQuery
+		Limit  int `query:"limit" default:"50" minimum:"1" maximum:"200"`
+		Offset int `query:"offset" minimum:"0"`
+	}) (*struct {
+		Body struct {
+			Items []UnassignedBody `json:"items"`
+			Total int              `json:"total"`
+		}
+	}, error) {
+		subject, err := reading(ctx)
+		if err != nil {
+			return nil, err
+		}
+		scope, err := scoped(ctx, in, subject, input.ScopeQuery)
+		if err != nil {
+			return nil, err
+		}
+		// "me" rather than making a screen know its own identity and spell it
+		// into a path. It is also the only form that cannot name somebody
+		// else by accident.
+		personID := subject.ID
+		if input.Identity != "me" {
+			person, err := access.NewStore(in.DB.DB).ByIdentity(ctx, input.Identity)
+			if err != nil {
+				return nil, noSuchPerson()
+			}
+			personID = person.ID
+		}
+		rows, total, err := finding.NewStore(in.DB.DB).AssignedTo(ctx, subject, personID,
+			scope, input.Limit, input.Offset)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "what they are dealing with could not be read", err)
+		}
+		out := &struct {
+			Body struct {
+				Items []UnassignedBody `json:"items"`
+				Total int              `json:"total"`
+			}
+		}{}
+		out.Body.Items = make([]UnassignedBody, 0, len(rows))
+		for _, row := range rows {
+			out.Body.Items = append(out.Body.Items, UnassignedBody{
+				Vulnerability: row.Vulnerability, Severity: row.Severity, Exploited: row.Exploited,
+				Component: row.Component, Version: row.Version,
+				Product: row.Product, Stream: row.Stream, Variant: row.Variant,
+				Places: row.Places, Builds: row.Builds,
+			})
+		}
+		out.Body.Total = total
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
 		OperationID: "list-holdings", Method: http.MethodGet, Path: "/v1/assignments",
 		Summary: "List how much each person is dealing with",
 		Description: "Returns everyone holding open findings you can see, with how many.\n\n" +

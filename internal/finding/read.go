@@ -1052,6 +1052,11 @@ type Evidence struct {
 	// Places is where it sits here — the consumer that pulls the component in,
 	// and whether the build has already argued that place away.
 	Places []Sitting
+	// AssignedTo is who is dealing with this, by sign-in identity, or empty
+	// where nobody is. One name for the whole finding, because assignment is
+	// set for a group at once; where the places somehow disagree it is empty
+	// rather than naming one of them.
+	AssignedTo string
 }
 
 // Sitting is one place a component occupies, as a finding presents it.
@@ -1253,7 +1258,46 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		}
 		evidence.Places = append(evidence.Places, place)
 	}
+
+	// Who is dealing with it. Read here rather than left to a caller, so that
+	// the screen somebody reads a finding on is the screen they can hand it
+	// over from — being able to record a judgment about something and not to
+	// say who is dealing with it is a strange half of the same job.
+	//
+	// One name for the whole finding, and empty where the places disagree: the
+	// assignment is set for a group at once, so a disagreement is a state
+	// nobody chose and naming one of them would hide it.
+	held, err := s.heldBy(ctx, targetID, vulnerabilityID, componentID)
+	if err != nil {
+		return nil, err
+	}
+	evidence.AssignedTo = held
 	return evidence, nil
+}
+
+// heldBy is the sign-in identity of whoever is dealing with a finding, or
+// empty where nobody is or the places do not agree.
+func (s *Store) heldBy(ctx context.Context, targetID, vulnerabilityID, componentID int64) (string, error) {
+	var holders []struct {
+		Identity *string `bun:"identity"`
+	}
+	err := s.db.NewSelect().
+		TableExpr("finding AS f").
+		Join(`LEFT JOIN "person" AS p ON p.id = f.assigned_to`).
+		ColumnExpr("p.identity AS identity").
+		Where("f.target_id = ?", targetID).
+		Where("f.vulnerability_id = ?", vulnerabilityID).
+		Where("f.component_id = ?", componentID).
+		Where("f.closed_run_id IS NULL").
+		GroupExpr("p.identity").
+		Scan(ctx, &holders)
+	if err != nil {
+		return "", fmt.Errorf("read who is dealing with this: %w", err)
+	}
+	if len(holders) != 1 || holders[0].Identity == nil {
+		return "", nil
+	}
+	return *holders[0].Identity, nil
 }
 
 // AtComponent lists the open issues against one component of a build, with

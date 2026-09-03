@@ -5,10 +5,21 @@ import { Failed } from "./Failed";
 //
 // Three kinds of other build, and only one of them is a choice (TRI-30):
 // builds already matching are covered by lookup and are named, not asked
-// about; builds at other versions are walked one at a time with the reasoning
-// beside each, because a tick is a claim about a version nobody has looked at;
-// a build already past the fix is shown and not offered. The walk ends on a
-// summary that is confirmed, and that count is what the approval records.
+// about; builds holding the issue at **another version** are offered, because
+// a tick there is a claim about code nobody has looked at; a build already
+// past the fix is shown and not offered.
+//
+// **What is offered is a version, not a variant**, and it says so. The same
+// product built two ways is one piece of work — a matching build is reached by
+// lookup and never asked about — so anything that reaches this list is here
+// because the code differs. Labelling those entries by their build read as
+// "approve this for mellanox", which is a question nobody should be asked and
+// which made a variant look like a decision somebody had to take twice.
+//
+// **One screen, not one per entry.** Walking them individually made a routine
+// decision several sheets deep, and the thing being weighed is one line each:
+// does the reasoning hold at that version too. They are unticked to start,
+// because that is the whole control — a tick is the claim.
 
 export type Other = {
   // One entry per build and version; the build alone is the label.
@@ -68,21 +79,18 @@ export function Review({
     };
   }, [open]);
 
-  function go(action: "next" | "back" | "apply" | "skip") {
-    if (action === "next") setStep((s) => Math.min(n + 1, s + 1));
-    else if (action === "back") setStep((s) => Math.max(0, s - 1));
-    else {
-      const each = plan.offered[step - 1];
-      if (each) {
-        setApplied((prev) => {
-          const next = new Set(prev);
-          if (action === "apply") next.add(each.key);
-          else next.delete(each.key);
-          return next;
-        });
-      }
-      setStep((s) => s + 1);
-    }
+  function go(action: "next" | "back") {
+    if (action === "next") setStep((s) => Math.min(1, s + 1));
+    else setStep((s) => Math.max(0, s - 1));
+  }
+
+  function toggle(key: string, on: boolean) {
+    setApplied((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(key);
+      else next.delete(key);
+      return next;
+    });
   }
 
   const chosen = plan.offered.filter((o) => applied.has(o.key));
@@ -99,13 +107,7 @@ export function Review({
       if (event.key === "Enter") {
         event.preventDefault();
         if (step === 0) go("next");
-        else if (step > n && !busy) onConfirm(chosen);
-      } else if (step >= 1 && step <= n && (event.key === "a" || event.key === "ArrowRight")) {
-        event.preventDefault();
-        go("apply");
-      } else if (step >= 1 && step <= n && event.key === "s") {
-        event.preventDefault();
-        go("skip");
+        else if (!busy) onConfirm(chosen);
       } else if (event.key === "ArrowLeft" || event.key === "Backspace") {
         event.preventDefault();
         go("back");
@@ -117,14 +119,10 @@ export function Review({
 
   if (!open) return null;
 
-  const excerpt = plan.reasoning.trim()
-    ? plan.reasoning.trim().split("\n")[0]?.slice(0, 160) + (plan.reasoning.length > 160 ? "…" : "")
-    : "(no reasoning written yet)";
-
   const progress = (
     <div className="revprog">
-      {["This build", ...plan.offered.map((o) => o.build), "Confirm"].map((label, i) => (
-        <span key={label + i} className={i === step ? "on" : i < step ? "done" : ""}>
+      {["Where it applies", "Confirm"].map((label, i) => (
+        <span key={label} className={i === step ? "on" : i < step ? "done" : ""}>
           {label}
         </span>
       ))}
@@ -172,22 +170,56 @@ export function Review({
         </div>
         <div className="revcard ask">
           <h5>Other versions · {n}</h5>
-          <p>
-            {n === 0 ? (
-              "No other build holds this issue at a different version."
-            ) : (
-              <>
-                {plan.offered.map((o, i) => (
-                  <span key={o.key}>
-                    {i > 0 && ", "}
-                    <span className="id">{o.build}</span>
-                  </span>
+          {n === 0 ? (
+            <p>No other build holds this issue at a different version.</p>
+          ) : (
+            <>
+              <p>
+                Different code — <b>a different version</b>, not a different variant. Your
+                reasoning is about{" "}
+                <span className="id">{plan.versionHere || "the version here"}</span>; tick the ones
+                it also holds for, and the same words are recorded there keyed to that version, so
+                each lapses on its own when it moves. Some of these sit in this same build, which
+                commonly ships one name at several versions.
+              </p>
+              <ul className="revlist">
+                {plan.offered.map((o) => (
+                  <li key={o.key}>
+                    <label style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                      <input
+                        type="checkbox"
+                        checked={applied.has(o.key)}
+                        onChange={(event) => toggle(o.key, event.target.checked)}
+                      />
+                      <span>
+                        {/* The version leads, because the version is what
+                            differs. Led by the build, this read as "approve
+                            this for mellanox" — a question about a variant,
+                            which is never the question: a build at matching
+                            versions is reached by lookup and never appears
+                            here at all. */}
+                        <span className="id">{o.version || "unstated"}</span>{" "}
+                        <span className="hint">
+                          {o.build === "this build" ? "also in this build" : `in ${o.build}`} ·{" "}
+                          {o.places} {o.places === 1 ? "location" : "locations"}
+                        </span>
+                      </span>
+                    </label>
+                  </li>
                 ))}
-                . Different code, so each is a separate question. They come next, one at a time,
-                with your reasoning beside each.
-              </>
-            )}
-          </p>
+              </ul>
+              <p className="hint" style={{ margin: "6px 0 0" }}>
+                Left unticked, each stays open and asks nothing further.
+              </p>
+              <p className="hint" style={{ margin: "6px 0 0" }}>
+                What you wrote:{" "}
+                {plan.reasoning.trim()
+                  ? plan.reasoning.trim().split("\n")[0]?.slice(0, 160) +
+                    (plan.reasoning.length > 160 ? "…" : "")
+                  : "(no reasoning written yet)"}
+              </p>
+            </>
+          )}
         </div>
         {plan.blocked.length > 0 && (
           <div className="revcard off">
@@ -207,62 +239,12 @@ export function Review({
     foot = (
       <>
         <button type="button" className="btn" onClick={() => go("next")}>
-          Start → <kbd className="onbtn">↵</kbd>
+          Review and submit → <kbd className="onbtn">↵</kbd>
         </button>
         <button type="button" className="btn quiet" onClick={onCancel}>
           Cancel
         </button>
         <span className="note">Nothing is written until you confirm</span>
-      </>
-    );
-  } else if (step <= n) {
-    const each = plan.offered[step - 1]!;
-    const state = applied.has(each.key) ? "applied" : "";
-    title = `Apply here? — ${step} of ${n}`;
-    body = (
-      <>
-        {progress}
-        <div className={`revcard ${each.tone}`}>
-          <h5>
-            <span className="id">{each.build}</span>
-          </h5>
-          <p>
-            <span className="id">{each.version}</span>
-            <br />
-            <span className="hint">
-              {each.places} {each.places === 1 ? "location" : "locations"} there · here it is{" "}
-              <span className="id">{plan.versionHere || "unstated"}</span>
-            </span>
-          </p>
-          <p className={each.tone === "warn" ? "warnline" : "okline"}>{each.note}</p>
-        </div>
-        <div className="revcard quote">
-          <h5>Your reasoning</h5>
-          <p>{excerpt}</p>
-          <p className="hint" style={{ margin: "6px 0 0" }}>
-            The same words are recorded against that build if you apply them there, keyed to{" "}
-            <span className="id">{each.version}</span>, so they lapse on their own when it moves.
-          </p>
-        </div>
-        {state && (
-          <p className="hint">
-            Currently: <b>{state}</b>
-          </p>
-        )}
-      </>
-    );
-    foot = (
-      <>
-        <button type="button" className="btn" onClick={() => go("apply")}>
-          Apply here <kbd className="onbtn">a</kbd>
-        </button>
-        <button type="button" className="btn ghost" onClick={() => go("skip")}>
-          Skip <kbd className="onbtn" style={{ borderColor: "var(--accent-line)", background: "none" }}>s</kbd>
-        </button>
-        <button type="button" className="btn quiet" onClick={() => go("back")}>
-          ← Back
-        </button>
-        <span className="note">Skipped builds stay open</span>
       </>
     );
   } else {
@@ -279,14 +261,15 @@ export function Review({
               <b>{plan.covered}</b> {plan.covered === 1 ? "location" : "locations"} in this build
             </li>
             <li>
-              <b>{chosen.length}</b> other {chosen.length === 1 ? "build" : "builds"} at other versions
+              <b>{chosen.length}</b> other {chosen.length === 1 ? "version" : "versions"}
               {chosen.length > 0 && (
                 <>
                   :{" "}
                   {chosen.map((o, i) => (
                     <span key={o.key}>
                       {i > 0 && ", "}
-                      <span className="id">{o.build}</span>
+                      <span className="id">{o.version || "unstated"}</span>{" "}
+                      <span className="hint">in {o.build}</span>
                     </span>
                   ))}
                 </>
@@ -308,10 +291,11 @@ export function Review({
               {skipped.map((o, i) => (
                 <span key={o.key}>
                   {i > 0 && ", "}
-                  <span className="id">{o.build}</span>
+                  <span className="id">{o.version || "unstated"}</span>{" "}
+                  <span className="hint">in {o.build}</span>
                 </span>
               ))}{" "}
-              — skipped; each stays open and asks nothing further.
+              — left unticked; each stays open and asks nothing further.
             </p>
           </div>
         )}

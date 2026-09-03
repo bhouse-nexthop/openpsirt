@@ -95,9 +95,10 @@ NPM ?= npm
 # overridable, because the two settings people get wrong are the host they
 # browse to and who they arrive as.
 #
-#   DEMO_HOST   what you type in the browser. Must match what the forgery
-#               guard is told to expect, which is why it appears three times
-#               below rather than once
+#   DEMO_HOST   where this waits for the container to answer, and what the
+#               status line prints. Not what you have to type: the demo is not
+#               told a base address, so it answers on whatever name you reach
+#               it by
 #   DEMO_USER   who you arrive as. The trusted-header path prefixes it, so the
 #               administrator is proxy:$(DEMO_USER)
 DEMO_HOST ?= localhost
@@ -544,8 +545,16 @@ demo-up: demo-down
 	  -e OPENPSIRT_BOOTSTRAP_ADMINS="proxy:$(DEMO_USER)" \
 	  -e OPENPSIRT_TRUSTED_HEADER="X-User" \
 	  -e OPENPSIRT_TRUSTED_SOURCES="$(DEMO_SUBNET)" \
-	  -e OPENPSIRT_BASE_URL="$(DEMO_URL)" \
 	  $(DEMO_IMAGE) >/dev/null
+	@# Deliberately no OPENPSIRT_BASE_URL. It is what a sign-in provider sends
+	@# somebody back to, and the demo has no provider — but it is also what the
+	@# forgery guard compares a browser's origin against, so setting it pins
+	@# the demo to one hostname. Reaching it as anything else then reads
+	@# perfectly and refuses every write with "not authorized", which is the
+	@# guard working and looks nothing like it: somebody gets all the way
+	@# through a decision and loses it at submit. Without it the guard compares
+	@# against the request's own Host, which is sound for exactly this — a
+	@# hostile page cannot make a browser send another site's Host.
 	@# What authenticates. A deployment puts this application behind something
 	@# that has already identified the caller and states who they are in a
 	@# header; this is the smallest honest version of that, rather than a mode
@@ -557,7 +566,12 @@ demo-up: demo-down
 	  '  location / {' \
 	  '    proxy_pass http://openpsirt-demo:8080;' \
 	  '    proxy_set_header X-User $(DEMO_USER);' \
-	  '    proxy_set_header Host $$host;' \
+	  '    # $$http_host, not $$host: nginx strips the port from $$host, so a' \
+	  '    # browser at name:8080 reaches an application that thinks it answers' \
+	  '    # to name. Reads work and every write is refused by the forgery' \
+	  '    # guard, which compares the origin the browser states against where' \
+	  '    # this deployment believes it answers.' \
+	  '    proxy_set_header Host $$http_host;' \
 	  '    proxy_set_header X-Forwarded-For $$remote_addr;' \
 	  '    client_max_body_size 256m;' \
 	  '    proxy_read_timeout 300s;' \

@@ -542,6 +542,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/people/{identity}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List what one person is dealing with
+         * @description The open findings assigned to somebody, most urgent first, in the same units as what nobody is dealing with: **one item per issue in a component in a product**, not one per build. The same code built several ways is one piece of work, and it was taken on as one.
+         *
+         *     Send `me` as the identity for your own.
+         */
+        get: operations["list-assigned"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/people/{identity}/assignments/release": {
         parameters: {
             query?: never;
@@ -2280,6 +2302,8 @@ export interface components {
             arrived_from?: string;
             /** @description What we rate it, where we have said something. This is what ranks; severity is what was published */
             assessed?: string;
+            /** @description Who is dealing with this, by sign-in identity. Empty means nobody, or not everywhere the same person */
+            assigned_to?: string;
             component: string;
             description?: string;
             /** @description Somebody is known to be exploiting this */
@@ -2582,6 +2606,17 @@ export interface components {
             version?: string;
             vulnerability: string;
         };
+        "List-assignedResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/List-assignedResponse.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["UnassignedBody"][] | null;
+            /** Format: int64 */
+            total: number;
+        };
         "List-issues-at-componentResponse": {
             /**
              * Format: uri
@@ -2767,6 +2802,8 @@ export interface components {
             items: components["schemas"]["VariantBody"][] | null;
         };
         MatchBody: {
+            /** @description This is another version in the same build, not another build */
+            here?: boolean;
             /**
              * Format: int64
              * @description How many places it sits at there
@@ -3012,7 +3049,7 @@ export interface components {
             readonly $schema?: string;
             /** @description Other builds it reaches by matching. Nothing to agree to */
             automatic: components["schemas"]["MatchBody"][] | null;
-            /** @description Same issue, another version. Each is a separate judgment */
+            /** @description The same issue at the same place held at another version — in this build or in another. Each is a separate judgment, because the code differs */
             differing: components["schemas"]["MatchBody"][] | null;
             /**
              * Format: int64
@@ -4409,6 +4446,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListBodyTokenBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-assigned": {
+        parameters: {
+            query?: {
+                /** @description Limit to one product, by name. Empty means every product you can see */
+                product?: string;
+                /** @description Limit to one branch or tag. Only meaningful with a product */
+                stream?: string;
+                /** @description Limit to one variant. Only meaningful with a product, and independent of the branch */
+                variant?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Their sign-in identity, or 'me' for your own */
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-assignedResponse"];
                 };
             };
             /** @description Error */
