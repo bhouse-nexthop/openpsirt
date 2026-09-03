@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
 	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 )
@@ -21,7 +22,7 @@ func TestAFailedRunDoesNotPoisonTheUploadsBeforeIt(t *testing.T) {
 	// run, so a scanner that fell over once made every receipt already waiting
 	// on it report that failure for ever — and the screen got steadily more
 	// wrong the longer a deployment ran.
-	scanned(t, func(t *testing.T, s *ingest.Store, reader access.Subject, ours, _ int64) {
+	scanned(t, func(t *testing.T, _ *database.DB, s *ingest.Store, reader access.Subject, ours, _ int64) {
 		ctx := t.Context()
 		target := quietTarget(t, s, ours)
 		now := time.Now().UTC()
@@ -52,7 +53,7 @@ func TestAFailedRunDoesNotPoisonTheUploadsBeforeIt(t *testing.T) {
 func TestAnUploadReadsAsFailedWhileEveryRunSinceHasFailed(t *testing.T) {
 	// The other half of the rule above: tolerating a failure that a later run
 	// made irrelevant must not turn into never reporting one at all.
-	scanned(t, func(t *testing.T, s *ingest.Store, reader access.Subject, ours, _ int64) {
+	scanned(t, func(t *testing.T, _ *database.DB, s *ingest.Store, reader access.Subject, ours, _ int64) {
 		ctx := t.Context()
 		target := quietTarget(t, s, ours)
 		now := time.Now().UTC()
@@ -77,7 +78,7 @@ func TestARunIsAttributedToOneUploadHoweverThePageFalls(t *testing.T) {
 	// A page is a window on one history, so which upload a run belongs to
 	// cannot be decided from the rows in front of us: page two would claim it
 	// again, and the same opened-and-closed numbers would render twice.
-	scanned(t, func(t *testing.T, s *ingest.Store, reader access.Subject, ours, _ int64) {
+	scanned(t, func(t *testing.T, _ *database.DB, s *ingest.Store, reader access.Subject, ours, _ int64) {
 		ctx := t.Context()
 		target := quietTarget(t, s, ours)
 		now := time.Now().UTC()

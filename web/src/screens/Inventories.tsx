@@ -36,6 +36,10 @@ export function Inventories() {
     queryFn: async () => unwrap(await api.GET("/v1/scanning", { params: { query: { product } } })),
   });
   const quiet = (scanning.data?.items ?? []).filter((b) => b.quiet);
+  // Silence on a release that has gone out of support is expected rather than
+  // a fault, so it is said quietly rather than raised — but it is still said.
+  // "Not scanned, and that is fine" and "not mentioned" are different answers.
+  const retired = (scanning.data?.items ?? []).filter((b) => b.retired && b.quiet_days > 0);
 
   if (scans.isPending) return <p className="hint">Loading…</p>;
   if (scans.isError) return <Failed error={scans.error} what="The inventories could not be read." />;
@@ -71,6 +75,14 @@ export function Inventories() {
           </span>
         </div>
       ))}
+
+      {retired.length > 0 && (
+        <p className="hint" style={{ marginBottom: 10 }}>
+          {retired.map((build) => `${build.stream} · ${build.variant}`).join(", ")}
+          {retired.length === 1 ? " is" : " are"} out of support, so nothing is expected to arrive
+          for {retired.length === 1 ? "it" : "them"}. The findings and the history stay.
+        </p>
+      )}
 
       {items.length === 0 ? (
         <Empty

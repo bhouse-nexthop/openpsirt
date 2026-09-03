@@ -686,6 +686,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product}/end-of-life": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set when a product goes out of support
+         * @description Sets the date support ends for every release of a product that has not stated its own. Past it, nothing on the product carries a remediation deadline and a build that stops being scanned is expected rather than a fault.
+         *
+         *     Nothing is deleted or hidden: the findings and the history stay, and stay reportable. What ends is what is expected of us.
+         *
+         *     An empty date clears it, because extended support happens. Deadlines are rewritten afterwards, away from the request; the response returns before that has finished.
+         */
+        put: operations["set-product-end-of-life"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product}/mentionable": {
         parameters: {
             query?: never;
@@ -749,6 +773,28 @@ export interface paths {
          * @description Records a line of a product. A branch moves and is rebuilt; a tag never changes and is what somebody received.
          */
         post: operations["declare-stream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/products/{product}/streams/{stream}/end-of-life": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set when a branch or tag goes out of support
+         * @description Sets the date support ends for one release, overriding what its product says. Past it, nothing on the release carries a remediation deadline and a build that stops being scanned is expected rather than a fault.
+         *
+         *     An empty date clears the override, so the release follows its product again. Clearing is not the same as stating the product's current date: a release that stated it would stop following when the product changed.
+         */
+        put: operations["set-stream-end-of-life"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1865,6 +1911,8 @@ export interface components {
              * @description How long it has been, in days, measured from the last arrival or from when the build was declared
              */
             quiet_days: number;
+            /** @description Whether this build's release is out of support, in which case silence is expected and it is never reported as quiet */
+            retired?: boolean;
             stream: string;
             /**
              * @description Whether this line moves
@@ -2133,6 +2181,16 @@ export interface components {
              */
             readonly $schema?: string;
             body: string;
+        };
+        EndOfLifeBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/EndOfLifeBody.json
+             */
+            readonly $schema?: string;
+            /** @description The date support ends, as YYYY-MM-DD, or empty to clear it */
+            on: string;
         };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
@@ -2875,6 +2933,8 @@ export interface components {
             branches?: number;
             /** @description What people see. Defaults to the name */
             display_name?: string;
+            /** @description The date support ends for releases that have not stated their own, as YYYY-MM-DD */
+            end_of_life?: string;
             /** @description When a scan last arrived for any of its builds */
             last_scan_at?: string;
             /** @description How scans name this product */
@@ -3233,6 +3293,10 @@ export interface components {
              * @example https://example.com/schemas/StreamBody.json
              */
             readonly $schema?: string;
+            /** @description The date support ends, as YYYY-MM-DD */
+            end_of_life?: string;
+            /** @description The date shown is the product's, not this release's own */
+            end_of_life_inherited?: boolean;
             /**
              * @description Whether this line moves. A branch is rebuilt; a tag never changes
              * @enum {string}
@@ -4556,6 +4620,39 @@ export interface operations {
             };
         };
     };
+    "set-product-end-of-life": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EndOfLifeBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "list-mentionable": {
         parameters: {
             query?: {
@@ -4676,6 +4773,40 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DeclaredStreamBody"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-stream-end-of-life": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+                stream: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EndOfLifeBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

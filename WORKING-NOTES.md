@@ -1392,6 +1392,44 @@ So: when running `go test` by hand rather than through `make check`, export the
 engine URLs, and check the subtest names in the output actually list four
 engines before believing a result.
 
+## End-of-life dates, and the two things they switch off (2026-09-03)
+
+The last of the 2026-09-03 review's open items with code implications, and the
+build plan's lifecycle bullet. `product.eol_on` and `stream.eol_on` have
+existed since the catalog migration and were written by nothing, while two
+decisions depended on them.
+
+**A date on a release, or on its product for every release that has not said
+otherwise.** Inherited rather than copied, for the same reason a product's
+triage line is: a release holding the product's current date would stop
+following it the next time the product moved. Reversible, because extended
+support happens.
+
+**Two things end, and both are enforced where they happen rather than by a
+flag somebody has to remember to check:**
+
+- *No deadline.* A finding on a release out of support carries none — at the
+  moment it opens, and on the rewrite that follows a policy change. It reaches
+  further than the triage line does: a line never sets aside something known
+  to be exploited, because exploitation answers the question a line asks, while
+  end-of-life says nothing here will be fixed at all.
+- *Silence is expected.* A build of it that stops being scanned is not reported
+  as quiet. Still listed and still saying how long it has been, because "not
+  scanned, and that is fine" and "not listed" are different answers.
+
+**The comparison is spelled once**, in the catalog. The same fact decides both
+of those and what three screens say, and every identity and expiry bug in this
+project came from letting one fact into two rules.
+
+Four mutants, each watched failing: a finding opening with a deadline anyway,
+the rewrite not clearing a retired release, a retired release still reading as
+quiet, and a release reporting the product's date as its own.
+
+**Nothing is hidden by any of it** (`MDL-12`). That was worth writing into the
+design document rather than assuming, because "out of support" reads like
+"gone" and the questions people ask about a shipped release do not stop being
+questions.
+
 ## Everything tracked is scanned again, on a schedule (2026-09-03)
 
 The first bullet of the build plan's scan-scheduling stage, and the half of

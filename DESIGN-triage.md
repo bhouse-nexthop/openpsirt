@@ -485,6 +485,16 @@ deadline says "this is work, and it is late"; holding both means one of them is
 lying, and within a year the overdue figure would be thousands of things nobody
 ever intended to look at.
 
+**And nothing on a release out of support is on a clock either** (REM-16),
+which is the same statement about a whole release rather than about a rating.
+It is applied separately rather than folded into the line, because the two say
+different things and reading them together is how one quietly becomes a
+condition of the other. It also reaches further: a line never sets aside
+something known to be exploited, because exploitation answers the question a
+line asks, while end-of-life says nothing here will be fixed at all — which no
+property of a finding argues with. When a release goes out of support is in
+`DESIGN-data-model.md`.
+
 ### A product may say something different
 
 Products differ in what they can afford to ignore, and a single number for an

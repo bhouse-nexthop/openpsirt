@@ -604,6 +604,15 @@ produces either an alert that is always on or one that never fires. It ships at
 a week: long enough that a nightly build missing one night is not an alert,
 short enough that a pipeline switched off is noticed in the week it happened.
 
+**A release out of support is never reported as quiet** (RPT-04). It stopped
+being scanned because it stopped being supported, which is expected rather than
+a fault, and coverage that filled with those would stop catching the product
+that dropped out by accident — which is the whole point of it.
+
+It is still listed, and still says how long it has been: "not scanned, and that
+is fine" and "not listed" are different answers, and only one of them is true.
+The screen says so quietly rather than raising it.
+
 **It is a person's question.** A pipeline key sees the receipts for what it
 sent and nothing more, and when a build was last scanned by anybody is a fact
 about the deployment rather than about that key's uploads.

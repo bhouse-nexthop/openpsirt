@@ -140,6 +140,141 @@ func (s *Store) DeclareProduct(ctx context.Context, name, displayName string) (*
 }
 
 // ProductByName finds a product, or reports that it was never declared.
+// EndOfLife is when support for something ends, and where that date was
+// stated.
+//
+// A date rather than a flag (MDL-11): a date answers "what goes out of support
+// next quarter", which is a real planning question, and it takes effect on its
+// own rather than waiting for somebody to remember. It is how lifecycle
+// policies are actually published.
+type EndOfLife struct {
+	// On is the date, or absent where nothing has said one.
+	On *time.Time
+	// FromStream says the release stated this rather than inheriting the
+	// product's. Carried so a screen can say whose decision it is looking at.
+	FromStream bool
+}
+
+// Past reports whether the date has passed, as of when.
+//
+// Absent is not past. A release nobody has dated is supported until somebody
+// says otherwise, which is the only reading that does not switch things off by
+// default.
+func (e EndOfLife) Past(at time.Time) bool {
+	return e.On != nil && !at.Before(*e.On)
+}
+
+// SetProductEndOfLife records when a product goes out of support, or clears it.
+//
+// Reversible, because extended support happens and the alternative is
+// recreating a product to undo a date (MDL-13).
+func (s *Store) SetProductEndOfLife(ctx context.Context, productID int64, on *time.Time) error {
+	return s.setEndOfLife(ctx, (*Product)(nil), productID, on, "product")
+}
+
+// SetStreamEndOfLife records when one release goes out of support, or clears
+// it so the release follows its product again.
+//
+// Cleared rather than set to the product's date, for the reason a product's
+// triage line is cleared rather than copied: a release holding the product's
+// current date would stop following it the next time the product moved, and
+// nobody would see that happen.
+func (s *Store) SetStreamEndOfLife(ctx context.Context, streamID int64, on *time.Time) error {
+	return s.setEndOfLife(ctx, (*Stream)(nil), streamID, on, "release")
+}
+
+func (s *Store) setEndOfLife(ctx context.Context, model any, id int64, on *time.Time, what string) error {
+	q := s.db.NewUpdate().Model(model).Where("id = ?", id)
+	if on == nil {
+		q = q.Set("eol_on = NULL")
+	} else {
+		// Stored as a date rather than a moment. Support ends on a day, and
+		// keeping a time of day would make "past" depend on the hour a
+		// deployment happened to be asked.
+		q = q.Set("eol_on = ?", on.UTC().Truncate(24*time.Hour))
+	}
+	res, err := q.Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("record when this %s goes out of support: %w", what, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("%s %d: %w", what, id, ErrNotFound)
+	}
+	return nil
+}
+
+// EndOfLifeFor reads the date in force for one release.
+//
+// The release's own where it has stated one, the product's otherwise. A
+// release with no date of its own inherits rather than copying, so it keeps
+// following the product when the product's policy moves.
+func (s *Store) EndOfLifeFor(ctx context.Context, streamID int64) (EndOfLife, error) {
+	return s.endOfLife(ctx, "s.id = ?", streamID, "release", streamID)
+}
+
+// EndOfLifeForTarget reads the date in force for the release one build belongs
+// to.
+//
+// A build is of a release, and support ends for the release rather than for
+// one of the ways it is built: shipping two chip variants of a version does
+// not make one of them supported for longer than the other.
+func (s *Store) EndOfLifeForTarget(ctx context.Context, targetID int64) (EndOfLife, error) {
+	return s.endOfLife(ctx,
+		`s.id IN (SELECT tg.stream_id FROM "target" AS tg WHERE tg.id = ?)`, targetID,
+		"build", targetID)
+}
+
+func (s *Store) endOfLife(ctx context.Context, where string, arg any, what string, id int64) (EndOfLife, error) {
+	var stated struct {
+		Stream  *time.Time `bun:"stream_eol"`
+		Product *time.Time `bun:"product_eol"`
+	}
+	err := s.db.NewSelect().
+		TableExpr("stream AS s").
+		Join(`JOIN "product" AS p ON p.id = s.product_id`).
+		ColumnExpr("s.eol_on AS stream_eol").
+		ColumnExpr("p.eol_on AS product_eol").
+		Where(where, arg).
+		Scan(ctx, &stated)
+	if err != nil {
+		if database.IsNoRows(err) {
+			return EndOfLife{}, fmt.Errorf("%s %d: %w", what, id, ErrNotFound)
+		}
+		return EndOfLife{}, fmt.Errorf("read when this %s goes out of support: %w", what, err)
+	}
+	if stated.Stream != nil {
+		return EndOfLife{On: stated.Stream, FromStream: true}, nil
+	}
+	return EndOfLife{On: stated.Product}, nil
+}
+
+// StreamsPastEndOfLife is which releases have gone out of support by a date.
+//
+// The date comparison is spelled here and nowhere else. What "past end of
+// life" means decides three separate things — whether a finding carries a
+// deadline, whether a build going quiet is a fault, and what a screen says —
+// and this project's bugs have all come from letting one fact into two rules.
+func (s *Store) StreamsPastEndOfLife(ctx context.Context, at time.Time) ([]int64, error) {
+	day := at.UTC().Truncate(24 * time.Hour)
+	var past []int64
+	err := s.db.NewSelect().
+		TableExpr("stream AS s").
+		Join(`JOIN "product" AS p ON p.id = s.product_id`).
+		ColumnExpr("s.id").
+		// The release's own date where it has one, the product's otherwise —
+		// the same precedence a single read applies, written as a condition
+		// rather than fetched and compared, so a deployment with thousands of
+		// releases is one statement.
+		Where(`(s.eol_on IS NOT NULL AND s.eol_on <= ?)
+			OR (s.eol_on IS NULL AND p.eol_on IS NOT NULL AND p.eol_on <= ?)`, day, day).
+		OrderExpr("s.id").
+		Scan(ctx, &past)
+	if err != nil {
+		return nil, fmt.Errorf("read which releases are out of support: %w", err)
+	}
+	return past, nil
+}
+
 // SetTriageFloor records what a product considers worth triaging, or clears it
 // so the product follows the deployment again.
 //

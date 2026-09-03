@@ -10,6 +10,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 )
 
@@ -38,7 +39,17 @@ type Coverage struct {
 	// there has never been one, from when the build was declared.
 	Since time.Duration
 	// Quiet is whether Since has passed the threshold asked for.
+	//
+	// Never true for a build out of support: a release that stopped being
+	// scanned because it stopped being supported is expected rather than a
+	// fault, and coverage that filled with those would stop catching the
+	// product that dropped out silently (RPT-04).
 	Quiet bool
+	// Retired says this build's release has gone out of support. It is
+	// reported rather than left out, because "not scanned, and that is fine"
+	// and "not listed" are different answers and only one of them is true
+	// (MDL-12).
+	Retired bool
 }
 
 // Scanning reports when each build in scope was last scanned, quietest first.
@@ -63,6 +74,7 @@ func (s *Store) Scanning(ctx context.Context, subject access.Subject, scope find
 
 	var rows []struct {
 		ProductID  int64      `bun:"product_id"`
+		StreamID   int64      `bun:"stream_id"`
 		Product    string     `bun:"product"`
 		Stream     string     `bun:"stream"`
 		StreamKind string     `bun:"stream_kind"`
@@ -81,6 +93,7 @@ func (s *Store) Scanning(ctx context.Context, subject access.Subject, scope find
 		Join("JOIN product AS p ON p.id = st.product_id").
 		Join("JOIN variant AS va ON va.id = tg.variant_id").
 		ColumnExpr("st.product_id AS product_id").
+		ColumnExpr("st.id AS stream_id").
 		ColumnExpr("p.name AS product").
 		ColumnExpr("st.name AS stream").
 		ColumnExpr("st.kind AS stream_kind").
@@ -97,6 +110,19 @@ func (s *Store) Scanning(ctx context.Context, subject access.Subject, scope find
 	}
 
 	now := s.now().UTC()
+	// Which releases have gone out of support, read once for the whole list.
+	// What "past end of life" means is spelled in the catalog and nowhere
+	// else, because the same fact decides whether a finding carries a
+	// deadline and what this list says about a build.
+	past, err := catalog.NewStore(s.db).StreamsPastEndOfLife(ctx, now)
+	if err != nil {
+		return nil, err
+	}
+	retired := make(map[int64]bool, len(past))
+	for _, id := range past {
+		retired[id] = true
+	}
+
 	out := make([]Coverage, 0, len(rows))
 	for _, r := range rows {
 		from := r.DeclaredAt
@@ -118,7 +144,8 @@ func (s *Store) Scanning(ctx context.Context, subject access.Subject, scope find
 			Variant:        r.Variant,
 			LastReceivedAt: r.LastSeen,
 			Since:          since,
-			Quiet:          quietAfter > 0 && since > quietAfter,
+			Retired:        retired[r.StreamID],
+			Quiet:          quietAfter > 0 && since > quietAfter && !retired[r.StreamID],
 		})
 	}
 

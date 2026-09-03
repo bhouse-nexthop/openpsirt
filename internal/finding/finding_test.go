@@ -1590,3 +1590,17 @@ func (f *fixture) productOf(t *testing.T, target int64) int64 {
 	}
 	return productID
 }
+
+// streamOf is which release a build belongs to.
+func (f *fixture) streamOf(t *testing.T, target int64) int64 {
+	t.Helper()
+	var streamID int64
+	if err := f.db.DB.NewSelect().
+		TableExpr("target AS tg").
+		ColumnExpr("tg.stream_id").
+		Where("tg.id = ?", target).
+		Scan(t.Context(), &streamID); err != nil {
+		t.Fatal(err)
+	}
+	return streamID
+}

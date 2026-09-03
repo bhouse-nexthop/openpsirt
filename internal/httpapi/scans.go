@@ -593,6 +593,11 @@ type CoverageBody struct {
 	LastReceivedAt string `json:"last_received_at,omitempty" doc:"When a scan last arrived. Absent where none ever has"`
 	QuietDays      int    `json:"quiet_days" doc:"How long it has been, in days, measured from the last arrival or from when the build was declared"`
 	Quiet          bool   `json:"quiet,omitempty" doc:"Whether that is longer than this deployment allows"`
+	// Retired is reported rather than the row being left out. A release that
+	// stopped being scanned because it stopped being supported is expected
+	// rather than a fault, but "not scanned, and that is fine" and "not
+	// listed" are different answers.
+	Retired bool `json:"retired,omitempty" doc:"Whether this build's release is out of support, in which case silence is expected and it is never reported as quiet"`
 }
 
 func registerCoverage(api huma.API, in Ingest) {
@@ -661,6 +666,7 @@ func registerCoverage(api huma.API, in Ingest) {
 				Variant:    row.Variant,
 				QuietDays:  int(row.Since.Hours() / 24),
 				Quiet:      row.Quiet,
+				Retired:    row.Retired,
 			}
 			if row.LastReceivedAt != nil {
 				body.LastReceivedAt = stamp(*row.LastReceivedAt)

@@ -2,6 +2,7 @@ package finding_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
@@ -207,6 +208,141 @@ func TestOneProductsLineLeavesAnotherAlone(t *testing.T) {
 		}
 		if theirs.Hides() || theirs.FromProduct {
 			t.Errorf("a product that stated nothing reads as %+v", theirs)
+		}
+	})
+}
+
+func TestNothingOnAReleaseOutOfSupportIsOnAClock(t *testing.T) {
+	// REM-16. Otherwise the overdue figure and the escalation view fill
+	// permanently with releases nobody will ever fix, and both stop being
+	// read — which is the same failure a deadline nobody agreed to causes,
+	// arrived at from another direction.
+	//
+	// Nothing is hidden by it (MDL-12): the findings are still recorded, still
+	// counted and still reportable. What ends is the clock.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(ctx, f.target, f.run(t), []finding.Reported{
+			found("CVE-2026-1", libnl),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range f.open(t) {
+			if row.DueAt == nil {
+				t.Fatal("a finding on a supported release has no deadline, so this proves nothing")
+			}
+		}
+
+		// Support ended yesterday.
+		products := catalog.NewStore(f.db.DB)
+		yesterday := time.Now().UTC().Add(-24 * time.Hour)
+		if err := products.SetProductEndOfLife(ctx, f.productID, &yesterday); err != nil {
+			t.Fatal(err)
+		}
+
+		// What is already open loses its clock when the policy is applied.
+		if _, err := f.store.Recompute(ctx, finding.DefaultWindows()); err != nil {
+			t.Fatal(err)
+		}
+		open := f.open(t)
+		if len(open) == 0 {
+			t.Fatal("the findings were removed rather than taken off the clock")
+		}
+		for _, row := range open {
+			if row.DueAt != nil {
+				t.Errorf("a finding on a release out of support is due %s", row.DueAt)
+			}
+		}
+
+		// And a finding opening afterwards gets none either.
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(ctx, f.target, f.run(t), []finding.Reported{
+			found("CVE-2026-1", libnl), found("CVE-2026-2", swss),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range f.open(t) {
+			if row.DueAt != nil {
+				t.Errorf("a finding opened on a release out of support is due %s", row.DueAt)
+			}
+		}
+	})
+}
+
+func TestAReleaseSaysWhenItGoesOutOfSupportOrFollowsItsProduct(t *testing.T) {
+	// A date rather than a flag (MDL-11), reversible (MDL-13), and inherited
+	// rather than copied — a release holding the product's current date would
+	// stop following it the next time the product moved.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		products := catalog.NewStore(f.db.DB)
+		stream := f.streamOf(t, f.target)
+
+		held, err := products.EndOfLifeFor(ctx, stream)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if held.On != nil || held.FromStream {
+			t.Errorf("with nothing stated the date is %+v", held)
+		}
+		if held.Past(time.Now().UTC()) {
+			t.Error("a release nobody has dated reads as out of support")
+		}
+
+		march := time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)
+		if err := products.SetProductEndOfLife(ctx, f.productID, &march); err != nil {
+			t.Fatal(err)
+		}
+		held, err = products.EndOfLifeFor(ctx, stream)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if held.On == nil || !held.On.Equal(march) || held.FromStream {
+			t.Errorf("the inherited date is %+v, want the product's March date", held)
+		}
+
+		// The release says something else, and that is what applies.
+		june := time.Date(2027, 6, 1, 0, 0, 0, 0, time.UTC)
+		if err := products.SetStreamEndOfLife(ctx, stream, &june); err != nil {
+			t.Fatal(err)
+		}
+		held, err = products.EndOfLifeFor(ctx, stream)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if held.On == nil || !held.On.Equal(june) || !held.FromStream {
+			t.Errorf("the release's own date is %+v, want its June date", held)
+		}
+
+		// Cleared, and it follows the product again — including where the
+		// product has moved since.
+		september := time.Date(2027, 9, 1, 0, 0, 0, 0, time.UTC)
+		if err := products.SetProductEndOfLife(ctx, f.productID, &september); err != nil {
+			t.Fatal(err)
+		}
+		if err := products.SetStreamEndOfLife(ctx, stream, nil); err != nil {
+			t.Fatal(err)
+		}
+		held, err = products.EndOfLifeFor(ctx, stream)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if held.On == nil || !held.On.Equal(september) || held.FromStream {
+			t.Errorf("after clearing, the date is %+v, want the product's September date", held)
+		}
+
+		// And a product's date is reversible too, because extended support
+		// happens and recreating a product to undo one is not an answer.
+		if err := products.SetProductEndOfLife(ctx, f.productID, nil); err != nil {
+			t.Fatal(err)
+		}
+		held, err = products.EndOfLifeFor(ctx, stream)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if held.On != nil {
+			t.Errorf("a cleared date is still %+v", held)
 		}
 	})
 }

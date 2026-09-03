@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { unwrap } from "../api/queries";
 import { AddButton, Declare, Field } from "../ui/Declare";
 import { Empty } from "../ui/Empty";
+import { EndOfLife } from "../ui/EndOfLife";
 import { Failed } from "../ui/Failed";
 import type { Who } from "../app/session";
 
@@ -33,6 +34,17 @@ export function Products({ who }: { who: Who }) {
       setAdding(false);
       void queries.invalidateQueries({ queryKey: ["products"] });
     },
+  });
+
+  const setEndOfLife = useMutation({
+    mutationFn: async ({ product, on }: { product: string; on: string }) =>
+      unwrap(
+        await api.PUT("/v1/products/{product}/end-of-life", {
+          params: { path: { product } },
+          body: { on },
+        }),
+      ),
+    onSuccess: () => void queries.invalidateQueries({ queryKey: ["products"] }),
   });
 
   const setFloor = useMutation({
@@ -84,6 +96,7 @@ export function Products({ who }: { who: Who }) {
                 <th className="num">Variants</th>
                 <th className="num">Open</th>
                 <th>Triage from</th>
+                <th>Out of support</th>
                 <th>Last inventory</th>
                 <th />
               </tr>
@@ -117,6 +130,14 @@ export function Products({ who }: { who: Who }) {
                         stated={product.triage_floor ?? ""}
                         admin={who.admin}
                         onSet={(floor) => setFloor.mutate({ product: product.name ?? "", floor })}
+                      />
+                    </td>
+                    <td>
+                      <EndOfLife
+                        what={`${product.name} goes out of support`}
+                        on={product.end_of_life ?? ""}
+                        admin={who.admin}
+                        onSet={(on) => setEndOfLife.mutate({ product: product.name ?? "", on })}
                       />
                     </td>
                     <td className="num">{(product.open ?? 0).toLocaleString()}</td>

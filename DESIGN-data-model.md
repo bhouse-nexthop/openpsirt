@@ -2,7 +2,8 @@
 
 What a scan is filed against, and why the shape is what it is.
 
-Satisfies MDL-01 to MDL-08, MDL-11, MDL-17, MDL-18, MDL-21, ING-09, ING-11,
+Satisfies MDL-01 to MDL-08, MDL-11 to MDL-13, MDL-17, MDL-18, MDL-21,
+REM-16, RPT-04, ING-09, ING-11,
 ING-36 to ING-38, STA-08.
 
 ## The tracked unit
@@ -28,6 +29,40 @@ difference.
 A tag records the branch it was cut from, where that is known. That parent is
 what lets a branch be compared against its last release, and what a new line
 seeds its decisions from.
+
+### When something goes out of support
+
+**A date, not a flag** (MDL-11). A date answers "what goes out of support next
+quarter", which is a real planning question, and it takes effect on its own
+rather than waiting for somebody to remember. It is also how lifecycle policies
+are actually published.
+
+It is set on a release, or on a product for every release that has not said
+something of its own. **A release with no date of its own inherits rather than
+copying**: a release holding the product's current date would stop following it
+the next time the product moved, and nobody would see that happen. So a screen
+shows a release's date *and* whose it is.
+
+**Reversible** (MDL-13). Extended support happens, and the alternative is
+recreating a release to undo a date.
+
+**Nothing is deleted or hidden past it** (MDL-12). You still have to answer
+what was in a shipped release years later, and the questions people ask about
+one do not stop being questions. What ends is what is expected of us, and it
+ends in two places, both recorded where they are enforced:
+
+| | |
+|---|---|
+| **No deadline** | A finding on a release out of support carries no remediation deadline (REM-16). The overdue figure would otherwise fill permanently with releases nobody will ever fix, and stop being read. See `DESIGN-triage.md` |
+| **Silence is expected** | A build of it that stops being scanned is not reported as having gone quiet (RPT-04) — the coverage view exists to catch a product dropping out by accident, and a release that stopped on purpose is not that. It is still listed, and still says how long it has been: "not scanned, and that is fine" and "not listed" are different answers. See `DESIGN-ingest.md` |
+
+The comparison is spelled once, in the catalog, because the same fact decides
+both of those and what a screen says — and every identity and expiry bug in
+this project came from letting one fact into two rules.
+
+**Absent is not past.** A release nobody has dated is supported until somebody
+says otherwise, which is the only reading that does not switch things off by
+default.
 
 ### A variant is the product's; a target is a release built as one
 

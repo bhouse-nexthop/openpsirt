@@ -25,6 +25,9 @@ func declaredBody(method, path, name string) io.Reader {
 	if method == http.MethodPut && strings.HasSuffix(path, "/triage-floor") {
 		return strings.NewReader(`{"floor": "high"}`)
 	}
+	if method == http.MethodPut && strings.HasSuffix(path, "/end-of-life") {
+		return strings.NewReader(`{"on": "2030-01-01"}`)
+	}
 	if method != http.MethodPost {
 		return nil
 	}
@@ -301,6 +304,8 @@ func TestWhoMayReachWhat(t *testing.T) {
 
 			mineFound  = "/v1/products/mine/streams/master/variants/broadcom/findings"
 			mineFloor  = "/v1/products/mine/triage-floor"
+			mineEOL    = "/v1/products/mine/end-of-life"
+			streamEOL  = "/v1/products/mine/streams/master/end-of-life"
 			mineScans  = "/v1/products/mine/streams/master/variants/broadcom/scans"
 			theirFound = "/v1/products/theirs/streams/master/variants/broadcom/findings"
 			people     = "/v1/people"
@@ -375,6 +380,15 @@ func TestWhoMayReachWhat(t *testing.T) {
 			{"", http.MethodPut, mineFloor, http.StatusUnauthorized},
 			{"nothing", http.MethodPut, mineFloor, http.StatusUnauthorized},
 			{"admin", http.MethodPut, mineFloor, http.StatusNoContent},
+
+			// When something goes out of support decides what carries a
+			// deadline and what a build going quiet means, so it is
+			// administration for the same reason.
+			{"reader", http.MethodPut, mineEOL, http.StatusForbidden},
+			{"triager", http.MethodPut, streamEOL, http.StatusForbidden},
+			{"", http.MethodPut, mineEOL, http.StatusUnauthorized},
+			{"admin", http.MethodPut, mineEOL, http.StatusNoContent},
+			{"admin", http.MethodPut, streamEOL, http.StatusNoContent},
 
 			// An administrator reaches everything, including what nobody
 			// else can see.

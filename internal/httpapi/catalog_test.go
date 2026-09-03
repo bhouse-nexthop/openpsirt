@@ -356,3 +356,111 @@ func TestStatingALineOnAProductNobodyDeclaredSaysSo(t *testing.T) {
 		}
 	})
 }
+
+// endOfLifeOf reads back what the catalog says about when something goes out
+// of support.
+func (d *declaring) endOfLifeOf(t *testing.T, product string) string {
+	t.Helper()
+	_, body := d.get(t, "/v1/products")
+	items, _ := body["items"].([]any)
+	for _, each := range items {
+		row, _ := each.(map[string]any)
+		if row["name"] == product {
+			word, _ := row["end_of_life"].(string)
+			return word
+		}
+	}
+	t.Fatalf("product %q is not in the catalog: %v", product, body)
+	return ""
+}
+
+// releaseEndOfLife reads back a release's date and whether it is the product's.
+func (d *declaring) releaseEndOfLife(t *testing.T, product, stream string) (string, bool) {
+	t.Helper()
+	_, body := d.get(t, "/v1/products/"+product+"/streams")
+	items, _ := body["items"].([]any)
+	for _, each := range items {
+		row, _ := each.(map[string]any)
+		if row["name"] == stream {
+			word, _ := row["end_of_life"].(string)
+			inherited, _ := row["end_of_life_inherited"].(bool)
+			return word, inherited
+		}
+	}
+	t.Fatalf("release %q is not in %q: %v", stream, product, body)
+	return "", false
+}
+
+func TestSomethingSaysWhenItGoesOutOfSupportAndCanTakeItBack(t *testing.T) {
+	// A date rather than a flag: a date answers "what goes out of support next
+	// quarter", which is a real planning question, and it takes effect on its
+	// own rather than waiting for somebody to remember. Reversible, because
+	// extended support happens and recreating a release to undo a date is not
+	// an answer.
+	eachCatalog(t, func(t *testing.T, d *declaring) {
+		d.post(t, "/v1/products", `{"name": "sonic"}`)
+		d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
+		d.post(t, "/v1/products/sonic/streams", `{"name": "2.4.0", "kind": "tag"}`)
+
+		if held := d.endOfLifeOf(t, "sonic"); held != "" {
+			t.Errorf("a product nobody has dated reports %q", held)
+		}
+
+		code, body := d.put(t, "/v1/products/sonic/end-of-life", `{"on": "2027-03-01"}`)
+		if code != http.StatusNoContent {
+			t.Fatalf("dating a product returned %d, want 204: %v", code, body)
+		}
+		if held := d.endOfLifeOf(t, "sonic"); held != "2027-03-01" {
+			t.Errorf("the product reports %q, want 2027-03-01", held)
+		}
+		// Every release follows it, and says that it is following rather than
+		// stating one of its own.
+		for _, stream := range []string{"master", "2.4.0"} {
+			held, inherited := d.releaseEndOfLife(t, "sonic", stream)
+			if held != "2027-03-01" || !inherited {
+				t.Errorf("%s reports %q (inherited=%v), want the product's date", stream, held, inherited)
+			}
+		}
+
+		// One release says something else.
+		code, body = d.put(t, "/v1/products/sonic/streams/2.4.0/end-of-life", `{"on": "2027-06-01"}`)
+		if code != http.StatusNoContent {
+			t.Fatalf("dating a release returned %d, want 204: %v", code, body)
+		}
+		if held, inherited := d.releaseEndOfLife(t, "sonic", "2.4.0"); held != "2027-06-01" || inherited {
+			t.Errorf("the release reports %q (inherited=%v), want its own June date", held, inherited)
+		}
+		if held, inherited := d.releaseEndOfLife(t, "sonic", "master"); held != "2027-03-01" || !inherited {
+			t.Errorf("another release picked up %q (inherited=%v)", held, inherited)
+		}
+
+		// And both are reversible.
+		if code, _ := d.put(t, "/v1/products/sonic/streams/2.4.0/end-of-life", `{"on": ""}`); code != http.StatusNoContent {
+			t.Fatalf("clearing a release's date returned %d", code)
+		}
+		if held, inherited := d.releaseEndOfLife(t, "sonic", "2.4.0"); held != "2027-03-01" || !inherited {
+			t.Errorf("after clearing, the release reports %q (inherited=%v), want the product's", held, inherited)
+		}
+		if code, _ := d.put(t, "/v1/products/sonic/end-of-life", `{"on": ""}`); code != http.StatusNoContent {
+			t.Fatalf("clearing a product's date returned %d", code)
+		}
+		if held := d.endOfLifeOf(t, "sonic"); held != "" {
+			t.Errorf("after clearing, the product reports %q", held)
+		}
+	})
+}
+
+func TestADateNobodyCanReadIsRefused(t *testing.T) {
+	// A value nothing can parse would be stored and then silently ignored,
+	// which is a policy that quietly stopped applying.
+	twoCatalog(t, func(t *testing.T, d *declaring) {
+		d.post(t, "/v1/products", `{"name": "sonic"}`)
+		code, body := d.put(t, "/v1/products/sonic/end-of-life", `{"on": "next March"}`)
+		if code != http.StatusUnprocessableEntity {
+			t.Fatalf("a date nobody can read returned %d, want 422: %v", code, body)
+		}
+		if held := d.endOfLifeOf(t, "sonic"); held != "" {
+			t.Errorf("a refused date was stored as %q", held)
+		}
+	})
+}

@@ -18,7 +18,7 @@ import (
 // scanned gives every engine a database holding two builds of one product: one
 // filed against recently, one that has gone silent. A third build belongs to a
 // product the reader cannot see.
-func scanned(t *testing.T, fn func(t *testing.T, s *ingest.Store, reader access.Subject, ours, theirs int64)) {
+func scanned(t *testing.T, fn func(t *testing.T, db *database.DB, s *ingest.Store, reader access.Subject, ours, theirs int64)) {
 	t.Helper()
 	dbtest.Each(t, func(t *testing.T, db *database.DB) {
 		ctx := t.Context()
@@ -88,12 +88,12 @@ func scanned(t *testing.T, fn func(t *testing.T, s *ingest.Store, reader access.
 		reader := access.NewPerson(1, "reader", false, map[int64][]access.Role{
 			ours: {access.PublicRead},
 		})
-		fn(t, store, reader, ours, theirs)
+		fn(t, db, store, reader, ours, theirs)
 	})
 }
 
 func TestScanningNamesTheBuildThatWentQuiet(t *testing.T) {
-	scanned(t, func(t *testing.T, s *ingest.Store, reader access.Subject, _, _ int64) {
+	scanned(t, func(t *testing.T, _ *database.DB, s *ingest.Store, reader access.Subject, _, _ int64) {
 		rows, err := s.Scanning(t.Context(), reader, finding.Scope{}, 7*24*time.Hour)
 		if err != nil {
 			t.Fatal(err)
@@ -122,7 +122,7 @@ func TestScanningCountsFromDeclarationWhereNothingEverArrived(t *testing.T) {
 	// The same failure caught earlier: a build declared and never filed
 	// against. An inner join to the scan table cannot see it at all, which is
 	// the mistake this asserts against.
-	scanned(t, func(t *testing.T, s *ingest.Store, reader access.Subject, ours, _ int64) {
+	scanned(t, func(t *testing.T, _ *database.DB, s *ingest.Store, reader access.Subject, ours, _ int64) {
 		cat := catalog.NewStore(s.DB())
 		br, err := cat.DeclareStream(t.Context(), ours, "never-built", catalog.Branch, nil)
 		if err != nil {
@@ -156,7 +156,7 @@ func TestScanningCountsFromDeclarationWhereNothingEverArrived(t *testing.T) {
 }
 
 func TestScanningShowsOnlyWhatTheReaderMaySee(t *testing.T) {
-	scanned(t, func(t *testing.T, s *ingest.Store, reader access.Subject, _, theirs int64) {
+	scanned(t, func(t *testing.T, _ *database.DB, s *ingest.Store, reader access.Subject, _, theirs int64) {
 		rows, err := s.Scanning(t.Context(), reader, finding.Scope{}, 7*24*time.Hour)
 		if err != nil {
 			t.Fatal(err)
@@ -179,7 +179,7 @@ func TestScanningTellsAPipelineKeyNothing(t *testing.T) {
 	// even with the explicit one removed — mutating either alone leaves this
 	// green, and that is a property of the two agreeing rather than a test
 	// that proves nothing.
-	scanned(t, func(t *testing.T, s *ingest.Store, _ access.Subject, ours, _ int64) {
+	scanned(t, func(t *testing.T, _ *database.DB, s *ingest.Store, _ access.Subject, ours, _ int64) {
 		pipeline := access.NewPipeline(1, "nightly", access.Scope{ProductID: ours})
 		rows, err := s.Scanning(t.Context(), pipeline, finding.Scope{}, 7*24*time.Hour)
 		if err != nil {
@@ -195,7 +195,7 @@ func TestScanningJudgesNothingWithoutAThreshold(t *testing.T) {
 	// Zero is how a caller asks "when was each of these last seen" without
 	// also asking for a judgment, and a threshold of zero must not make
 	// everything quiet.
-	scanned(t, func(t *testing.T, s *ingest.Store, reader access.Subject, _, _ int64) {
+	scanned(t, func(t *testing.T, _ *database.DB, s *ingest.Store, reader access.Subject, _, _ int64) {
 		rows, err := s.Scanning(t.Context(), reader, finding.Scope{}, 0)
 		if err != nil {
 			t.Fatal(err)
@@ -206,6 +206,57 @@ func TestScanningJudgesNothingWithoutAThreshold(t *testing.T) {
 		for _, row := range rows {
 			if row.Quiet {
 				t.Errorf("nothing should be quiet with no threshold: %+v", row)
+			}
+		}
+	})
+}
+
+func TestAReleaseOutOfSupportIsNotReportedAsHavingGoneQuiet(t *testing.T) {
+	// RPT-04. A dead release not being scanned is expected rather than a
+	// fault, and without this the coverage view — the thing that catches a
+	// product silently dropping out — fills with releases that stopped on
+	// purpose and nobody reads it.
+	//
+	// **Reported rather than left out** (MDL-12): "not scanned, and that is
+	// fine" and "not listed" are different answers, and only one is true.
+	scanned(t, func(t *testing.T, db *database.DB, s *ingest.Store, reader access.Subject, ours, _ int64) {
+		ctx := t.Context()
+		before, err := s.Scanning(ctx, reader, finding.Scope{}, 7*24*time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(before) != 2 || !before[0].Quiet {
+			t.Fatalf("the silent build is not quiet to begin with: %+v", before)
+		}
+		if before[0].Retired {
+			t.Fatal("a build nobody has dated reads as out of support")
+		}
+
+		// Support for the whole product ended yesterday.
+		yesterday := time.Now().UTC().Add(-24 * time.Hour)
+		if err := catalog.NewStore(db.DB).SetProductEndOfLife(ctx, ours, &yesterday); err != nil {
+			t.Fatal(err)
+		}
+
+		after, err := s.Scanning(ctx, reader, finding.Scope{}, 7*24*time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(after) != len(before) {
+			t.Fatalf("a release out of support left the list: %d rows, was %d", len(after), len(before))
+		}
+		for _, row := range after {
+			if !row.Retired {
+				t.Errorf("%s %s does not read as out of support", row.Stream, row.Variant)
+			}
+			if row.Quiet {
+				t.Errorf("%s %s is reported as having gone quiet while out of support",
+					row.Stream, row.Variant)
+			}
+			// And the silence is still measured and still shown, so a reader
+			// can see it stopped rather than being told nothing.
+			if row.Since == 0 {
+				t.Errorf("%s %s reports no silence at all", row.Stream, row.Variant)
 			}
 		}
 	})

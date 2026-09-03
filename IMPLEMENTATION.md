@@ -190,7 +190,10 @@ declared fix that did not land shows as a missed target.
   for every build holding an inventory that has not been scanned within it.
   `DESIGN-ingest.md` records what it deliberately does not do
 - Retention of release inventories and their suppressions
-- End-of-life dates and everything they switch off
+- **End-of-life dates are built** — a date on a release or on its product,
+  inherited rather than copied, reversible, and switching off two things:
+  a deadline on anything the release holds, and reporting a build of it as
+  having gone quiet. `DESIGN-data-model.md` records the shape
 
 The scan itself lands in Stage 2, because under ING-20 the vulnerability data is
 produced here rather than sent to us — so without it there is nothing to triage
@@ -290,7 +293,6 @@ thing rather than a gap somebody rediscovers by auditing.
 | ACC-45 | Somebody being told | Assignment exists now, and so does releasing what an absent person holds. What is missing is the prompt — noticing that somebody has not signed in for a while *and* holds work — which is a notification rather than a screen |
 | ACC-43, second half | Deactivating an account | The half with a trigger today is built: withdrawing somebody's last role on a product hands back what they were dealing with there. The other half needs a way to deactivate somebody, which does not exist — an account is recorded or it is not |
 | ACC-44 | Nothing — it is a statement | That we cannot detect somebody has left is recorded so nobody assumes a cleanup happens that never does |
-| MDL-12, MDL-13 | End-of-life dates | Whole feature, scheduled with lifecycle |
 | MDL-16 | The tree views | Interface |
 | TRI-04, TRI-09, TRI-19 | Export, the bulk list, and reporting | Each belongs to a stage of its own |
 | REL-07, ING-13 | The interface | What a new line would inherit can be asked for; ticking the ones to carry is a screen |

@@ -8,6 +8,8 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 )
 
@@ -351,7 +353,57 @@ func (s *Store) Recompute(ctx context.Context, windows Windows) (int, error) {
 	if err != nil {
 		return changed, err
 	}
-	return changed + cleared, nil
+
+	// And from everything on a release that has gone out of support (REM-16).
+	//
+	// A second pass for the same reason as the first: the bands say how long
+	// something has, the line says some things are not work, and this says
+	// some *releases* are not work. Folding any of the three into the others
+	// is how one quietly becomes a condition of another.
+	retired, err := s.clearPastEndOfLife(ctx)
+	if err != nil {
+		return changed + cleared, err
+	}
+	return changed + cleared + retired, nil
+}
+
+// clearPastEndOfLife removes the deadline from open findings on releases that
+// have gone out of support.
+//
+// Unlike the line, this one takes the deadline away from a known-exploited
+// finding too. A line is a claim about how bad something has to be before it is
+// worth an afternoon, and exploitation answers that; end-of-life is a statement
+// that nothing on this release will be fixed at all, which no property of a
+// finding argues with. The finding is still recorded, still counted and still
+// reportable — what ends is the clock (MDL-12, REM-16).
+func (s *Store) clearPastEndOfLife(ctx context.Context) (int, error) {
+	past, err := catalog.NewStore(s.db).StreamsPastEndOfLife(ctx, s.now().UTC())
+	if err != nil {
+		return 0, err
+	}
+	if len(past) == 0 {
+		return 0, nil
+	}
+
+	cleared := 0
+	err = database.IDsInBatches(ctx, past, func(ctx context.Context, batch []int64) error {
+		result, err := s.db.NewUpdate().
+			Model((*Finding)(nil)).
+			Set("due_at = NULL").
+			Where("closed_run_id IS NULL").
+			Where("due_at IS NOT NULL").
+			Where(`target_id IN (SELECT tg.id FROM "target" AS tg
+				WHERE tg.stream_id IN (?))`, bun.List(batch)).
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("take the deadline off what is out of support: %w", err)
+		}
+		if n, err := result.RowsAffected(); err == nil {
+			cleared += int(n)
+		}
+		return nil
+	})
+	return cleared, err
 }
 
 // clearBelowFloor removes the deadline from open findings their product does

@@ -7,6 +7,7 @@ import { useWho } from "../app/session";
 import { AddButton, Declare, Field } from "../ui/Declare";
 import { Crumbs } from "../ui/Crumbs";
 import { Empty } from "../ui/Empty";
+import { EndOfLife } from "../ui/EndOfLife";
 import { Failed } from "../ui/Failed";
 
 // A branch and a tag are different shapes of thing — one moves and is rebuilt,
@@ -47,6 +48,17 @@ export function Streams() {
     },
   });
 
+  const setEndOfLife = useMutation({
+    mutationFn: async ({ stream, on }: { stream: string; on: string }) =>
+      unwrap(
+        await api.PUT("/v1/products/{product}/streams/{stream}/end-of-life", {
+          params: { path: { product, stream } },
+          body: { on },
+        }),
+      ),
+    onSuccess: () => void queries.invalidateQueries({ queryKey: ["streams", product] }),
+  });
+
   if (streams.isPending) return <p className="hint">Loading…</p>;
   if (streams.isError) {
     return <Failed error={streams.error} what="The branches and tags could not be read." />;
@@ -77,6 +89,7 @@ export function Streams() {
                 <th>Kind</th>
                 <th>Cut from</th>
                 <th className="num">Open</th>
+                <th>Out of support</th>
                 <th>Last inventory</th>
                 <th />
               </tr>
@@ -99,6 +112,15 @@ export function Streams() {
                   </td>
                   <td>{stream.parent ? <span className="id">{stream.parent}</span> : <span style={{ color: "var(--faint)" }}>—</span>}</td>
                   <td className="num">{(stream.open ?? 0).toLocaleString()}</td>
+                  <td>
+                    <EndOfLife
+                      what={`${stream.name} goes out of support`}
+                      on={stream.end_of_life ?? ""}
+                      inherited={stream.end_of_life_inherited}
+                      admin={who.data?.admin ?? false}
+                      onSet={(on) => setEndOfLife.mutate({ stream: stream.name, on })}
+                    />
+                  </td>
                   <td className="hint">{stream.last_scan_at ? stream.last_scan_at.slice(0, 10) : "never"}</td>
                   <td>
                     <Link

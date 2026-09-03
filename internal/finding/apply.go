@@ -8,6 +8,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/sbom"
@@ -144,6 +145,22 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 			return err
 		}
 
+		// And whether this build is still supported. Past its end-of-life
+		// date nothing on it carries a deadline (REM-16): the overdue figure
+		// and the escalation view would otherwise fill permanently with
+		// releases nobody will ever fix, and both stop being read. It is the
+		// same statement the triage line makes from another direction —
+		// "this is not work" — and it is applied the same way.
+		//
+		// Nothing is hidden or deleted by it (MDL-12). The findings are still
+		// recorded, still counted and still reportable; what ends is what is
+		// expected of us.
+		supported, err := catalog.NewStore(tx).EndOfLifeForTarget(ctx, targetID)
+		if err != nil {
+			return err
+		}
+		onTheClock := !supported.Past(s.now().UTC())
+
 		wanted := map[key]Finding{}
 		for _, r := range reported {
 			component, held := present.byIdentity[r.Component.Identity()]
@@ -192,7 +209,7 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 				// only where the clock itself changed, so a deadline does not
 				// restart every night and never arrive.
 				severity := rating.Severity()
-				if floor.Admits(rating.Exploited, severity) {
+				if onTheClock && floor.Admits(rating.Exploited, severity) {
 					due := startedAt.Add(windows.For(rating.Exploited, severity))
 					entry.DueAt = &due
 				}

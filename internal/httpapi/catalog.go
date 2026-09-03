@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"log/slog"
 
@@ -94,6 +95,17 @@ type ProductBody struct {
 	// is a different statement from stating the same word — a product that
 	// stated it would stop following when the deployment changed its mind.
 	TriageFloor string `json:"triage_floor,omitempty" enum:"everything,low,medium,high,critical" doc:"What this product considers worth triaging, where it says something other than the deployment. Absent means it follows the deployment"`
+	// EndOfLife is when support ends for every release that has not stated its
+	// own. Absent means nothing has said one, which reads as supported.
+	EndOfLife string `json:"end_of_life,omitempty" doc:"The date support ends for releases that have not stated their own, as YYYY-MM-DD"`
+}
+
+// EndOfLifeBody is when something goes out of support.
+type EndOfLifeBody struct {
+	// On is the date, written as a calendar date rather than a moment: support
+	// ends on a day. Empty clears it — for a release that means following its
+	// product again, and for a product that means nothing has said one.
+	On string `json:"on" pattern:"^(\\d{4}-\\d{2}-\\d{2})?$" doc:"The date support ends, as YYYY-MM-DD, or empty to clear it"`
 }
 
 // TriageFloorBody is what a product considers worth triaging.
@@ -115,6 +127,14 @@ type StreamBody struct {
 	// until somebody opens it.
 	Open       int    `json:"open,omitempty" doc:"Issues open against it, counted at components rather than at every place they sit"`
 	LastScanAt string `json:"last_scan_at,omitempty" doc:"When a scan last arrived for any build of it"`
+	// EndOfLife is the date support ends and whether this release stated it.
+	// Absent with Inherited set means it follows its product; absent with
+	// neither means nothing has said one anywhere.
+	EndOfLife string `json:"end_of_life,omitempty" doc:"The date support ends, as YYYY-MM-DD"`
+	// EndOfLifeInherited says the date shown came from the product rather than
+	// from this release. Following a date and stating the same one are
+	// different things: a release that stated it would stop following.
+	EndOfLifeInherited bool `json:"end_of_life_inherited,omitempty" doc:"The date shown is the product's, not this release's own"`
 }
 
 // VariantBody is one of the ways a stream is built.
@@ -300,6 +320,7 @@ func registerCatalog(api huma.API, d Declaring) {
 				Open:        open[row.ID],
 				LastScanAt:  seen[row.Name],
 				TriageFloor: stated(row.TriageFloor),
+				EndOfLife:   onDate(row.EOLOn),
 			})
 		}
 		return out, nil
@@ -354,6 +375,90 @@ func registerCatalog(api huma.API, d Declaring) {
 	})
 
 	huma.Register(api, huma.Operation{
+		OperationID: "set-product-end-of-life", Method: http.MethodPut,
+		Path:    "/v1/products/{product}/end-of-life",
+		Summary: "Set when a product goes out of support",
+		Description: "Sets the date support ends for every release of a product that has not " +
+			"stated its own. Past it, nothing on the product carries a remediation deadline and " +
+			"a build that stops being scanned is expected rather than a fault.\n\n" +
+			"Nothing is deleted or hidden: the findings and the history stay, and stay " +
+			"reportable. What ends is what is expected of us.\n\n" +
+			"An empty date clears it, because extended support happens. Deadlines are rewritten " +
+			"afterwards, away from the request; the response returns before that has finished.",
+		Tags: []string{"Catalog"}, DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		Product string `path:"product"`
+		Body    EndOfLifeBody
+	}) (*struct{}, error) {
+		if err := administrating(ctx); err != nil {
+			return nil, err
+		}
+		on, err := aDate(in.Body.On)
+		if err != nil {
+			return nil, err
+		}
+		store, err := storeFor(d)
+		if err != nil {
+			return nil, err
+		}
+		product, err := store.ProductByName(ctx, in.Product)
+		if err != nil {
+			return nil, huma.Error404NotFound(err.Error())
+		}
+		if err := store.SetProductEndOfLife(ctx, product.ID, on); err != nil {
+			return nil, wentWrong(d.Logger, "that date could not be recorded", err)
+		}
+		if d.RewriteDeadlines != nil {
+			d.RewriteDeadlines(ctx, "end of life of product "+product.Name, in.Body.On)
+		}
+		return &struct{}{}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "set-stream-end-of-life", Method: http.MethodPut,
+		Path:    "/v1/products/{product}/streams/{stream}/end-of-life",
+		Summary: "Set when a branch or tag goes out of support",
+		Description: "Sets the date support ends for one release, overriding what its product " +
+			"says. Past it, nothing on the release carries a remediation deadline and a build " +
+			"that stops being scanned is expected rather than a fault.\n\n" +
+			"An empty date clears the override, so the release follows its product again. " +
+			"Clearing is not the same as stating the product's current date: a release that " +
+			"stated it would stop following when the product changed.",
+		Tags: []string{"Catalog"}, DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		Product string `path:"product"`
+		Stream  string `path:"stream"`
+		Body    EndOfLifeBody
+	}) (*struct{}, error) {
+		if err := administrating(ctx); err != nil {
+			return nil, err
+		}
+		on, err := aDate(in.Body.On)
+		if err != nil {
+			return nil, err
+		}
+		store, err := storeFor(d)
+		if err != nil {
+			return nil, err
+		}
+		product, err := store.ProductByName(ctx, in.Product)
+		if err != nil {
+			return nil, huma.Error404NotFound(err.Error())
+		}
+		stream, err := store.StreamByName(ctx, product.ID, in.Stream)
+		if err != nil {
+			return nil, huma.Error404NotFound(err.Error())
+		}
+		if err := store.SetStreamEndOfLife(ctx, stream.ID, on); err != nil {
+			return nil, wentWrong(d.Logger, "that date could not be recorded", err)
+		}
+		if d.RewriteDeadlines != nil {
+			d.RewriteDeadlines(ctx, "end of life of "+product.Name+" "+stream.Name, in.Body.On)
+		}
+		return &struct{}{}, nil
+	})
+
+	huma.Register(api, huma.Operation{
 		OperationID: "list-streams", Method: http.MethodGet, Path: "/v1/products/{product}/streams",
 		Summary: "List a product's branches and tags", Tags: []string{"Catalog"},
 	}, func(ctx context.Context, in *struct {
@@ -386,13 +491,23 @@ func registerCatalog(api huma.API, d Declaring) {
 			return nil, wentWrong(d.Logger, "cannot read when these were last scanned", err)
 		}
 
+		// The product's date, read once, so a release that has not stated one
+		// shows what actually applies to it rather than a blank that reads as
+		// "supported for ever".
 		out := &listOutput[StreamBody]{}
 		out.Body.Items = make([]StreamBody, 0, len(rows))
 		for _, row := range rows {
-			out.Body.Items = append(out.Body.Items, StreamBody{
+			body := StreamBody{
 				Name: row.Name, Kind: string(row.Kind),
 				Open: open[row.ID], LastScanAt: seen[row.Name],
-			})
+			}
+			switch {
+			case row.EOLOn != nil:
+				body.EndOfLife = onDate(row.EOLOn)
+			case product.EOLOn != nil:
+				body.EndOfLife, body.EndOfLifeInherited = onDate(product.EOLOn), true
+			}
+			out.Body.Items = append(out.Body.Items, body)
 		}
 		return out, nil
 	})
@@ -595,4 +710,29 @@ func stated(word *string) string {
 		return ""
 	}
 	return *word
+}
+
+// aDate reads a calendar date, or nothing where one was cleared.
+//
+// A date rather than a moment: support ends on a day, and keeping a time of
+// day would make "past" depend on the hour a deployment happened to be asked.
+func aDate(written string) (*time.Time, error) {
+	if strings.TrimSpace(written) == "" {
+		return nil, nil
+	}
+	on, err := time.Parse(time.DateOnly, strings.TrimSpace(written))
+	if err != nil {
+		return nil, huma.Error422UnprocessableEntity(
+			fmt.Sprintf("%q is not a date — write it as YYYY-MM-DD, or leave it empty to clear",
+				written))
+	}
+	return &on, nil
+}
+
+// onDate reads a date that may be absent as the day it names.
+func onDate(on *time.Time) string {
+	if on == nil {
+		return ""
+	}
+	return on.UTC().Format(time.DateOnly)
 }

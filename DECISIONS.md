@@ -690,8 +690,7 @@ significant ones were settled.
 
 ---
 
-**Found by the 2026-09-03 review and not yet decided.** *MDL-11 end-of-life has no code* — `product.eol_on` and `stream.eol_on` are
-written by nothing, and REM-16 and RPT-04 depend on them. *Answered by measuring.* The columns 191 wide
+**Found by the 2026-09-03 review and not yet decided.** *Answered by measuring.* The columns 191 wide
 that carry a producer's values are the two upstream versions a decision is
 keyed on, and they are that width because they are part of the index every
 "does this decision apply here" lookup takes. Measured against the reference
