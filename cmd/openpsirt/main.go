@@ -184,7 +184,13 @@ func run(args []string, stdout, stderr *os.File) error {
 	// exactly the one who would otherwise never hear that a build stopped
 	// being scanned (NTF-07, NTF-08).
 	watch := notify.NewWatch(db.DB, logger)
-	return serve(cfg, logger, handler, reader, runner, upstream, watch)
+	// Asks for everything tracked to be scanned again against the day's
+	// vulnerability data (ING-20). Started on every replica and asking on one,
+	// by the same lease the upstream pass uses: two replicas asking would put
+	// two scans of one build on the queue and the second would find nothing to
+	// do.
+	schedule := scanner.NewSchedule(db, work, logger, name)
+	return serve(cfg, logger, handler, reader, runner, schedule, upstream, watch)
 }
 
 // readInterval is how long an idle reader waits before asking for work again.
@@ -193,6 +199,14 @@ func run(args []string, stdout, stderr *os.File) error {
 // is watching a clock for, and a queue that is not empty drains without
 // waiting for it.
 const readInterval = 5 * time.Second
+
+// scheduleInterval is how often the pass that asks for re-scans looks.
+//
+// Far more often than anything is due, and deliberately: what it looks *for*
+// is a setting an administrator may shorten, and a pass that woke only once a
+// day would take up to a day to notice they had. Looking is one query that
+// finds nothing, which is the ordinary answer on every cycle but a few.
+const scheduleInterval = 5 * time.Minute
 
 // askInterval is how long the upstream pass waits between slices.
 //
@@ -286,8 +300,8 @@ func newLogger(cfg config.Config, w *os.File) *slog.Logger {
 }
 
 func serve(cfg config.Config, logger *slog.Logger, handler http.Handler,
-	reader *ingest.Reader, runner *scanner.Runner, upstream *currency.Refresher,
-	watch *notify.Watch) error {
+	reader *ingest.Reader, runner *scanner.Runner, schedule *scanner.Schedule,
+	upstream *currency.Refresher, watch *notify.Watch) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -313,6 +327,11 @@ func serve(cfg config.Config, logger *slog.Logger, handler http.Handler,
 			runner.Run(ctx, readInterval)
 		}()
 	}
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		schedule.Run(ctx, scheduleInterval)
+	}()
 	workers.Add(1)
 	go func() {
 		defer workers.Done()

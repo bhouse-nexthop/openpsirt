@@ -3,7 +3,8 @@
 What happens to a scan when it arrives.
 
 Satisfies ING-01, ING-02, ING-04 to ING-08, ING-11, ING-12, ING-14 to ING-23,
-ING-28 to ING-35, MDL-19, ACC-12, ACC-50, ACC-53, SEC-05, SEC-06.
+ING-28 to ING-35, MDL-19, ACC-12, ACC-50, ACC-53, DAT-39, SCP-15, SEC-05,
+SEC-06.
 
 ## Deciding before parsing
 
@@ -520,6 +521,60 @@ packages, so this is the ordinary case rather than the exceptional one.
 | Both shapes read into one thing, with the origin recorded | They differ in precision rather than in meaning, and the difference is worth keeping without needing two of everything downstream |
 | Only a security claim is read from a patch | A patch resolves defects and improvements as readily as vulnerabilities |
 
+
+## Scanning again, on a schedule
+
+The vulnerability data is produced here rather than by the build (ING-20). That
+is what makes counts comparable between products, and it has a consequence the
+ingest path alone does not cover: **a release built a year ago has the same
+components it always had and a different answer every month.** An inventory
+arriving puts one scan on the queue. Nothing else asked for the next one, so a
+build that is never rebuilt was measured once — and it is exactly the build an
+advisory published this morning is most likely to be about.
+
+So a pass asks. Every build holding an inventory that has not been scanned
+within the interval gets a scan put on the queue.
+
+**Four things it does not do, each for its own reason.**
+
+*It does not scan a build with no inventory.* A build is declared before
+anything is filed against it, and scanning one with no components records a run
+that found nothing against a build that has nothing — an empty answer that
+reads exactly like a clean one.
+
+*It does not queue a second scan for a build already waiting on one.* The pass
+looks far more often than anything is due, because the interval is a setting an
+administrator may shorten and a pass that woke once a day would take a day to
+notice. Looking often means a build the queue has not reached yet would collect
+one job per cycle, each of which does the same work when it finally runs. What
+is already queued is read out and compared as identifiers rather than joined in
+the statement: a job's reference is text and a build's identifier is a number,
+and converting one inside a query has no spelling the four engines agree on.
+
+*It does not ask for more than a slice at a time.* The bound is the reason every
+bulk write here has one: a deployment tracking a great many builds would fill
+the queue in one pass and push a producer's arriving inventories behind work
+that is not urgent. What is left over is still due next cycle.
+
+*It stops rather than failing when the queue is full.* What is due stays due,
+and a full queue is a fact about how much is in flight rather than an error
+anybody can act on.
+
+**One replica asks.** Two reading the same list at the same moment would both
+see the same build as due and both queue a scan for it — the check that nothing
+is queued already is made when the list is read, which is before either has
+written anything. Which replica asks is settled by a lease, the same mechanism
+the upstream pass uses (`DESIGN-queue.md`).
+
+**How often is a setting.** The databases the scanner reads are published
+daily, so scanning more often measures the same data twice and scanning much
+less often means an advisory waits to be noticed. What a scanner costs to run
+over a whole estate is a question about that estate, so it is tuned rather than
+compiled in. It ships at a day.
+
+**What this does not do is discover.** The component list still comes from the
+build (ING-23). What changes between one scan and the next is what is known
+about those components, never what the build is thought to contain.
 
 ## A build that stops being scanned
 

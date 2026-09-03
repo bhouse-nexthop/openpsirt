@@ -149,8 +149,9 @@ pass with no natural point to renew from.
 ### Two shapes of work, two answers to losing the race
 
 **Work that may be skipped** does nothing this cycle and asks again next time.
-Asking the public indexes what upstream has released is this: whoever holds the
-lease is doing it, and nothing is urgent.
+Two passes are this: asking the public indexes what upstream has released, and
+deciding which builds are due a scan. Whoever holds the lease is doing it, and
+neither is urgent to the minute.
 
 **Work that has to happen** waits for its turn. Rewriting deadlines after
 somebody changed the policy is this: the change has to be applied, so a replica

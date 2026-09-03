@@ -185,7 +185,10 @@ declared fix that did not land shows as a missed target.
 
 ## Stage 7 — Scan scheduling and lifecycle
 
-- Scheduled re-scanning of everything tracked, against a moving vulnerability database
+- **Scheduled re-scanning of everything tracked is built**, against a moving
+  vulnerability database: one replica asks, on an interval that is a setting,
+  for every build holding an inventory that has not been scanned within it.
+  `DESIGN-ingest.md` records what it deliberately does not do
 - Retention of release inventories and their suppressions
 - End-of-life dates and everything they switch off
 

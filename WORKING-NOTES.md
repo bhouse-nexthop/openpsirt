@@ -1392,6 +1392,70 @@ So: when running `go test` by hand rather than through `make check`, export the
 engine URLs, and check the subtest names in the output actually list four
 engines before believing a result.
 
+## Everything tracked is scanned again, on a schedule (2026-09-03)
+
+The first bullet of the build plan's scan-scheduling stage, and the half of
+`ING-20` that was decided and not built. The decision says the vulnerability
+data is produced here rather than by the build, "on a schedule, for everything
+we track". What existed was the first half: an inventory arriving puts one scan
+on the queue. Nothing asked for the next one — so a release that is never
+rebuilt was measured once and never again, which is exactly the release an
+advisory published this morning is most likely to be about.
+
+A pass, on the lease built earlier today. What it *refuses* to do took more
+thought than what it does:
+
+- **A build with no inventory is not scanned.** A target is declared before
+  anything is filed against it, and a run over no components records "nothing
+  found" against a build that has nothing — an empty answer that reads exactly
+  like a clean one.
+- **A build already on the queue is not queued again.** The pass looks every
+  five minutes against an interval measured in days, because the interval is a
+  setting somebody may shorten and a pass waking daily would take a day to
+  notice. Looking often means a build the queue has not reached would collect
+  one job per cycle.
+- **A slice at a time**, so a deployment tracking a great many builds does not
+  fill the queue in one pass and push a producer's arriving inventories behind
+  work that is not urgent.
+- **A full queue stops the asking rather than failing it.** What is due stays
+  due.
+
+**The lease test was wrong at first, and mutation testing is what said so.**
+The obvious test — two replicas call `Once`, expect one job — passes with the
+lease removed, because the second replica's "already queued" check sees the
+first one's job. The two guards mask each other. The test that actually pins
+the lease holds it as another replica and asserts this one does nothing *while
+something is due*, then releases it and asserts the work happens. That is the
+second time today a test looked convincing and proved nothing until the control
+was broken under it.
+
+**The portability trap, and it is a good one.** A job's reference is text —
+a job may be about anything — and a build's identifier is a number, so a check
+of "is one already queued for this build" written as a join has to convert one
+inside the query. `CAST(id AS CHAR)` looked like the spelling all four take.
+On PostgreSQL, **`CHAR` with no length is `char(1)`**: `CAST(13 AS CHAR)` is
+`'1'`. Right for the first nine builds a deployment declares, wrong for every
+one after, and it does not merely fail to match — it matches whatever job holds
+*that* reference, so a build looks queued because of somebody else's job.
+
+Two things about how it was found and how nearly it was not:
+
+- **The gate found it and the local run did not.** Every SQLite test starts
+  from a fresh file with identifiers at one, so a single-digit world is the
+  only world SQLite ever sees. The server engines reuse a database across a
+  package's tests, identifiers climb, and PostgreSQL failed.
+- **The first regression test did not catch it either.** It queued the
+  single-digit build as well, so the truncated `'1'` found that job and the
+  build read as queued — by the wrong row, with the right answer. The test now
+  queues *only* a two-digit build and asserts per build, which is what tells a
+  false match from a miss. Verified by putting the cast back and watching
+  PostgreSQL fail.
+
+The fix removes the conversion rather than finding a portable spelling of it:
+the references are read out and compared as numbers. Bounded by the queue's own
+backlog, and the pass stops before it needs them when a cycle's worth of
+scanning is already waiting.
+
 ## The 191-wide columns, measured rather than widened (2026-09-03)
 
 Eighth of the 2026-09-03 review's open items: "identity and version columns are

@@ -78,6 +78,16 @@ const (
 	// findings and fails nothing, which is why silence has to be looked for
 	// rather than waited for.
 	QuietAfter = "scanning.quiet-after"
+	// ScanEvery is how often everything tracked is scanned again against the
+	// vulnerability data of the day (ING-20).
+	//
+	// A judgment about a deployment rather than a constant: the data moves
+	// daily, so scanning more often than that measures the same thing twice,
+	// and scanning much less often means an advisory published this morning
+	// waits to be noticed. It is tuned here rather than compiled in because
+	// what a deployment's scanner costs to run over its whole estate is a
+	// question about that estate.
+	ScanEvery = "scanning.every"
 	// UpstreamCurrency is whether this deployment asks public package indexes
 	// what the newest version of a component is (ING-41).
 	//
@@ -100,6 +110,15 @@ const (
 // scanned, and the pass that turns going quiet into something somebody is
 // told. Two copies of a default is two policies that agree until one moves.
 const DefaultQuietAfter = 7 * 24 * time.Hour
+
+// DefaultScanEvery is how often everything tracked is scanned again, where a
+// deployment has not said otherwise.
+//
+// A day, because the vulnerability databases the scanner reads are published
+// daily: more often measures the same data twice, and less often means an
+// advisory published this morning waits for the difference before anybody sees
+// it against a release that has not been rebuilt in a year.
+const DefaultScanEvery = 24 * time.Hour
 
 // On and Off are what a setting that is a switch may be set to.
 //
