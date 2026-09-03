@@ -5,7 +5,7 @@ What a scan run found, and where.
 Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, ING-02, ING-21,
 ING-29, ING-30, ING-39, ING-40, STA-03, STA-04, STA-05, STA-08, STA-17,
 RNK-01 to RNK-07, MDL-09, STA-01, STA-02, STA-06, STA-07, STA-09, STA-10,
-STA-13 to STA-16, STA-18.
+STA-13 to STA-16, STA-18, REL-01.
 
 ## A scanner reports a package; we work out the places
 
@@ -423,6 +423,41 @@ This is also how the published exploited catalogs are used in practice. Their
 due dates run from the date an entry was added, not from when anybody first
 shipped the affected package.
 
+## The same code built two ways is one piece of work
+
+A product is often built several ways — a chip variant, an architecture — and
+the builds are mostly the same software. A judgment carries no variant: it is
+keyed on the product, the place and the upstream versions, so answering it on
+one build answers it on every build of that product holding the same code.
+
+So the screens that ask "what is there to do" show **one item per issue in a
+component in a product**, not one per build (REL-01). Listed per build,
+importing a second variant doubles the list while doubling none of the work —
+and a queue twice as long as the work is one people stop reading. That is not
+hypothetical: it is what happened the day a second variant was seeded, and the
+list went from 7,354 items to 14,681 against the same estate.
+
+**Genuine differences break out by themselves.** A component row is one name at
+one version, shared by every build that ships it, so two variants at the same
+version group together and two at different versions do not. Nothing has to
+decide which case it is looking at.
+
+**The product stays in the key.** A decision is a claim about one product's
+code, so two products shipping the identical component at the identical version
+are two judgments — answered separately, and usually by different people.
+
+**An item still names a build**, because a screen has to link somewhere and an
+action has to name a finding. It is one of the builds rather than the only one,
+chosen stably so a row does not move between reads, and the count of builds is
+carried beside it so a screen can say "2 builds" rather than presenting one of
+them as the answer.
+
+**And acting on it acts on all of it.** Assigning covers every build of the
+product holding the component, not the one named in the path — the path says
+which finding is being looked at, and what is assigned is the work it belongs
+to. Assigning one build would leave the identical work unassigned beside it,
+and the person would hold half of what they think they hold.
+
 ## A finding carries what it takes to act on it
 
 There may be thousands of findings and very few people, so the difference
@@ -598,6 +633,18 @@ MariaDB** — 4.82 s a night against 0.67 s and 0.32 s, and 12.56 s at its worst
 against 1.11 s. A nightly scan taking thirteen seconds is not an operational
 problem; the same code being fifteen times more expensive on one supported
 engine than on its own sibling is a fact to have before somebody chooses one.
+
+**And the cost is per statement, not per row.** The harness counts statements
+as well as seconds, and a night issues **1,699 of them on every engine** — the
+same code, the same work, the same number of round trips. What differs is what
+one costs: 203 µs on MariaDB, 404 µs on PostgreSQL, 2,835 µs on MySQL, which is
+exactly the ratio the whole night shows. There is nothing to find in what the
+apply does; the lever, for anybody who wants MySQL faster, is issuing fewer
+statements rather than doing less work.
+
+A quiet night issues **more** statements than the first one — 1,699 against
+1,077 — because the first night is bulk inserts five hundred at a time and a
+quiet night is an update per finding that moved. Recorded rather than chased.
 
 **And the correction to the model says what that cost is made of.** An earlier
 run applied twice the churn it documented, and its figures were withdrawn

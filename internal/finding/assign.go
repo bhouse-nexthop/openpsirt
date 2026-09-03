@@ -20,15 +20,24 @@ import (
 // they were its fault is how a driver's error text ends up on a screen.
 var ErrSamePerson = errors.New("that would hand their work to themselves")
 
-// Assign records who is dealing with an issue in a component.
+// Assign records who is dealing with an issue in a component, across every
+// build of one product that holds it.
 //
 // Set for the whole group at once rather than per place: assigning one place
 // of an issue and not another is not something anybody means to do, and the
-// places of a group are the same problem seen from several parents.
+// places of a group are the same problem seen from several parents. **Across
+// builds for the same reason** — the same code built as several variants is
+// one piece of work, and it is answered by one judgment (REL-01).
 //
 // Assigning to nobody is how something is handed back, and is deliberately the
 // same operation — taking work back is not a different kind of act from giving
 // it out, and making it one produces two paths that drift.
+// The build is named rather than the product, and the product is resolved from
+// it here. Both are int64, so a caller passing the wrong one is invisible to
+// the compiler — and it is invisible on SQLite too, where a fresh database
+// makes the first product and the first build both 1. Taking the build keeps
+// every call site saying what it is looking at and leaves one place that knows
+// the grain.
 func (s *Store) Assign(ctx context.Context, subject access.Subject, targetID, vulnerabilityID,
 	componentID int64, to *int64) (int64, error) {
 
@@ -52,7 +61,15 @@ func (s *Store) Assign(ctx context.Context, subject access.Subject, targetID, vu
 
 	now := s.now().UTC().Truncate(time.Microsecond)
 	update := s.db.NewUpdate().Model((*Finding)(nil)).
-		Where("target_id = ?", targetID).
+		// Across the product's builds, not one of them. The same code built as
+		// several variants is one piece of work — a judgment carries no
+		// variant, so somebody taking this on has taken on every build of the
+		// product holding the same component (REL-01). Assigning one build
+		// left the identical work unassigned beside it, which is how a person
+		// ends up holding half of what they think they hold.
+		Where(`target_id IN (SELECT tg.id FROM "target" AS tg
+			JOIN "stream" AS st ON st.id = tg.stream_id
+			WHERE st.product_id = ?)`, productID).
 		Where("vulnerability_id = ?", vulnerabilityID).
 		Where("component_id = ?", componentID).
 		Where("closed_run_id IS NULL").
@@ -259,10 +276,20 @@ type Owned struct {
 	Severity        string `bun:"severity"`
 	Exploited       bool   `bun:"exploited"`
 	Product         string `bun:"product"`
-	Stream          string `bun:"stream"`
-	Variant         string `bun:"variant"`
-	Urgency         int64  `bun:"urgency"`
-	Places          int    `bun:"places"`
+	// Stream and Variant name **a** build holding this, not the only one. A
+	// screen needs somewhere to link to and an action needs a finding to name,
+	// and where several builds hold the same code any of them will do. What
+	// says there are several is Builds, so a screen can show that instead of
+	// naming one of them as though it were the answer.
+	Stream  string `bun:"stream"`
+	Variant string `bun:"variant"`
+	Urgency int64  `bun:"urgency"`
+	// Places is how many findings this covers, across every build it is in.
+	// It is what a judgment here would be recorded against.
+	Places int `bun:"places"`
+	// Builds is how many builds hold it. One is the ordinary answer and reads
+	// as it always did; more than one is the whole point of collapsing them.
+	Builds int `bun:"builds"`
 }
 
 // Unassigned reports the work nobody is dealing with, across every product the
@@ -271,6 +298,24 @@ type Owned struct {
 // Across products deliberately. Work falling between people is not a
 // per-product problem — it is exactly the thing that hides when every screen
 // is scoped to one product and nobody looks at the others.
+//
+// **One item per issue in a component in a product, not one per build**
+// (REL-01). Variants are mostly the same thing built twice: a decision is keyed
+// on the product, the place and the upstream versions and carries no variant,
+// so answering this on one build answers it on every build of that product
+// holding the same code. Listed per build, a second variant doubled this
+// screen while doubling none of the work — which is how a queue stops being
+// read.
+//
+// **Genuine differences still break out, and they break out by themselves.** A
+// component row is one name at one version, shared by every build that ships
+// it, so two variants at the same version group together and two at different
+// versions do not. Nothing here has to decide which case it is looking at.
+//
+// The product stays in the key. A decision is a claim about one product's code
+// (TRI-48), so two products shipping the identical component at the identical
+// version are two judgments, and merging them would offer one answer for work
+// that is answered separately.
 func (s *Store) Unassigned(ctx context.Context, subject access.Subject, scope Scope,
 	limit, offset int) ([]Owned, int, error) {
 
@@ -319,7 +364,9 @@ func (s *Store) Unassigned(ctx context.Context, subject access.Subject, scope Sc
 	var heads []struct {
 		VulnerabilityID int64 `bun:"vulnerability_id"`
 		ComponentID     int64 `bun:"component_id"`
+		ProductID       int64 `bun:"product_id"`
 		TargetID        int64 `bun:"target_id"`
+		Builds          int   `bun:"builds"`
 		Urgency         int64 `bun:"urgency"`
 		Places          int   `bun:"places"`
 		Total           int   `bun:"total"`
@@ -327,15 +374,22 @@ func (s *Store) Unassigned(ctx context.Context, subject access.Subject, scope Sc
 	err := narrow(s.db.NewSelect()).
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("f.component_id AS component_id").
-		ColumnExpr("f.target_id AS target_id").
+		ColumnExpr("st.product_id AS product_id").
+		// One of the builds, and how many there are. The one is what a link
+		// and an action need somewhere to point; the count is what stops a
+		// screen presenting it as the only one. MIN rather than any other
+		// choice because it is stable: a row that named a different build
+		// between two reads would move under somebody.
+		ColumnExpr("MIN(f.target_id) AS target_id").
+		ColumnExpr("COUNT(DISTINCT f.target_id) AS builds").
 		ColumnExpr("MAX(f.urgency) AS urgency").
 		ColumnExpr("COUNT(*) AS places").
 		// The total rides on the page, as the findings list's does: the
 		// groups the narrowing admits, counted after the grouping and before
 		// the limit, in the statement that groups them.
 		ColumnExpr("COUNT(*) OVER () AS total").
-		GroupExpr("f.vulnerability_id, f.component_id, f.target_id").
-		OrderExpr("urgency DESC, f.vulnerability_id, f.component_id, f.target_id").
+		GroupExpr("f.vulnerability_id, f.component_id, st.product_id").
+		OrderExpr("urgency DESC, f.vulnerability_id, f.component_id, st.product_id").
 		Limit(limit).Offset(offset).
 		Scan(ctx, &heads)
 	if err != nil {
@@ -348,7 +402,7 @@ func (s *Store) Unassigned(ctx context.Context, subject access.Subject, scope Sc
 		if total, err = s.db.NewSelect().
 			TableExpr(`(?) AS "grouped"`, narrow(s.db.NewSelect()).
 				ColumnExpr("f.vulnerability_id").
-				GroupExpr("f.vulnerability_id, f.component_id, f.target_id")).
+				GroupExpr("f.vulnerability_id, f.component_id, st.product_id")).
 			Count(ctx); err != nil {
 			return nil, 0, fmt.Errorf("count what nobody is dealing with: %w", err)
 		}
@@ -379,7 +433,7 @@ func (s *Store) Unassigned(ctx context.Context, subject access.Subject, scope Sc
 	for _, head := range heads {
 		row := Owned{
 			VulnerabilityID: head.VulnerabilityID, ComponentID: head.ComponentID,
-			Urgency: head.Urgency, Places: head.Places,
+			Urgency: head.Urgency, Places: head.Places, Builds: head.Builds,
 			Exploited: Rank(head.Urgency).Exploited(),
 		}
 		if issue, held := named[head.VulnerabilityID]; held {

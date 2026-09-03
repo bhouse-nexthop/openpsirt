@@ -1392,6 +1392,51 @@ So: when running `go test` by hand rather than through `make check`, export the
 engine URLs, and check the subtest names in the output actually list four
 engines before believing a result.
 
+## The unassigned list counted variants, not work (2026-09-03)
+
+Reported from use: seeding the mellanox variant **doubled the unassigned list**
+(7,354 to 14,681) while the findings list for a build stayed where it was. The
+expectation — that the two should be roughly the same — is right, and it is
+`REL-01`: "findings identical across variants are shown and acted on as one
+item. Only genuine differences are broken out." The list was grouping by build.
+
+`REL-01` was in the plan's "decided, and waiting for the stage that carries it"
+under the interface, and the unassigned screen was built without it. With one
+variant nothing showed. The second variant made it visible immediately.
+
+**The fix is one line of grouping, and the model does the rest.** A component
+row is one name at one version and every build shipping it shares that row, so
+dropping the build from the key collapses the identical case and leaves the
+different-version case broken out — without anything having to decide which is
+which. The product stays in the key, because a decision is a claim about one
+product's code.
+
+**The half that is not one line**: a collapsed row has to be actionable, or it
+comes straight back. Assigning now covers every build of the product holding
+the component. The route keeps its build-shaped path — the path says which
+finding is being looked at, and the effect is the work it belongs to, which is
+how proposing a decision already behaves. Trying it the other way first, with a
+product-grain path, broke the notification's link and needed a representative
+build anyway.
+
+The row still names a build, because a screen has to link somewhere. It is
+*a* build, chosen stably, with the count beside it so the screen says "2
+builds" rather than naming one as though it were the answer.
+
+Live: 14,681 to 7,354, against 7,329 for a single build. The 25 difference is
+work that exists only on mellanox, which is right.
+
+**Two of four mutants passed at first**, both because the tests used one of
+something: one product could not tell "product in the key" from "product not in
+the key", and one variant could not tell collapsed from not. The tests that
+distinguish them need two products and two variants respectively.
+
+**Still open, and worth a look**: `HeldBy` — the "who is working on what"
+screen — counts finding rows per person, so the same judgment held across two
+variants counts twice. It is labelled "findings" so it is not lying, but it is
+the same tension `REL-01` settles for the list, and somebody holding a kernel
+issue reads as holding ninety things.
+
 ## The live audit of the day's work (2026-09-03)
 
 The demo rebuilt from an empty database on the day's schema — eight indexes

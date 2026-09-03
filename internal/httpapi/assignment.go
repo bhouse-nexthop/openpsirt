@@ -22,9 +22,13 @@ type UnassignedBody struct {
 	Component     string `json:"component"`
 	Version       string `json:"version"`
 	Product       string `json:"product"`
-	Stream        string `json:"stream"`
-	Variant       string `json:"variant"`
-	Places        int    `json:"places" doc:"How many places this issue sits at in that build"`
+	// Stream and Variant name a build holding this, not the only one: a screen
+	// needs somewhere to link to and an action needs a finding to name. What
+	// says there are several is `builds`.
+	Stream  string `json:"stream" doc:"A branch or tag holding it. Where builds is more than one, any of them"`
+	Variant string `json:"variant" doc:"A build variant holding it. Where builds is more than one, any of them"`
+	Places  int    `json:"places" doc:"How many findings a judgment here would be recorded against, across every build it is in"`
+	Builds  int    `json:"builds" doc:"How many builds hold it. More than one means the same code built more than one way, which one judgment answers"`
 }
 
 // HoldingBody is how much work one person has.
@@ -40,9 +44,15 @@ func registerAssignment(api huma.API, in Ingest) {
 		Path: "/v1/products/{product}/streams/{stream}/variants/{variant}" +
 			"/findings/{vulnerability}/components/{component}/assignment",
 		Summary: "Assign a finding to somebody",
-		Description: "Records who is dealing with this issue in this component. It covers every " +
-			"place the component sits at in this build, because they are the same problem seen " +
-			"from several parents.\n\n" +
+		Description: "Records who is dealing with this issue in this component.\n\n" +
+			"**It covers the product, not the build named in the path.** The path says which " +
+			"finding is being looked at; what is assigned is the work it belongs to. The same " +
+			"code built as several variants is one piece of work — a judgment about it carries " +
+			"no variant — so this covers every build of the product holding the same component. " +
+			"Assigning one build would leave the identical work unassigned beside it, and the " +
+			"person would hold half of what they think they hold.\n\n" +
+			"It also covers every place the component sits at, because those are the same " +
+			"problem seen from several parents.\n\n" +
 			"Send `person` as an empty string to hand it back to nobody. Handing back is the " +
 			"same operation as giving out, so there is one path rather than two that drift.\n\n" +
 			"Findings arriving later under the same component start unassigned.",
@@ -136,7 +146,12 @@ func registerAssignment(api huma.API, in Ingest) {
 		Description: "Returns open findings with no assignee, across every product you can see, " +
 			"most urgent first.\n\n" +
 			"Deliberately not scoped to one product: work falling between people is exactly what " +
-			"hides when every screen shows one product and nobody looks at the others.",
+			"hides when every screen shows one product and nobody looks at the others.\n\n" +
+			"**One item per issue in a component in a product, not one per build.** The same code " +
+			"built as several variants is one piece of work — a judgment is keyed on the product " +
+			"and the code rather than on the build, so answering it once answers every build " +
+			"holding the same versions. `builds` says how many that is. Where two builds ship " +
+			"different versions of the component they are different work and appear separately.",
 		Tags: []string{"Findings"},
 	}, func(ctx context.Context, input *struct {
 		ScopeQuery
@@ -173,7 +188,7 @@ func registerAssignment(api huma.API, in Ingest) {
 				Vulnerability: row.Vulnerability, Severity: row.Severity, Exploited: row.Exploited,
 				Component: row.Component, Version: row.Version,
 				Product: row.Product, Stream: row.Stream, Variant: row.Variant,
-				Places: row.Places,
+				Places: row.Places, Builds: row.Builds,
 			})
 		}
 		out.Body.Total = total

@@ -664,15 +664,23 @@ was a real defect in the same area is fixed: the explanation for each fixed
 entry was a query of its own, so a comparison against a year-old release cost a
 round trip per line of the release note.
 
-**Open, and new.** *MySQL's write cost barely responds to how much changed* —
-4.82 s a night against PostgreSQL's 0.67 s and MariaDB's 0.32 s, and almost
-unmoved when the churn was halved. A cost that does not scale with rows touched
-is paid per statement rather than per row, which points at how the apply is
-batched on that engine rather than at the work it does. Nothing here changes
-until somebody measures which statement: thirteen seconds for a nightly scan is
-not an operational problem, and this is recorded because "the same code is
-fifteen times more expensive on one supported engine than on its sibling" is
-worth knowing before somebody picks one.
+**Answered by measuring: MySQL's cost is per statement, not per row.** The
+harness counts statements as well as seconds, and a night issues **1,699 of
+them on every engine** — the same code doing the same work in the same number
+of round trips. What differs is what one costs: **203 µs on MariaDB, 404 µs on
+PostgreSQL, 2,835 µs on MySQL**, which is exactly the 7× and 14× the whole
+night showed. So there is nothing to find in what the apply does; the lever, if
+anybody wants MySQL faster, is issuing fewer statements rather than doing less
+work.
+
+Two things fell out of the same run and are recorded rather than chased.
+**A quiet night issues more statements than the first night** — 1,699 against
+1,077 — because the first night is bulk inserts in batches of five hundred
+while a quiet night is an update per finding that moved. And thirteen seconds
+for a nightly scan is still not an operational problem, so nothing changes
+here; it is written down because "the same code is fourteen times more
+expensive on one supported engine than on its sibling" is worth knowing before
+somebody picks one.
 
 Still open in the same area, and smaller: this measured one build, where a
 deployment tracks several, and it assumed a churn rate rather than observing

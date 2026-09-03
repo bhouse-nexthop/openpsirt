@@ -77,7 +77,7 @@ func tablesIn(t *testing.T, ctx context.Context, db *database.DB) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var tables []string
 	for rows.Next() {
 		var name string
@@ -106,7 +106,7 @@ func indexesOn(t *testing.T, ctx context.Context, db *database.DB, table string)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var names []string
 	for rows.Next() {
 		var name string
@@ -136,7 +136,7 @@ func columnsOf(ctx context.Context, db *database.DB, index string) ([]string, er
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var columns []string
 	for rows.Next() {
 		var name string

@@ -66,7 +66,11 @@ export function Unassigned() {
   }
 
   const items = rows.data?.items ?? [];
-  const keyOf = (row: Owned) => `${row.product} ${row.stream} ${row.variant} ${row.vulnerability} ${row.component} ${row.version}`;
+  // What identifies a row for picking, which is what it is *about* rather than
+  // where it happens to be listed. The build is one of several where the code
+  // is built more than one way, so including it would give the same piece of
+  // work two keys if the representative ever changed.
+  const keyOf = (row: Owned) => `${row.product} ${row.vulnerability} ${row.component} ${row.version}`;
 
   async function assignPicked() {
     // The same action repeated, not a different one — each finding records
@@ -188,7 +192,19 @@ export function Unassigned() {
                       </span>
                     </td>
                     <td className="hint">
-                      {row.product} · {row.stream} · {row.variant}
+                      {row.product}
+                      {(row.builds ?? 1) > 1 ? (
+                        // Not the one build named on the row. The same code
+                        // built several ways is one piece of work — assigning
+                        // it takes on every build of it — and naming one would
+                        // read as being about that one.
+                        <> · {row.builds} builds</>
+                      ) : (
+                        <>
+                          {" "}
+                          · {row.stream} · {row.variant}
+                        </>
+                      )}
                     </td>
                     <td className="num">{row.places}</td>
                   </tr>

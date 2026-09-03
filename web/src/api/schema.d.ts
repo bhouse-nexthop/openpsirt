@@ -1039,7 +1039,11 @@ export interface paths {
         get?: never;
         /**
          * Assign a finding to somebody
-         * @description Records who is dealing with this issue in this component. It covers every place the component sits at in this build, because they are the same problem seen from several parents.
+         * @description Records who is dealing with this issue in this component.
+         *
+         *     **It covers the product, not the build named in the path.** The path says which finding is being looked at; what is assigned is the work it belongs to. The same code built as several variants is one piece of work — a judgment about it carries no variant — so this covers every build of the product holding the same component. Assigning one build would leave the identical work unassigned beside it, and the person would hold half of what they think they hold.
+         *
+         *     It also covers every place the component sits at, because those are the same problem seen from several parents.
          *
          *     Send `person` as an empty string to hand it back to nobody. Handing back is the same operation as giving out, so there is one path rather than two that drift.
          *
@@ -1574,6 +1578,8 @@ export interface paths {
          * @description Returns open findings with no assignee, across every product you can see, most urgent first.
          *
          *     Deliberately not scoped to one product: work falling between people is exactly what hides when every screen shows one product and nobody looks at the others.
+         *
+         *     **One item per issue in a component in a product, not one per build.** The same code built as several variants is one piece of work — a judgment is keyed on the product and the code rather than on the build, so answering it once answers every build holding the same versions. `builds` says how many that is. Where two builds ship different versions of the component they are different work and appear separately.
          */
         get: operations["list-unassigned"];
         put?: never;
@@ -3372,16 +3378,23 @@ export interface components {
             floor: "everything" | "low" | "medium" | "high" | "critical" | "";
         };
         UnassignedBody: {
+            /**
+             * Format: int64
+             * @description How many builds hold it. More than one means the same code built more than one way, which one judgment answers
+             */
+            builds: number;
             component: string;
             exploited?: boolean;
             /**
              * Format: int64
-             * @description How many places this issue sits at in that build
+             * @description How many findings a judgment here would be recorded against, across every build it is in
              */
             places: number;
             product: string;
             severity?: string;
+            /** @description A branch or tag holding it. Where builds is more than one, any of them */
             stream: string;
+            /** @description A build variant holding it. Where builds is more than one, any of them */
             variant: string;
             version: string;
             vulnerability: string;

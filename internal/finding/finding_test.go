@@ -1604,3 +1604,36 @@ func (f *fixture) streamOf(t *testing.T, target int64) int64 {
 	}
 	return streamID
 }
+
+// anotherVariant declares a second way this product is built and returns the
+// target for it on the fixture's own stream.
+func (f *fixture) anotherVariant(t *testing.T, name string) int64 {
+	t.Helper()
+	ctx := t.Context()
+	cat := catalog.NewStore(f.db.DB)
+	variant, err := cat.DeclareVariant(ctx, f.productID, name, true)
+	if err != nil {
+		t.Fatalf("declare variant %s: %v", name, err)
+	}
+	var streamID int64
+	if err := f.db.DB.NewSelect().
+		TableExpr("target AS tg").ColumnExpr("tg.stream_id").
+		Where("tg.id = ?", f.target).Scan(ctx, &streamID); err != nil {
+		t.Fatal(err)
+	}
+	target, err := cat.TargetFor(ctx, streamID, variant.ID)
+	if err != nil {
+		t.Fatalf("target for %s: %v", name, err)
+	}
+	return target.ID
+}
+
+// componentID is the component row one name resolves to in the fixture's build.
+func (f *fixture) componentID(t *testing.T, name string) int64 {
+	t.Helper()
+	id, err := graph.NewStore(f.db.DB).ComponentAt(t.Context(), f.target, name)
+	if err != nil {
+		t.Fatalf("resolve %s: %v", name, err)
+	}
+	return id
+}
