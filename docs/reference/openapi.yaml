@@ -102,9 +102,25 @@ components:
         id:
           format: int64
           type: integer
+        in_products:
+          description: How many products those sit in
+          format: int64
+          type: integer
         needs_approval:
           description: Whether a second person has to agree before it takes effect
           type: boolean
+        off_the_list:
+          description: How many of them this rating would put below their product's triage line, where they stop being work and carry no deadline
+          format: int64
+          type: integer
+        off_the_list_in_products:
+          description: How many products that happens in
+          format: int64
+          type: integer
+        open:
+          description: Open findings of this issue you can see
+          format: int64
+          type: integer
         published:
           description: What was published when this was made, kept so a reader can see what we disagreed with
           type: string

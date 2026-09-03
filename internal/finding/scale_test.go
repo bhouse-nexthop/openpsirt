@@ -18,8 +18,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
@@ -100,9 +103,19 @@ func TestMeasureAYearOfNightlyScans(t *testing.T) {
 		// carry. The cheapest plan available rather than the common one.
 		who := access.NewPerson(1, "an administrator", true, nil)
 
+		// What a night costs in *statements*, not only in seconds.
+		//
+		// The engine gap this measures — MySQL a night several times more
+		// expensive than PostgreSQL's, and barely moving when the churn was
+		// halved — is either work or round trips, and the two are told apart
+		// by dividing. A cost that is flat in rows and proportional to
+		// statements is paid per statement.
+		statements := &counting{}
+		db.DB.AddQueryHook(statements)
+
 		built := time.Now().UTC().Add(-time.Duration(nights) * 24 * time.Hour)
 		seq := 0
-		night := func(versionOf func(int) string, extra int) (finding.Applied, time.Duration) {
+		night := func(versionOf func(int) string, extra int) (finding.Applied, time.Duration, int64) {
 			seq++
 			built = built.Add(24 * time.Hour)
 			scan, _, err := scans.Record(ctx, ingest.Arriving{
@@ -124,24 +137,27 @@ func TestMeasureAYearOfNightlyScans(t *testing.T) {
 				t.Fatal(err)
 			}
 			reported := reports(versionOf, extra)
+			before := statements.n.Load()
 			start := time.Now()
 			applied, err := store.Apply(ctx, target.ID, run.ID, reported)
 			if err != nil {
 				t.Fatal(err)
 			}
 			took := time.Since(start)
+			issued := statements.n.Load() - before
 			if err := store.Finish(ctx, run.ID, "0", "0", nil); err != nil {
 				t.Fatal(err)
 			}
-			return applied, took
+			return applied, took, issued
 		}
 
 		// The first night is every finding opening at once, which is what an
 		// installation's first scan actually is.
-		first, took := night(func(int) string { return "1.0" }, 0)
+		first, took, issued := night(func(int) string { return "1.0" }, 0)
 		t.Logf("scale: %d components x %d consumers = %d places, %d issues",
 			components, consumers, components*consumers, issues)
-		t.Logf("night 1 (everything opens): opened %d in %s", first.Opened, took)
+		t.Logf("night 1 (everything opens): opened %d in %s, %d statements (%s each)",
+			first.Opened, took, issued, per(took, issued))
 
 		count := func(table string) int {
 			var n int
@@ -178,6 +194,7 @@ func TestMeasureAYearOfNightlyScans(t *testing.T) {
 		moved := 0
 		var slowest time.Duration
 		var total time.Duration
+		var issuedAll int64
 		for n := 2; n <= nights; n++ {
 			bumped := int(float64(components) * churn)
 			from := (n * bumped) % components
@@ -185,8 +202,9 @@ func TestMeasureAYearOfNightlyScans(t *testing.T) {
 				version[i] = fmt.Sprintf("1.%d", n)
 			}
 			versionOf := func(i int) string { return version[i] }
-			_, took := night(versionOf, (n-1)*arriving)
+			_, took, issued := night(versionOf, (n-1)*arriving)
 			total += took
+			issuedAll += issued
 			if took > slowest {
 				slowest = took
 			}
@@ -195,8 +213,11 @@ func TestMeasureAYearOfNightlyScans(t *testing.T) {
 				report(fmt.Sprintf("after night %d", n))
 			}
 		}
+		measured := int64(nights - 1)
 		t.Logf("a night cost %s on average, %s at worst, over %d nights",
-			total/time.Duration(nights-1), slowest, nights-1)
+			total/time.Duration(measured), slowest, measured)
+		t.Logf("a night issued %d statements on average, costing %s each",
+			issuedAll/measured, per(total, issuedAll))
 		t.Logf("%d component versions moved across the year", moved)
 		report("after a year")
 	})
@@ -322,4 +343,27 @@ func timed(t *testing.T, ctx context.Context, store *finding.Store,
 		list.Round(time.Millisecond), total,
 		out.Round(time.Millisecond), len(due),
 		trend.Round(time.Millisecond), len(points))
+}
+
+// counting counts the statements a store issues, so a night's cost can be
+// divided into work and round trips.
+type counting struct{ n atomic.Int64 }
+
+func (c *counting) BeforeQuery(ctx context.Context, _ *bun.QueryEvent) context.Context {
+	c.n.Add(1)
+	return ctx
+}
+
+func (c *counting) AfterQuery(context.Context, *bun.QueryEvent) {}
+
+// per is how long one statement took, on average.
+//
+// The figure the engine comparison turns on. A cost that is flat in rows and
+// proportional to statements is paid per statement — which points at how the
+// work is batched rather than at how much of it there is.
+func per(took time.Duration, statements int64) time.Duration {
+	if statements <= 0 {
+		return 0
+	}
+	return took / time.Duration(statements)
 }

@@ -423,3 +423,114 @@ func (s *Store) Assessments(ctx context.Context, subject access.Subject, state s
 	}
 	return claims, named, nil
 }
+
+// Consequence is what agreeing to a milder rating would do, beyond moving
+// things down a list.
+//
+// TRI-41 gates a downgrade on a second person because it pushes a deadline
+// out. Since a product may say what it considers worth triaging at all
+// (TRI-43), a downgrade that crosses that line does something different in
+// kind: the finding stops being work rather than becoming later work, and it
+// loses its deadline entirely (REM-27). Those are two different things to
+// agree to, and an approver was told neither.
+type Consequence struct {
+	// Findings is how many open findings of this issue the reader may see.
+	// Named so the two numbers below are read against something rather than
+	// being counts of an unstated whole.
+	Findings int
+	// Products is how many products those sit in. An assessment is about an
+	// issue and a line is per product, so "below the line" has as many answers
+	// as there are products holding the issue.
+	Products int
+	// OffTheList is how many of those findings the proposed rating would put
+	// below their product's line — where they stop being work rather than
+	// becoming later work.
+	OffTheList int
+	// ProductsAffected is how many products that happens in.
+	ProductsAffected int
+}
+
+// Crosses reports whether agreeing takes anything off a working list.
+func (c Consequence) Crosses() bool { return c.OffTheList > 0 }
+
+// WhatAgreeingWouldDo works out what putting a proposed rating in force would
+// take off a working list.
+//
+// Asked of what the reader may see, like everything else here: an approver who
+// cannot see a product is not told how many of its findings this would hide.
+// That understates the effect for them, which is the right way for it to be
+// wrong — the alternative discloses a count of undisclosed work.
+func (s *Store) WhatAgreeingWouldDo(ctx context.Context, subject access.Subject,
+	assessmentID int64) (Consequence, error) {
+
+	if subject.Kind != access.Person {
+		return Consequence{}, nil
+	}
+	claim := new(Assessment)
+	if err := s.db.NewSelect().Model(claim).Where("id = ?", assessmentID).
+		Scan(ctx); err != nil {
+		return Consequence{}, fmt.Errorf("read the claim: %w", err)
+	}
+
+	products, all := subject.Products()
+	if !all && len(products) == 0 {
+		return Consequence{}, nil
+	}
+
+	// Grouped rather than row by row: what decides the answer is the product,
+	// whether the finding is exploited and what it is rated now, and a build
+	// carries thousands of findings of one issue.
+	var rows []struct {
+		ProductID int64  `bun:"product_id"`
+		Exploited bool   `bun:"exploited"`
+		Severity  string `bun:"severity"`
+		Open      int    `bun:"open"`
+	}
+	q := s.db.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN target AS tg ON tg.id = f.target_id").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+		ColumnExpr("st.product_id AS product_id").
+		ColumnExpr("f.urgency_exploited AS exploited").
+		ColumnExpr(EffectiveSeverityExpr+" AS severity").
+		ColumnExpr("COUNT(*) AS open").
+		Where("f.vulnerability_id = ?", claim.VulnerabilityID).
+		Where("f.closed_run_id IS NULL").
+		GroupExpr("st.product_id, f.urgency_exploited, " + EffectiveSeverityExpr)
+	q = onlyVisible(q, subject, products, all)
+	if err := q.Scan(ctx, &rows); err != nil {
+		return Consequence{}, fmt.Errorf("read what this issue is open against: %w", err)
+	}
+
+	held := Consequence{}
+	floors := map[int64]Floor{}
+	affected := map[int64]bool{}
+	seen := map[int64]bool{}
+	for _, row := range rows {
+		held.Findings += row.Open
+		if !seen[row.ProductID] {
+			seen[row.ProductID] = true
+			held.Products++
+		}
+		floor, known := floors[row.ProductID]
+		if !known {
+			var err error
+			floor, err = FloorFor(ctx, s.db, row.ProductID)
+			if err != nil {
+				return Consequence{}, err
+			}
+			floors[row.ProductID] = floor
+		}
+		// Only what the line admits today and would not admit after. A finding
+		// already below it is not taken off anything by this, and saying it
+		// was would inflate the number an approver is being asked to weigh.
+		if floor.Admits(row.Exploited, row.Severity) &&
+			!floor.Admits(row.Exploited, claim.Severity) {
+			held.OffTheList += row.Open
+			affected[row.ProductID] = true
+		}
+	}
+	held.ProductsAffected = len(affected)
+	return held, nil
+}

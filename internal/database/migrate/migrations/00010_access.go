@@ -91,8 +91,6 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 			CONSTRAINT "role_grant_unique" UNIQUE ("person_id", "product_id", "role", "source")
 		)` + t.suffix,
 
-		`CREATE INDEX "role_grant_person_idx" ON "role_grant" ("person_id")`,
-
 		// The ways one person may sign in.
 		//
 		// Two things go wrong when a username is the whole identity. A
@@ -215,8 +213,6 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 			CONSTRAINT "group_role_unique" UNIQUE ("group_name", "product_id", "role")
 		)` + t.suffix,
 
-		`CREATE INDEX "group_role_name_idx" ON "group_role" ("group_name")`,
-
 		// Somebody's own credential for scripting. It is a live reference to
 		// its owner rather than a snapshot of what they could do when it was
 		// minted: what it reaches shrinks the moment their roles shrink, and
@@ -248,8 +244,6 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 			-- theirs may not share one.
 			CONSTRAINT "personal_token_name_unique" UNIQUE ("person_id", "name")
 		)` + t.suffix,
-
-		`CREATE INDEX "personal_token_person_idx" ON "personal_token" ("person_id")`,
 
 		// Admin is global rather than held against a product (ACC-07), so a
 		// group mapping to it cannot live in the table above: the product

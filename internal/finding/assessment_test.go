@@ -6,7 +6,9 @@ import (
 	"testing"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 )
 
 func TestRatingSomethingWorseTakesEffectAtOnce(t *testing.T) {
@@ -238,6 +240,189 @@ func TestTwoAssessmentsProposedAtOnceLeaveOneStanding(t *testing.T) {
 		}
 		if live := f.liveAssessments(t, id); live != 1 {
 			t.Errorf("%d claims stand about one issue", live)
+		}
+	})
+}
+
+func TestAnApproverIsToldWhatAgreeingTakesOffTheList(t *testing.T) {
+	// TRI-41 gates a downgrade on a second person because it pushes a deadline
+	// out. Since TRI-43 exists, a downgrade that crosses a product's triage
+	// line does something different in kind: the finding stops being work
+	// rather than becoming later work, and REM-27 takes its deadline away
+	// entirely. Those are two things to agree to and an approver was told
+	// neither.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		settings := setting.NewStore(f.db.DB)
+		if err := settings.Set(ctx, setting.TriageFloor, "medium"); err != nil {
+			t.Fatal(err)
+		}
+
+		f.shipped(t, twoConsumers())
+		bad := found("CVE-2026-CROSS", libnl)
+		bad.Issue.Severity = "high"
+		if _, err := f.store.Apply(ctx, f.target, f.run(t),
+			[]finding.Reported{bad}); err != nil {
+			t.Fatal(err)
+		}
+		open := f.open(t)
+		if len(open) != 2 {
+			t.Fatalf("opened %d findings", len(open))
+		}
+
+		f.recorded(t, 1, "someone")
+		who := f.holding(t, access.PublicTriage)
+		id := f.issue(t, "CVE-2026-CROSS")
+
+		// Milder, but still above the line: later work, not no work.
+		claim, err := f.store.Assess(ctx, who, id, "medium", "Not as bad as published.")
+		if err != nil {
+			t.Fatal(err)
+		}
+		would, err := f.store.WhatAgreeingWouldDo(ctx, who, claim.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if would.Findings != 2 || would.Products != 1 {
+			t.Errorf("agreeing was measured against %+v, want two findings in one product", would)
+		}
+		if would.Crosses() {
+			t.Errorf("a downgrade that stays above the line reported %d off the list",
+				would.OffTheList)
+		}
+
+		// Milder still, and now it crosses.
+		if err := f.store.Withdraw(ctx, who, claim.ID); err != nil {
+			t.Fatal(err)
+		}
+		crossing, err := f.store.Assess(ctx, who, id, "low", "Not worth an afternoon.")
+		if err != nil {
+			t.Fatal(err)
+		}
+		would, err = f.store.WhatAgreeingWouldDo(ctx, who, crossing.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !would.Crosses() {
+			t.Fatal("a downgrade below the line reported nothing coming off it")
+		}
+		if would.OffTheList != 2 || would.ProductsAffected != 1 {
+			t.Errorf("it takes %d findings off the list in %d products, want 2 in 1",
+				would.OffTheList, would.ProductsAffected)
+		}
+	})
+}
+
+func TestWhatAgreeingWouldDoCountsOnlyWhatTheReaderMaySee(t *testing.T) {
+	// An approver who cannot see a product is not told how many of its
+	// findings this would hide. That understates the effect for them, which is
+	// the right way for it to be wrong: the alternative discloses a count of
+	// undisclosed work.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		if err := setting.NewStore(f.db.DB).Set(ctx, setting.TriageFloor, "medium"); err != nil {
+			t.Fatal(err)
+		}
+		f.shipped(t, twoConsumers())
+		bad := found("CVE-2026-QUIET", libnl)
+		bad.Issue.Severity = "high"
+		if _, err := f.store.Apply(ctx, f.target, f.run(t),
+			[]finding.Reported{bad}); err != nil {
+			t.Fatal(err)
+		}
+		// One of the two places undisclosed, so a public reader sees a smaller
+		// number rather than none — with everything hidden the check below
+		// could only fail by returning something it should not.
+		one := f.open(t)[0]
+		if _, err := f.db.DB.NewUpdate().Model((*finding.Finding)(nil)).
+			Set("visibility = ?", access.Private).
+			Where("id = ?", one.ID).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+
+		f.recorded(t, 1, "someone")
+		who := f.holding(t, access.PublicTriage)
+		claim, err := f.store.Assess(ctx, who, f.issue(t, "CVE-2026-QUIET"),
+			"low", "Not worth an afternoon.")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		public, err := f.store.WhatAgreeingWouldDo(ctx, who, claim.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if public.Findings != 1 || public.OffTheList != 1 {
+			t.Errorf("a public reader was told %+v, want the one place they may see", public)
+		}
+
+		everything := f.holding(t, access.PublicTriage, access.PrivateRead)
+		all, err := f.store.WhatAgreeingWouldDo(ctx, everything, claim.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if all.Findings != 2 || all.OffTheList != 2 {
+			t.Errorf("a reader who may see both was told %+v, want both places", all)
+		}
+	})
+}
+
+func TestWhatAgreeingWouldDoCountsWhatCrossesTheLineAndNotWhatIsAlreadyBelow(t *testing.T) {
+	// The number an approver is weighing is what *this* rating takes off a
+	// working list. A finding already below its product's line is not taken
+	// off anything by agreeing, and counting it would inflate what somebody is
+	// being asked to weigh — which is the one number in front of them.
+	//
+	// Products differ in what they can afford to ignore, so one issue can sit
+	// above the line in one product and below it in another. That is the case
+	// that tells the two counts apart.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		products := catalog.NewStore(f.db.DB)
+		if err := setting.NewStore(f.db.DB).Set(ctx, setting.TriageFloor, "medium"); err != nil {
+			t.Fatal(err)
+		}
+
+		// This product triages from medium, so a high is on its working list.
+		f.shipped(t, twoConsumers())
+		bad := found("CVE-2026-BOTH", libnl)
+		bad.Issue.Severity = "high"
+		if _, err := f.store.Apply(ctx, f.target, f.run(t),
+			[]finding.Reported{bad}); err != nil {
+			t.Fatal(err)
+		}
+
+		// And another that triages from critical, where the same high is
+		// already off the list before anybody says anything.
+		strict := f.inAnotherProduct(t, "strict-product")
+		if err := products.SetTriageFloor(ctx, f.productOf(t, strict), "critical"); err != nil {
+			t.Fatal(err)
+		}
+		f.shippedTo(t, strict, twoConsumers())
+		if _, err := f.store.Apply(ctx, strict, f.runOn(t, strict),
+			[]finding.Reported{bad}); err != nil {
+			t.Fatal(err)
+		}
+
+		f.recorded(t, 1, "someone")
+		who := access.NewPerson(1, "someone", true, nil)
+		claim, err := f.store.Assess(ctx, who, f.issue(t, "CVE-2026-BOTH"),
+			"low", "Not worth an afternoon.")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		would, err := f.store.WhatAgreeingWouldDo(ctx, who, claim.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if would.Findings != 4 || would.Products != 2 {
+			t.Fatalf("measured against %+v, want four findings across two products", would)
+		}
+		if would.OffTheList != 2 || would.ProductsAffected != 1 {
+			t.Errorf("agreeing takes %d findings off the list in %d products, want 2 in 1 — "+
+				"the two in the product that already hid them are not taken off anything",
+				would.OffTheList, would.ProductsAffected)
 		}
 	})
 }

@@ -100,8 +100,6 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			CONSTRAINT "vulnerability_reference_unique" UNIQUE ("vulnerability_id", "url_identity")
 		)` + t.suffix,
 
-		`CREATE INDEX "vulnerability_reference_vulnerability_idx" ON "vulnerability_reference" ("vulnerability_id")`,
-
 		`CREATE TABLE "vulnerability_alias" (
 			"id"               ` + t.id + `,
 			"vulnerability_id" ` + t.ref + ` NOT NULL,

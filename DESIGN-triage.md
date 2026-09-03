@@ -3,7 +3,8 @@
 What people decide about findings, and when a decision stops applying.
 
 Satisfies TRI-01 to TRI-03, TRI-05 to TRI-08, TRI-10 to TRI-18, TRI-20 to
-TRI-36, TRI-40 to TRI-43, TRI-45 to TRI-47, TRI-49, REM-25, REM-27, RNK-07, UIX-35,
+TRI-36, TRI-40 to TRI-43, TRI-45 to TRI-47, TRI-49, TRI-50, REM-25, REM-27,
+RNK-07, UIX-35,
 UIX-46, REL-05, REL-06, REL-09, MDL-08, MDL-19, ACC-09. The
 text rules themselves are in `DESIGN-text.md`, and the reports these numbers
 feed are in `DESIGN-reporting.md`.
@@ -374,11 +375,17 @@ before, and how long the finding has already been put off.
 It shows only work the reader can actually do, narrowed in the query. A work
 list containing work somebody cannot do teaches them to skip rows.
 
-### Three things are waiting, not one
+### Four things are waiting, not one
 
-A claim awaiting agreement is the obvious one. The other two are what happens
-when a judgment stops covering anything, and leaving them out is how reasoning
-gets stranded:
+A claim awaiting agreement is the obvious one. A **rating of an issue** somebody
+proposed is the second, and it had nowhere to be agreed to at all — the route
+existed and no screen reached it, so a control that needs a second person was
+one nobody could be. It sits here rather than on the issue, for the same reason
+the others do: somebody comes to this screen to find what is waiting on them,
+not to go looking for it.
+
+The other two are what happens when a judgment stops covering anything, and
+leaving them out is how reasoning gets stranded:
 
 - **A deferral that has run out.** It has said what it was going to say and the
   finding is back. If it does not appear here the finding simply resurfaces as
@@ -548,6 +555,39 @@ reads that one value with the published rating as its fallback — rather than
 each reader joining the claim and folding it in its own way. The findings
 already open are reordered and re-clocked when it lands, because a rating that
 did not reach them would be a note nobody acts on.
+
+### Agreeing says what it takes off the list
+
+A milder rating waits for a second person because it hides things. **What that
+person is agreeing to is two different things depending on where the rating
+lands**, and they were shown neither.
+
+Rating something milder pushes its deadline out: it becomes *later work*, which
+is what the second person is there for. But where a product has said what it
+considers worth triaging at all, a rating that crosses that line makes it *not
+work* — it leaves the working list and carries no deadline. Agreeing to "look at
+this in ninety days instead of seven" and agreeing to "nobody will look at this"
+are not the same act.
+
+So the claim carries how many open findings the rating would take off a working
+list, and in how many products.
+
+**Counted per product**, because a line lives on a product and an assessment is
+about an issue. One issue can be above the line in one product and below it in
+another, so "does this cross the line" has as many answers as there are products
+holding it — and the honest form is a count rather than a yes.
+
+**What is already below the line is not counted.** Agreeing takes it off
+nothing, and the number in front of somebody is the one they are weighing.
+
+**Narrowed to what the reader may see**, like every other count here. An
+approver who cannot see a product is not told how many of its findings this
+would hide. That understates the effect for them, which is the right way for it
+to be wrong: the alternative discloses a count of undisclosed work.
+
+**It is worked out only for the claims that are waiting.** It is a question
+about a decision nobody has taken yet, and answering it for every historical
+claim would cost a query each to say nothing.
 
 ### One live claim per issue
 

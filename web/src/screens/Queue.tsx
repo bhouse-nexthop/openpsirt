@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, type Body } from "../api/client";
 import { unwrap } from "../api/queries";
@@ -10,6 +10,9 @@ import { Markdown } from "../ui/Markdown";
 import { Editor, forget } from "../ui/Editor";
 import { Severity, Exploited } from "../ui/Severity";
 import { Paged } from "../ui/Paged";
+
+// AssessmentRow is one claim about how bad an issue is.
+type AssessmentRow = Body<"AssessmentBody">;
 
 // A page of claims. The queue is read at the grain of a claim, and a claim
 // is a card with its whole argument, so a page is what fits a sitting.
@@ -52,6 +55,14 @@ export function Queue() {
     queryKey: ["queue", "expired"],
     queryFn: async () =>
       unwrap(await api.GET("/v1/decisions", { params: { query: { expired: true, limit: 50 } } })),
+  });
+  // A milder rating of an issue waits for a second person the same way a
+  // dismissal does, and there was nowhere to be that second person: the route
+  // existed and no screen reached it.
+  const ratings = useQuery({
+    queryKey: ["queue", "assessments"],
+    queryFn: async () =>
+      unwrap(await api.GET("/v1/assessments", { params: { query: { state: "proposed", limit: 50 } } })),
   });
 
   if (queue.isPending) return <p className="hint">Loading…</p>;
@@ -172,6 +183,8 @@ export function Queue() {
           setParams(now);
         }}
       />
+
+      <Ratings waiting={(ratings.data?.items ?? []).filter((each) => each.needs_approval)} />
 
       <div className="screen-head" id="lapsed" style={{ marginTop: 22 }}>
         <h2>Lapsed decisions</h2>
@@ -582,5 +595,90 @@ function findingPath(f: { product?: string; stream?: string; variant?: string; v
     `/findings/${encodeURIComponent(f.vulnerability ?? "")}` +
     `/components/${encodeURIComponent(f.component ?? "")}` +
     (f.version ? `?version=${encodeURIComponent(f.version)}` : "")
+  );
+}
+
+// Ratings of issues waiting for a second person.
+//
+// A milder rating hides things, so it waits the way a dismissal does — and
+// there was nowhere to be that second person, because the route existed and no
+// screen reached it.
+//
+// **What it says beyond "agree or not" is the point.** Rating something milder
+// pushes its deadline out, which is what the second person is there for. But
+// where a product has said what it considers worth triaging at all, a rating
+// that crosses that line does something different in kind: the findings stop
+// being work rather than becoming later work, and they carry no deadline at
+// all. Those are two different things to agree to, and an approver was shown
+// neither.
+function Ratings({ waiting }: { waiting: AssessmentRow[] }) {
+  const queries = useQueryClient();
+  const agree = useMutation({
+    mutationFn: async (id: number) =>
+      unwrap(await api.POST("/v1/assessments/{id}/agreement", { params: { path: { id } } })),
+    onSuccess: () => void queries.invalidateQueries({ queryKey: ["queue"] }),
+  });
+
+  if (waiting.length === 0) return null;
+
+  return (
+    <>
+      <div className="screen-head" id="ratings" style={{ marginTop: 22 }}>
+        <h2>Ratings waiting</h2>
+        <p>
+          {waiting.length.toLocaleString()} · somebody says an issue is milder than the world does.
+          A rating of ours holds wherever the issue appears, so it waits for a second person.
+        </p>
+      </div>
+      {agree.error != null && <Failed error={agree.error} what="That could not be agreed to." />}
+      <div className="queue">
+        {waiting.map((row) => (
+          <div className="card" key={row.id}>
+            <div className="cardhead">
+              <span className="id">{row.vulnerability}</span>
+              <span>
+                <Severity word={row.published ?? ""} /> → <Severity word={row.severity ?? ""} />
+              </span>
+            </div>
+            <p className="reading">{row.reasoning}</p>
+            <p className="hint">
+              {(row.open ?? 0).toLocaleString()} open{" "}
+              {(row.open ?? 0) === 1 ? "finding" : "findings"} you can see, in{" "}
+              {(row.in_products ?? 0).toLocaleString()}{" "}
+              {(row.in_products ?? 0) === 1 ? "product" : "products"}.
+            </p>
+            {(row.off_the_list ?? 0) > 0 ? (
+              <p className="alert" style={{ margin: "6px 0 0" }}>
+                <strong>
+                  This takes {(row.off_the_list ?? 0).toLocaleString()} of them off the working list
+                  in {(row.off_the_list_in_products ?? 0).toLocaleString()}{" "}
+                  {(row.off_the_list_in_products ?? 0) === 1 ? "product" : "products"}.
+                </strong>
+                <span>
+                  Below what a product considers worth triaging, a finding is still recorded,
+                  counted and reportable — and it carries no deadline. You are agreeing that it is
+                  not work, rather than that it is later work.
+                </span>
+              </p>
+            ) : (
+              <p className="hint" style={{ margin: "6px 0 0" }}>
+                Still above what every product here triages from, so this makes them later work
+                rather than no work.
+              </p>
+            )}
+            <div className="cardfoot">
+              <button
+                type="button"
+                className="btn"
+                disabled={agree.isPending}
+                onClick={() => agree.mutate(row.id ?? 0)}
+              >
+                Agree
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }

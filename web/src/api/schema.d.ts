@@ -1672,8 +1672,28 @@ export interface components {
             readonly $schema?: string;
             /** Format: int64 */
             id?: number;
+            /**
+             * Format: int64
+             * @description How many products those sit in
+             */
+            in_products?: number;
             /** @description Whether a second person has to agree before it takes effect */
             needs_approval?: boolean;
+            /**
+             * Format: int64
+             * @description How many of them this rating would put below their product's triage line, where they stop being work and carry no deadline
+             */
+            off_the_list?: number;
+            /**
+             * Format: int64
+             * @description How many products that happens in
+             */
+            off_the_list_in_products?: number;
+            /**
+             * Format: int64
+             * @description Open findings of this issue you can see
+             */
+            open?: number;
             /** @description What was published when this was made, kept so a reader can see what we disagreed with */
             published?: string;
             /** @description Why. It outlives the version it was made about, so the next person needs the argument */

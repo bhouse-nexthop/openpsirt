@@ -327,6 +327,60 @@ differently depending on which database an operator runs.
 The tables that need it are created with binary comparison, which is what the
 other two already do.
 
+## No index repeats the front of another
+
+A B-tree on `(a, b)` answers a lookup on `a` exactly as well as one on `(a)`:
+the seek is the same, and the only difference is a slightly wider entry. So an
+index whose columns lead another index on the same table is machinery nobody
+chose — maintained on every insert and every update to those columns, earning
+nothing.
+
+Eight of them existed. Seven repeated the front of a unique constraint, which
+is where they come from: a constraint declares an index without ever saying the
+word, so the obvious index on a foreign key gets written beside one that
+already covers it. The eighth repeated the front of a wider index on the
+decision table.
+
+**A test asks the schema rather than the source**, because what matters is what
+an operator ends up with, and constraints declare indexes silently. It runs on
+SQLite alone, which is the one place in this suite that is deliberate rather
+than a compromise: the engines disagree about reserved words, types and
+affected-row counts, and they do not disagree about which columns an index is
+on. The statements are one list. Asking three more engines would cost three
+more schema builds to learn the same answer, and reading index metadata is
+spelled four different ways — so checking on four would mean engine-specific
+code in a test, to check something no engine varies.
+
+**One exception, and it is measured rather than argued.** The narrow index on
+what is open in a build leads the wider covering one, and scanning the narrow
+one reads fewer pages — over hundreds of thousands of findings that is a trade
+rather than a tidy-up. The same argument does not carry to the decision table,
+where there are thousands of rows rather than a finding per place.
+
+**Dropping one never costs a foreign key its index**, on the two engines that
+require one: in every case the constraint that made the wider index leads with
+the same column, which is what those engines ask for.
+
+## What is stored that no query reads
+
+Some columns are written and never selected. That is worth stating rather than
+leaving to be found, because the rule here is that code doing something no
+design document describes gets re-examined — and a column is the same kind of
+claim.
+
+| | |
+|---|---|
+| **Which parser read a scan** | The document is deleted for a branch, so after a parser changes there is otherwise no way to tell which stored records were read by the old one and need re-uploading. Its reader is a person doing that, not a query |
+| **Whether we ran the scan** | Always true today, because the deployment runs every scan. A producer sending its own findings is intended and not built, and a schema that assumed we ran it could not take that later — the same argument the finding's kind carries, and it is recorded here for the same reason |
+| **How large a stored document is** | Retained documents are the storage question, and "storage at tag volume is trivial" is a claim nobody can check without this. Derivable from the chunks, and kept because deriving it means reading the blobs to answer a question about their size |
+| **When a finding last moved** | A finding open for years outlives whatever record of the change was kept elsewhere. It carries its own so that "what changed about this, and when" has an answer after the events have been purged |
+| **When an identity was bound to a person** | Which identifier a provider handed over, and when it was pinned to whom, is the audit trail for the one decision that cannot be undone by editing a role |
+
+A column that fails this — written, never read, and with no answer to "who
+would want it" — is a defect and goes. That is how the redundant indexes above
+were found: by asking the same question of the schema and not liking the
+answer.
+
 ## Text a producer supplies is not given a width
 
 A component's name, its version, what it was forked from, an issue's

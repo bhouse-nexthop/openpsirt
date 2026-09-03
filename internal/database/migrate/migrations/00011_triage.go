@@ -167,14 +167,21 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 
 		// Found two ways, and both are hot.
 		//
-		// The first is exact: a finding asks whether a decision applies to it,
+		// One index, not two, and it answers both questions asked of it. The
+		// exact one is a finding asking whether a decision applies to it,
 		// which is every version column matching as well as the structural
-		// ones. The second drops the versions, and answers "was there ever a
-		// decision about this place" — which is what surfaces the reasoning
-		// behind one that has lapsed, so somebody re-making it is not starting
-		// from a blank page.
+		// ones. The other drops the versions and asks "was there ever a
+		// decision about this place" — which surfaces the reasoning behind one
+		// that has lapsed, so somebody re-making it is not starting from a
+		// blank page. That is a lookup on the first three columns, and a
+		// B-tree that leads with them answers it with the same seek.
+		//
+		// A separate index on those three was here and is gone. The argument
+		// that kept the narrow index on `finding` — that scanning it reads
+		// fewer pages — turns on there being hundreds of thousands of rows to
+		// read, and there are thousands of decisions rather than a finding per
+		// place.
 		`CREATE INDEX "decision_applies_idx" ON "decision" ("product_id", "vulnerability_id", "place_identity", "component_upstream_version", "consumer_upstream_version")`,
-		`CREATE INDEX "decision_place_idx" ON "decision" ("product_id", "vulnerability_id", "place_identity")`,
 		`CREATE INDEX "decision_claim_idx" ON "decision" ("claim_id")`,
 
 		// The reasoning, revised and never overwritten.
@@ -198,8 +205,6 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 			CONSTRAINT "decision_revision_author_fk" FOREIGN KEY ("written_by") REFERENCES "person"("id"),
 			CONSTRAINT "decision_revision_unique" UNIQUE ("decision_id", "ordinal")
 		)` + t.suffix,
-
-		`CREATE INDEX "decision_revision_decision_idx" ON "decision_revision" ("decision_id")`,
 
 		// Who agreed, and to what exactly.
 		//

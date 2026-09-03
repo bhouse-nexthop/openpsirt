@@ -89,6 +89,23 @@ func Two(t *testing.T, fn func(t *testing.T, db *database.DB)) {
 	run(t, fn, map[database.Engine]bool{database.SQLite: true, database.Postgres: true})
 }
 
+// Only runs fn against one engine.
+//
+// The narrowest of the three, and it needs the narrowest reason: not "the
+// other engines are slow" but "the other engines cannot disagree". What
+// qualifies is a test that asks what *we* wrote rather than what an engine did
+// with it — the shape of the schema we declared, say, where the statements are
+// one list and only the column types differ. A test that would fail on one
+// engine and pass on another belongs in Each, whatever it costs (DAT-37).
+//
+// It also earns its keep where reading the answer is spelled four different
+// ways, since the alternative is engine-specific code in a test to check
+// something no engine varies.
+func Only(t *testing.T, engine database.Engine, fn func(t *testing.T, db *database.DB)) {
+	t.Helper()
+	run(t, fn, map[database.Engine]bool{engine: true})
+}
+
 func run(t *testing.T, fn func(t *testing.T, db *database.DB), only map[database.Engine]bool) {
 	t.Helper()
 	wanted := enginesWanted()

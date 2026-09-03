@@ -19,6 +19,19 @@ type AssessmentBody struct {
 	Reasoning     string `json:"reasoning" minLength:"1" doc:"Why. It outlives the version it was made about, so the next person needs the argument"`
 	State         string `json:"state,omitempty" enum:"proposed,live,withdrawn"`
 	NeedsApproval bool   `json:"needs_approval,omitempty" doc:"Whether a second person has to agree before it takes effect"`
+	// What agreeing would do beyond moving things down a list, on the claims
+	// that are waiting for somebody to agree. Absent on the rest: it is a
+	// question about a decision nobody has taken yet, and answering it for
+	// every historical claim would cost a query each to say nothing.
+	Open int `json:"open,omitempty" doc:"Open findings of this issue you can see"`
+	// InProducts is how many products those sit in. An assessment is about an
+	// issue and a line is per product, so what it does depends on where.
+	InProducts int `json:"in_products,omitempty" doc:"How many products those sit in"`
+	// OffTheList is the number an approver is really being asked about: these
+	// stop being work rather than becoming later work, and lose their deadline
+	// with it.
+	OffTheList          int `json:"off_the_list,omitempty" doc:"How many of them this rating would put below their product's triage line, where they stop being work and carry no deadline"`
+	OffTheListInProduct int `json:"off_the_list_in_products,omitempty" doc:"How many products that happens in"`
 }
 
 func registerAssessment(api huma.API, in Ingest) {
@@ -133,11 +146,23 @@ func registerAssessment(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, wentWrong(in.Logger, "what we have said could not be read", err)
 		}
+		store := finding.NewStore(in.DB.DB)
 		out := &listOutput[AssessmentBody]{}
 		out.Body.Items = make([]AssessmentBody, 0, len(claims))
 		for _, claim := range claims {
-			out.Body.Items = append(out.Body.Items,
-				assessmentBody(claim, named[claim.VulnerabilityID]))
+			body := assessmentBody(claim, named[claim.VulnerabilityID])
+			// Only for the ones somebody is being asked to agree to. It is a
+			// question about a decision not yet taken, and a query each for
+			// every historical claim would buy nothing.
+			if claim.State == finding.AssessmentProposed && claim.NeedsApproval {
+				would, err := store.WhatAgreeingWouldDo(ctx, subject, claim.ID)
+				if err != nil {
+					return nil, wentWrong(in.Logger, "what agreeing would do could not be worked out", err)
+				}
+				body.Open, body.InProducts = would.Findings, would.Products
+				body.OffTheList, body.OffTheListInProduct = would.OffTheList, would.ProductsAffected
+			}
+			out.Body.Items = append(out.Body.Items, body)
 		}
 		return out, nil
 	})

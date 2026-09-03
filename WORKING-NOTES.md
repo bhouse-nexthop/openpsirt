@@ -1392,6 +1392,82 @@ So: when running `go test` by hand rather than through `make check`, export the
 engine URLs, and check the subtest names in the output actually list four
 engines before believing a result.
 
+## An approver is told which of two things they are agreeing to (2026-09-03)
+
+`DECISIONS.md` §4 asked whether a downgrade below the triage line should be
+called out at approval. It should, and the reason it had not been is worse than
+the question suggested: **there was no screen to approve a rating on at all.**
+The route to agree existed and nothing reached it, so a control that needs a
+second person was one nobody could be.
+
+`TRI-41` gates a milder rating on a second person because it pushes a deadline
+out — you are agreeing that something is *later work*. Since `TRI-43`, a rating
+that crosses what a product triages from makes it *not work*: off the working
+list, and `REM-27` takes the deadline away entirely. Agreeing to "in ninety days
+instead of seven" and agreeing to "nobody will look at this" are different acts.
+
+The claim now carries how many findings the rating takes off a working list and
+in how many products. Recorded as `TRI-50`. Three things about the shape:
+
+- **Per product, because a line lives on a product and an assessment lives on
+  an issue** (`TRI-40`). One issue can be above the line in one product and
+  below it in another, so the honest form is a count rather than a yes.
+- **What is already below the line is not counted.** Agreeing takes it off
+  nothing, and the number in front of somebody is the one they are weighing.
+- **Narrowed to what the reader may see.** An approver who cannot see a product
+  is not told how many of its findings this would hide — which understates the
+  effect for them, and that is the right way for it to be wrong.
+
+**The mutation testing earned it again.** The obvious test — a rating that
+crosses the line reports two findings off it — passes when the code counts
+*everything below the line* rather than what crosses it. Telling the two apart
+needs one issue sitting above the line in one product and below it in another,
+which took a second product with a stricter line before anything measured the
+right thing.
+
+## The dead columns and redundant indexes, one by one (2026-09-03)
+
+The review's list, worked through. It was written before several fixes, so
+part of it had already stopped being true.
+
+**Eight redundant indexes, not seven, and they are gone.** Seven repeated the
+front of a unique constraint — which is where they come from, because a
+constraint declares an index without saying the word, so the obvious index on a
+foreign key gets written beside one that already covers it. The eighth was
+found by the guard rather than by the review: `decision_place_idx` leads
+`decision_applies_idx`.
+
+**The guard is the useful part.** A test that asks the schema — not the
+migration source, because constraints declare indexes silently — for any index
+whose columns lead another on the same table. It caught the eighth immediately
+and it caught a reinstated one when I put it back to check.
+
+It runs on **SQLite alone**, which needed a new `dbtest.Only` and a narrower
+reason than "the others are slow": the engines cannot disagree about which
+columns an index is on, because the statements are one list and only the column
+types differ. Reading index metadata is spelled four ways, so checking on four
+would put engine-specific code in a test to check something no engine varies.
+
+One exception, `finding_open_idx`, which was already refused once on measured
+grounds — scanning the narrow index reads fewer pages over hundreds of
+thousands of findings. **That argument does not carry to the decision table**,
+where there are thousands of rows rather than a finding per place, which is why
+the eighth went and the first stayed.
+
+**The "dead columns" mostly are not dead, and the ones that stay are written
+down now.** `job.claimed_by` stopped being dead when only-the-holder-finishes
+landed. `product.eol_on`, `stream.eol_on` and `product.triage_floor` all got
+their code earlier today. What is left is five columns that are written and
+never selected, and each has an answer to "who would want it" — which parser
+read a scan, whether we ran it, how large a stored document is, when a finding
+last moved, when an identity was bound. They are in `DESIGN-database.md` under
+what is stored that no query reads, with the rule stated: a column with no
+answer to that question is a defect and goes.
+
+The honest note on one of them: a document's size is derivable from its chunks,
+and is kept because deriving it means reading the blobs to answer a question
+about their size.
+
 ## A session that ends no longer costs you your place (2026-09-03)
 
 `UIX-32`, the last recorded decision with nothing behind it. The half everybody
@@ -1974,12 +2050,8 @@ shown rather than navigated past.
   replica* (SCP-15); the queue and the watch coordinate, these two do not.
 - *An assessment's "one live claim per issue" is read-then-write* with no
   unique index — the shape TRI-33 rejects for decisions.
-- *Dead columns:* `product.eol_on`, `stream.eol_on` (MDL-11, REM-16 and
-  RPT-04 have no code), `product.triage_floor` (TRI-43's per-product
-  override has no route), `scan.parser_version`, `scan_run.ran_here`,
-  `scan_document.size_bytes`, `finding.last_changed_at`,
-  `person_identity.bound_at`, `job.claimed_by`; seven indexes that are
-  strict prefixes of unique constraints, three on `finding`.
+- *Dead columns and redundant indexes:* **settled** — see the note of that
+  name below.
 - *Release comparison is unbounded and one query per fixed entry*; receipts
   read every run of a target per page; both grow with the calendar.
 - *Identity and version columns are 191 wide with unbounded producers.*

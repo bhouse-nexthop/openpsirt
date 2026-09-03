@@ -116,8 +116,6 @@ func upCatalog(ctx context.Context, tx *sql.Tx) error {
 			CONSTRAINT "target_variant_fk" FOREIGN KEY ("variant_id") REFERENCES "variant"("id")
 		)` + t.suffix,
 
-		`CREATE INDEX "stream_product_idx" ON "stream" ("product_id")`,
-		`CREATE INDEX "variant_product_idx" ON "variant" ("product_id")`,
 		`CREATE INDEX "target_variant_idx" ON "target" ("variant_id")`,
 	}
 
