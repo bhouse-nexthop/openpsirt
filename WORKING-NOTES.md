@@ -215,6 +215,54 @@ fixing the second helps production as much as it helps the loop.
 under 100 ms on SQLite with the full-size build, the full four-engine suite
 under ten minutes, and the quick loop under two.
 
+**Measured as each step lands.** End to end against the demo through its
+proxy, best of three warm requests, taken while another test suite had the
+machine (load 2 to 3, so the absolute numbers are pessimistic and the
+comparison is what to read). The baseline column is the demo before its
+database was recreated for the index: the broadcom build held 240,945 open
+rows in 7,292 groups and a few claims had been made. Every later column is the
+recreated demo — 241,479 open rows in 7,329 groups for the same build, the
+mellanox build beside it, and no claims until step 4 makes some.
+
+| Request | Before | 1. Index | 2. Split |
+|---|---|---|---|
+| Findings page, warm | 2.02 s | 1.06 s | |
+| Findings page, first request after start | 2.04 s | 1.08 s | |
+| Page two | 2.05 s | 1.09 s | |
+| Findings, `exploited` | 2.01 s | 1.51 s | |
+| Findings, `search=ssl` | 2.01 s | 1.08 s | |
+| Findings, `state=undecided` | 2.33 s | 1.60 s | |
+| By component | 0.81 s | 0.79 s | |
+| The kernel's issue list | 1.08 s | 0.68 s | |
+| One finding | 0.48 s | 0.02 s | |
+| Unassigned | 0.18 s | 1.07 s | |
+| Tree root | 0.53 s | 0.81 s | |
+| Around the kernel | 0.28 s | 0.94 s | |
+| Review queue | 0.28 s | 0.00 s | |
+
+*Step 1, the index.* `finding_group_idx (target_id, closed_run_id,
+visibility, vulnerability_id, component_id, urgency)` replaces
+`finding_urgency_idx`, which had the same prefix and covered nothing the
+grouping read. On a copy of the demo's database the page's grouping went
+from 0.33 s to 0.048 s and the count from 0.32 s to 0.038 s; `EXPLAIN QUERY
+PLAN` reads `SEARCH f USING COVERING INDEX finding_group_idx (target_id=? AND
+closed_run_id=? AND visibility=?)`, so the table is not touched. A temporary
+B-tree for the GROUP BY remains, because `visibility IN (two values)` is two
+ranges of the index and the groups arrive out of order across them; it is
+over the 7,329 groups rather than the rows and costs nothing worth removing.
+End to end the page halved rather than vanished, because the joins, the five
+correlated decision lookups per row and the exploited flag were still read
+per row — that is step 2. The `exploited` and `state` filters halved less
+for the same reason: both read a column the index does not hold.
+
+The three requests that read *slower* in the index column are not the index.
+The same statements on the old and the recreated database copies take the
+same plan and the same time (the unassigned grouping 0.11 s against 0.13 s;
+the tree's edge and pairs reads 6 ms and 52 ms on both), and the rest of the
+difference is the other suite running: those three are the ones that walk
+the graph in Go, which is what a loaded machine slows most. Step 3 takes
+them off the machine's memory and onto the database anyway.
+
 ## Decided on 2026-09-02, from the workflow review
 
 The mockup was restyled and then reviewed as a workflow against thousands of

@@ -21,7 +21,7 @@ func init() {
 // you are, how many findings are open against it — which is what makes
 // descending follow the findings rather than being exploration. `finding`
 // carried five indexes and none of them contained `component_id`, so that
-// count had no way in: the planner took `finding_urgency_idx (target_id,
+// count had no way in: the planner took `finding_open_idx (target_id,
 // closed_run_id)`, which on a real build matches **every open finding for the
 // target**, and filtered them one at a time.
 //
