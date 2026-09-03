@@ -500,6 +500,48 @@ button { font: inherit; color: inherit; }
 .claimed.deferred       { --c: var(--wait); }
 .claimed.affected       { --c: var(--ok); }
 
+/* One judgment, as an auditor reads it. */
+.judgment {
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--surface);
+  padding: 12px 14px; margin-bottom: 10px;
+}
+.judgment > header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.judgment .facts {
+  display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px;
+  margin: 0 0 8px; font-size: 12.5px;
+}
+.judgment .facts dt { color: var(--muted); font-size: 11px; padding-top: 2px; }
+.judgment .facts dd { margin: 0; }
+.judgment .reasoning {
+  border-top: 1px solid var(--line); padding-top: 8px; font-size: 13px;
+}
+
+/* Only on paper. */
+.printhead { display: none; }
+
+/* The printed record.
+   An auditor takes a copy away, so what prints is the record rather than a
+   photograph of an application: the shell, the controls and anything that only
+   works by being clicked go, and a judgment does not break across a page —
+   half a judgment on each side of a fold is the one thing a record must not
+   do. */
+@media print {
+  :root { color-scheme: light; }
+  body { background: #fff; }
+  .rail, .topbar, .noprint, .filters, .tabs2, .screen-head > span { display: none !important; }
+  .shell, .main, .page { display: block !important; margin: 0 !important; padding: 0 !important; }
+  .printhead { display: block; margin: 0 0 12px; }
+  .printhead h1 { font-size: 16px; margin: 0 0 2px; }
+  .printhead p { font-size: 11px; color: #444; margin: 0; }
+  .screen-head h2 .n { display: none; }
+  .judgment {
+    break-inside: avoid; page-break-inside: avoid;
+    border: 1px solid #bbb; background: #fff; box-shadow: none;
+  }
+  a { text-decoration: none; color: inherit; }
+  .state, .claimed { border: 1px solid #bbb; background: #fff !important; color: #000 !important; }
+}
+
 .todo {
   display: inline-block; font-size: 9.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
   color: var(--sev-high); border: 1px dashed var(--sev-high); border-radius: 4px; padding: 0 5px; vertical-align: 1px;

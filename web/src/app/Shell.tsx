@@ -122,6 +122,9 @@ export function Shell({ who, children }: { who: Who; children: ReactNode }) {
         <Rail to="/review-queue" icon="inbox" label="Review queue" count={queue.data?.total} />
         <Rail to="/unassigned" icon="nobody" label="Unassigned" count={unassigned.data?.total} quiet />
         <Rail to="/work" icon="people" label="Assignments" />
+        {/* The record of what was judged. Across products because that is how
+            it is asked for — an auditor asks about a period, not a build. */}
+        <Rail to="/audit" icon="scan" label="The record" />
 
         <span className="group" title={scope}>
           {scope}

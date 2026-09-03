@@ -108,6 +108,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List judgments with who made them and who agreed
+         * @description Every judgment recorded in a period, newest first, with what it was about, the reasoning it rests on, who proposed it and when, and who agreed and when — including agreements later taken back.
+         *
+         *     The period is the date a judgment was **proposed**, not approved: a judgment belongs to when it was argued, and dating it by its agreement would move it out of that period whenever an approval came late, which is the ordinary case.
+         *
+         *     Narrowed by what you may see, like every other list here. Nothing about this view is exempt from the visibility rules — a report showing more than the screens it summarizes would be a way around them.
+         */
+        get: operations["list-audit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/claims/{id}/approval": {
         parameters: {
             query?: never;
@@ -1651,6 +1675,14 @@ export interface components {
              */
             acknowledged: number;
         };
+        AgreedBody: {
+            /** @description When they agreed */
+            at: string;
+            /** @description Their sign-in identity */
+            by: string;
+            /** @description When the agreement was taken back, by the approver or by somebody editing the words it was given for */
+            withdrawn_at?: string;
+        };
         ApprovalBody: {
             approved_at: string;
             approved_by: string;
@@ -2561,6 +2593,37 @@ export interface components {
             /** @description The version the claim was made against */
             was: string;
         };
+        JudgedBody: {
+            approvals: components["schemas"]["AgreedBody"][] | null;
+            component: string;
+            /** @description What pulls the component in. Absent where the build holds it directly */
+            consumer?: string;
+            deferred_until?: string;
+            /** @description When it stopped applying — withdrawn, or lapsed because the code moved */
+            ended_at?: string;
+            /** Format: int64 */
+            id: number;
+            /** @description The vulnerability, under the name it is filed here */
+            issue: string;
+            /** @description The recognized reason it does not apply */
+            justification?: string;
+            /** @description What stops it, where the reason is that a control already does. Nothing here notices that control being removed, so this is the record somebody checks */
+            mitigation?: string;
+            /** @enum {string} */
+            outcome: "affected" | "not-applicable" | "deferred" | "wont-fix";
+            product: string;
+            proposed_at: string;
+            proposed_by: string;
+            /** @description The words the standing agreement was given for. Editing them withdraws the agreement, so this and what was agreed to cannot drift apart */
+            reasoning: string;
+            /** @description Whether it applies now. A judgment can be approved and no longer standing — the code moved out from under it */
+            standing: boolean;
+            /** @enum {string} */
+            state: "proposed" | "approved" | "withdrawn" | "lapsed";
+            /** @description Whether somebody other than the proposer has a standing agreement on it */
+            two_people: boolean;
+            version?: string;
+        };
         KeyBody: {
             /**
              * Format: uri
@@ -2616,6 +2679,17 @@ export interface components {
              */
             readonly $schema?: string;
             items: components["schemas"]["UnassignedBody"][] | null;
+            /** Format: int64 */
+            total: number;
+        };
+        "List-auditResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/List-auditResponse.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["JudgedBody"][] | null;
             /** Format: int64 */
             total: number;
         };
@@ -3710,6 +3784,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListBodyHoldingBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-audit": {
+        parameters: {
+            query?: {
+                /** @description Limit to one product, by name */
+                product?: string;
+                /** @description Limit to one kind of judgment */
+                outcome?: "affected" | "not-applicable" | "deferred" | "wont-fix";
+                /** @description Limit to one state */
+                state?: "proposed" | "approved" | "withdrawn" | "lapsed";
+                /** @description Only judgments proposed on or after this date, as YYYY-MM-DD */
+                from?: string;
+                /** @description Only judgments proposed before this date, as YYYY-MM-DD */
+                to?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-auditResponse"];
                 };
             };
             /** @description Error */
