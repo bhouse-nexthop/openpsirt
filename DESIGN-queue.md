@@ -1,8 +1,10 @@
 # Work queue
 
-Durable background work, held in the application's own database.
+Durable background work, held in the application's own database, and which
+replica does the work that should happen once.
 
-Satisfies DAT-17, DAT-25 to DAT-28, DAT-38, ING-03, ING-19, SEC-06.
+Satisfies DAT-17, DAT-25 to DAT-28, DAT-38, DAT-39, SCP-15, ING-03, ING-19,
+SEC-06.
 
 ## Why not a library
 
@@ -123,6 +125,43 @@ from the cancellation, and bounded by a few seconds so a database that is not
 answering cannot hold a shutdown either. A shutdown mid-job hands the job back
 as a failed attempt, which is honest — the attempt did not complete — and a
 failure to hand it back is logged rather than silently absorbed.
+
+## Which replica does work that has no work item
+
+Every replica runs the same binary with no leader and no process-local state
+that decides anything, so a pass that runs on a timer runs on all of them.
+
+For discrete work that is already answered: there is a row, and claiming it
+settles who does it. **A recurring pass has no work item**, so what it takes is
+the name of the work — a lease, held by the same conditional update a claim
+uses and portable for the same reason.
+
+A lease lapses rather than only being handed back. A replica that died holding
+one would otherwise stop the work happening at all, which is the failure the
+whole arrangement exists to avoid. The holder keeps it by asking for it again
+each cycle, so there is one thing to get right rather than two, and it is handed
+back on a clean shutdown so a handover does not wait out a lease.
+
+**A lease has to outlast a cycle of the work, not an instant of it.** It is not
+renewed while the work runs, unlike a job's claim, because the work here is a
+pass with no natural point to renew from.
+
+### Two shapes of work, two answers to losing the race
+
+**Work that may be skipped** does nothing this cycle and asks again next time.
+Asking the public indexes what upstream has released is this: whoever holds the
+lease is doing it, and nothing is urgent.
+
+**Work that has to happen** waits for its turn. Rewriting deadlines after
+somebody changed the policy is this: the change has to be applied, so a replica
+that loses the race applies it afterwards.
+
+**What the waiting one reads, it reads after its turn comes.** Reading the
+policy first and waiting second would leave two replicas rewriting the same
+rows from whatever each read when it started, with the later finisher winning —
+so what is stored could describe a policy that had already been superseded, and
+nothing would say so. It is the same rule a retryable transaction holds to:
+anything the work decides from is fetched inside the thing that serializes it.
 
 ## Backlog
 

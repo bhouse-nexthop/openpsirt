@@ -9,6 +9,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 )
 
@@ -65,13 +66,22 @@ type Refresher struct {
 	// Now is the clock, so a test can ask what happens a month from now
 	// without waiting a month.
 	Now func() time.Time
+	// leases is how the replicas decide which of them asks. replica names this
+	// one in the lease it takes.
+	leases  *queue.Leases
+	replica string
 }
 
-// NewRefresher returns a refresher over db, asking the real public indexes.
-func NewRefresher(db bun.IDB, logger *slog.Logger) *Refresher {
+// NewRefresher returns a refresher over db, asking the real public indexes as
+// whichever replica this is.
+//
+// The name identifies this replica in the lease. Every replica runs this pass,
+// and only the one holding the lease asks anything.
+func NewRefresher(db bun.IDB, logger *slog.Logger, replica string) *Refresher {
 	client := New()
 	return &Refresher{
 		db: db, Index: client.For, logger: logger,
+		leases: queue.NewLeases(db), replica: replica,
 		Pause: betweenAsks, Now: time.Now,
 	}
 }
@@ -94,9 +104,32 @@ func (r *Refresher) Run(ctx context.Context, interval time.Duration) {
 		}
 
 		on, err := r.enabled(ctx)
-		if err != nil {
+		switch {
+		case err != nil:
 			r.logger.Error("reading whether to ask upstream", "error", err)
-		} else if on {
+		case !on:
+		default:
+			// One replica asks. These are free public services run by other
+			// people, and the politeness this pass is built around — 200 at a
+			// time, a quarter-second apart — is a rate per deployment, not a
+			// rate per replica. Three replicas each keeping to it would be
+			// three times the traffic at somebody else's expense, and would
+			// spend two thirds of it asking questions another replica had
+			// already answered (SCP-15, ING-41).
+			//
+			// A cycle that does not get the lease does nothing and tries
+			// again next time, which is the right answer for a pass whose
+			// work is never urgent: whoever holds it is doing it.
+			mine, err := r.asking(ctx, interval)
+			if err != nil {
+				r.logger.Error("deciding which replica asks upstream", "error", err)
+				timer.Reset(interval)
+				continue
+			}
+			if !mine {
+				timer.Reset(interval)
+				continue
+			}
 			if asked, err := r.Once(ctx); err != nil {
 				// Logged and carried on. An index having a bad day is not a
 				// reason to stop asking about everything else, and this
@@ -109,6 +142,40 @@ func (r *Refresher) Run(ctx context.Context, interval time.Duration) {
 		}
 		timer.Reset(interval)
 	}
+}
+
+// asking reports whether this replica is the one that asks this cycle.
+//
+// The lease covers several cycles rather than one. It is taken again at the
+// top of each, so the holder keeps it simply by still running, and a lease
+// long enough to outlast a cycle means a pass that overruns is not handed to
+// somebody else halfway through — a pass is up to 200 requests with a timeout
+// each, which is a great deal longer than the interval between cycles.
+func (r *Refresher) asking(ctx context.Context, interval time.Duration) (bool, error) {
+	if r.leases == nil {
+		// Nothing to coordinate with. A refresher built without leases is one
+		// a test drives directly, where there is one of it by construction.
+		return true, nil
+	}
+	return r.leases.Take(ctx, AskingLease, r.replica, leaseFor(interval))
+}
+
+// AskingLease names the work of asking the public indexes what has been
+// released, so that one replica does it.
+const AskingLease = "upstream.currency"
+
+// leaseFor is how long to hold the lease, given how often the pass runs.
+//
+// Several cycles, so a replica that is briefly slow does not lose the work to
+// another and then take it back; bounded below so a very short interval in a
+// test does not produce a lease that has already lapsed by the time it is
+// read.
+func leaseFor(interval time.Duration) time.Duration {
+	held := 5 * interval
+	if held < time.Minute {
+		held = time.Minute
+	}
+	return held
 }
 
 // enabled reports whether this deployment has turned asking on.

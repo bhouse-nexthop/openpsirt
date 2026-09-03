@@ -147,8 +147,12 @@ func run(args []string, stdout, stderr *os.File) error {
 	}
 
 	work := queue.New(db, queue.DefaultOptions())
+	// Named before the handler is built as well as before the workers are:
+	// work that must happen once — rewriting deadlines after a policy
+	// change — is held by one replica, and the name is what holds it.
+	name := workerName()
 	handler, _ := httpapi.New(logger, db.Validate, httpapi.Ingest{
-		DB: db, Queue: work,
+		DB: db, Queue: work, Replica: name,
 		Interface: httpapi.Interface{Files: webui.Files()},
 		Access: access.NewResolver(rights, access.Trust{
 			Header: cfg.TrustedHeader, From: cfg.TrustedSources,
@@ -164,14 +168,17 @@ func run(args []string, stdout, stderr *os.File) error {
 	// Every replica serves, reads and scans. Separate worker deployments would
 	// be more things to run and more things to get wrong for an installation
 	// this size, and the queue already stops two of them taking the same work.
-	name := workerName()
 	reader := ingest.NewReader(db, work, sbom.Limits{}, logger, name)
 	runner := scanner.NewRunner(db, work, scanner.Grype{Path: cfg.ScannerPath}, logger, name)
 	// Asks public indexes what upstream has released (ING-41). Started
 	// whatever the setting says and does nothing until it is turned on: the
 	// setting is read each cycle, so turning this off takes effect without a
 	// redeploy, which matters more than turning it on does.
-	upstream := currency.NewRefresher(db.DB, logger)
+	//
+	// Started on every replica and asking on one: the politeness this pass is
+	// built around is a rate per deployment, so which replica asks is settled
+	// by a lease rather than by all of them asking at once (SCP-15).
+	upstream := currency.NewRefresher(db.DB, logger, name)
 	// What the tool has to say about its own health. It needs nothing
 	// configured, which is the point: an operator who never set up mail is
 	// exactly the one who would otherwise never hear that a build stopped

@@ -1392,6 +1392,51 @@ So: when running `go test` by hand rather than through `make check`, export the
 engine URLs, and check the subtest names in the output actually list four
 engines before believing a result.
 
+## Two passes that ran on every replica now run on one (2026-09-03)
+
+Fourth of the 2026-09-03 review's open items, recorded as `DAT-39`. `SCP-15`
+says every replica runs everything and all coordination is in the database, and
+these two had the first half without the second.
+
+**Asking the public indexes ran on every replica.** The politeness the pass is
+built around — 200 components at a time, a quarter-second apart — was therefore
+a rate per replica, not per deployment. Measured by removing the coordination:
+two replicas asked six times about three components, on all four engines, two
+thirds of it re-asking what the other had already answered.
+
+**The deadline rewrite was worse, because it was wrong rather than rude.** It
+read the policy *before* starting the goroutine and ran with no serialization,
+so two replicas each handling a setting change would rewrite the same rows from
+whatever each had read when it started — and the one that finished last won,
+which could be the one holding the older policy. Stored deadlines describing a
+superseded policy, with nothing saying so.
+
+The mechanism is a **lease**: a named row taken by the same conditional update
+a job claim uses. A job answers "who does this" for discrete work because there
+is a row to claim; a pass on a timer has no work item, so what it takes is the
+name of the work. It lapses rather than only being handed back, and the holder
+renews by asking again each cycle rather than through a second mechanism.
+
+Three things that were choices:
+
+- **Two shapes of losing the race.** The index pass skips the cycle and asks
+  again — nothing about it is urgent, and whoever holds it is doing it. The
+  deadline rewrite *waits*, because a policy somebody just typed has to be
+  applied, and waiting is exactly what makes the last rewrite the one holding
+  the newest policy.
+- **What the waiting one reads, it reads after its turn comes.** This is the
+  whole fix for the rewrite, and it is `DAT-31`'s rule in another setting:
+  anything the work decides from is fetched inside the thing that serializes
+  it.
+- **The lease row is made on first use rather than seeded by the migration.**
+  What passes exist is decided in code, and a migration listing their names
+  would be a second place to edit whenever one is added or retired. A second
+  replica's insert is refused by the primary key, which is the answer rather
+  than an error — both then go on to the update, and that is what decides.
+
+`00004_job.go` had two unquoted identifiers (`attempts`, `max_attempts`),
+against `DAT-33`. Fixed while the migrations were being recreated anyway.
+
 ## One assessment stands per issue, and the database says so (2026-09-03)
 
 Third of the 2026-09-03 review's open items, recorded as `TRI-49`. The rule was
@@ -1419,9 +1464,11 @@ decisions, and nothing in `DESIGN-*.md` described what an assessment is, how it
 comes into force, or what it reaches. By the repository's own rule that is a
 remnant. `DESIGN-triage.md` now carries it, along with the new rule.
 
-**The triage migration was edited in place again**, so a development database
+**The assessment migration was edited in place**, so a development database
 against the four servers has to be recreated (`make engines-down && make
-engines-up`), and so does the demo's (`make demo-reset`).
+engines-up`), and so does the demo's (`make demo-reset`). The commit that
+landed this called it the triage migration, which is the wrong file — it is the
+one that created the `assessment` table.
 
 ## Urgency was three policies; it is one now (2026-09-03)
 

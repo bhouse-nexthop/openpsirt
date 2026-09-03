@@ -341,6 +341,9 @@ func migrateFresh(url string) error {
 // that enforce foreign keys during a bulk delete — which is not all of them,
 // so it will look engine-specific rather than like the ordering mistake it is.
 var tables = []string{
+	// Points at nothing, so its position says nothing. First because that is
+	// where new tables go.
+	"lease",
 	// Before person, which it points at.
 	"notification",
 	"decision_comment",

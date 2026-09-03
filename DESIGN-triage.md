@@ -700,6 +700,26 @@ than a recommendation: what a deployment can hold to is a question about that
 deployment. How the list of what is running out is built, and what an unrated
 finding gets, are in `DESIGN-reporting.md`.
 
+**Changing a window rewrites what is stored.** A deadline is written onto the
+finding when it is first seen, so the one event that makes every stored one
+wrong is somebody editing the policy that sets them — and a number somebody
+just typed that changes nothing on screen is worse than a slow page. The
+rewrite happens away from the request, because it is bounded by how much is
+open rather than by anything the caller sent.
+
+**One replica rewrites at a time, and it reads the policy after its turn comes,
+not before.** Otherwise two replicas each handling a change rewrite the same
+rows from whatever each read when it started, and whichever finishes last wins
+— so what is stored could describe a policy that had already been superseded,
+with nothing saying so. A replica that loses the race waits rather than
+skipping, because a policy somebody just changed has to be applied: waiting is
+what makes the last rewrite the one holding the newest policy. See the lease in
+`DESIGN-queue.md`.
+
+The other event that makes a stored deadline wrong is the issue becoming known
+to be exploited, which is in `DESIGN-findings.md` — it is a change to one
+issue rather than to the policy, and it is applied by the scan that learns it.
+
 ## A lapse is marked when the scan that caused it runs
 
 A decision stops applying the moment its versions move, because what applies is

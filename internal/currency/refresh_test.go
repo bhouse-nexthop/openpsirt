@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -76,7 +77,7 @@ func seed(t *testing.T, db *database.DB, of []component,
 	}
 	asked := &[]string{}
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
-	r := currency.NewRefresher(db.DB, quiet)
+	r := currency.NewRefresher(db.DB, quiet, "the-only-replica")
 	r.Pause = 0
 	r.Index = func(ecosystem string) currency.Asker {
 		switch ecosystem {
@@ -448,6 +449,82 @@ func TestAnIndexSayingNoDoesNotDestroyWhatWeAlreadyKnew(t *testing.T) {
 		}
 		if got.Checked == nil || !got.Checked.After(long) {
 			t.Error("the time of asking was not moved on")
+		}
+	})
+}
+
+// counted records what an index was asked, safely enough for two replicas to
+// share one — which is the case the test is about, and which has to be safe
+// even when the control being tested is broken.
+type counted struct {
+	mu    sync.Mutex
+	asked []string
+}
+
+func (c *counted) Latest(_ context.Context, name string) (currency.Latest, error) {
+	c.mu.Lock()
+	c.asked = append(c.asked, name)
+	c.mu.Unlock()
+	return currency.Latest{Version: "9.9", Released: time.Now().UTC()}, nil
+}
+
+func (c *counted) times() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.asked)
+}
+
+func TestOneReplicaAsksTheIndexes(t *testing.T) {
+	// The politeness this pass is built around — a slice at a time, spaced
+	// out — is a rate per deployment, not a rate per replica. Every replica
+	// runs the pass and one of them asks, decided by a lease rather than by
+	// all of them asking at once and each answering what another already had
+	// (SCP-15, ING-41).
+	dbtest.Each(t, func(t *testing.T, db *database.DB) {
+		ctx := t.Context()
+		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+		if err := schema.Up(ctx, db, quiet); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		dbtest.Reset(t, db)
+		// Seeded for its components and its setting; the refresher it returns
+		// is not the one this drives, because this needs two of them.
+		seed(t, db, []component{
+			{purl: "pkg:golang/example.com/one@1.0"},
+			{purl: "pkg:golang/example.com/two@1.0"},
+			{purl: "pkg:golang/example.com/three@1.0"},
+		}, nil, nil)
+
+		index := &counted{}
+		replicas := make([]*currency.Refresher, 2)
+		for i := range replicas {
+			r := currency.NewRefresher(db.DB, quiet, fmt.Sprintf("replica-%d", i))
+			r.Pause = 0
+			r.Index = func(string) currency.Asker { return index }
+			replicas[i] = r
+		}
+
+		running, stop := context.WithCancel(ctx)
+		var wg sync.WaitGroup
+		for _, r := range replicas {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				r.Run(running, 10*time.Millisecond)
+			}()
+		}
+		// Long enough for many cycles on both, so a replica that asks without
+		// the lease has every chance to.
+		time.Sleep(300 * time.Millisecond)
+		stop()
+		wg.Wait()
+
+		// Three components, asked once each by whichever replica holds the
+		// lease. Asked again on a later cycle would mean the answers were not
+		// stored; asked twice at once would mean both replicas were asking.
+		if times := index.times(); times != 3 {
+			t.Errorf("the indexes were asked %d times about 3 components (%v), want 3",
+				times, index.asked)
 		}
 	})
 }

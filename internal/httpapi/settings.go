@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
@@ -12,7 +13,9 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 	"github.com/bhouse-nexthop/openpsirt/internal/triage"
 )
@@ -180,10 +183,6 @@ func registerSettings(api huma.API, in Ingest) {
 		// screen, and it is the difference between this and urgency, which
 		// nobody edits.
 		if deadline(input.Name) {
-			windows, err := dueWindows(ctx, in)
-			if err != nil {
-				return nil, wentWrong(in.Logger, "cannot tell when things are due", err)
-			}
 			// Off the request. The rewrite is bounded by how much is open
 			// rather than by anything the caller sent — measured at nineteen
 			// seconds against 441,108 findings — and a write that long is a
@@ -193,31 +192,84 @@ func registerSettings(api huma.API, in Ingest) {
 			// scan or the next edit, which is the state they were already in
 			// a moment ago.
 			logger, name, value := in.Logger, input.Name, input.Body.Value
-			store := finding.NewStore(in.DB.DB)
+			db, replica := in.DB, in.Replica
 			go func() {
 				at := context.WithoutCancel(ctx)
 				at, stop := context.WithTimeout(at, recomputeLimit)
 				defer stop()
-				started := time.Now()
-				changed, err := store.Recompute(at, windows)
-				if err != nil {
-					logger.Error("deadlines could not be rewritten",
-						"setting", name, "value", value, "rewritten", changed, "error", err)
-					return
-				}
-				logger.Info("deadlines rewritten after a policy change",
-					"setting", name, "value", value, "findings", changed,
-					"took", time.Since(started).Round(time.Millisecond).String())
+				rewriteDeadlines(at, db, replica, logger, name, value)
 			}()
 		}
 		return &struct{}{}, nil
 	})
 }
 
-// recomputeLimit bounds the rewrite that follows a policy change. Long enough
-// for a large estate, short enough that a rewrite which has stopped making
-// progress does not sit there for the life of the process.
+// rewriteDeadlines applies a changed policy to every open finding, one replica
+// at a time.
+//
+// **The policy is read after the lease is taken, not before.** Two replicas
+// each handling a change would otherwise rewrite the same rows from whatever
+// each read when it started, and whichever finished last would win — so the
+// stored deadlines could end up describing a policy that had already been
+// superseded, with nothing saying so. Waiting rather than skipping is the
+// other half: a policy somebody just typed has to be applied, so the replica
+// that loses the race applies it afterwards, and the last rewrite is the one
+// holding the newest policy (SCP-15).
+func rewriteDeadlines(ctx context.Context, db *database.DB, replica string,
+	logger *slog.Logger, name, value string) {
+
+	leases := queue.NewLeases(db.DB)
+	if err := leases.Await(ctx, deadlineLease, replica, recomputeLimit, betweenTries); err != nil {
+		logger.Error("deadlines could not be rewritten: no turn came",
+			"setting", name, "value", value, "error", err)
+		return
+	}
+	defer func() {
+		// Handed back on a context of its own: this runs after work that may
+		// have used up the bound, and a lease left held would stop the next
+		// change being applied until it lapsed.
+		back, stop := context.WithTimeout(context.WithoutCancel(ctx), settleLease)
+		defer stop()
+		if err := leases.Release(back, deadlineLease, replica); err != nil {
+			logger.Warn("the deadline rewrite could not hand its turn back", "error", err)
+		}
+	}()
+
+	windows, err := finding.LoadWindows(ctx, db.DB)
+	if err != nil {
+		logger.Error("deadlines could not be rewritten: cannot tell when things are due",
+			"setting", name, "value", value, "error", err)
+		return
+	}
+	started := time.Now()
+	changed, err := finding.NewStore(db.DB).Recompute(ctx, windows)
+	if err != nil {
+		logger.Error("deadlines could not be rewritten",
+			"setting", name, "value", value, "rewritten", changed, "error", err)
+		return
+	}
+	logger.Info("deadlines rewritten after a policy change",
+		"setting", name, "value", value, "findings", changed,
+		"took", time.Since(started).Round(time.Millisecond).String())
+}
+
+// deadlineLease names the work of rewriting deadlines after a policy change,
+// so that one replica does it at a time.
+const deadlineLease = "deadline.rewrite"
+
+// recomputeLimit bounds the rewrite that follows a policy change, waiting for
+// a turn included. Long enough for a large estate, short enough that a rewrite
+// which has stopped making progress does not sit there for the life of the
+// process.
 const recomputeLimit = 30 * time.Minute
+
+// betweenTries is how often a replica waiting for its turn asks for it. Short
+// against the length of a rewrite, so a turn is not left idle.
+const betweenTries = 2 * time.Second
+
+// settleLease bounds handing a lease back once the work is over, so a database
+// that is not answering cannot hold a goroutine open.
+const settleLease = 5 * time.Second
 
 // deadline reports whether this setting decides how long something may stay
 // open, and therefore whether changing it invalidates what is stored.
