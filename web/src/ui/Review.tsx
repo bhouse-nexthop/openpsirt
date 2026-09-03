@@ -218,7 +218,7 @@ export function Review({
   } else if (step <= n) {
     const each = plan.offered[step - 1]!;
     const state = applied.has(each.key) ? "applied" : "";
-    title = `Does the same reasoning hold here? — ${step} of ${n}`;
+    title = `Apply here? — ${step} of ${n}`;
     body = (
       <>
         {progress}

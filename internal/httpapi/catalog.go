@@ -23,7 +23,7 @@ import (
 type Declaring struct {
 	Store  func() *catalog.Store
 	Logger *slog.Logger
-	// Findings and Scans answer what is open against a catalogue entry and
+	// Findings and Scans answer what is open against a catalog entry and
 	// when it was last scanned. A list of names alone makes somebody open
 	// every row to find out whether there is anything behind it, which is the
 	// question the list exists to answer.
@@ -68,7 +68,7 @@ func requester(ctx context.Context) (access.Subject, error) {
 type ProductBody struct {
 	Name        string `json:"name" minLength:"1" maxLength:"191" doc:"How scans name this product"`
 	DisplayName string `json:"display_name,omitempty" doc:"What people see. Defaults to the name"`
-	// What the product holds, so a catalogue answers what exists rather than
+	// What the product holds, so a catalog answers what exists rather than
 	// making somebody open each row to find out. Counts of what is open are
 	// issues at components, the way the findings list counts, so the two
 	// agree; a declaration returns them as zero because it has just been made.
@@ -472,7 +472,7 @@ func declineDeclaration(err error) error {
 //
 // It reads the same answer the front page reads rather than asking a question
 // of its own: two queries about when something was last scanned are two
-// numbers that can disagree, and the one on the catalogue would be the one
+// numbers that can disagree, and the one on the catalog would be the one
 // nobody checks.
 func lastScans(ctx context.Context, scans *ingest.Store, subject access.Subject) (map[string]string, error) {
 	rows, err := scans.Scanning(ctx, subject, finding.Scope{}, 0)

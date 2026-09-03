@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
 import { useScope } from "../app/scope";
@@ -21,6 +21,10 @@ export function UploadDrawer({ open, onClose }: { open: boolean; onClose: () => 
   const [variant, setVariant] = useState(at.variant ?? "");
   const [inventory, setInventory] = useState<File | null>(null);
   const [suppressions, setSuppressions] = useState<File[]>([]);
+  // The scan an upload matched, where the build already held it. Said here
+  // rather than answered with the receipts screen, because nothing new is
+  // waiting there and arriving on it reads as the upload having been taken.
+  const [held, setHeld] = useState<number | null>(null);
 
   // Prefilled from the scope each time it opens, so the common case is
   // choosing a file and nothing else.
@@ -31,6 +35,7 @@ export function UploadDrawer({ open, onClose }: { open: boolean; onClose: () => 
     setVariant(at.variant ?? "");
     setInventory(null);
     setSuppressions([]);
+    setHeld(null);
   }, [open, at.product, at.stream, at.variant]);
 
   const products = useQuery({
@@ -66,7 +71,11 @@ export function UploadDrawer({ open, onClose }: { open: boolean; onClose: () => 
         }),
       );
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result.outcome === "already_held") {
+        setHeld(result.scan_id);
+        return;
+      }
       void queries.invalidateQueries({ queryKey: ["scans"] });
       void queries.invalidateQueries({ queryKey: ["scanning"] });
       onClose();
@@ -102,6 +111,24 @@ export function UploadDrawer({ open, onClose }: { open: boolean; onClose: () => 
       </p>
 
       {upload.error != null && <Failed error={upload.error} what="That could not be uploaded." />}
+      {held !== null && (
+        <div className="alert info">
+          <strong>Already held</strong>
+          <span>
+            This build already holds this inventory, as scan {held}. Nothing was queued.{" "}
+            <Link
+              to={
+                `/products/${encodeURIComponent(product)}/streams/${encodeURIComponent(stream)}` +
+                `/variants/${encodeURIComponent(variant)}/scans`
+              }
+              onClick={onClose}
+              className="linkish"
+            >
+              View inventories →
+            </Link>
+          </span>
+        </div>
+      )}
 
       <div className="field">
         <label htmlFor="up-product">Target</label>

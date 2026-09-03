@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { Icon } from "./Icons";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
+import { Failed } from "./Failed";
 import { label, waiting } from "./notices";
 
 // What is waiting on you, with the count on the way in.
@@ -31,13 +32,15 @@ export function Notices() {
   const total = mine.data?.total ?? 0;
   const items = mine.data?.items ?? [];
 
+  // Unwrapped, so a refusal is a failure rather than a click that did nothing:
+  // the request resolves either way, and only the status says which.
   const forget = useMutation({
     mutationFn: async (id: number) =>
-      api.DELETE("/v1/notifications/{id}", { params: { path: { id } } }),
+      unwrap(await api.DELETE("/v1/notifications/{id}", { params: { path: { id } } })),
     onSuccess: () => void queries.invalidateQueries({ queryKey: ["notifications"] }),
   });
   const forgetAll = useMutation({
-    mutationFn: async () => api.DELETE("/v1/notifications", {}),
+    mutationFn: async () => unwrap(await api.DELETE("/v1/notifications", {})),
     onSuccess: () => void queries.invalidateQueries({ queryKey: ["notifications"] }),
   });
 
@@ -70,6 +73,10 @@ export function Notices() {
               </button>
             )}
           </header>
+
+          {(forget.error != null || forgetAll.error != null) && (
+            <Failed error={forget.error ?? forgetAll.error} what="That could not be cleared." />
+          )}
 
           {items.length === 0 ? (
             <p className="hint" style={{ margin: 0 }}>Nothing is waiting on you.</p>

@@ -56,6 +56,11 @@ const STATES = [
 
 type Row = Body<"FindingBody">;
 
+// What makes a row that row, for finding it again in a list read afresh.
+function identityOf(row: Row): string {
+  return `${row.vulnerability} ${row.component} ${row.version} ${row.ecosystem ?? ""}`;
+}
+
 // One row per issue in a component, not per place. Every filter is in the
 // URL, so a link carries what somebody is looking at; every filter is the
 // server's, so the total beside the list counts the same thing the list
@@ -90,6 +95,13 @@ export function Findings() {
   // Triage mode's cursor and the row whose form is open.
   const [cursor, setCursor] = useState(0);
   const [deciding, setDeciding] = useState<number | null>(null);
+  // Where triage mode goes once the list has been read again after a
+  // decision: the row it was going to, by identity, and the index it was
+  // going from should that row be gone as well.
+  const [following, setFollowing] = useState<{ key: string; index: number; since: number } | null>(null);
+  // What the last decision recorded, kept beside the list so a build that
+  // refused it is seen without leaving triage mode.
+  const [recorded, setRecorded] = useState<Recorded | null>(null);
 
   const query = {
     limit: PAGE,
@@ -137,6 +149,19 @@ export function Findings() {
 
   const rows = findings.data?.items ?? [];
   const total = findings.data?.total ?? 0;
+
+  // Once the list has been read again after a decision, land on the row
+  // that was next by what it is. Under a state filter the decided row has
+  // left the list, so the row after it now sits at the index the cursor was
+  // moving from; advancing by index alone would step over it.
+  useEffect(() => {
+    if (!following || findings.dataUpdatedAt <= following.since) return;
+    const at = rows.findIndex((row) => identityOf(row) === following.key);
+    const landed = at >= 0 ? at : Math.min(following.index, Math.max(0, rows.length - 1));
+    setCursor(landed);
+    setDeciding(rows.length > 0 ? landed : null);
+    setFollowing(null);
+  }, [following, rows, findings.dataUpdatedAt]);
 
   // The keys, in triage mode: j and k move, Enter opens, Escape closes. The
   // form's own keys live in the form. Never while typing, and never under
@@ -483,13 +508,19 @@ export function Findings() {
     [...seen.entries()].filter(([, versions]) => versions.size > 1).map(([name]) => name),
   );
 
-  function advance(from: number) {
+  function advance(from: number, done: Recorded) {
+    setRecorded(done);
     // Submitting from the list moves to the next row and opens it, so a
-    // stretch of similar findings is decided without leaving the list.
-    if (from < rows.length - 1) {
+    // stretch of similar findings is decided without leaving the list. The
+    // next row is remembered by what it is rather than by where it sits,
+    // because the list is read again once the decision lands.
+    const next = rows[from + 1];
+    if (next) {
+      setFollowing({ key: identityOf(next), index: from, since: findings.dataUpdatedAt });
       setCursor(from + 1);
       setDeciding(from + 1);
     } else {
+      setFollowing(null);
       setDeciding(null);
     }
   }
@@ -527,6 +558,34 @@ export function Findings() {
         </p>
       )}
 
+      {/* What the last decision from the list recorded, in the same words the
+          finding screen uses — a build the guided review could not apply it to
+          is reported here rather than dropped on the way to the next row. */}
+      {triage && recorded && (
+        <div className="alert info" style={{ marginBottom: 10 }}>
+          <strong>Submitted</strong>
+          <span>
+            Recorded against {recorded.recorded} {recorded.recorded === 1 ? "location" : "locations"}
+            {recorded.applied.filter((a) => a.ok).length > 0 && (
+              <>, and in {recorded.applied.filter((a) => a.ok).map((a) => a.build).join(", ")}</>
+            )}
+            .{" "}
+            {recorded.needsApproval
+              ? "The dismissal takes effect once a second person approves it."
+              : "In force now."}
+            {recorded.applied.filter((a) => !a.ok).map((a) => (
+              <Fragment key={a.build}>
+                <br />
+                <b>{a.build}</b>: {a.said}
+              </Fragment>
+            ))}
+          </span>
+          <button type="button" className="linkish" style={{ marginLeft: "auto" }} onClick={() => setRecorded(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {sameName.size > 0 && (
         <p className="hint" style={{ margin: "0 0 8px" }}>
           {sameName.size === 1 ? "One component appears" : `${sameName.size} components appear`} at
@@ -562,14 +621,14 @@ export function Findings() {
               </thead>
               <tbody id="findingRows">
                 {rows.map((row, i) => {
-                  const key = `${row.vulnerability} ${row.component} ${row.version}`;
+                  const key = `${row.vulnerability} ${row.component} ${row.version} ${row.ecosystem ?? ""}`;
                   const at = to(product, stream, variant, row);
                   // How far it is decided comes from the server, defined the
                   // way the state filter defines it; a row does not guess from
                   // what the build argued away, which is a different claim by
                   // a different author.
                   const pill = row.sent_back
-                    ? { cls: "lapsed", word: "Returned" }
+                    ? { cls: "lapsed", word: "Rejected" }
                     : row.state === "agreed"
                       ? { cls: "agreed", word: "Decided" }
                       : row.state === "waiting"
@@ -706,7 +765,7 @@ export function Findings() {
                               at={{ product, stream, variant }}
                               row={row}
                               position={{ row: i + 1, of: rows.length }}
-                              onDone={() => advance(i)}
+                              onDone={(done) => advance(i, done)}
                               onClose={() => setDeciding(null)}
                             />
                           </td>
@@ -724,7 +783,7 @@ export function Findings() {
               const at = to(product, stream, variant, row);
               return (
                 <article
-                  key={`${row.vulnerability} ${row.component} ${row.version}`}
+                  key={`${row.vulnerability} ${row.component} ${row.version} ${row.ecosystem ?? ""}`}
                   className={`fcard ${row.exploited ? "exploited" : row.severity ?? ""}`}
                   onClick={() => navigate(at)}
                 >
@@ -937,7 +996,7 @@ function ByComponent({
               const name = row.component ?? "";
               const share = most > 0 ? Math.round(((row.issues ?? 0) / most) * 100) : 0;
               return (
-                <tr key={`${name} ${row.version}`} className="row">
+                <tr key={`${name} ${row.version} ${row.ecosystem ?? ""}`} className="row">
                   <td>
                     <button
                       type="button"

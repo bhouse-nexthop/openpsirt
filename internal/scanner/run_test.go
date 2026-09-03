@@ -29,12 +29,19 @@ type stub struct {
 	saw      []byte
 	reported []finding.Reported
 	fail     error
+	// interrupt, where set, is what a shutdown does while the scanner is
+	// running: the scan's context ends under it.
+	interrupt func()
 }
 
 func (s *stub) Name() string { return "stub" }
 
-func (s *stub) Scan(_ context.Context, inventory io.Reader) (scanner.Result, error) {
+func (s *stub) Scan(ctx context.Context, inventory io.Reader) (scanner.Result, error) {
 	s.saw, _ = io.ReadAll(inventory)
+	if s.interrupt != nil {
+		s.interrupt()
+		return scanner.Result{}, ctx.Err()
+	}
 	if s.fail != nil {
 		return scanner.Result{}, s.fail
 	}
@@ -385,6 +392,39 @@ func TestARebuildThatMovedNothingMarksNothing(t *testing.T) {
 		f.rebuilt(t, libnl)
 		if outcome := f.scan(t, libnl); outcome.Lapsed != 0 {
 			t.Errorf("a rebuild that moved nothing marked %d judgments", outcome.Lapsed)
+		}
+	})
+}
+
+func TestAScanCutShortByShutdownHandsItsJobBack(t *testing.T) {
+	// A shutdown cancels the scan. The job is handed back and the run is
+	// closed with the same context the scan was cancelled with, so without
+	// care both writes fail too — and the job stays claimed by a process that
+	// has gone until the claim goes stale, half an hour later, while the run
+	// stays open for ever.
+	eachRun(t, func(t *testing.T, f *runFixture) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		s := &stub{interrupt: cancel}
+		f.waiting(t)
+		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+		if _, err := scanner.NewRunner(f.db, f.queue, s, quiet, "test").Once(ctx); err == nil {
+			t.Fatal("an interrupted scan reported success")
+		}
+
+		var job queue.Job
+		if err := f.db.DB.NewSelect().Model(&job).Limit(1).Scan(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if job.State != queue.Pending || job.ClaimedBy != nil {
+			t.Errorf("the job is %s held by %v, want pending and held by nobody", job.State, job.ClaimedBy)
+		}
+		var run finding.Run
+		if err := f.db.DB.NewSelect().Model(&run).Limit(1).Scan(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if run.FinishedAt == nil {
+			t.Error("the run an interrupted scan began is still open")
 		}
 	})
 }

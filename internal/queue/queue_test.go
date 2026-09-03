@@ -1,6 +1,7 @@
 package queue_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -69,7 +70,7 @@ func TestWorkIsHandedOutOnce(t *testing.T) {
 					}
 					claimed[job.ID] = name
 					mu.Unlock()
-					if err := q.Succeed(ctx, job.ID); err != nil {
+					if err := q.Succeed(ctx, job.ID, name); err != nil {
 						t.Errorf("succeed: %v", err)
 					}
 				}
@@ -109,7 +110,7 @@ func TestFailedWorkComesBackLater(t *testing.T) {
 		if err != nil || job == nil {
 			t.Fatalf("claim: %v %+v", err, job)
 		}
-		if err := q.Fail(ctx, job.ID, errors.New("upstream unavailable")); err != nil {
+		if err := q.Fail(ctx, job.ID, "worker", errors.New("upstream unavailable")); err != nil {
 			t.Fatal(err)
 		}
 		// Held back deliberately, so a dependency that is briefly unavailable
@@ -143,7 +144,7 @@ func TestWorkThatKeepsFailingIsSetAside(t *testing.T) {
 			if job == nil {
 				t.Fatalf("nothing to claim on attempt %d", attempt)
 			}
-			if err := q.Fail(ctx, job.ID, errors.New("still broken")); err != nil {
+			if err := q.Fail(ctx, job.ID, "worker", errors.New("still broken")); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -211,7 +212,7 @@ func TestABacklogThatIsTooDeepIsRefused(t *testing.T) {
 		if err != nil || job == nil {
 			t.Fatal(err)
 		}
-		if err := q.Succeed(ctx, job.ID); err != nil {
+		if err := q.Succeed(ctx, job.ID, "worker"); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := q.Add(ctx, "ingest", "now there is room"); err != nil {
@@ -236,7 +237,7 @@ func TestOldestWorkGoesFirst(t *testing.T) {
 			if job.Reference != want {
 				t.Errorf("got %q, want %q", job.Reference, want)
 			}
-			if err := q.Succeed(ctx, job.ID); err != nil {
+			if err := q.Succeed(ctx, job.ID, "worker"); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -270,4 +271,89 @@ func TestAWorkerDoesNotTakeAnotherKindOfWork(t *testing.T) {
 			t.Errorf("claimed %q", mine.Reference)
 		}
 	})
+}
+
+func TestOnlyTheWorkerHoldingAJobMayFinishIt(t *testing.T) {
+	// A worker that ran long enough for its claim to go stale is still running
+	// when another takes the job over. Without the condition, whichever
+	// finishes first records the ending of what the other is in the middle of
+	// — a job marked done while a second worker is still working it, or
+	// handed back for retry while it is being finished.
+	// Long enough that the second retake below cannot find the first one's
+	// claim already stale — under the race detector two claims take longer
+	// than a millisecond, and the test then held one job twice.
+	opts := queue.DefaultOptions()
+	opts.ClaimTimeout = 50 * time.Millisecond
+	each(t, opts, func(t *testing.T, db *database.DB, q *queue.Queue) {
+		ctx := t.Context()
+		for _, ref := range []string{"finished-late", "failed-late"} {
+			if _, err := q.Add(ctx, "ingest", ref); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var lost []*queue.Job
+		for range 2 {
+			job, err := q.Claim(ctx, "slow", "ingest")
+			if err != nil || job == nil {
+				t.Fatalf("first claim: %v", err)
+			}
+			lost = append(lost, job)
+		}
+		time.Sleep(100 * time.Millisecond)
+		var taken []*queue.Job
+		for range 2 {
+			job, err := q.Claim(ctx, "fresh", "ingest")
+			if err != nil || job == nil {
+				t.Fatalf("retake: %v", err)
+			}
+			taken = append(taken, job)
+		}
+		if taken[0].ID == taken[1].ID {
+			t.Fatalf("the retake claimed job %d twice", taken[0].ID)
+		}
+
+		// The slow worker finishes both, one way each. Neither is its to
+		// finish any more.
+		if err := q.Succeed(ctx, lost[0].ID, "slow"); !errors.Is(err, queue.ErrNoLongerHeld) {
+			t.Errorf("a stale worker succeeding a retaken job got %v, want ErrNoLongerHeld", err)
+		}
+		if err := q.Fail(ctx, lost[1].ID, "slow", errors.New("gave up")); !errors.Is(err, queue.ErrNoLongerHeld) {
+			t.Errorf("a stale worker failing a retaken job got %v, want ErrNoLongerHeld", err)
+		}
+		for _, job := range taken {
+			var row queue.Job
+			if err := db.DB.NewSelect().Model(&row).Where("id = ?", job.ID).Scan(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if row.State != queue.Running || row.ClaimedBy == nil || *row.ClaimedBy != "fresh" {
+				t.Errorf("job %d is %s held by %v after a stale worker finished it, want running and held by fresh",
+					row.ID, row.State, row.ClaimedBy)
+			}
+		}
+
+		// And the worker that holds them finishes them as usual.
+		if err := q.Succeed(ctx, taken[0].ID, "fresh"); err != nil {
+			t.Errorf("the holder could not finish its job: %v", err)
+		}
+		if err := q.Fail(ctx, taken[1].ID, "fresh", errors.New("gave up")); err != nil {
+			t.Errorf("the holder could not hand its job back: %v", err)
+		}
+	})
+}
+
+func TestSettlingOutlivesTheCancellationThatEndedTheWork(t *testing.T) {
+	// The record of how a job ended is written after the work, which on a
+	// shutdown means after the cancellation that interrupted it. Written with
+	// the cancelled context it fails, and the job stays claimed by a process
+	// that has gone until the claim goes stale.
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	settled, done := queue.Settling(ctx)
+	defer done()
+	if settled.Err() != nil {
+		t.Fatalf("a settling context is already over: %v", settled.Err())
+	}
+	if _, bounded := settled.Deadline(); !bounded {
+		t.Error("a settling context has no bound, so a database that is not answering holds a shutdown for ever")
+	}
 }

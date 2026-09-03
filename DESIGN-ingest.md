@@ -248,6 +248,20 @@ everything the newer one closed, which is the harm the arrival check prevents
 at the door, arriving from behind. So a scan that has been overtaken is not
 applied, and that is recorded rather than treated as a failure.
 
+An overtaken scan is set aside on the strength of the newer one's row alone;
+the newer one may not have been read yet. If it then cannot be read, the build
+would be left showing whatever came before both — the older scan's work is
+done and nothing reads it again, and its receipt waits for a scan run that
+never comes. So once a scan has failed, the newest that still stands is read
+again, where the build does not already show it and nothing is on its way to
+reading it. A scan can therefore be read more than once, and the latest
+reading is the one its receipt reports.
+
+A read cut short by a shutdown is not recorded against the scan. Nothing is
+wrong with the document, and marking it failed would leave the receipt saying
+so after a retry had stored it — the job is handed back and read again once
+the process is running.
+
 And two applies for one target must not interleave. Both would read the same
 open rows, both compute the same difference, and both write it, leaving two
 open rows where everything downstream assumes one. Applying takes the target

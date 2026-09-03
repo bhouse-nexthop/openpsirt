@@ -6,6 +6,12 @@ import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
 import { Severity, Exploited } from "../ui/Severity";
+import { Paged } from "../ui/Paged";
+
+// The most the server returns of what is running out. A cap rather than a
+// page — the list has no total — so a full list is said to be a cap and not
+// a count.
+const LATE_LIMIT = 200;
 
 // Assignments: what is running out of time undecided, and what each person
 // holds. Unassigned already has its own entry in the rail, so the third tab
@@ -25,7 +31,7 @@ export function Work() {
   const due = useQuery({
     queryKey: ["running-out", days, scope],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/running-out", { params: { query: { days, limit: 200, ...scope } } })),
+      unwrap(await api.GET("/v1/running-out", { params: { query: { days, limit: LATE_LIMIT, ...scope } } })),
   });
   const holdings = useQuery({
     queryKey: ["holdings"],
@@ -55,7 +61,8 @@ export function Work() {
 
       <div className="tabs2">
         <button type="button" className="tab2 urgent" aria-selected={tab === "due"} onClick={() => go("due")}>
-          Due soon, undecided <span className="n">{lateRows.length}</span>
+          Due soon, undecided{" "}
+          <span className="n">{lateRows.length >= LATE_LIMIT ? `${LATE_LIMIT}+` : lateRows.length}</span>
         </button>
         <button type="button" className="tab2" aria-selected={tab === "people"} onClick={() => go("people")}>
           By assignee <span className="n">{peopleRows.length}</span>
@@ -194,6 +201,7 @@ function Due({
           </table>
         </div>
       )}
+      <Paged shown={rows.length} limit={LATE_LIMIT} />
     </>
   );
 }

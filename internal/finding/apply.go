@@ -70,6 +70,16 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 		if err != nil {
 			return err
 		}
+		// The rating in force for each: ours where somebody has made one,
+		// the published one otherwise. What a finding is admitted and
+		// clocked by has to be the rating every later reading uses, or a
+		// finding opened after an assessment arrives on the published
+		// word's deadline while the ones beside it sit on ours (TRI-41,
+		// TRI-42).
+		assessed, err := assessedSeverities(ctx, tx, vulnerabilities)
+		if err != nil {
+			return err
+		}
 
 		// Whether this build reaches customers, read once. A critical in
 		// something only the build system runs matters less than a medium in
@@ -180,8 +190,12 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 				// finding already open keeps the deadline it was given, which
 				// the update below leaves alone — a deadline that restarted
 				// every night would never arrive.
-				if floor.Admits(r.Issue.Exploited, r.Issue.Severity) {
-					due := startedAt.Add(windows.For(r.Issue.Exploited, r.Issue.Severity))
+				severity := r.Issue.Severity
+				if word := assessed[vulnerabilityID]; word != "" {
+					severity = word
+				}
+				if floor.Admits(r.Issue.Exploited, severity) {
+					due := startedAt.Add(windows.For(r.Issue.Exploited, severity))
 					entry.DueAt = &due
 				}
 				wanted[key{vulnerabilityID, at}] = entry
@@ -313,14 +327,60 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 }
 
 // same reports whether what a scan found about a finding matches what is
-// already recorded. Only the parts that can move are compared: everything else
-// is what makes it that finding rather than another.
+// already recorded. Only the parts the update writes are compared: everything
+// else is either what makes it that finding rather than another, or — the
+// urgency — a fact about the moment it opened, which a later scan does not
+// rewrite. Comparing something the update leaves alone would count the finding
+// as changed every night and move its last change forward without anything
+// having moved.
 func same(held, found Finding) bool {
 	return held.FixState == found.FixState &&
 		held.FixedIn == found.FixedIn &&
-		held.Urgency == found.Urgency &&
 		sameDate(held.FixedAt, found.FixedAt) &&
 		equalRef(held.SuppressedBy, found.SuppressedBy)
+}
+
+// assessedSeverities reads the rating of ours in force on each interned issue,
+// by issue, leaving out those where the published rating stands.
+func assessedSeverities(ctx context.Context, tx bun.IDB, interned map[string]int64) (map[int64]string, error) {
+	ids := make([]int64, 0, len(interned))
+	seen := map[int64]bool{}
+	for _, id := range interned {
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	assessed := map[int64]string{}
+	if len(ids) == 0 {
+		return assessed, nil
+	}
+	var rows []struct {
+		ID       int64  `bun:"id"`
+		Severity string `bun:"severity"`
+	}
+	err := database.IDsInBatches(ctx, ids, func(ctx context.Context, batch []int64) error {
+		var found []struct {
+			ID       int64  `bun:"id"`
+			Severity string `bun:"severity"`
+		}
+		err := tx.NewSelect().
+			TableExpr("vulnerability AS v").
+			ColumnExpr("v.id AS id").
+			ColumnExpr("v.assessed_severity AS severity").
+			Where("v.id IN (?)", bun.List(batch)).
+			Where("v.assessed_severity IS NOT NULL").
+			Scan(ctx, &found)
+		rows = append(rows, found...)
+		return err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read which ratings are ours: %w", err)
+	}
+	for _, row := range rows {
+		assessed[row.ID] = row.Severity
+	}
+	return assessed, nil
 }
 
 // equalRef compares two references that may be absent.

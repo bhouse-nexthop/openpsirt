@@ -345,3 +345,55 @@ func TestAScanOvertakenByANewerOneIsNotApplied(t *testing.T) {
 		}
 	})
 }
+
+func TestAScanOvertakenByOneThatThenFailsIsReadAgain(t *testing.T) {
+	// An older scan is set aside on the strength of the newer one's row alone
+	// — the newer one may not have been read yet. If it then cannot be read,
+	// the build would be left showing whatever came before both: the older
+	// scan's job is done and nothing reads it again, and its receipt waits
+	// for a scan run that never comes.
+	eachReader(t, func(t *testing.T, f *readerFixture) {
+		now := time.Now().UTC()
+		older := f.store(t, f.branch, now.Add(-2*time.Hour), anInventory)
+		newer := f.store(t, f.branch, now.Add(-time.Hour),
+			`{"bomFormat": "CycloneDX", "specVersion": "1.6", "components": [{"version": "1"}]}`)
+
+		// The older one is read first and set aside; then the newer one
+		// fails.
+		for _, id := range []int64{older, newer} {
+			if _, err := f.queue.Add(t.Context(), ingest.JobKind, strconv.FormatInt(id, 10)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		result, err := f.reader.Once(t.Context())
+		if err != nil || result == nil || !result.Superseded || result.ScanID != older {
+			t.Fatalf("the older scan was not set aside as overtaken: %+v %v", result, err)
+		}
+		if _, err := f.reader.Once(t.Context()); err == nil {
+			t.Fatal("the unreadable newer scan was read successfully")
+		}
+
+		// The older one is read again, and it is what the build now shows.
+		result, err = f.reader.Once(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result == nil {
+			t.Fatal("nothing brought the overtaken scan back")
+		}
+		if result.Superseded || result.ScanID != older {
+			t.Fatalf("read %+v, want the older scan applied", result)
+		}
+		nodes, err := graph.NewStore(f.db.DB).CurrentNodes(t.Context(), f.branch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(nodes) != 3 {
+			t.Errorf("%d nodes present, want the graph the older scan described", len(nodes))
+		}
+		// And once, not every time something fails.
+		if result, err := f.reader.Once(t.Context()); err != nil || result != nil {
+			t.Errorf("more work was left behind: %+v %v", result, err)
+		}
+	})
+}

@@ -59,7 +59,37 @@ job, so work is never stranded by a lost process.
 The timeout must exceed the longest a job legitimately takes. Set too short,
 two workers run the same job — which is the one thing the conditional update
 cannot prevent, because from the database's point of view the second claim is
-legitimate.
+legitimate. A claim is not renewed while the work runs, so the timeout is a
+hard ceiling on how long a job may take rather than a heartbeat interval.
+
+## Only the holder finishes a job
+
+A job is marked done, or handed back for retry, by the worker that holds its
+claim — the finishing statement carries the same condition the claim did. A
+worker that ran long enough for its claim to go stale is still running when
+another takes the job over, and without the condition whichever finishes first
+records the ending of what the other is in the middle of: a job marked done
+while the second worker is still working it, or handed back for retry while
+it is being finished.
+
+The refused finish is reported to the worker as "no longer held" rather than as
+a failure. The work it did stands; the job's ending is the other worker's to
+write, and there is nothing to retry. It is logged, because a job that outran
+its claim is a claim timeout set too short for that job.
+
+## How a job ended is recorded after a shutdown
+
+A shutdown cancels the work, and the record of how the job ended is written
+after the work — with the same cancelled context, if nothing intervenes. Both
+writes then fail, and the job stays claimed by a process that has gone until
+the claim goes stale, half an hour later, while whatever the job had begun
+stays open for ever.
+
+So the writes that record an ending run under a context of their own: detached
+from the cancellation, and bounded by a few seconds so a database that is not
+answering cannot hold a shutdown either. A shutdown mid-job hands the job back
+as a failed attempt, which is honest — the attempt did not complete — and a
+failure to hand it back is logged rather than silently absorbed.
 
 ## Backlog
 

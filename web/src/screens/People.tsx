@@ -94,6 +94,7 @@ export function People() {
 
       {grant.error != null && <Failed error={grant.error} what="That role could not be granted." />}
       {withdraw.error != null && <Failed error={withdraw.error} what="That role could not be withdrawn." />}
+      {endSessions.error != null && <Failed error={endSessions.error} what="Their sessions could not be ended." />}
 
       {rows.length === 0 ? (
         <Empty title="Nobody is recorded yet." detail="Add somebody to give them a way in." />
@@ -336,6 +337,9 @@ function Credentials() {
         A build pipeline uploads with a key scoped to what it may send to. A person can hold tokens for
         their own scripts, which never carry more than the person does.
       </p>
+
+      {revokeKey.error != null && <Failed error={revokeKey.error} what="That key could not be revoked." />}
+      {revokeToken.error != null && <Failed error={revokeToken.error} what="That token could not be revoked." />}
 
       {keyRows.length === 0 && tokenRows.length === 0 ? (
         <p className="hint" style={{ margin: 0 }}>

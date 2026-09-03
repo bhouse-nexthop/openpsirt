@@ -12,7 +12,7 @@ import { label, waiting } from "./notices";
 describe("what a notification is called", () => {
   it("says what happened in words rather than the word a machine matches on", () => {
     expect(label("assigned")).toBe("assigned to you");
-    expect(label("sent-back")).toBe("sent back");
+    expect(label("sent-back")).toBe("rejected");
     expect(label("build-quiet")).toBe("not being scanned");
   });
 

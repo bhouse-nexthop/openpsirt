@@ -166,7 +166,7 @@ function Reasoning({
                   },
                 )
               }
-              className="rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              className="rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-[var(--accent-ink)] disabled:opacity-50"
             >
               Save
             </button>
@@ -341,7 +341,7 @@ function Comments({ id }: { id: number }) {
             },
           )
         }
-        className="mt-2 rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        className="mt-2 rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-[var(--accent-ink)] disabled:opacity-50"
       >
         Comment
       </button>

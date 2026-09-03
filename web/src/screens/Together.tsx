@@ -9,6 +9,12 @@ import { Crumbs } from "../ui/Crumbs";
 import { Severity } from "../ui/Severity";
 import { JUSTIFICATIONS } from "../ui/Outcome";
 import { Editor, forget } from "../ui/Editor";
+import { Paged } from "../ui/Paged";
+
+// A page of issues at one component. A kernel carries thousands, and a list
+// drawn as if it were all of them says "select all" against a number that is
+// not the whole.
+const PAGE = 500;
 
 // One judgment about many issues at one component. The transpose of the usual
 // grouping: one issue across many places is what a decision already covers,
@@ -22,6 +28,7 @@ export function Together() {
   const { product = "", stream = "", variant = "", component = "" } = useParams();
   const [params, setParams] = useSearchParams();
   const contains = params.get("contains") ?? "";
+  const offset = Number(params.get("offset") ?? 0);
   const [typed, setTyped] = useState(contains);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const queries = useQueryClient();
@@ -29,12 +36,12 @@ export function Together() {
   const at = { product, stream, variant, component };
 
   const issues = useQuery({
-    queryKey: ["at-component", at, contains],
+    queryKey: ["at-component", at, contains, offset],
     queryFn: async () =>
       unwrap(
         await api.GET(
           "/v1/products/{product}/streams/{stream}/variants/{variant}/components/{component}/issues",
-          { params: { path: at, query: { limit: 500, ...(contains ? { contains } : {}) } } },
+          { params: { path: at, query: { limit: PAGE, offset, ...(contains ? { contains } : {}) } } },
         ),
       ),
   });
@@ -113,7 +120,7 @@ export function Together() {
               onClick={() => setPicked(new Set(items.map((i) => i.vulnerability ?? "")))}
               className="text-[var(--accent)] hover:underline"
             >
-              Select all {items.length}
+              Select all {items.length} shown
             </button>
             <button type="button" onClick={() => setPicked(new Set())} className="text-[var(--muted)] hover:text-[var(--ink)]">
               Clear
@@ -152,6 +159,18 @@ export function Together() {
               );
             })}
           </ul>
+          <Paged
+            shown={items.length}
+            total={issues.data?.total}
+            offset={offset}
+            limit={PAGE}
+            onGo={(next) => {
+              const now = new URLSearchParams(params);
+              if (next === 0) now.delete("offset");
+              else now.set("offset", String(next));
+              setParams(now);
+            }}
+          />
 
           <Claim
             narrowed={contains}
@@ -285,7 +304,7 @@ function Claim({
                 reasoning,
               })
             }}
-            className="rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            className="rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-[var(--accent-ink)] disabled:opacity-50"
           >
             Submit for {count}
           </button>

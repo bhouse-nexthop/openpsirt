@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, type Body } from "../api/client";
 import { unwrap } from "../api/queries";
 import { claimOf, useApproveClaim, useRejectClaim, type Claim } from "../api/claims";
@@ -9,6 +9,11 @@ import { Failed } from "../ui/Failed";
 import { Markdown } from "../ui/Markdown";
 import { Editor, forget } from "../ui/Editor";
 import { Severity, Exploited } from "../ui/Severity";
+import { Paged } from "../ui/Paged";
+
+// A page of claims. The queue is read at the grain of a claim, and a claim
+// is a card with its whole argument, so a page is what fits a sitting.
+const PAGE = 50;
 
 // The review queue at the grain of a claim (TRI-45): one card per proposer's
 // action, however many records it wrote. The approver reads one argument and
@@ -17,14 +22,27 @@ import { Severity, Exploited } from "../ui/Severity";
 // on (TRI-47). Lapsed decisions and deferrals that ran out sit underneath:
 // nobody has to agree to those again, but each needs a fresh reason.
 export function Queue() {
+  const [params, setParams] = useSearchParams();
+  const offset = Number(params.get("offset") ?? 0);
+  // A claim somebody was sent to, by a notice or a link. Found on the page
+  // and shown, or said to be missing — a link that lands on the queue with
+  // nothing marked leaves somebody hunting through cards for the one meant.
+  const wanted = Number(params.get("claim") ?? 0);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [batch, setBatch] = useState("");
   const approveClaim = useApproveClaim();
 
   const queue = useQuery({
-    queryKey: ["queue"],
-    queryFn: async () => unwrap(await api.GET("/v1/review-queue", {})),
+    queryKey: ["queue", offset],
+    queryFn: async () =>
+      unwrap(await api.GET("/v1/review-queue", { params: { query: { limit: PAGE, offset } } })),
   });
+
+  const found = wanted > 0 && (queue.data?.items ?? []).some((row) => claimOf(row).id === wanted);
+  useEffect(() => {
+    if (!found) return;
+    document.getElementById(`claim-${wanted}`)?.scrollIntoView({ block: "center" });
+  }, [found, wanted]);
   const lapsed = useQuery({
     queryKey: ["queue", "lapsed"],
     queryFn: async () =>
@@ -65,11 +83,23 @@ export function Queue() {
       <div className="screen-head">
         <h2>Review queue</h2>
         <p>
-          {claims.length.toLocaleString()} pending
-          {records > claims.length && <> · {records.toLocaleString()} records between them</>} · across
-          every product you may approve on
+          {(queue.data?.total ?? claims.length).toLocaleString()} pending
+          {records > claims.length && <> · {records.toLocaleString()} records between those shown</>} ·
+          across every product you may approve on
         </p>
       </div>
+
+      {wanted > 0 && !found && (
+        <div className="alert" style={{ marginBottom: 10 }}>
+          <strong>Claim {wanted} is not waiting here.</strong>
+          <span>
+            It may have been decided, or it may sit on another page.{" "}
+            <Link to="/unassigned" className="linkish">
+              Unassigned →
+            </Link>
+          </span>
+        </div>
+      )}
 
       {claims.length > 0 && (
         <div className="batchbar">
@@ -118,6 +148,7 @@ export function Queue() {
             <Card
               key={claim.key}
               claim={claim}
+              marked={claim.id === wanted}
               picked={picked.has(claim.key)}
               onPick={(on) => {
                 const next = new Set(picked);
@@ -129,14 +160,35 @@ export function Queue() {
           ))}
         </div>
       )}
+      <Paged
+        shown={claims.length}
+        total={queue.data?.total}
+        offset={offset}
+        limit={PAGE}
+        onGo={(next) => {
+          const now = new URLSearchParams(params);
+          if (next === 0) now.delete("offset");
+          else now.set("offset", String(next));
+          setParams(now);
+        }}
+      />
 
       <div className="screen-head" id="lapsed" style={{ marginTop: 22 }}>
         <h2>Lapsed decisions</h2>
         <p>
-          {stopped.length.toLocaleString()} · nobody has to agree to these again — two people already
-          did — but each needs a fresh reason, because what it was a claim about has moved.
+          {((lapsed.data?.total ?? 0) + (expired.data?.total ?? 0)).toLocaleString()} · nobody has to
+          agree to these again — two people already did — but each needs a fresh reason, because what
+          it was a claim about has moved.
         </p>
       </div>
+      {/* Two lists of fifty, merged. Not paged: a decision can be in both,
+          so pages of the two do not add up — but a full list is still said
+          to be one. */}
+      <Paged
+        shown={Math.max(lapsed.data?.items?.length ?? 0, expired.data?.items?.length ?? 0)}
+        limit={50}
+        what="shown of each kind"
+      />
       {stopped.length === 0 ? (
         <Empty title="Nothing has lapsed." detail="A decision the code moved out from under, or a deferral whose date has passed, would appear here." />
       ) : (
@@ -217,7 +269,18 @@ const OUTCOME: Record<string, string> = {
   "wont-fix": "Won't fix",
 };
 
-function Card({ claim, picked, onPick }: { claim: Claim; picked: boolean; onPick: (on: boolean) => void }) {
+function Card({
+  claim,
+  marked,
+  picked,
+  onPick,
+}: {
+  claim: Claim;
+  // Whether somebody was sent to this claim in particular.
+  marked: boolean;
+  picked: boolean;
+  onPick: (on: boolean) => void;
+}) {
   const approveClaim = useApproveClaim();
   const rejectClaim = useRejectClaim();
   const [asking, setAsking] = useState(false);
@@ -254,7 +317,11 @@ function Card({ claim, picked, onPick }: { claim: Claim; picked: boolean; onPick
   }
 
   return (
-    <article className={`qcard${claim.previouslyApproved ? " returning" : ""}${bulk ? " bulkclaim" : ""}${extension ? " extension" : ""}`}>
+    <article
+      id={`claim-${claim.id}`}
+      className={`qcard${claim.previouslyApproved ? " returning" : ""}${bulk ? " bulkclaim" : ""}${extension ? " extension" : ""}`}
+      style={marked ? { outline: "2px solid var(--accent)", outlineOffset: 2 } : undefined}
+    >
       <header>
         <input type="checkbox" className="qpick" checked={picked} onChange={(event) => onPick(event.target.checked)} aria-label="Select this claim" />
         {bulk && <span className="bulkmark">Bulk claim</span>}
@@ -441,8 +508,8 @@ function Card({ claim, picked, onPick }: { claim: Claim; picked: boolean; onPick
             </div>
           )}
           <p className="hint" style={{ margin: "8px 0 0" }}>
-            Selected rows are excluded from the approval and returned to {claim.proposedBy} as a separate
-            item, with this table as the reason.
+            Selected rows are excluded from the approval and rejected back to {claim.proposedBy} as a
+            separate item, with this table as the reason.
           </p>
         </div>
       )}
@@ -479,7 +546,7 @@ function Card({ claim, picked, onPick }: { claim: Claim; picked: boolean; onPick
               Cancel
             </button>
             <span className="consequence">
-              Returns to <b>{claim.proposedBy}</b>
+              Rejected, back to <b>{claim.proposedBy}</b>
             </span>
           </div>
         </div>

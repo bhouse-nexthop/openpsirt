@@ -100,10 +100,14 @@ func (s *Store) Receipts(ctx context.Context, subject access.Subject, targetID i
 	for _, sc := range scans {
 		references = append(references, strconv.FormatInt(sc.ID, 10))
 	}
+	// A scan can be read more than once — set aside as overtaken, then read
+	// again when the scan that overtook it failed — so the latest job for it
+	// is the one that says where it has got to.
 	var jobs []queue.Job
 	if err := s.db.NewSelect().Model(&jobs).
 		Where("kind = ?", JobKind).
-		Where("reference IN (?)", bun.List(references)).Scan(ctx); err != nil {
+		Where("reference IN (?)", bun.List(references)).
+		Order("id ASC").Scan(ctx); err != nil {
 		return nil, 0, err
 	}
 	read := make(map[string]queue.Job, len(jobs))

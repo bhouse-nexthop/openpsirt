@@ -28,10 +28,10 @@ export type Point = {
 };
 
 const BANDS = [
-  { key: "critical", colour: "var(--sev-critical)" },
-  { key: "high", colour: "var(--sev-high)" },
-  { key: "medium", colour: "var(--sev-medium)" },
-  { key: "low", colour: "var(--sev-low)" },
+  { key: "critical", color: "var(--sev-critical)" },
+  { key: "high", color: "var(--sev-high)" },
+  { key: "medium", color: "var(--sev-medium)" },
+  { key: "low", color: "var(--sev-low)" },
 ];
 
 const tip = {
@@ -197,8 +197,8 @@ export function Mix({ points }: { points: Point[] }) {
             type="monotone"
             dataKey={band.key}
             stackId="1"
-            stroke={band.colour}
-            fill={band.colour}
+            stroke={band.color}
+            fill={band.color}
             fillOpacity={0.5}
           />
         ))}
@@ -213,7 +213,7 @@ export function Ring({ point }: { point?: Point }) {
   const by = point?.by_severity ?? {};
   const slices = BANDS.map((band) => ({
     name: band.key,
-    colour: band.colour,
+    color: band.color,
     value:
       band.key === "low"
         ? (by.low ?? 0) + (by.negligible ?? 0) + (by.unknown ?? 0)
@@ -238,7 +238,7 @@ export function Ring({ point }: { point?: Point }) {
           stroke="none"
         >
           {slices.map((slice) => (
-            <Cell key={slice.name} fill={slice.colour} />
+            <Cell key={slice.name} fill={slice.color} />
           ))}
         </Pie>
         <Tooltip contentStyle={tip} />
@@ -246,7 +246,7 @@ export function Ring({ point }: { point?: Point }) {
       <ul className="ringkey">
         {slices.map((slice) => (
           <li key={slice.name}>
-            <i style={{ background: slice.colour }} />
+            <i style={{ background: slice.color }} />
             {slice.name}
             <span className="n">{slice.value.toLocaleString()}</span>
           </li>
@@ -294,7 +294,7 @@ export function Across({ releases }: { releases: Release[] }) {
         />
         <Tooltip contentStyle={tip} />
         {BANDS.map((band) => (
-          <Bar key={band.key} dataKey={band.key} stackId="1" fill={band.colour} />
+          <Bar key={band.key} dataKey={band.key} stackId="1" fill={band.color} />
         ))}
       </BarChart>
     </ResponsiveContainer>

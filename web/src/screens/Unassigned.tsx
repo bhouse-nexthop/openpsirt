@@ -1,12 +1,17 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, type Body } from "../api/client";
 import { scopeQuery, useScope } from "../app/scope";
 import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
 import { Severity, Exploited } from "../ui/Severity";
+import { Paged } from "../ui/Paged";
+
+// A page of what nobody holds. The head says the total; the page says what
+// of it is in front of somebody.
+const PAGE = 50;
 
 // Work nobody owns, across every product somebody can see. Unassigned is a
 // state to be asked about rather than an absence: work that falls between
@@ -14,13 +19,15 @@ import { Severity, Exploited } from "../ui/Severity";
 // when every screen shows one product.
 export function Unassigned() {
   const scope = scopeQuery(useScope());
+  const [params, setParams] = useSearchParams();
+  const offset = Number(params.get("offset") ?? 0);
   const queries = useQueryClient();
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [person, setPerson] = useState("");
   const rows = useQuery({
-    queryKey: ["unassigned", scope],
+    queryKey: ["unassigned", scope, offset],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/unassigned", { params: { query: { limit: 50, ...scope } } })),
+      unwrap(await api.GET("/v1/unassigned", { params: { query: { limit: PAGE, offset, ...scope } } })),
   });
   const people = useQuery({
     queryKey: ["people"],
@@ -189,6 +196,18 @@ export function Unassigned() {
               </tbody>
             </table>
           </div>
+          <Paged
+            shown={items.length}
+            total={rows.data?.total}
+            offset={offset}
+            limit={PAGE}
+            onGo={(next) => {
+              const now = new URLSearchParams(params);
+              if (next === 0) now.delete("offset");
+              else now.set("offset", String(next));
+              setParams(now);
+            }}
+          />
         </>
       )}
     </>

@@ -13,6 +13,7 @@ package queue
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -210,23 +211,55 @@ func (q *Queue) Claim(ctx context.Context, worker, kind string) (*Job, error) {
 	return job, nil
 }
 
-// Succeed marks work as finished.
-func (q *Queue) Succeed(ctx context.Context, id int64) error {
+// ErrNoLongerHeld says the job was not this worker's to finish: its claim went
+// stale and another worker took it, or it has already been finished. Whoever
+// holds it now will record how it ended, so the caller has nothing to retry.
+var ErrNoLongerHeld = errors.New("the job is no longer held by this worker")
+
+// Settling is a context for recording how a job ended.
+//
+// The record is written after the work — including after the shutdown that
+// interrupted it — so it carries the cancellation no further than a bound of
+// its own. A job whose ending is never written stays claimed by a worker that
+// has gone, and nobody else may touch it until the claim goes stale.
+func Settling(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), settleTimeout)
+}
+
+// settleTimeout bounds the writes that record how a job ended, once nothing
+// else is holding them to a deadline. Long enough for a database that is
+// answering; short enough that a shutdown is not held by one that is not.
+const settleTimeout = 5 * time.Second
+
+// Succeed marks work as finished, by the worker that holds it.
+//
+// Only the holder may finish a job. A worker that ran long enough for its
+// claim to go stale is still running when another takes the job over, and
+// without the condition the first to finish marks done whatever the second is
+// in the middle of. That case is reported as ErrNoLongerHeld rather than as a
+// failure: the work was done, and its record is the other worker's to write.
+func (q *Queue) Succeed(ctx context.Context, id int64, worker string) error {
 	now := q.now().Truncate(time.Microsecond)
-	_, err := q.db.NewUpdate().Model((*Job)(nil)).
+	res, err := q.db.NewUpdate().Model((*Job)(nil)).
 		Set("state = ?", Done).
 		Set("claimed_by = NULL").
 		Set("updated_at = ?", now).
-		Where("id = ?", id).Exec(ctx)
-	return err
+		Where("id = ?", id).
+		Where("state = ?", Running).
+		Where("claimed_by = ?", worker).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	return held(res)
 }
 
-// Fail records that work did not succeed.
+// Fail records that work did not succeed, by the worker that holds it.
 //
 // It goes back on the queue with a delay, unless it has been tried as often as
 // it is allowed to be, in which case it is set aside. Retrying for ever would
 // let one job that can never succeed crowd out work that could.
-func (q *Queue) Fail(ctx context.Context, id int64, cause error) error {
+func (q *Queue) Fail(ctx context.Context, id int64, worker string, cause error) error {
 	job := new(Job)
 	if err := q.db.NewSelect().Model(job).Where("id = ?", id).Scan(ctx); err != nil {
 		return fmt.Errorf("load job %d: %w", id, err)
@@ -238,7 +271,9 @@ func (q *Queue) Fail(ctx context.Context, id int64, cause error) error {
 		Set("last_error = ?", message).
 		Set("claimed_by = NULL").
 		Set("updated_at = ?", now).
-		Where("id = ?", id)
+		Where("id = ?", id).
+		Where("state = ?", Running).
+		Where("claimed_by = ?", worker)
 
 	if job.Attempts >= job.MaxAttempts {
 		update = update.Set("state = ?", Dead)
@@ -248,6 +283,19 @@ func (q *Queue) Fail(ctx context.Context, id int64, cause error) error {
 		delay := time.Duration(job.Attempts) * q.opts.Backoff
 		update = update.Set("state = ?", Pending).Set("run_after = ?", now.Add(delay))
 	}
-	_, err := update.Exec(ctx)
-	return err
+	res, err := update.Exec(ctx)
+	if err != nil {
+		return err
+	}
+	return held(res)
+}
+
+// held reads a conditional update's count as whether the job was still this
+// worker's. Rows matched rather than rows changed, which the connection
+// settings make true on every engine (DAT-35).
+func held(res sql.Result) error {
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNoLongerHeld
+	}
+	return nil
 }

@@ -14,9 +14,6 @@ import { Variants } from "../screens/Variants";
 // needed where somebody reads or writes a justification.
 const Home = lazy(() => import("../screens/Home").then((m) => ({ default: m.Home })));
 const Finding = lazy(() => import("../screens/Finding").then((m) => ({ default: m.Finding })));
-const PlaceDecision = lazy(() =>
-  import("../screens/PlaceDecision").then((m) => ({ default: m.PlaceDecision })),
-);
 const Tree = lazy(() => import("../screens/Tree").then((m) => ({ default: m.Tree })));
 const Compare = lazy(() =>
   import("../screens/Compare").then((m) => ({ default: m.Compare })),
@@ -63,7 +60,6 @@ export function App() {
         <Route path="/products/:product/variants" element={<Variants />} />
         <Route path={`${build}/findings`} element={<Findings />} />
         <Route path={`${build}/findings/:vulnerability/components/:component`} element={<Finding />} />
-        <Route path={`${build}/findings/:vulnerability/places/:place`} element={<PlaceDecision />} />
         <Route path={`${build}/components`} element={<Tree />} />
         <Route path={`${build}/components/:component/decide`} element={<Together />} />
         <Route path={`${build}/scans`} element={<Inventories />} />

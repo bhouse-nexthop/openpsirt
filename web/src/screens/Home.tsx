@@ -8,6 +8,10 @@ import { Pace, Mix, Ring } from "../ui/Charts";
 import { claimOf } from "../api/claims";
 import type { Who } from "../app/session";
 
+// The most the server returns of what is overdue. A cap with no total, so a
+// full list is a floor on the figure rather than the figure.
+const OVERDUE_LIMIT = 200;
+
 // One home page, assembled from what this person holds. Four figures that
 // follow the scope (UIX-51), then the work — what is pending, what is in
 // progress, what lapsed — then the trends, then the system's own state
@@ -161,7 +165,7 @@ function Figures({
     queryKey: ["home", "overdue", scope],
     queryFn: async () =>
       unwrap(
-        await api.GET("/v1/running-out", { params: { query: { days: 0, limit: 200, ...scope } } }),
+        await api.GET("/v1/running-out", { params: { query: { days: 0, limit: OVERDUE_LIMIT, ...scope } } }),
       ),
   });
 
@@ -205,9 +209,14 @@ function Figures({
         <span className="l">
           <i style={{ background: "var(--sev-critical)" }} /> Overdue
         </span>
-        <span className="n">{overdue.length.toLocaleString()}</span>
+        {/* The list behind this is capped, so a full one is said to be a
+            floor rather than passed off as the count. */}
+        <span className="n">
+          {overdue.length >= OVERDUE_LIMIT ? `${OVERDUE_LIMIT.toLocaleString()}+` : overdue.length.toLocaleString()}
+        </span>
         <span className="d">
           {overdueExploited > 0 ? `${overdueExploited} exploited · ` : ""}undecided, past the deadline
+          {overdue.length >= OVERDUE_LIMIT ? " · at least" : ""}
         </span>
       </button>
     </div>
@@ -267,6 +276,12 @@ function Pending() {
     <div className="panel">
       <header>
         <h3>Pending your approval</h3>
+        {/* The queue is not narrowed by product, so this panel does not
+            follow the scope the head names, and says so rather than
+            letting the head speak for it. */}
+        <span className="eyebrow" style={{ marginLeft: "auto" }}>
+          every product you may approve on
+        </span>
         <span className="tally">{queue.data?.total ?? 0}</span>
       </header>
       {queue.isError && <Failed error={queue.error} what="This could not be read." />}
@@ -310,6 +325,11 @@ function InProgress() {
     <div className="panel">
       <header>
         <h3>In progress</h3>
+        {/* Holdings are counted per person across everything, not per
+            product, so this does not follow the scope the head names. */}
+        <span className="eyebrow" style={{ marginLeft: "auto" }}>
+          every product
+        </span>
         <span className={overdue > 0 ? "tally urgent" : "tally"}>{total.toLocaleString()}</span>
       </header>
       {held.isError && <Failed error={held.error} what="This could not be read." />}
@@ -336,15 +356,20 @@ function InProgress() {
 // passed, are both somebody having to look again — and both disappear silently
 // without somewhere that says so.
 function Lapsed() {
+  // Decisions are listed by product and no finer, so this follows the
+  // product of the scope the head names and says when it is not the whole
+  // of it.
+  const at = useScope();
+  const product = at.product ? { product: at.product } : {};
   const lapsed = useQuery({
-    queryKey: ["home", "lapsed"],
+    queryKey: ["home", "lapsed", product],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/decisions", { params: { query: { state: "lapsed", limit: 3 } } })),
+      unwrap(await api.GET("/v1/decisions", { params: { query: { state: "lapsed", limit: 3, ...product } } })),
   });
   const expired = useQuery({
-    queryKey: ["home", "expired"],
+    queryKey: ["home", "expired", product],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/decisions", { params: { query: { expired: true, limit: 3 } } })),
+      unwrap(await api.GET("/v1/decisions", { params: { query: { expired: true, limit: 3, ...product } } })),
   });
 
   const lapsedTotal = lapsed.data?.total ?? 0;
@@ -354,6 +379,9 @@ function Lapsed() {
     <div className="panel">
       <header>
         <h3>Lapsed decisions</h3>
+        <span className="eyebrow" style={{ marginLeft: "auto" }}>
+          {at.product ? `${at.product}, every branch` : "every product"}
+        </span>
         <span className={lapsedTotal + expiredTotal > 0 ? "tally urgent" : "tally"}>
           {(lapsedTotal + expiredTotal).toLocaleString()}
         </span>

@@ -13,11 +13,11 @@ be picked up:
 
 | | |
 |---|---|
-| **Next** | **Performance and the development loop** — measured, with a plan in order, in the section of that name below. The findings list at 2 s a page and the test suite at over half an hour are the two figures to beat |
-| **Next** | The mellanox build of the switch image, once saved as `internal/sbom/testdata/switch-image-mellanox.cdx.json.xz`, is one line in `DEMO_BUILDS` — see the testdata README. It is the first real cross-variant data: a decision made on broadcom should reach it by lookup where chains match, and the review should walk it where versions differ |
-| **Built, uncommitted** | The demo and the dev loop seed a second product: OpenPSIRT itself, from the inventory the image now carries at `/usr/share/openpsirt/openpsirt.cdx.json`. Two products is what makes the cross-product screens and the scope picker's "all" mean anything |
-| **Built, uncommitted** | The first day of use against the demo, 2026-09-03: the scope picker stays open until the variant is picked; the queue card and the decision screen carry the finding's context (`TRI-09`) and link to the finding; findings rows carry a server-side decision state; the tree's counts are distinct issues per path and its node pane links to the findings at, and beneath, a node (`beneath=` filter); arriving from a finding opens the chain; a menu opens the rail on narrow screens; the trend is the mockup's two-band chart; three class names that collided with Tailwind utilities were renamed; "issues" and "findings" are the two words for the two units, and home counts issues |
-| **Built, uncommitted** | What the 2026-09-02 workflow review decided — see the section below. `TRI-45` to `TRI-47` in the backend (a claim table, the queue at claim grain, approval and rejection by claim with set-aside, extension), and `UIX-43` to `UIX-51` in the interface, rebuilt from the restyled mockup and audited against it screen by screen with a headless browser, as two identities. Approving a 2,000-row claim is 11 statements and 55 ms; it was one statement per row and 15.6 s for 1,760 on the demo before that was measured. `make check` is green through the suite on all four engines and stops only at the two steps that diff generated files against the commit; `make check-engines` is green. **A development database against the four servers has to be recreated** (`make engines-down && make engines-up`), and so does the demo's (`make demo-reset`): the triage migration was edited in place |
+| **Done** | **Performance and the development loop** — measured, done and re-measured, in the section of that name below. The two figures to beat were the findings list at 2 s a page and the test suite at over half an hour: the quick loop went from 110 s to 4.4 s, the four-engine gate from 551 s to 174 s, the findings page to two statements with the groups read off an index, and the graph stays in the database as three recursive statements. What is still open there is the `make measure` re-run, further down this table |
+| **Done** | The mellanox build of the switch image is kept as a fixture and seeded as a second variant of the same product. It is the first real cross-variant data: a decision made on broadcom reaches it by lookup where chains match, and the review walks it where versions differ, judged by the version the decision is keyed on |
+| **Done** | The demo and the dev loop seed a second product: OpenPSIRT itself, from the inventory the image carries at `/usr/share/openpsirt/openpsirt.cdx.json`. Two products is what makes the cross-product screens and the scope picker's "all" mean anything |
+| **Done** | The first day of use against the demo, 2026-09-03: the scope picker stays open until the variant is picked; the queue card and the decision screen carry the finding's context (`TRI-09`) and link to the finding; findings rows carry a server-side decision state; the tree's counts are distinct issues per path and its node pane links to the findings at, and beneath, a node (`beneath=` filter); arriving from a finding opens the chain; a menu opens the rail on narrow screens; the trend is the mockup's two-band chart; three class names that collided with Tailwind utilities were renamed; "issues" and "findings" are the two words for the two units, and home counts issues |
+| **Done** | What the 2026-09-02 workflow review decided — see the section below. `TRI-45` to `TRI-47` in the backend (a claim table, the queue at claim grain, approval and rejection by claim with set-aside, extension), and `UIX-43` to `UIX-51` in the interface, rebuilt from the restyled mockup and audited against it screen by screen with a headless browser, as two identities. Approving a 2,000-row claim is 11 statements and 55 ms; it was one statement per row and 15.6 s for 1,760 on the demo before that was measured. `make check` and `make check-engines` were green at the commit, generated files included. **A development database against the four servers has to be recreated** (`make engines-down && make engines-up`), and so does the demo's (`make demo-reset`): the triage migration was edited in place |
 | **Done** | The rebuilt SBOM is in as the fixture, the demo is reseeded from it, and `ING-36`/`ING-37` carry their new numbers |
 | **Built** | `ING-41`, end to end: the `upstream.currency` setting (off by default), the pass that fills the columns, a third worker beside the reader and the runner, and the finding screen showing both what upstream has released and why there is no fix |
 | **Done** | `DESIGN-interface.md` is level with the code again: the picker and what a partial scope refuses, home's order, the upstream and age columns, the decided count, the currency panel, the ambiguous-name chooser, and the finding-split divergence recorded as a divergence |
@@ -93,7 +93,7 @@ behind a proxy that signs you in, needing nothing installed but docker — and
 
 **Every screen the mockup has now exists.** People and access, release
 comparison and "who is working on what" were built in this stretch, and the
-catalogue screens can declare as well as list. What is left is one structural
+catalog screens can declare as well as list. What is left is one structural
 divergence and two missing numbers — see "Audit: the mockup's screens against
 what is built" below, which is the place to start rather than
 `DESIGN-interface.md`.
@@ -102,7 +102,7 @@ what is built" below, which is the place to start rather than
 against the real database with the driver this build uses, so two of the three
 questions are answered and the third is narrowed.
 
-*Cancellation works.* `modernc.org/sqlite` honours the context: a query
+*Cancellation works.* `modernc.org/sqlite` honors the context: a query
 cancelled mid-flight stopped dead — process CPU frozen at the tick it was
 cancelled on and unchanged six seconds later. So the theory that a cancelled
 walk keeps computing is **wrong**, and nothing needs fixing there.
@@ -171,9 +171,12 @@ fixing the second helps production as much as it helps the loop.
    first use. `-p 1` is gone.
 3. **The API package's handler tests run on SQLite and PostgreSQL only**
    through `dbtest.Two`; the rule is written at it. Decided by reading the
-   tests: 54 of the 98 pin routing, authorization or a response's shape and
-   moved; 44 pin what a query returns through the handler and stayed on
-   four.
+   tests. Of the 99 test functions in the package, 45 pin routing,
+   authorization or a response's shape and run on two; 42 pin what a query
+   returns, hides, conflicts on or spells through the handler and run on
+   four; 12 open no database at all. Nine had been moved to two and were
+   moved back when a review read them as pinning a query — the rule is
+   `DAT-37` now, not a comment.
 4. Re-measured.
 
 **What it was, and what it is:**
@@ -864,7 +867,7 @@ document already records, and the reason the first attempt came out wrong.
 Every one of the mockup's fifteen screens now exists. Three did not at the
 start of this stretch: **people and access**, **release comparison**, and
 **who is working on what**. A fourth, the mockup's "adding a release", is now
-the declare forms on the catalogue screens rather than a screen of its own.
+the declare forms on the catalog screens rather than a screen of its own.
 
 | Mockup screen | Built as | Standing |
 |---|---|---|
@@ -960,7 +963,7 @@ produce; two documented ecosystem values that match nothing.
 - One filtered on `Under: "swss"`. Nothing is called that — `swss` is the Go
   variable, the component is `libswsscommon`. It kept nothing, and "narrowed to
   a subset" passed because nothing is fewer than everything.
-- An authorization test asked what a reader may see, from a catalogue whose
+- An authorization test asked what a reader may see, from a catalog whose
   fixture built no builds at all. The endpoint answered an empty list to
   everybody, which is also what a missing visibility filter looks like.
 - Three of four decision states were pinned by a fixture where nothing is ever
@@ -1018,7 +1021,7 @@ bringing `DESIGN-interface.md` up to date; recorded above under "Not yet true".
 | ~~**The findings row is missing three columns**~~ **Two fixed, one declined.** | Where it sits (`UIX-12`), variants (`REL-01`), and state. The row preview shows the immediate consumer, not both ends of the chain, so `UIX-12` is unbuilt in the list in both places it was drawn. `REL-01` is scheduled rather than missed. The row gained three things the mockup lacks — the score beside the word, the likelihood, and the age |
 | ~~**The scans table has no opened/closed counts**~~ **Fixed.** | The mockup's columns say what each run changed; the built table says received, built, state and serial. What a run *did* is the reason to read the row |
 | **Release comparison cannot be copied out** | The mockup's "copy for release notes" is the point of the screen for the person about to publish. Nothing exports, on the screen or in the API |
-| ~~**The catalogue screens list names where the mockup lists numbers**~~ **Fixed.** | Products draws a card grid of name and display name; the mockup's table carries branches, tags, variants, open findings and last scan. Same for variants, which the mockup gives "ships to customers", releases built as it, and open findings |
+| ~~**The catalog screens list names where the mockup lists numbers**~~ **Fixed.** | Products draws a card grid of name and display name; the mockup's table carries branches, tags, variants, open findings and last scan. Same for variants, which the mockup gives "ships to customers", releases built as it, and open findings |
 | **Phones get a scrolling rail, not the tab bar** | The mockup puts a three-item bar at the bottom on a phone; the build turns the side rail into a horizontal scrolling strip below 780px. Both work; they are not the same design |
 
 **What the fixes turned out to need**, since none of it was a line of code:
@@ -1027,7 +1030,7 @@ bringing `DESIGN-interface.md` up to date; recorded above under "Not yet true".
 panel that was supposed to report it named a branch and a variant in its source
 and so could only ever have worked on the deployment it was written against.
 Both it and the scans screen now read one answer — every declared build,
-longest-silent first — which also gave the catalogue its "last scan" column for
+longest-silent first — which also gave the catalog its "last scan" column for
 free, from the same answer rather than a second query that could disagree with
 it.
 
@@ -1112,7 +1115,7 @@ the decision to revisit.**
 
 **Still open on that screen:** whether a dismissal should subtract from the
 count. Today it does not — the count is every open finding, answered or not —
-and that is the behaviour that predates this work rather than a choice made
+and that is the behavior that predates this work rather than a choice made
 here.
 
 ## The rebuilt SBOM: what it settled, and the one class left
@@ -1388,3 +1391,113 @@ Exporting the three URLs first made the mutant fail as it should.
 So: when running `go test` by hand rather than through `make check`, export the
 engine URLs, and check the subtest names in the output actually list four
 engines before believing a result.
+
+## The second adversarial review (2026-09-03), and what it found
+
+Four reviewers this time: three over the twenty-one commits since the first
+review, split as before — authorization and disclosure, correctness and
+portability, tests and claims — and a fourth over the whole repository,
+because a diff review cannot see what several rounds by different agents
+have quietly spelled two ways. Everything below is fixed unless it says
+otherwise.
+
+**The worst of it was the same omission, three times: a decision is matched
+to a finding without the whole key.** A place identity carries no product
+and no version, on purpose, so that a place is recognized across variants.
+Every correlation from `decision` to `finding` therefore has to add the
+product and, for a live decision, the two version expressions — and three
+paths did not. The finding screen's per-place "decision" column named
+another product's decision as standing here. The list's state, the row's
+state and the finding screen matched by place alone, so a build shipping
+libnl 3.9.0 read as "agreed" from a decision written against 3.7.0 — while
+the reach, ten lines away, correctly said the decision covered nothing there
+and asked a separate question. And the lapse sweep marked a decision lapsed
+whenever *this* target moved off the key, ending a product-wide claim for
+every other build still on the old code, and doing so across products at a
+shared root-level place. The first two are fixed by matching live rows on
+the version expressions and keyless rows by place. The third is a rule as
+much as a fix, recorded as `TRI-48`: a decision lapses when no open finding
+in its product still matches its key, not when one build moves.
+
+**The queue disclosed what it counted.** The builds a claim reaches were
+named without narrowing finding visibility, so a public approver learned
+which undisclosed build carried an issue; a bulk claim's "fix available"
+outlier read `MIN(fixed_in)` across every product sharing the place; the
+similar-claims count on a finding counted rows the reader could not read.
+Each is narrowed now, and `covering()` — the correctly narrowed form of the
+same join, in the same package — is what they should have copied.
+
+**The proposer could park their own claim.** Setting every row aside through
+`except` skipped the same-person check that approving and sending back both
+apply. The claim left every approver's queue while the finding still said
+"waiting". Set-aside rows now answer to the same rule.
+
+**"Off the clock" was spelled five ways.** `Applying` is the one place that
+knows a proposal needing approval is not an answer and a deferral ends on its
+date; `RunningOut` took any live key as an answer (a proposal waiting a
+quarter vanished from the overdue tile), `HeldBy` excluded nothing (the same
+finding still counted as overdue against its holder), and the `lapsed`
+filter admitted a row whose own state said "waiting". One exported predicate
+now says what stands, and the filter says what the row says.
+
+**The upload cap was a comment.** Huma's `MaxBodyBytes` applies to the JSON
+body path only; multipart uploads went through `ParseMultipartForm` with no
+ceiling, spilling to the temp directory before the parser's own limit was
+consulted. `http.MaxBytesReader` now wraps the upload route.
+
+**The test rule that halved the gate was never written down**, and eight of
+the fifty-four handler tests moved to two engines pinned what a query
+returns — exactly the class the MySQL pair caught twice in one week. They
+are back on four; the rule is `DAT-37`; CI now runs the same make targets
+as `make check`, including the interface's checks it never ran.
+
+The rest, each fixed: a per-checkout database name that hashed the module
+path, so two worktrees against one server dropped each other's databases; a
+free-text batch name stored in a 64-character hash column; a malformed
+database URL printed with its password; no security headers at all; a
+session purge nothing called; `''` where NULL was expected in the trend's
+severity; SIGTERM mid-scan calling the bookkeeping with a cancelled context
+and a late worker marking a re-claimed job done; nightly UPDATEs of findings
+whose urgency moved but was never written; a new finding's deadline from the
+published severity while everything else used the assessed one; triage mode
+skipping a row under a state filter; per-build refusals from the guided
+review discarded in triage mode; five lists that showed one page as the
+whole; a sent-back notice linking to a queue that excludes sent-back claims;
+a stale pick-up table; British spellings; a chart that accepted SQLite with
+two replicas; an overtaken scan stranded when the newer one failed to parse;
+an unreachable second decision form deleted; the upload's already-held answer
+shown rather than navigated past.
+
+**Open, needing a decision** (recorded in DECISIONS.md Section 4):
+
+- *Urgency is three policies.* Kept as-of-open at apply, rewritten on
+  assessment, and compared as if current. A finding opened before its issue
+  entered the known-exploited list never gets the three-day window or the
+  top band until it closes and reopens. Either rank and deadline follow the
+  vulnerability (`rerank` already knows how) or they are frozen and the
+  documents say so.
+- *The scan queue's claim is a single shot of thirty minutes*, equal to the
+  scanner's own timeout, with no renewal; a slow scan can be re-claimed
+  while it runs. A heartbeat on `claimed_at` is the fix.
+- *The currency refresher and `Recompute` run uncoordinated on every
+  replica* (SCP-15); the queue and the watch coordinate, these two do not.
+- *An assessment's "one live claim per issue" is read-then-write* with no
+  unique index — the shape TRI-33 rejects for decisions.
+- *Dead columns:* `product.eol_on`, `stream.eol_on` (MDL-11, REM-16 and
+  RPT-04 have no code), `product.triage_floor` (TRI-43's per-product
+  override has no route), `scan.parser_version`, `scan_run.ran_here`,
+  `scan_document.size_bytes`, `finding.last_changed_at`,
+  `person_identity.bound_at`, `job.claimed_by`; seven indexes that are
+  strict prefixes of unique constraints, three on `finding`.
+- *Release comparison is unbounded and one query per fixed entry*; receipts
+  read every run of a target per page; both grow with the calendar.
+- *Identity and version columns are 191 wide with unbounded producers.*
+- *Drafts survive sign-out (UIX-31) and there is no in-place re-auth
+  (UIX-32).*
+
+**Two findings were refused.** `finding_open_idx` being a strict prefix of
+the new covering index is true, but the narrower index reads fewer pages
+for the "open" scan the planner takes; dropping it is a measured trade, not
+a fix. And the interface's "Partly" pill is not a state the server refuses
+to send — it is the row the design says is none of the four, labeled; the
+design now says so.

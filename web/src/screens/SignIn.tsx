@@ -44,7 +44,7 @@ export function SignIn() {
             <a
               key={each.name}
               href={each.path}
-              className="rounded-lg bg-[var(--accent)] px-4 py-2.5 text-center text-sm font-medium text-white hover:opacity-90"
+              className="rounded-lg bg-[var(--accent)] px-4 py-2.5 text-center text-sm font-medium text-[var(--accent-ink)] hover:opacity-90"
             >
               Continue with {each.name}
             </a>

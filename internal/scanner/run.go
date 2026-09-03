@@ -3,6 +3,7 @@ package scanner
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -60,13 +61,34 @@ func (r *Runner) Once(ctx context.Context) (*Outcome, error) {
 	}
 
 	outcome, err := r.scan(ctx, job.Reference)
+
+	// How the job ended is recorded whatever ended it. A shutdown cancels the
+	// scan, and the cancellation must not also stop the job being handed
+	// back — otherwise it stays claimed by a process that has gone until the
+	// claim goes stale, half an hour later.
+	settled, done := queue.Settling(ctx)
+	defer done()
+	var ended error
 	if err != nil {
-		if failed := r.queue.Fail(ctx, job.ID, err); failed != nil {
-			return nil, fmt.Errorf("%w (and recording the failure: %w)", err, failed)
-		}
-		return nil, err
+		ended = r.queue.Fail(settled, job.ID, r.name, err)
+	} else {
+		ended = r.queue.Succeed(settled, job.ID, r.name)
 	}
-	return outcome, r.queue.Succeed(ctx, job.ID)
+	switch {
+	case errors.Is(ended, queue.ErrNoLongerHeld):
+		// The claim went stale while the scan ran and another worker took
+		// the job over. What this scan recorded stands; the job's ending is
+		// the other worker's to write, so there is nothing to retry here —
+		// but a scan that outran its claim is worth knowing about.
+		r.logger.Warn("a job was finished by a worker that no longer held it",
+			"job", job.ID, "target", job.Reference)
+	case ended != nil:
+		r.logger.Warn("could not record how a job ended", "job", job.ID, "error", ended)
+		if err == nil {
+			return outcome, ended
+		}
+	}
+	return outcome, err
 }
 
 // Run scans until the context ends.
@@ -157,8 +179,11 @@ func (r *Runner) scan(ctx context.Context, reference string) (*Outcome, error) {
 	outcome, result, err := r.assess(ctx, targetID, run.ID, components, findings)
 	// The run is recorded as having ended either way. A scanner that stopped
 	// working is otherwise indistinguishable from a product that stopped
-	// having problems.
-	if finished := findings.Finish(ctx, run.ID, result.Version, result.DatabaseVersion, err); finished != nil {
+	// having problems — and a shutdown that cancelled the scan must not also
+	// cancel the record of it, or the run is left open for ever.
+	settled, done := queue.Settling(ctx)
+	defer done()
+	if finished := findings.Finish(settled, run.ID, result.Version, result.DatabaseVersion, err); finished != nil {
 		r.logger.Error("could not record the end of a scan run", "run", run.ID, "error", finished)
 	}
 	if err != nil {

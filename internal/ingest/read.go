@@ -2,10 +2,13 @@ package ingest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
+
+	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
@@ -82,20 +85,49 @@ func (r *Reader) Once(ctx context.Context) (*Result, error) {
 	}
 
 	result, err := r.read(ctx, job.Reference)
+
+	// What became of the scan is recorded whatever ended the reading. A
+	// shutdown cancels the read, and the cancellation must not also stop the
+	// job being handed back — otherwise it stays claimed by a process that
+	// has gone until the claim goes stale, half an hour later.
+	settled, done := queue.Settling(ctx)
+	defer done()
+	var ended error
 	if err != nil {
 		// The failure is recorded against the scan as well as the job. A
 		// producer sending files nothing can read has to be visible as that,
 		// rather than as a queue that keeps retrying for reasons only an
 		// operator reading logs would ever see.
-		if marked := r.markFailed(ctx, job.Reference, err); marked != nil {
-			r.logger.Error("could not record why a scan failed", "scan", job.Reference, "error", marked)
+		//
+		// Not on a cancellation, though: nothing is wrong with the document,
+		// and the job goes back to be read once the process is running again.
+		if ctx.Err() == nil {
+			if marked := r.markFailed(settled, job.Reference, err); marked != nil {
+				r.logger.Error("could not record why a scan failed", "scan", job.Reference, "error", marked)
+			} else if err := r.reinstate(settled, job.Reference); err != nil {
+				r.logger.Error("could not bring back the scan this one had overtaken",
+					"scan", job.Reference, "error", err)
+			}
 		}
-		if failed := r.queue.Fail(ctx, job.ID, err); failed != nil {
-			return nil, fmt.Errorf("%w (and recording the failure: %w)", err, failed)
-		}
-		return nil, err
+		ended = r.queue.Fail(settled, job.ID, r.name, err)
+	} else {
+		ended = r.queue.Succeed(settled, job.ID, r.name)
 	}
-	return result, r.queue.Succeed(ctx, job.ID)
+	switch {
+	case errors.Is(ended, queue.ErrNoLongerHeld):
+		// The claim went stale while the read ran and another worker took
+		// the job over. What was stored stands; the job's ending is the other
+		// worker's to write, so there is nothing to retry here — but a read
+		// that outran its claim is worth knowing about.
+		r.logger.Warn("a job was finished by a worker that no longer held it",
+			"job", job.ID, "scan", job.Reference)
+	case ended != nil:
+		r.logger.Warn("could not record how a job ended", "job", job.ID, "error", ended)
+		if err == nil {
+			return result, ended
+		}
+	}
+	return result, err
 }
 
 // Run reads scans until the context ends.
@@ -119,7 +151,11 @@ func (r *Reader) Run(ctx context.Context, interval time.Duration) {
 		for {
 			result, err := r.Once(ctx)
 			if err != nil {
-				r.logger.Error("reading a scan", "error", err)
+				// A read cut short by shutdown is not a fault in the scan or
+				// in this process; it is handed back and read again later.
+				if ctx.Err() == nil {
+					r.logger.Error("reading a scan", "error", err)
+				}
 				break
 			}
 			if result == nil {
@@ -274,4 +310,61 @@ func (r *Reader) markFailed(ctx context.Context, reference string, cause error) 
 		return nil
 	}
 	return NewStore(r.db.DB).MarkFailed(ctx, scanID, cause)
+}
+
+// reinstate brings back the scan a failed one had overtaken.
+//
+// An older scan read while a newer one was accepted is set aside as
+// superseded, on the strength of the newer one's row alone — the newer one
+// may not have been read yet. If it then cannot be read, the build is left
+// showing whatever came before both: the older scan's job is done and nothing
+// will read it again, and its receipt waits for a scan run that never comes.
+// So once a scan has failed, the newest that still stands is read again where
+// the build does not already show it and nothing is on its way to reading it.
+func (r *Reader) reinstate(ctx context.Context, reference string) error {
+	failedID, err := strconv.ParseInt(reference, 10, 64)
+	if err != nil {
+		return nil
+	}
+	scans := NewStore(r.db.DB)
+	failed, err := scans.ByID(ctx, failedID)
+	if err != nil {
+		return err
+	}
+	// The failed one is no longer accepted, so this is what stands in its
+	// place — or nothing, where it was the only scan.
+	newest, err := scans.Newest(ctx, failed.TargetID)
+	if err != nil || newest == nil {
+		return err
+	}
+
+	var shown int64
+	if err := r.db.NewSelect().
+		TableExpr("target AS t").
+		ColumnExpr("COALESCE(t.last_scan_id, 0)").
+		Where("t.id = ?", failed.TargetID).
+		Scan(ctx, &shown); err != nil {
+		return fmt.Errorf("read what the build shows: %w", err)
+	}
+	if shown == newest.ID {
+		return nil
+	}
+
+	pending, err := r.db.NewSelect().Model((*queue.Job)(nil)).
+		Where("kind = ?", JobKind).
+		Where("reference = ?", strconv.FormatInt(newest.ID, 10)).
+		Where("state IN (?)", bun.List([]queue.State{queue.Pending, queue.Running})).
+		Count(ctx)
+	if err != nil {
+		return fmt.Errorf("read whether the scan is still to be read: %w", err)
+	}
+	if pending > 0 {
+		return nil
+	}
+	if _, err := r.queue.Add(ctx, JobKind, strconv.FormatInt(newest.ID, 10)); err != nil {
+		return err
+	}
+	r.logger.Info("reading an overtaken scan again, because the one that overtook it failed",
+		"scan", newest.ID, "failed", failedID)
+	return nil
 }

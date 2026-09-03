@@ -13,7 +13,7 @@ export function label(kind?: string): string {
     case "assigned":
       return "assigned to you";
     case "sent-back":
-      return "sent back";
+      return "rejected";
     case "build-quiet":
       return "not being scanned";
     default:
