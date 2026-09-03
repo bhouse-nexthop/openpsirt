@@ -152,7 +152,7 @@ its tokens sit on the root element and its grid on the application container.
 That is the whole of the translation, and it is why a screen here can be put
 beside its mockup and compared control for control.
 
-**Three looks, one markup.** A look is a token set — colours, the two
+**Three looks, one markup.** A look is a token set — colors, the two
 typefaces, radii, shadows — and nothing else. The first is a dark rail over a
 light surface; the second is all light and hairline, denser; the third is dark
 throughout. The choice is made from the menu on the avatar, is kept in the
@@ -179,7 +179,7 @@ The rail's three groups are the point. "Across products" holds home, the review
 queue, what is unassigned and the assignments. The named build holds the
 findings, the dependency tree, the inventories and the comparison — the
 comparison belongs to the product rather than to one build, and is reached
-here because this is where somebody already is. "Manage" holds the catalogue,
+here because this is where somebody already is. "Manage" holds the catalog,
 the users and the settings; branches, tags and variants have entries of their
 own, scoped to the picked product, rather than being reachable only through a
 product's row.
@@ -314,7 +314,7 @@ Paging lives in the URL, so a link carries what somebody is looking at
 same data, laid out for the device, rather than a desktop table a phone cannot
 use.
 
-**Severity never borrows the accent colour.** It has its own scale, and
+**Severity never borrows the accent color.** It has its own scale, and
 exploited is a band of its own above critical — a page that paints "critical"
 in the brand color has nothing left that means "act on this". Being exploited
 outranks whatever the score says, which is the ordering everywhere else in this
@@ -566,7 +566,7 @@ reason. The row carries the decision and not the build it was made in, so
 reaffirming happens on the finding, where its locations are, and the card
 links to the decision.
 
-**Adding to the catalogue is an action, not a form above the table** (UIX-48).
+**Adding to the catalog is an action, not a form above the table** (UIX-48).
 Products, branches and tags, variants and users each carry an "add" control in
 the header and a floating action, and both open a drawer with the form; the
 table is what the screen is about.
@@ -584,14 +584,14 @@ when something is moving.
 deployment does to an inventory after it arrives; what a person uploads, and
 what the list is of, is inventories.
 
-**The catalogue says what each entry holds.** Products carry how many branches,
+**The catalog says what each entry holds.** Products carry how many branches,
 tags and variants they have, what is open against them and when they were last
 scanned; branches and tags carry what they came from, what is open and when
 they were last scanned; variants carry whether they ship to customers and what
 is open. A list of names alone makes somebody open every row to find out
 whether anything is behind it, which is the question the list exists to answer.
 Every count of what is open is issues at components, the way the findings list
-counts, so a catalogue row and the list it opens agree.
+counts, so a catalog row and the list it opens agree.
 
 **The inventories list says what each run changed**, not only that it finished.
 Opened and closed are counted as issues at components like everything else. A

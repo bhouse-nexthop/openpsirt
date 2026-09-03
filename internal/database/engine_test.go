@@ -2,6 +2,7 @@ package database
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -94,6 +95,26 @@ func TestPasswordsAreNotLogged(t *testing.T) {
 	}
 	if !contains(got.DSN, "hunter2") {
 		t.Error("the DSN lost the password; it is what actually connects")
+	}
+}
+
+func TestAURLTheParserRefusesIsNotRepeatedBack(t *testing.T) {
+	// The parser's own message quotes what it could not read, and what it
+	// could not read is the URL — password included, in the first line the
+	// process logs. The message names the scheme and host and nothing else.
+	_, err := ParseURL("postgres://openpsirt:hunter%2too@db.internal:5432/openpsirt")
+	if err == nil {
+		t.Fatal("a URL with a malformed escape was accepted")
+	}
+	for _, secret := range []string{"hunter", "%2t", "openpsirt:"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Errorf("the error repeats the credential: %v", err)
+		}
+	}
+	for _, kept := range []string{"postgres", "db.internal:5432", "escape"} {
+		if !strings.Contains(err.Error(), kept) {
+			t.Errorf("the error does not say %q: %v", kept, err)
+		}
 	}
 }
 

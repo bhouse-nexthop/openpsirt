@@ -83,8 +83,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go build ./...
-      - run: go vet ./...
+      - run: make build
+      - run: make vet
       - name: Confirm a developer's engines are the engines run here
         # The servers above are declared in this file and started locally by
         # "make engines-up", which pins the same versions. Two pinned lists
@@ -93,51 +93,41 @@ jobs:
         # nothing about the one it does. The target compares the two lists in
         # both directions, so an engine added here and nowhere else is caught.
         run: make engines-check
-      # -p 1: packages share the database servers above, and the rollback test
-      # drops every table. Running them in parallel makes unrelated packages
-      # fail depending on timing.
-      - run: go test -race -count=1 -p 1 ./...
-      - name: Confirm every engine was actually exercised
+      # The same target the local gate runs (CIG-05): every configured
+      # engine, the race detector on, nothing cached, packages in parallel.
+      # Each test binary has a database of its own on every server, so no
+      # package can tear down another's tables.
+      - run: make test-all
+      - name: Confirm every engine ran, and that each was the engine it claimed
         # A skipped engine passes silently, which would make the matrix
-        # decorative. This fails if any engine did not run.
-        run: |
-          go test ./internal/schema/ -count=1 -v -run TestMigrationsApplyOnEveryEngine \
-            | tee /tmp/engines.txt
-          if grep -q "^FAIL" /tmp/engines.txt; then
-            echo "::error::the migration suite failed"; exit 1
-          fi
-          for engine in sqlite postgres mysql mariadb; do
-            grep -q "PASS: TestMigrationsApplyOnEveryEngine/$engine" /tmp/engines.txt \
-              || { echo "::error::$engine did not run"; exit 1; }
-          done
-      - name: Confirm each engine is the engine it claims to be
-        # The guards above grep for a subtest *label*. The label comes from a
-        # list in the test harness and the connection comes from an
-        # environment variable, and nothing checked the two agreed — so four
-        # URLs differing by a port digit, one pasted over another, produced
-        # four green lines while one server was tested three times.
-        run: |
-          go test ./internal/dbtest/ -count=1 -v \
-            -run TestEachEngineIsTheEngineItSaysItIs | tee /tmp/whoare.txt
-          for engine in sqlite postgres mysql mariadb; do
-            grep -q "PASS: TestEachEngineIsTheEngineItSaysItIs/$engine" /tmp/whoare.txt \
-              || { echo "::error::$engine was not checked for being itself"; exit 1; }
-          done
+        # decorative. The target greps each engine by name, and — because a
+        # grep for a *label* only proves a subtest with that label ran, while
+        # the connection comes from an environment variable — asks each server
+        # what it is and compares that against the label. With the old server
+        # configured above it also checks the version floor refused it rather
+        # than skipped, and that the migration lock was exercised on each of
+        # the three servers.
+        run: make check-engines
 
-      - name: Confirm the version floor was exercised, not skipped
-        # A skipped test passes. This one guards the claim that an unsupported
-        # server is refused, so a silent skip would make the claim untrue.
-        run: |
-          go test ./internal/database/ -count=1 -v -run TestOpenRefuses | tee /tmp/floor.txt
-          grep -q "PASS: TestOpenRefusesAServerBelowTheFloor" /tmp/floor.txt \
-            || { echo "::error::the version floor test did not run"; exit 1; }
-      - name: Confirm the migration lock was exercised, not skipped
-        run: |
-          go test ./internal/database/migrate/ -count=1 -v -run TestLockExcludes | tee /tmp/lock.txt
-          for engine in postgres mysql mariadb; do
-            grep -q "PASS: TestLockExcludesAnotherConnection/$engine" /tmp/lock.txt \
-              || { echo "::error::the migration lock was not exercised on $engine"; exit 1; }
-          done
+  web:
+    name: Interface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          # The version the image builds the interface with.
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # What "make check" runs for the interface: dependencies installed as
+      # locked, the type check, its tests, and the generated client diffed
+      # against the API document so the two cannot drift apart.
+      - run: make web-check
 
   lint:
     name: Static analysis

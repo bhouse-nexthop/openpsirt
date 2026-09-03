@@ -34,7 +34,8 @@ From there, create people and grant roles per product:
   POST /v1/people
   POST /v1/roles
 
-The API document is served at /docs.
+The API document is served at /openapi.json (and /openapi.yaml) to anybody
+signed in; there is no documentation page on the server itself.
 {{- if and .Values.auth.trustedHeader.name (not .Values.ingress.enabled) }}
 
 NOTE: sign-in is asserted by the {{ .Values.auth.trustedHeader.name }} header, believed

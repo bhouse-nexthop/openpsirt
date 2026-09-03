@@ -279,10 +279,21 @@ always runs, so the suite is useful with nothing installed; the production
 engines run when the environment points at them and are **skipped loudly**
 otherwise.
 
-Test packages run **one at a time**. They share the database servers, and the
-rollback test drops every table — in parallel, that makes unrelated packages
-fail depending on timing. Giving each package its own database would also work;
-serializing is one flag and the suite runs in seconds.
+The schema is built **once per test binary**, not once per test. On SQLite a
+file is migrated on first use and copied for each test; on each server the
+binary gets a database of its own, named for the package and the checkout it
+is tested from, dropped and created on first use. Packages therefore share
+nothing and run in parallel; tests within a package empty the tables between
+them. Two checkouts against the same servers get different databases — the
+name hashes the directory as well as the import path, because the import path
+alone was the same in both, and one dropped the other's database mid-run.
+
+Which tests run on which engines is a rule, not a per-file choice (DAT-37): a
+test that pins what a query returns, hides, conflicts on or spells runs on
+every engine, and a test that pins routing, authorization mapping or a
+response's shape runs on SQLite and PostgreSQL, because nothing it pins varies
+by engine. The line is drawn at SQL rather than at the package — a handler test
+that pins a query keeps all four.
 
 CI provides all four, and then checks that all four actually ran. A skipped
 engine passes silently, which would make the matrix decorative.

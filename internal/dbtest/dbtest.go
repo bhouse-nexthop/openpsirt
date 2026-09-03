@@ -81,8 +81,9 @@ func Each(t *testing.T, fn func(t *testing.T, db *database.DB)) {
 // underneath already have their own tests on all four engines. Running such
 // a test four times proves nothing the store tests did not, and the API
 // package alone was a quarter of the whole suite's time. The rule for
-// choosing: if the test would fail on one engine and pass on another only
-// because of SQL, it belongs in Each.
+// choosing (DAT-37): if the test would fail on one engine and pass on
+// another only because of SQL, it belongs in Each — and that includes a
+// handler test that pins what a query returns, hides, conflicts on or spells.
 func Two(t *testing.T, fn func(t *testing.T, db *database.DB)) {
 	t.Helper()
 	run(t, fn, map[database.Engine]bool{database.SQLite: true, database.Postgres: true})
@@ -229,8 +230,9 @@ func sqliteTemplate() ([]byte, error) {
 // never share tables and a run leaves at most one database per package
 // behind — and dropped on the next run rather than at exit, because a test
 // binary has no hook that runs after its last test. Two runs of the same
-// package against the same server at once would collide; nothing here
-// prevents that, and it is stated so it is not discovered.
+// package from the same checkout against the same server at once would
+// collide; nothing here prevents that, and it is stated so it is not
+// discovered.
 func serverDatabase(engine database.Engine, base string) (string, error) {
 	serverMu.Lock()
 	defer serverMu.Unlock()
@@ -278,19 +280,35 @@ func serverDatabase(engine database.Engine, base string) (string, error) {
 
 // packageDatabaseName names a database for the package this binary tests:
 // the package's own name for a person reading the server's list, and a hash
-// of its full path so two packages sharing a name do not share a database.
-// Short enough for every engine's limit on identifier length.
+// of its import path and of the directory it is tested from.
+//
+// The directory is in the hash because the import path is not enough. Two
+// checkouts of this repository — a second worktree, say — hold the same
+// package at the same import path, and pointed at the same servers they got
+// the same name, so one dropped the other's database while it was in use.
+// A test binary runs in the directory of the package it tests, and that
+// directory includes the checkout's path, which tells the two apart.
 func packageDatabaseName() string {
 	path := os.Args[0]
 	if info, ok := debug.ReadBuildInfo(); ok && info.Path != "" {
 		path = info.Path
 	}
+	dir, err := os.Getwd()
+	if err != nil {
+		dir = ""
+	}
+	return databaseName(path, dir)
+}
+
+// databaseName is the name for the package at path when tested from dir.
+// Short enough for every engine's limit on identifier length.
+func databaseName(path, dir string) string {
 	base := strings.TrimSuffix(filepath.Base(path), ".test")
 	base = notIdentifier.ReplaceAllString(strings.ToLower(base), "_")
 	if len(base) > 24 {
 		base = base[:24]
 	}
-	sum := sha256.Sum256([]byte(path))
+	sum := sha256.Sum256([]byte(path + "\x00" + dir))
 	return "openpsirt_t_" + base + "_" + hex.EncodeToString(sum[:3])
 }
 

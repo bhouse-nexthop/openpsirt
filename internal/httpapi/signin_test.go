@@ -56,9 +56,14 @@ type signInReach struct {
 	db *database.DB
 }
 
-// Only the two-engine form exists here: every sign-in test pins a redirect,
-// a cookie or a refusal, not a query. Add a four-engine form the day one
-// pins what a query returns — the rule is at dbtest.Two.
+// Most sign-in tests pin a redirect, a cookie or a refusal, not a query, and
+// run on two engines; the one that pins what the identity table conflicts on
+// runs on four. The rule is DAT-37, at dbtest.Two.
+func eachSignIn(t *testing.T, fn func(t *testing.T, r *signInReach)) {
+	t.Helper()
+	signInOn(t, dbtest.Each, fn)
+}
+
 func twoSignIn(t *testing.T, fn func(t *testing.T, r *signInReach)) {
 	t.Helper()
 	signInOn(t, dbtest.Two, fn)
@@ -306,7 +311,7 @@ func TestAnIdentifierAlreadyPinnedIsNotRedeemableByAnotherName(t *testing.T) {
 	// Somebody whose identifier is pinned is that person whatever name the
 	// provider now reports, and a different identifier reporting a pinned
 	// name is somebody else.
-	twoSignIn(t, func(t *testing.T, r *signInReach) {
+	eachSignIn(t, func(t *testing.T, r *signInReach) {
 		r.provider.says = &signin.Identity{Subject: "1001", Username: "granted"}
 		if rec := callback(t, r, "the-state", "a-code", true); rec.Code != http.StatusFound {
 			t.Fatalf("the authorized person could not sign in: %d", rec.Code)

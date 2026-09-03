@@ -294,7 +294,7 @@ func TestReadingADecisionNeedsTheRightToTakePartInIt(t *testing.T) {
 	// Every read is narrowed the same way the writes are. A decision somebody
 	// may not reach answers as one that is not there, so guessing identifiers
 	// says nothing.
-	twoReach(t, func(t *testing.T, r *reach) {
+	eachReach(t, func(t *testing.T, r *reach) {
 		place := r.scanned(t)
 		id := r.decided(t, place)
 
@@ -766,7 +766,7 @@ func TestTheNewEndpointsAnswerRatherThanExist(t *testing.T) {
 	// each one is the kind of thing that can be registered, return an empty
 	// shape, and look finished. This drives them against a build that has
 	// something in it.
-	twoReach(t, func(t *testing.T, r *reach) {
+	eachReach(t, func(t *testing.T, r *reach) {
 		r.scannedWithEvidence(t)
 
 		// Walking the graph, one step at a time.

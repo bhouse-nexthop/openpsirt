@@ -7,6 +7,7 @@
 package database
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -76,7 +77,10 @@ func ParseURL(raw string) (Target, error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return Target{}, fmt.Errorf("database URL is not a URL: %w", err)
+		// Not wrapped: the parser's message quotes the text it could not
+		// read, and that text is the URL, password included. What is safe
+		// to say is which part was unreadable.
+		return Target{}, fmt.Errorf("database URL is not a URL: %s", parseFailure(raw, err))
 	}
 	engine, ok := engineFromScheme[strings.ToLower(u.Scheme)]
 	if !ok {
@@ -217,6 +221,43 @@ func driverDSN(engine Engine, u *url.URL, raw string) (string, error) {
 		return path + "?_pragma=" + strings.Join(pragmas, "&_pragma="), nil
 	}
 	return "", fmt.Errorf("unsupported database %q", engine)
+}
+
+// parseFailure describes a URL the parser refused without repeating it.
+//
+// The parser names what it objected to, which for a malformed escape is the
+// escape itself — three characters of the password, in the message that
+// startup logs. So the message is rebuilt from what a URL is allowed to show:
+// the scheme and the host, taken from the text by shape rather than by a
+// parser that has already refused it, and the kind of thing that was wrong.
+func parseFailure(raw string, err error) string {
+	scheme, rest, _ := strings.Cut(raw, "://")
+	if rest == "" {
+		scheme = ""
+	}
+	// The host is what follows the last "@" of the authority, up to the path.
+	authority, _, _ := strings.Cut(rest, "/")
+	host := authority
+	if at := strings.LastIndex(authority, "@"); at >= 0 {
+		host = authority[at+1:]
+	}
+	var urlErr *url.Error
+	kind := "could not be parsed"
+	if errors.As(err, &urlErr) {
+		var escapeErr url.EscapeError
+		var invalidHost url.InvalidHostError
+		switch {
+		case errors.As(urlErr.Err, &escapeErr):
+			kind = "has a malformed percent-escape"
+		case errors.As(urlErr.Err, &invalidHost):
+			kind = "has an invalid host"
+		}
+	}
+	where := "the URL"
+	if scheme != "" || host != "" {
+		where = fmt.Sprintf("the %s URL for %q", scheme, host)
+	}
+	return where + " " + kind
 }
 
 // secretParams are query parameters that carry a credential. Drivers accept

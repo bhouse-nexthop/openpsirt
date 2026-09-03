@@ -76,7 +76,10 @@ func (s *Store) Trend(ctx context.Context, subject access.Subject, scope Scope, 
 		Join("JOIN scan_run AS o ON o.id = f.opened_run_id").
 		Join("LEFT JOIN scan_run AS c ON c.id = f.closed_run_id").
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
-		ColumnExpr("COALESCE(v.severity, 'unknown') AS severity").
+		// An issue with no published severity is stored as '', not NULL, so
+		// the empty string is what has to be named — a COALESCE alone never
+		// fires and the chart's split gained a key with no name.
+		ColumnExpr("COALESCE(NULLIF(v.severity, ''), 'unknown') AS severity").
 		ColumnExpr("o.started_at AS opened_at").
 		ColumnExpr("c.started_at AS closed_at").
 		ColumnExpr("COALESCE(f.closed_because, '') AS closed_because").

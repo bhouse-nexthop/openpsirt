@@ -158,7 +158,7 @@ func TestRedeclaringSomethingDifferentlyIsRefused(t *testing.T) {
 func TestAVariantShipsUnlessItSaysOtherwise(t *testing.T) {
 	// An unclassified artifact should rank as though it reaches customers, so
 	// leaving the field out must not read as a denial.
-	twoCatalog(t, func(t *testing.T, d *declaring) {
+	eachCatalog(t, func(t *testing.T, d *declaring) {
 		d.post(t, "/v1/products", `{"name": "sonic"}`)
 		d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
 
@@ -238,7 +238,7 @@ func TestWhatHasBeenDeclaredCanBeListed(t *testing.T) {
 func TestADeclaredTargetCanBeUploadedAgainst(t *testing.T) {
 	// The two halves have to meet: what declaration writes is what an upload
 	// resolves. Testing them apart would let the names diverge.
-	twoCatalog(t, func(t *testing.T, d *declaring) {
+	eachCatalog(t, func(t *testing.T, d *declaring) {
 		d.post(t, "/v1/products", `{"name": "sonic"}`)
 		d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
 		d.post(t, "/v1/products/sonic/variants", `{"name": "broadcom"}`)

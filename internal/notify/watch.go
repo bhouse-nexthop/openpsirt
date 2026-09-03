@@ -69,6 +69,11 @@ func (w *Watch) Run(ctx context.Context, interval time.Duration) {
 			w.logger.Info("operational alerts changed",
 				"opened", opened, "cleared", cleared)
 		}
+		if gone, err := w.Tidy(ctx); err != nil {
+			w.logger.Error("clearing expired sessions", "error", err)
+		} else if gone > 0 {
+			w.logger.Info("cleared expired sessions", "sessions", gone)
+		}
 		timer.Reset(interval)
 	}
 }
@@ -103,6 +108,19 @@ func (w *Watch) Once(ctx context.Context) (opened, cleared int, err error) {
 		cleared += c
 	}
 	return opened, cleared, nil
+}
+
+// Tidy clears what has run out: sessions past their lifetime.
+//
+// Sessions are the one table that grows with use rather than with what is
+// tracked, and an expired one is refused on sight, so nothing but the table's
+// size changes when they go. Nothing else here runs on a clock — the readers
+// wait on work and the upstream pass on a setting — so the clearing rides on
+// the sweep that already runs every quarter of an hour on every replica. Two
+// replicas clearing at once delete the same rows or disjoint ones, and either
+// way nothing is lost.
+func (w *Watch) Tidy(ctx context.Context) (int64, error) {
+	return access.NewStore(w.db).PurgeExpiredSessions(ctx)
 }
 
 // quietBuilds is every build nothing has been filed against for longer than

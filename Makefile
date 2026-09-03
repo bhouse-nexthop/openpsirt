@@ -143,10 +143,6 @@ build:
 	@mkdir -p bin
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/openpsirt
 
-# One package at a time. Packages otherwise run in parallel against the same
-# database server, and the rollback test drops every table while another
-# package is using them. Isolating each package into its own database would
-# also work; serializing is one flag, and the suite is seconds long.
 # The quick loop: SQLite only, packages in parallel, the build cache on, no
 # race detector. Seconds, so it is run after every change. The four-engine,
 # race-detected, uncached run is test-all, and the gate uses that.
@@ -528,7 +524,7 @@ demo-up: demo-down
 	@# a container inherits nothing of the shell that started it.
 	@#
 	@# And loopback is always excluded from it. Everything in the image that
-	@# speaks HTTP honours these, including the health check, so passing a
+	@# speaks HTTP honors these, including the health check, so passing a
 	@# proxy through without this sends the container's own probe of itself to
 	@# the proxy — which answers 403, and the container reports unhealthy while
 	@# serving every request correctly.

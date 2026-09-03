@@ -78,7 +78,7 @@ unpick later.
 | **Visibility is enforced in the data-access layer**, never per handler, and every query carries a subject. This covers counts, aggregates, search and exports — not just row reads | ACC-04, ACC-07 |
 | **A finding is a component at a specific place.** Do not deduplicate up to the package. Grouping is presentation only | MDL-05, REL-02 |
 | **Identity is structural; expiry is version-based.** Never mix them — that is how an unrelated top-level bump invalidates a leaf decision | MDL-08 |
-| **The tests run on every supported engine.** SQLite-only tests catch none of the portability traps | DAT-12 |
+| **A test that pins what a query does runs on every supported engine.** SQLite-only tests catch none of the portability traps. A test that pins routing, which role reaches which endpoint, or a response's shape runs on SQLite and PostgreSQL, because nothing it pins varies by engine — the choice is made by reading the test, and it is the SQL that decides | DAT-12, DAT-37 |
 | **Every transaction is retryable as a whole**, through the one helper. A cluster certifies at `COMMIT`, so a write whose statements all succeeded can still be rolled back under it | DAT-30 |
 | **Nothing a transaction depends on is read outside it.** A retry re-runs the closure against a moved database, so a value fetched before it began describes a world that is gone. Anything the closure uses but does not fetch is a defect | DAT-31 |
 | **SQL values are parameterized and SQL identifiers come from an allowlist.** A placeholder cannot bind a column name, so a sort column from a query parameter is the real risk | SEC-01, SEC-02 |
@@ -344,7 +344,9 @@ migrated SQLite file copied per test, and on each server a database of the
 binary's own, named for the package, dropped and recreated on first use — so
 no package can tear down another's tables (see `internal/dbtest`). The one
 thing that still collides is running the *same* package twice at once against
-the same server.
+the same server, or the same package from two checkouts hashing alike — the
+checkout's directory is in the hash, so that takes a hash collision rather
+than a second worktree.
 
 ### Why the second command exists
 

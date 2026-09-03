@@ -4,6 +4,9 @@
 {{- if and .Values.database.url .Values.database.existingSecret }}
 {{- fail "set database.url or database.existingSecret, not both" }}
 {{- end }}
+{{- if and .Values.database.url (regexMatch "^(sqlite|sqlite3|file):" (lower .Values.database.url)) (gt (int .Values.replicaCount) 1) }}
+{{- fail (printf "database.url is SQLite and replicaCount is %d: SQLite is one file on one pod, so a second replica would start with an empty database of its own rather than share this one. Use PostgreSQL, MySQL or MariaDB, or set replicaCount to 1 for a single-pod trial" (int .Values.replicaCount)) }}
+{{- end }}
 {{- if not .Values.auth.bootstrapAdmins }}
 {{- fail "set auth.bootstrapAdmins: the process refuses to start until somebody can administer it, and a deployment nobody can administer has one route back in — editing the database by hand" }}
 {{- end }}
@@ -54,6 +57,11 @@ spec:
       # Set on the pod, not the service account, so it holds however the
       # account was created. openpsirt never talks to the Kubernetes API.
       automountServiceAccountToken: false
+      # The process drains requests for its shutdown grace and then waits
+      # the same grace again for a worker mid-scan, so it can take twice the
+      # grace to stop on its own. Killed before that, a request in flight is
+      # cut off and a scan being applied is left for the queue to retry.
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: openpsirt
@@ -172,7 +180,10 @@ spec:
               mountPath: {{ .Values.scanner.cacheDir }}
       volumes:
         - name: tmp
-          emptyDir: {}
+          # Bounded, because an emptyDir without a limit is node disk that a
+          # scratch file nobody cleans up can fill.
+          emptyDir:
+            sizeLimit: {{ .Values.tmp.sizeLimit }}
         - name: scanner-cache
           {{- if .Values.scanner.persistence.existingClaim }}
           persistentVolumeClaim:

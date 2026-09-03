@@ -234,7 +234,7 @@ type Shape struct {
 
 // Shapes counts what each of these products holds.
 //
-// A catalogue row saying only a name makes somebody open it to find out
+// A catalog row saying only a name makes somebody open it to find out
 // whether there is anything there, which for a list whose whole job is to say
 // what exists is the question it should have answered.
 // It carries a subject like every other read here. The caller passes ids it

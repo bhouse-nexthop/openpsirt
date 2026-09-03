@@ -3,8 +3,8 @@
 Who is asking, and what they may reach.
 
 Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-50 to ACC-53, SEC-03,
-SEC-07, SEC-09, ACC-44, ACC-54 to ACC-59, and the half of ACC-43 that has a
-trigger today.
+SEC-07, SEC-09, SEC-20, ACC-44, ACC-54 to ACC-59, and the half of ACC-43 that
+has a trigger today.
 
 ## Authenticating is not being authorized
 
@@ -510,6 +510,17 @@ list means adding a route never quietly adds an exception.
 reconnaissance: it says which published issues might apply. The probes stay
 open, because a container probe cannot sign in and they report nothing beyond
 whether this process can serve.
+
+**Every response carries the browser headers that turn off what nothing here
+needs** (SEC-20): no guessing at a content type, no page anywhere may frame
+this one, referrers stay on this origin, and a content security policy permits
+only what the bundled interface ships — its own scripts, styles and fonts,
+`data:` images, and requests to itself. Inline styles are the one concession,
+because the chart library writes them. Set before any handler, on the API's
+answers as well as the page's, so a route added later cannot lack them and a
+JSON body opened in a browser is still covered. It is the second line SEC-15
+accepted behind the markdown sanitizer: a bug there lands in a page that can
+run no inline script and load nothing from anywhere else.
 
 A deployment that cannot tell who is asking serves nobody. Failing closed means
 an unconfigured deployment is a service that is up and refusing, which is

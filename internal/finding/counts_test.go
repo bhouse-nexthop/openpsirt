@@ -8,7 +8,7 @@ import (
 )
 
 // What is open against a product, a branch or a variant — the numbers the
-// catalogue screens draw.
+// catalog screens draw.
 //
 // Counting is reading, so these carry a subject like every other read, and the
 // count has to agree with the list somebody opens next: issues at components,
@@ -38,7 +38,7 @@ func TestCountingWhatIsOpenAgreesWithTheListAndCarriesVisibility(t *testing.T) {
 			t.Fatal(err)
 		}
 		if got := byProduct[f.productID]; got != listed {
-			t.Errorf("the catalogue counts %d and the list shows %d; one of them is "+
+			t.Errorf("the catalog counts %d and the list shows %d; one of them is "+
 				"counting places", got, listed)
 		}
 

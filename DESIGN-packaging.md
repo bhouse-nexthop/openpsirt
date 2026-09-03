@@ -94,8 +94,22 @@ again from the beginning — turning a slow upgrade into an outage. The default 
 ### Security context
 
 Non-root, read-only root filesystem, every capability dropped, and the default
-seccomp profile. Nothing here needs any of them. `/tmp` is an `emptyDir`,
-because a read-only root still needs somewhere to put a scratch file.
+seccomp profile. Nothing here needs any of them. `/tmp` is an `emptyDir` with
+a size limit, because a read-only root still needs somewhere to put a scratch
+file and an unbounded scratch directory is node disk that a stray file can
+fill.
+
+The pod's termination grace is twice the process's own shutdown grace: the
+process drains requests for that long and then waits the same again for a
+worker mid-scan, so a shorter grace kills a scan being applied and leaves it
+for the queue to retry.
+
+**A SQLite URL with more than one replica is refused at render.** Every
+replica serves, reads and scans, coordinated through the database (SCP-15),
+and SQLite is a file inside one pod — a second replica would start with an
+empty database of its own. The chart can only see the URL when it is given in
+values; a URL in a Secret of the operator's own is not checked here, and the
+process warns at startup that SQLite is not a production engine.
 
 The service account has `automountServiceAccountToken: false` — OpenPSIRT never
 talks to the Kubernetes API, so it has no use for a token that would otherwise

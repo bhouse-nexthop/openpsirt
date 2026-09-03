@@ -12,7 +12,7 @@ import "github.com/uptrace/bun"
 // being the only option (UIX-38).
 //
 // Each level is a resolved identifier rather than a name, because a name is
-// matched by a rule the catalogue owns and there should not be a second copy
+// matched by a rule the catalog owns and there should not be a second copy
 // of it here. Nil means "all of them", which is what an unselected level means.
 //
 // The levels are independent. A variant belongs to the product rather than to

@@ -30,6 +30,38 @@ import (
 // readiness probe only reflects the process being up.
 type Ready func(context.Context) error
 
+// contentSecurityPolicy is what a page served here may load and run: what the
+// bundled interface ships, and nothing from anywhere else (SEC-20).
+//
+// Scripts, fonts and stylesheets are its own files; images may also be
+// data: URIs, which is how an inline SVG reaches an img element; requests go
+// to this origin only; and no page anywhere may frame it. Inline styles are
+// the one concession — the chart library writes them — and it is styles
+// rather than scripts, which is the half that matters. The interface has no
+// inline script and fetches nothing from a third party, so this costs it
+// nothing, and it is the second line SEC-15 accepted behind the sanitizer:
+// a bug there lands in a page that can run no inline script.
+const contentSecurityPolicy = "default-src 'self'; img-src 'self' data:; " +
+	"style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; " +
+	"frame-ancestors 'none'"
+
+// browserHeaders sets, on every response, the headers that turn off what
+// nothing served here needs (SEC-20): a browser guessing a content type,
+// any page framing this one, and a referrer carrying a finding's path to
+// somebody else's server. Set here rather than per route so that a route
+// added later cannot lack them, and on the API's responses as well as the
+// page's, because a JSON body opened directly in a browser is still a page.
+func browserHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "same-origin")
+		h.Set("Content-Security-Policy", contentSecurityPolicy)
+		next.ServeHTTP(w, r)
+	})
+}
+
 // changesSomething reports whether a method is one that writes.
 //
 // Named as a list of what is safe rather than of what is not: a method absent
@@ -48,6 +80,7 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	router := chi.NewMux()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Recoverer)
+	router.Use(browserHeaders)
 	// One resolution step, before any handler. Doing it here rather than in
 	// each handler is the whole point: a handler that forgets is a handler
 	// answering for everybody, and the forgetting is invisible until somebody
@@ -153,7 +186,9 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 
 	cfg := huma.DefaultConfig("OpenPSIRT", version.Get().Version)
 	cfg.Info.Description = "Track vulnerabilities in the products you ship."
-	// Documentation is published separately, so the server does not serve it.
+	// Documentation is published separately, so the server serves no page
+	// for it. The document itself stays on the framework's own route,
+	// authenticated like everything else (API-05).
 	cfg.DocsPath = ""
 
 	api := humachi.New(router, cfg)

@@ -67,7 +67,7 @@ type Run struct {
 	// Scanner, ScannerVersion and DatabaseVersion are what produced this, and
 	// RanHere says whether we ran it. Counts are only comparable between
 	// products measured the same way, so a report that mixed the two without
-	// saying would be a rumour rather than a report.
+	// saying would be a rumor rather than a report.
 	Scanner         string     `bun:"scanner,notnull"`
 	ScannerVersion  string     `bun:"scanner_version"`
 	DatabaseVersion string     `bun:"database_version"`

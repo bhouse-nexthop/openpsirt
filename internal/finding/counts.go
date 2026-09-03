@@ -40,11 +40,11 @@ func (l Level) column() (string, bool) {
 // OpenBy counts what is open at each product, branch or variant.
 //
 // Counted as issues at components rather than as places, which is what the
-// findings list counts and what a catalogue row has to agree with. A component
+// findings list counts and what a catalog row has to agree with. A component
 // reached twenty ways carries the same issue twenty times, so counting rows
 // makes a product look twenty times worse than the list somebody opens next.
 //
-// Worked out when it is asked for. A catalogue is a handful of rows and the
+// Worked out when it is asked for. A catalog is a handful of rows and the
 // alternative is a stored total that is right at the end of a scan and drifts
 // from the list beside it thereafter.
 func (s *Store) OpenBy(ctx context.Context, subject access.Subject, scope Scope,

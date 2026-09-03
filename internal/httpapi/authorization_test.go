@@ -178,7 +178,7 @@ func reachOn(t *testing.T, on engines, fn func(t *testing.T, r *reach)) {
 		}
 
 		// A build under each product, so that anything answering "what exists
-		// here" has something to answer with. Without these the catalogue has
+		// here" has something to answer with. Without these the catalog has
 		// products and no builds, and every test of what a reader may see is
 		// satisfied by an empty list — which is also what a missing visibility
 		// filter looks like.
@@ -285,7 +285,7 @@ func TestWhoMayReachWhat(t *testing.T) {
 	// answer a name nobody ever declared gets. That is what invisible means,
 	// and it is why so many rows below expect 404 where 403 would look more
 	// natural.
-	twoReach(t, func(t *testing.T, r *reach) {
+	eachReach(t, func(t *testing.T, r *reach) {
 		const (
 			products   = "/v1/products"
 			mine       = "/v1/products/mine/streams"
@@ -443,7 +443,7 @@ func TestWhatSomebodyCannotSeeLooksExactlyLikeWhatIsNotThere(t *testing.T) {
 	// way — the code, the body, a header — then somebody holding one product
 	// can enumerate every other by guessing names and watching which guesses
 	// answer differently.
-	twoReach(t, func(t *testing.T, r *reach) {
+	eachReach(t, func(t *testing.T, r *reach) {
 		for _, pair := range [][2]string{
 			{"/v1/products/theirs/streams", "/v1/products/nosuch/streams"},
 			{"/v1/products/theirs/variants", "/v1/products/nosuch/variants"},

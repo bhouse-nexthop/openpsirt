@@ -14,7 +14,7 @@ import (
 //
 // None of this had a test. The runs query went from "the newest finished one"
 // to every finished one, a receipt gained the run that answered it, and both
-// design documents assert behaviour that would regress with nothing saying so.
+// design documents assert behavior that would regress with nothing saying so.
 func TestAFailedRunDoesNotPoisonTheUploadsBeforeIt(t *testing.T) {
 	// One bad night used to be permanent. The earliest run to finish after an
 	// upload was taken as the one that answered it whatever became of that

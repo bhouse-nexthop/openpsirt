@@ -104,14 +104,21 @@ type Config struct {
 const envPrefix = "OPENPSIRT_"
 
 // Load reads configuration from the environment.
+//
+// A value that is set and cannot be read is a startup error naming the
+// variable, never a silent fallback. "PLAIN_HTTP=false" turning Secure
+// cookies off, or "AUTO_MIGRATE=0" still migrating, is a setting that does
+// the opposite of what it says — worse than refusing to start, because the
+// operator has no reason to look.
 func Load() (Config, error) {
+	var r reader
 	c := Config{
 		Addr:                   env("ADDR", ":8080"),
 		BaseURL:                env("BASE_URL", ""),
 		TrustedGroupsHeader:    env("TRUSTED_GROUPS_HEADER", ""),
 		TrustedGroupsDelimiter: env("TRUSTED_GROUPS_DELIMITER", ","),
-		PlainHTTP:              env("PLAIN_HTTP", "") != "",
-		SessionLifetime:        duration("SESSION_LIFETIME", 0),
+		PlainHTTP:              r.boolean("PLAIN_HTTP", false),
+		SessionLifetime:        r.duration("SESSION_LIFETIME", 0),
 
 		OIDCName:          env("OIDC_NAME", "oidc"),
 		OIDCIssuer:        env("OIDC_ISSUER", ""),
@@ -124,17 +131,20 @@ func Load() (Config, error) {
 		GitHubClientSecret: env("GITHUB_CLIENT_SECRET", ""),
 		GitHubOrg:          env("GITHUB_ORG", ""),
 		LogFormat:          env("LOG_FORMAT", "text"),
-		ShutdownGrace:      duration("SHUTDOWN_GRACE", 15*time.Second),
+		ShutdownGrace:      r.duration("SHUTDOWN_GRACE", 15*time.Second),
 		DatabaseURL:        env("DATABASE_URL", ""),
 		ScannerPath:        env("SCANNER_PATH", ""),
 		TrustedHeader:      env("TRUSTED_HEADER", ""),
-		AutoMigrate:        env("AUTO_MIGRATE", "true") != "false",
+		AutoMigrate:        r.boolean("AUTO_MIGRATE", true),
 		ReadTimeout:        5 * time.Minute,
 		WriteTimeout:       5 * time.Minute,
-		DBMaxOpen:          number("DB_MAX_OPEN", 25),
-		DBMaxIdle:          number("DB_MAX_IDLE", 25),
-		DBIdleTimeout:      duration("DB_IDLE_TIMEOUT", time.Minute),
-		DBLifetime:         duration("DB_CONN_LIFETIME", 30*time.Minute),
+		DBMaxOpen:          r.number("DB_MAX_OPEN", 25),
+		DBMaxIdle:          r.number("DB_MAX_IDLE", 25),
+		DBIdleTimeout:      r.duration("DB_IDLE_TIMEOUT", time.Minute),
+		DBLifetime:         r.duration("DB_CONN_LIFETIME", 30*time.Minute),
+	}
+	if r.err != nil {
+		return Config{}, r.err
 	}
 
 	c.BootstrapAdmins = access.Identities(env("BOOTSTRAP_ADMINS", ""))
@@ -165,27 +175,57 @@ func Load() (Config, error) {
 	return c, nil
 }
 
-// duration reads a duration setting, falling back when unset or unreadable.
-func duration(key string, fallback time.Duration) time.Duration {
+// reader reads typed settings and keeps the first value it could not read.
+// A setting that is absent takes its fallback; one that is present has to
+// parse, and zero or negative reads as unset everywhere so it is refused
+// rather than taken.
+type reader struct {
+	err error
+}
+
+func (r *reader) refuse(key, want, got string) {
+	if r.err == nil {
+		r.err = fmt.Errorf("%s%s: want %s, got %q", envPrefix, key, want, got)
+	}
+}
+
+// boolean reads a switch: true or false, in the spellings strconv accepts.
+func (r *reader) boolean(key string, fallback bool) bool {
 	raw, ok := os.LookupEnv(envPrefix + key)
 	if !ok {
 		return fallback
 	}
-	d, err := time.ParseDuration(raw)
+	v, err := strconv.ParseBool(strings.TrimSpace(raw))
+	if err != nil {
+		r.refuse(key, "true or false", raw)
+		return fallback
+	}
+	return v
+}
+
+// duration reads a positive duration, such as 30s or 5m.
+func (r *reader) duration(key string, fallback time.Duration) time.Duration {
+	raw, ok := os.LookupEnv(envPrefix + key)
+	if !ok {
+		return fallback
+	}
+	d, err := time.ParseDuration(strings.TrimSpace(raw))
 	if err != nil || d <= 0 {
+		r.refuse(key, "a positive duration such as 30s or 5m", raw)
 		return fallback
 	}
 	return d
 }
 
-// number reads a positive integer setting, falling back when unset or unusable.
-func number(key string, fallback int) int {
+// number reads a positive integer.
+func (r *reader) number(key string, fallback int) int {
 	raw, ok := os.LookupEnv(envPrefix + key)
 	if !ok {
 		return fallback
 	}
-	n, err := strconv.Atoi(raw)
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil || n <= 0 {
+		r.refuse(key, "a positive whole number", raw)
 		return fallback
 	}
 	return n

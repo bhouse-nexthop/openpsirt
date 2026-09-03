@@ -275,7 +275,7 @@ func TestNothingIsStoredWhenTheBacklogIsFull(t *testing.T) {
 	// having tens of megabytes stored and then discarded.
 	opts := queue.DefaultOptions()
 	opts.MaxBacklog = 1
-	twoIngest(t, opts, func(t *testing.T, f *ingestFixture) {
+	eachIngest(t, opts, func(t *testing.T, f *ingestFixture) {
 		now := time.Now().UTC()
 		if code, _ := f.send(t, upload(t, f.path, inventory(now.Add(-2*time.Hour), "libc6"))); code != http.StatusAccepted {
 			t.Fatalf("first upload returned %d", code)
@@ -319,7 +319,7 @@ func TestAnInventoryWithNoBuildTimeIsRefused(t *testing.T) {
 	// real one, so the first such upload is accepted and every later scan for
 	// that target is refused as not newer — the target takes nothing further,
 	// ever.
-	twoIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
+	eachIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
 		undated := `{"bomFormat": "CycloneDX", "specVersion": "1.6",
 		 "metadata": {"component": {"bom-ref": "root", "name": "p", "version": "1"}},
 		 "components": [{"bom-ref": "a", "name": "libc", "version": "2.41"}]}`

@@ -24,7 +24,7 @@ type ScopeQuery struct {
 
 // scoped resolves a selection into identifiers.
 //
-// Names are turned into identifiers through the catalogue, which owns the rule
+// Names are turned into identifiers through the catalog, which owns the rule
 // for matching one — a second copy of that rule here is how two screens come
 // to disagree about whether a name is the same name.
 //

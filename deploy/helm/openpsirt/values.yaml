@@ -1,4 +1,20 @@
+# Any number of replicas run the same binary with no leader; every one serves,
+# reads scans and runs the scanner, and the database coordinates them. That
+# rules SQLite out for more than one: it is a file inside one pod, so the chart
+# refuses a SQLite URL with replicaCount above 1.
 replicaCount: 2
+
+# How long Kubernetes waits for a pod to stop before killing it. The process
+# drains requests for its shutdown grace (15 seconds unless
+# OPENPSIRT_SHUTDOWN_GRACE says otherwise) and then waits the same again for a
+# scan mid-application, so this is twice that with room to spare. Raise both
+# together if the grace is raised through extraEnv.
+terminationGracePeriodSeconds: 60
+
+# Scratch space for the process, since the root filesystem is read-only. An
+# emptyDir without a limit is node disk that a stray file can fill.
+tmp:
+  sizeLimit: 1Gi
 
 image:
   # **No image is published yet.** This is where one will live; until there is

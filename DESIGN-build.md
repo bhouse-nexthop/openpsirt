@@ -42,6 +42,7 @@ with the same command and the same pinned tool versions — CIG-05.
 | `make licenses` | Licenses of shipped dependencies against the allowlist |
 | `make openapi` | Regenerates the API document from the code |
 | `make sbom` | Generates our own CycloneDX bill of materials |
+| `make web-check` | The interface: its dependencies installed as locked, the type check, its tests, and the generated client diffed against the API document |
 | `make check` | Everything above |
 | `make check-engines` | That all four engines ran, and that each was the engine it claimed |
 | `make check-packaging` | The container image and the Helm chart. Needs docker and helm |
@@ -131,9 +132,10 @@ Generated from the operations registered in `internal/httpapi`, never written by
 hand — API-04. CI regenerates it and fails if the committed copy differs, so an
 endpoint cannot change without the document following.
 
-The application does not serve it (API-05). Documentation is published
-separately, which leaves the binary with no unauthenticated routes except the
-probes below.
+The application serves the document itself — the framework's own route,
+authenticated like every other — and nothing that renders it: no documentation
+page (API-05). Documentation is published separately, which leaves the binary
+with no unauthenticated routes except the probes below.
 
 ## Our own bill of materials
 
@@ -162,6 +164,11 @@ Built with mkdocs-material and published to GitHub Pages on every push to `main`
 — API-10. Sets are versioned with `mike` so a reader can tell which release they
 are reading — API-11. Unreleased work publishes as `main`; a tagged release
 publishes under its version and moves the `latest` alias.
+
+The configuration page lists every environment variable the process reads,
+with its meaning and default. A variable that is set and cannot be read stops
+the process with the variable named, rather than falling back: a switch spelled
+wrongly that silently reads as its opposite is worse than a refusal to start.
 
 ## Repository settings the gate depends on
 

@@ -7,8 +7,8 @@ package finding
 // scan is applied and read back as it was.
 //
 // The number is **packed rather than weighted**: each signal owns a range of
-// digits, so a signal never trades against a lower one. That is a deliberate
-// first cut, and the reason is explainability — somebody has to be able to
+// digits, so a signal never trades against a lower one. That is deliberate,
+// and the reason is explainability — somebody has to be able to
 // read a position and see why, and "it scored 0.4 higher on a weighted sum of
 // four things" is not something anybody trusts or argues with. Packing gives a
 // rule that can be stated in a sentence: exploited first, then what reaches

@@ -134,7 +134,7 @@ EXPOSE 8080
 # non-listening server passed it forever.
 # Never through a proxy. A deployment that sets HTTP_PROXY so the scanner can
 # fetch its vulnerability database sets it for everything in the image, and
-# busybox wget honours the proxy variables while ignoring no_proxy — so the
+# busybox wget honors the proxy variables while ignoring no_proxy — so the
 # container asks a proxy about itself, is told 403, and reports unhealthy while
 # serving every request correctly. An orchestrator acting on that restarts a
 # working container in a loop.
