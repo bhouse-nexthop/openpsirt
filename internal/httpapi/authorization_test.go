@@ -125,9 +125,27 @@ func (r *reach) asKey(t *testing.T, method, path string) int {
 	return rec.Code
 }
 
+// engines is dbtest.Each or dbtest.Two.
+type engines = func(t *testing.T, fn func(t *testing.T, db *database.DB))
+
+// The four-engine form and the two-engine form of the same fixture. Which
+// one a test uses is decided by the rule at dbtest.Two: a test that pins what
+// a query does — what a list contains, what a filter hides, what a conflict
+// looks like, what text comes back — runs on every engine, and a test that
+// pins routing, who may reach what, or the shape of a response runs on two.
 func eachReach(t *testing.T, fn func(t *testing.T, r *reach)) {
 	t.Helper()
-	dbtest.Each(t, func(t *testing.T, db *database.DB) {
+	reachOn(t, dbtest.Each, fn)
+}
+
+func twoReach(t *testing.T, fn func(t *testing.T, r *reach)) {
+	t.Helper()
+	reachOn(t, dbtest.Two, fn)
+}
+
+func reachOn(t *testing.T, on engines, fn func(t *testing.T, r *reach)) {
+	t.Helper()
+	on(t, func(t *testing.T, db *database.DB) {
 		ctx := t.Context()
 		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
 		if err := schema.Up(ctx, db, quiet); err != nil {
@@ -267,7 +285,7 @@ func TestWhoMayReachWhat(t *testing.T) {
 	// answer a name nobody ever declared gets. That is what invisible means,
 	// and it is why so many rows below expect 404 where 403 would look more
 	// natural.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		const (
 			products   = "/v1/products"
 			mine       = "/v1/products/mine/streams"
@@ -425,7 +443,7 @@ func TestWhatSomebodyCannotSeeLooksExactlyLikeWhatIsNotThere(t *testing.T) {
 	// way — the code, the body, a header — then somebody holding one product
 	// can enumerate every other by guessing names and watching which guesses
 	// answer differently.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		for _, pair := range [][2]string{
 			{"/v1/products/theirs/streams", "/v1/products/nosuch/streams"},
 			{"/v1/products/theirs/variants", "/v1/products/nosuch/variants"},
@@ -451,7 +469,7 @@ func TestWhatSomebodyCannotSeeLooksExactlyLikeWhatIsNotThere(t *testing.T) {
 func TestEveryRefusalOfAStrangerReadsTheSame(t *testing.T) {
 	// Unknown, known but granted nothing, and holding a revoked credential.
 	// Telling them apart says whether a name or a key is real.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		unknown := r.body(t, "ghost", http.MethodGet, "/v1/products")
 		ungranted := r.body(t, "nothing", http.MethodGet, "/v1/products")
 		revoked := r.withKey(t, r.revoked, http.MethodGet, "/v1/products")
@@ -469,7 +487,7 @@ func TestAPipelineCanReachNothingButSending(t *testing.T) {
 	// A build server has no business holding a person's permissions, and this
 	// is what keeps the visibility rules out of its reach entirely rather than
 	// relying on them being applied to it correctly.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		for _, path := range []string{
 			"/v1/products",
 			"/v1/products/mine/streams",
@@ -583,7 +601,7 @@ func TestNothingButTheProbesAnswersWithoutACredential(t *testing.T) {
 	// schemas it references were served to anybody who asked, including the
 	// running version that the endpoint reporting it is authenticated to
 	// withhold.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		for _, path := range []string{
 			"/openapi.json", "/openapi.yaml", "/openapi-3.0.json", "/openapi-3.0.yaml",
 			"/schemas/VariantBody.json", "/docs",
@@ -622,7 +640,7 @@ func TestNothingButTheProbesAnswersWithoutACredential(t *testing.T) {
 func TestTheApiDocumentIsServedToSomebodyRecognized(t *testing.T) {
 	// Closing it to strangers must not close it to the client that is
 	// generated from it.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		if got := r.body(t, "reader", http.MethodGet, "/openapi.json"); got.code != http.StatusOK {
 			t.Errorf("a recognized caller reading the API document got %d", got.code)
 		}
@@ -675,7 +693,7 @@ func TestACredentialWinsOverAHeader(t *testing.T) {
 	// A request carrying both is a build server's credential arriving through
 	// something that also sets a header. The credential is what it holds; the
 	// header is what somebody in front of it claimed.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		req := httptest.NewRequest(http.MethodGet, "/v1/products", nil)
 		req.Header.Set("Authorization", "Bearer "+r.key)
 		req.Header.Set(testHeader, "admin")
@@ -688,7 +706,7 @@ func TestACredentialWinsOverAHeader(t *testing.T) {
 }
 
 func TestAMalformedCredentialIsRefused(t *testing.T) {
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		for _, header := range []string{"", "Bearer", "Bearer ", "Basic " + r.key, r.key, "Bearer " + r.key + "x"} {
 			req := httptest.NewRequest(http.MethodGet, "/v1/products", nil)
 			if header != "" {

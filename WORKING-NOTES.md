@@ -156,24 +156,56 @@ fixing the second helps production as much as it helps the loop.
 |---|---|
 | The full gate ran six times in one day, where the rule is once before a push | Cadence, not code. The gate belongs before a push; while iterating, the package that changed, on SQLite, is the loop. Now written into `AGENTS.md` |
 | SQLite only, no race detector, packages in parallel: the API package alone takes **120 s** for 98 tests, findings 78 s, triage 76 s, access 65 s | About a second per test of pure setup: each SQLite test creates a fresh database file and runs all eighteen migrations before it does anything |
-| The full four-engine run: `-race -count=1 -p 1` — *being timed; well over half an hour* | The race detector roughly triples the work; `-p 1` runs 23 packages one at a time because they share one database per server; `-count=1` refuses the cache, so an untouched package is rebuilt and rerun every time |
-| About 200 of 480 tests run as four subtests, one per engine | The store-level ones earn it — every portability bug so far was a query behaving differently on one engine (`DAT-33` to `DAT-36`), one of them reached only through a handler. The 36 HTTP-level tests in the API package prove routing, authorization mapping and JSON shapes that do not vary by engine, over store queries the store tests already run on all four |
+| The full four-engine run, `-race -count=1 -p 1`: **551 s wall** (9.2 minutes) on this machine. Per package: API 152 s, findings 84 s, triage 69 s, access 57 s, currency 40 s, ingest 34 s, schema 15 s, catalog 14 s, graph 14 s, scanner 11 s. Longer runs seen the same day overlapped a docker build or another suite against the same servers | Beside the SQLite-only numbers, the three server engines add little per package — they share one migrated database and only empty its tables between tests — so the time is the per-test SQLite migration and `-p 1` running the 23 packages one at a time. The race detector and `-count=1` add on top |
+| About 200 of 480 tests run as four subtests, one per engine | The store-level ones earn it — every portability bug so far was a query behaving differently on one engine (`DAT-33` to `DAT-36`), one of them reached only through a handler. Of the 98 tests in the API package, over half prove routing, authorization mapping and JSON shapes that do not vary by engine, over store queries the store tests already run on all four |
 
-**Plan, in order:**
+**Plan, in order — done 2026-09-03, numbers below:**
 
 1. **`make test` becomes the quick loop**: SQLite only, packages in parallel,
-   the cache on. The four-engine run stays in `make check`, which runs once
-   before a push, and CI keeps all four, so `DAT-12` holds. Nothing proved
-   changes; when it is proved does.
-2. **Build the schema once per package.** Migrate one SQLite file per
-   package and copy it per test, and give each package its own database on
-   the three servers (created on first use, named for the package) so
-   `-p 1` can go. Removes the per-test migration and the serialization —
-   the two largest terms.
-3. **Run the API package's handler tests on SQLite and PostgreSQL only**,
-   keeping every store test on all four. Decide by reading the 36, not by
-   the package they sit in: one that pins a query's behavior stays on four.
-4. Re-measure, and put the numbers here.
+   the cache on. The four-engine run is `make test-all`, which `make check`
+   runs once before a push, and CI keeps all four, so `DAT-12` holds.
+   Nothing proved changes; when it is proved does.
+2. **Build the schema once per package.** One SQLite file per test binary,
+   migrated on first use and written out per test; on the three servers a
+   database per binary, named for the package, dropped and recreated on
+   first use. `-p 1` is gone.
+3. **The API package's handler tests run on SQLite and PostgreSQL only**
+   through `dbtest.Two`; the rule is written at it. Decided by reading the
+   tests: 54 of the 98 pin routing, authorization or a response's shape and
+   moved; 44 pin what a query returns through the handler and stayed on
+   four.
+4. Re-measured.
+
+**What it was, and what it is:**
+
+| | Before | After |
+|---|---|---|
+| The quick loop, SQLite only, packages in parallel, cache off | 110 s | **4.4 s** (`make test`, cached, is under 2 s when nothing changed) |
+| The API package on SQLite alone | 77 s | 1.3 s |
+| Four engines, race detector, cache off | 551 s (`-p 1`) | **174 s** (packages in parallel) |
+| `make check-engines` | 27 s | 23 s |
+
+The surprise was where the SQLite time actually went. Migrating per test was
+about a second, as measured — but with that gone the API package still took
+37 s on SQLite, and its whole run was I/O wait: SQLite as we open it syncs
+the file at every commit, a test is nothing but small commits, and `Reset`
+alone was thirty of them. On a memory-backed directory the same package
+takes about one second. So `dbtest` puts every SQLite test file on
+`/dev/shm` when it exists, falls back to the ordinary temporary directory
+when it does not, and empties the tables in one transaction. The migrated
+template is kept as bytes in the process rather than as a file, because a
+test binary has no hook after its last test and a file would outlive it.
+
+The four-engine run is now bounded by the servers: twenty binaries hit three
+servers at once, and MySQL takes about seven seconds to drop, create and
+migrate a database where PostgreSQL takes one. What remains per package is
+mostly waiting on them. `make check` end to end is dominated by the web build
+and the tool checks rather than the tests.
+
+One thing to know: two runs of the *same* package against the same server at
+once share a database and will collide, because the name is stable on purpose
+— a per-run name would leave a database behind every run, since nothing runs
+after a binary's last test to drop it. The next run drops and recreates it.
 
 ### The application
 

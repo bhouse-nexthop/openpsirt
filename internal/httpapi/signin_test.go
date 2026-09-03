@@ -56,9 +56,17 @@ type signInReach struct {
 	db *database.DB
 }
 
-func eachSignIn(t *testing.T, fn func(t *testing.T, r *signInReach)) {
+// Only the two-engine form exists here: every sign-in test pins a redirect,
+// a cookie or a refusal, not a query. Add a four-engine form the day one
+// pins what a query returns — the rule is at dbtest.Two.
+func twoSignIn(t *testing.T, fn func(t *testing.T, r *signInReach)) {
 	t.Helper()
-	dbtest.Each(t, func(t *testing.T, db *database.DB) {
+	signInOn(t, dbtest.Two, fn)
+}
+
+func signInOn(t *testing.T, on engines, fn func(t *testing.T, r *signInReach)) {
+	t.Helper()
+	on(t, func(t *testing.T, db *database.DB) {
 		ctx := t.Context()
 		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
 		if err := schema.Up(ctx, db, quiet); err != nil {
@@ -124,7 +132,7 @@ func callback(t *testing.T, r *signInReach, state, code string, pending bool) *h
 }
 
 func TestSigningInSendsTheBrowserToTheProvider(t *testing.T) {
-	eachSignIn(t, func(t *testing.T, r *signInReach) {
+	twoSignIn(t, func(t *testing.T, r *signInReach) {
 		req := httptest.NewRequest(http.MethodGet, "/v1/sign-in/stub", nil)
 		rec := httptest.NewRecorder()
 		r.handler.ServeHTTP(rec, req)
@@ -158,7 +166,7 @@ func TestSigningInSendsTheBrowserToTheProvider(t *testing.T) {
 func TestAProviderNobodyConfiguredIsNotThere(t *testing.T) {
 	// The same answer a name that was never a provider gets, so guessing does
 	// not enumerate which are in use.
-	eachSignIn(t, func(t *testing.T, r *signInReach) {
+	twoSignIn(t, func(t *testing.T, r *signInReach) {
 		for _, path := range []string{"/v1/sign-in/github", "/v1/sign-in/okta", "/v1/sign-in/okta/callback"} {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			rec := httptest.NewRecorder()
@@ -173,7 +181,7 @@ func TestAProviderNobodyConfiguredIsNotThere(t *testing.T) {
 func TestACallbackWithoutTheSignInThatStartedItIsRefused(t *testing.T) {
 	// The state is what stops somebody handing a signed-in person a callback
 	// of their own making and having the session come back as theirs.
-	eachSignIn(t, func(t *testing.T, r *signInReach) {
+	twoSignIn(t, func(t *testing.T, r *signInReach) {
 		for _, c := range []struct {
 			what    string
 			state   string
@@ -197,7 +205,7 @@ func TestACallbackWithoutTheSignInThatStartedItIsRefused(t *testing.T) {
 }
 
 func TestSomebodyWhoAuthenticatesButWasGrantedNothingGetsInNowhere(t *testing.T) {
-	eachSignIn(t, func(t *testing.T, r *signInReach) {
+	twoSignIn(t, func(t *testing.T, r *signInReach) {
 		// A distinct subject each time. Reusing one made the second case match
 		// the first person by their pinned identifier and rename them, so the
 		// stranger path was never reached and the test quietly demonstrated
@@ -218,7 +226,7 @@ func TestSomebodyWhoAuthenticatesButWasGrantedNothingGetsInNowhere(t *testing.T)
 func TestAuthenticatingCreatesNobodyOnASignInPath(t *testing.T) {
 	// Access is granted in advance or not at all. A sign-in path that records
 	// somebody is a sign-in path that admits whoever the provider vouches for.
-	eachSignIn(t, func(t *testing.T, r *signInReach) {
+	twoSignIn(t, func(t *testing.T, r *signInReach) {
 		r.provider.says = &signin.Identity{Subject: "3", Username: "a-stranger"}
 		callback(t, r, "the-state", "a-code", true)
 
@@ -229,7 +237,7 @@ func TestAuthenticatingCreatesNobodyOnASignInPath(t *testing.T) {
 }
 
 func TestSigningInGrantsTheSessionSomebodyWasAlreadyOwed(t *testing.T) {
-	eachSignIn(t, func(t *testing.T, r *signInReach) {
+	twoSignIn(t, func(t *testing.T, r *signInReach) {
 		rec := callback(t, r, "the-state", "a-code", true)
 		if rec.Code != http.StatusFound {
 			t.Fatalf("signing in answered %d, want 302: %s", rec.Code, rec.Body.String())
@@ -268,7 +276,7 @@ func TestSigningInGrantsTheSessionSomebodyWasAlreadyOwed(t *testing.T) {
 func TestAProviderThatFailedSaysNothingAboutWhy(t *testing.T) {
 	// What went wrong between us and a provider is an operator's problem.
 	// Describing it to whoever is at the browser describes our configuration.
-	eachSignIn(t, func(t *testing.T, r *signInReach) {
+	twoSignIn(t, func(t *testing.T, r *signInReach) {
 		r.provider.fail = errClientSecretRejected
 		rec := callback(t, r, "the-state", "a-code", true)
 		if rec.Code != http.StatusUnauthorized {
@@ -298,7 +306,7 @@ func TestAnIdentifierAlreadyPinnedIsNotRedeemableByAnotherName(t *testing.T) {
 	// Somebody whose identifier is pinned is that person whatever name the
 	// provider now reports, and a different identifier reporting a pinned
 	// name is somebody else.
-	eachSignIn(t, func(t *testing.T, r *signInReach) {
+	twoSignIn(t, func(t *testing.T, r *signInReach) {
 		r.provider.says = &signin.Identity{Subject: "1001", Username: "granted"}
 		if rec := callback(t, r, "the-state", "a-code", true); rec.Code != http.StatusFound {
 			t.Fatalf("the authorized person could not sign in: %d", rec.Code)
@@ -322,7 +330,7 @@ func TestAnIdentityTokenNamingNobodyIsRefused(t *testing.T) {
 	// A provider that verifies but names no subject leaves nothing stable to
 	// match on, which would quietly reduce this deployment to matching by
 	// name — the thing the pinning exists to replace.
-	eachSignIn(t, func(t *testing.T, r *signInReach) {
+	twoSignIn(t, func(t *testing.T, r *signInReach) {
 		r.provider.says = &signin.Identity{Subject: "", Username: "granted"}
 		if rec := callback(t, r, "the-state", "a-code", true); rec.Code != http.StatusUnauthorized {
 			t.Errorf("a sign-in naming no subject answered %d, want 401", rec.Code)
@@ -334,7 +342,7 @@ func TestHowLongASignInLastsIsTheSettingAnAdministratorChanged(t *testing.T) {
 	// The setting is offered on the administration screen, so it has to be the
 	// one that decides. It was offered and read by nothing for a while, and a
 	// value somebody sets that changes nothing is worse than not offering it.
-	eachSignIn(t, func(t *testing.T, r *signInReach) {
+	twoSignIn(t, func(t *testing.T, r *signInReach) {
 		const chosen = 90 * time.Minute
 		if err := setting.NewStore(r.db.DB).Set(t.Context(),
 			setting.SessionLifetime, chosen.String()); err != nil {

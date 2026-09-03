@@ -106,9 +106,24 @@ func (f *ingestFixture) send(t *testing.T, req *http.Request) (int, httpapi.Uplo
 	return rec.Code, result
 }
 
+// The four-engine form and the two-engine form of the same fixture. Which
+// one a test uses is decided by the rule at dbtest.Two: a test that pins what
+// a query does — what a list contains, what a filter hides, what a conflict
+// looks like, what text comes back — runs on every engine, and a test that
+// pins routing, who may reach what, or the shape of a response runs on two.
 func eachIngest(t *testing.T, opts queue.Options, fn func(t *testing.T, f *ingestFixture)) {
 	t.Helper()
-	dbtest.Each(t, func(t *testing.T, db *database.DB) {
+	ingestOn(t, dbtest.Each, opts, fn)
+}
+
+func twoIngest(t *testing.T, opts queue.Options, fn func(t *testing.T, f *ingestFixture)) {
+	t.Helper()
+	ingestOn(t, dbtest.Two, opts, fn)
+}
+
+func ingestOn(t *testing.T, on engines, opts queue.Options, fn func(t *testing.T, f *ingestFixture)) {
+	t.Helper()
+	on(t, func(t *testing.T, db *database.DB) {
 		ctx := t.Context()
 		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
 		if err := schema.Up(ctx, db, quiet); err != nil {
@@ -231,7 +246,7 @@ func TestAScanFromTheFutureIsRefusedAsABadRequest(t *testing.T) {
 	// The producer's clock is wrong, which is a fault in what was sent rather
 	// than a conflict with anything held. Accepting it would mean nothing
 	// legitimate is ever newer, and that variant takes no further scans at all.
-	eachIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
+	twoIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
 		code, _ := f.send(t, upload(t, f.path, inventory(time.Now().UTC().Add(48*time.Hour), "libc6")))
 		if code != http.StatusBadRequest {
 			t.Errorf("a scan from the future returned %d, want 400", code)
@@ -240,7 +255,7 @@ func TestAScanFromTheFutureIsRefusedAsABadRequest(t *testing.T) {
 }
 
 func TestAnUndeclaredTargetSaysWhichPartIsMissing(t *testing.T) {
-	eachIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
+	twoIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
 		req := f.sending(upload(t, "/v1/products/sonic/streams/master/variants/mellanox/scans",
 			inventory(time.Now().UTC().Add(-time.Hour), "libc6")))
 		rec := httptest.NewRecorder()
@@ -260,7 +275,7 @@ func TestNothingIsStoredWhenTheBacklogIsFull(t *testing.T) {
 	// having tens of megabytes stored and then discarded.
 	opts := queue.DefaultOptions()
 	opts.MaxBacklog = 1
-	eachIngest(t, opts, func(t *testing.T, f *ingestFixture) {
+	twoIngest(t, opts, func(t *testing.T, f *ingestFixture) {
 		now := time.Now().UTC()
 		if code, _ := f.send(t, upload(t, f.path, inventory(now.Add(-2*time.Hour), "libc6"))); code != http.StatusAccepted {
 			t.Fatalf("first upload returned %d", code)
@@ -290,7 +305,7 @@ func TestNothingIsStoredWhenTheBacklogIsFull(t *testing.T) {
 }
 
 func TestSomethingThatIsNotAnInventoryIsRefused(t *testing.T) {
-	eachIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
+	twoIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
 		rec := httptest.NewRecorder()
 		f.handler.ServeHTTP(rec, f.sending(upload(t, f.path, `{"bomFormat": "SPDX", "specVersion": "2.3"}`)))
 		if rec.Code != http.StatusUnprocessableEntity {
@@ -304,7 +319,7 @@ func TestAnInventoryWithNoBuildTimeIsRefused(t *testing.T) {
 	// real one, so the first such upload is accepted and every later scan for
 	// that target is refused as not newer — the target takes nothing further,
 	// ever.
-	eachIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
+	twoIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
 		undated := `{"bomFormat": "CycloneDX", "specVersion": "1.6",
 		 "metadata": {"component": {"bom-ref": "root", "name": "p", "version": "1"}},
 		 "components": [{"bom-ref": "a", "name": "libc", "version": "2.41"}]}`

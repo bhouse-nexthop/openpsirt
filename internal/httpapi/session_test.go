@@ -49,7 +49,7 @@ func signIn(t *testing.T, r *reach, identity string) *access.Issued {
 func TestABrowserIsRecognizedByItsSessionAlone(t *testing.T) {
 	// No header, no key. The cookie is the whole credential, which is what a
 	// deployment with a real identity provider looks like.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		issued := signIn(t, r, "reader")
 		if got := asBrowser(t, r, issued, http.MethodGet, "/v1/products", "").Code; got != http.StatusOK {
 			t.Errorf("a signed-in browser reading products answered %d, want 200", got)
@@ -61,7 +61,7 @@ func TestAWriteFromABrowserHasToProveItCameFromOurOwnPage(t *testing.T) {
 	// The cookie is attached by the browser whoever asked for the request, so
 	// on its own it says nothing about who wanted it sent. The echoed value is
 	// what separates our page from somebody else's.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		issued := signIn(t, r, "admin")
 		other := signIn(t, r, "reader")
 
@@ -86,7 +86,7 @@ func TestAWriteFromABrowserHasToProveItCameFromOurOwnPage(t *testing.T) {
 func TestReadingFromABrowserNeedsNothingEchoed(t *testing.T) {
 	// The guard is against a request being made, not against one being read.
 	// Requiring it on reads would break every ordinary page load for nothing.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		// GET alone, because it is the only safe method this API routes.
 		// HEAD and OPTIONS are treated as safe by the guard regardless, so
 		// that adding a route for either later does not quietly make it one
@@ -106,7 +106,7 @@ func TestAKeyIsNotAskedToEchoAnythingOrToSayWhereItCameFrom(t *testing.T) {
 	// A write is what tests this. A read is safe for every credential type, so
 	// asserting on one would pass just as well if keys *were* being asked to
 	// echo a value — which is what the first version of this test did.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		if got := r.asKey(t, http.MethodGet,
 			"/v1/products/mine/streams/master/variants/broadcom/scans"); got != http.StatusOK {
 			t.Errorf("a key reading its receipts answered %d, want 200", got)
@@ -131,7 +131,7 @@ func TestAWriteFromSomebodyElsesPageIsRefused(t *testing.T) {
 	// A proxy authenticates from its own cookie, which the browser attaches
 	// without anybody asking — so the credential arrives whoever caused the
 	// request, and where it came from is what separates the two.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		for _, c := range []struct {
 			what   string
 			origin string
@@ -161,7 +161,7 @@ func TestAWriteFromSomebodyElsesPageIsRefused(t *testing.T) {
 func TestReadingIsNotGuardedByWhereItCameFrom(t *testing.T) {
 	// The guard is against a request being made, not against one being read.
 	// Applying it to reads would break every ordinary page load for nothing.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		req := httptest.NewRequest(http.MethodGet, "/v1/products", nil)
 		req.Header.Set(testHeader, "reader")
 		rec := httptest.NewRecorder()
@@ -173,7 +173,7 @@ func TestReadingIsNotGuardedByWhereItCameFrom(t *testing.T) {
 }
 
 func TestSigningOutStopsTheCookieWorking(t *testing.T) {
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		issued := signIn(t, r, "reader")
 
 		out := asBrowser(t, r, issued, http.MethodDelete, "/v1/session", issued.CSRF)
@@ -193,7 +193,7 @@ func TestSigningOutStopsTheCookieWorking(t *testing.T) {
 }
 
 func TestSigningOutIsNotSomethingAKeyCanDo(t *testing.T) {
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		if got := r.asKey(t, http.MethodDelete, "/v1/session"); got == http.StatusNoContent {
 			t.Error("a pipeline signed out of a session it never had")
 		}
@@ -204,7 +204,7 @@ func TestASessionForSomebodyGrantedNothingReachesNothing(t *testing.T) {
 	// Issuing a session does not decide anything about access. Somebody whose
 	// roles were withdrawn between sign-in and now is refused on the next
 	// request rather than at the next sign-in.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		issued := signIn(t, r, "nothing")
 		if got := asBrowser(t, r, issued, http.MethodGet, "/v1/products", "").Code; got != http.StatusUnauthorized {
 			t.Errorf("a session for somebody granted nothing answered %d, want 401", got)
@@ -215,7 +215,7 @@ func TestASessionForSomebodyGrantedNothingReachesNothing(t *testing.T) {
 func TestAnAdministratorCanCutSomebodyOffAtOnce(t *testing.T) {
 	// Roles and group mappings are re-read at sign-in, so withdrawing one
 	// takes effect then. Somebody leaving cannot wait for that.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		issued := signIn(t, r, "reader")
 		if got := asBrowser(t, r, issued, http.MethodGet, "/v1/products", "").Code; got != http.StatusOK {
 			t.Fatalf("the session did not work to begin with: %d", got)
@@ -231,7 +231,7 @@ func TestAnAdministratorCanCutSomebodyOffAtOnce(t *testing.T) {
 }
 
 func TestCuttingSomebodyOffIsNotSomethingTheyCanDoToEachOther(t *testing.T) {
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		for _, who := range []string{"reader", "triager", "approver", "private-triage"} {
 			if got := r.as(t, who, http.MethodDelete, "/v1/people/admin/sessions"); got != http.StatusForbidden {
 				t.Errorf("%s ended an administrator's sessions: %d", who, got)
@@ -243,7 +243,7 @@ func TestCuttingSomebodyOffIsNotSomethingTheyCanDoToEachOther(t *testing.T) {
 func TestAnAdministratorCanWithdrawATokenWhoseOwnerHasGone(t *testing.T) {
 	// The ones that matter are found when somebody leaves and nobody knows
 	// what breaks if they are turned off.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		ctx := t.Context()
 		person, err := r.rights.ByIdentity(ctx, "reader")
 		if err != nil {
@@ -273,7 +273,7 @@ func TestATokenIsACredentialLikeAnyOther(t *testing.T) {
 	// It authenticates through the same one resolution step every other
 	// credential goes through, so nothing downstream knows which door it came
 	// through.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		person, err := r.rights.ByIdentity(t.Context(), "reader")
 		if err != nil {
 			t.Fatal(err)
@@ -303,7 +303,7 @@ func TestATokenCannotMintItselfAWiderOne(t *testing.T) {
 	// narrowed to nothing and is given it — and an administrator's narrowed
 	// token mints one carrying administration. Every limit on a token would be
 	// exactly one request deep, the lifetime ceiling included.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		ctx := t.Context()
 		person, err := r.rights.ByIdentity(ctx, "admin")
 		if err != nil {

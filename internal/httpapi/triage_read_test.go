@@ -294,7 +294,7 @@ func TestReadingADecisionNeedsTheRightToTakePartInIt(t *testing.T) {
 	// Every read is narrowed the same way the writes are. A decision somebody
 	// may not reach answers as one that is not there, so guessing identifiers
 	// says nothing.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		place := r.scanned(t)
 		id := r.decided(t, place)
 
@@ -403,7 +403,7 @@ func TestTheAPIReturnsMarkdownAndNeverMarkup(t *testing.T) {
 	// Our own interface renders in the browser, so it needs no server-rendered
 	// half either, and a second renderer is the thing that eventually
 	// disagrees with the first.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		place := r.scanned(t)
 		id := r.decided(t, place)
 
@@ -602,7 +602,7 @@ func TestOnlyAnAdministratorMovesSomebodyElsesWork(t *testing.T) {
 	// A person hands back their own by assigning it to nobody. Moving what
 	// somebody else was given is an administrative act, and it is the one that
 	// matters when they have gone.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		r.scannedWithEvidence(t)
 		const at = "/v1/products/mine/streams/master/variants/broadcom" +
 			"/findings/CVE-2026-9999/components/libnl-3-200/assignment"
@@ -668,7 +668,7 @@ func TestTheNewEndpointsAnswerRatherThanExist(t *testing.T) {
 	// each one is the kind of thing that can be registered, return an empty
 	// shape, and look finished. This drives them against a build that has
 	// something in it.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		r.scannedWithEvidence(t)
 
 		// Walking the graph, one step at a time.
@@ -830,7 +830,7 @@ func TestNobodyLearnsWhoHasAnAccountByBeingRefused(t *testing.T) {
 	// A name nobody holds and a name somebody holds must come back the same
 	// way to anybody not authorized to act on either, or the refusal is a
 	// directory of the organization readable by every account.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		r.scanned(t)
 
 		// Handing back somebody's work is administrative. A reader asking
@@ -864,7 +864,7 @@ func TestASettingThatWouldReadAsUnsetIsRefused(t *testing.T) {
 	// Every reader treats zero and negative as unset and falls back to the
 	// shipped value, so storing one produces a setting that looks set on the
 	// administration screen and does nothing at all.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		for _, value := range []string{"0h", "-48h", "nonsense"} {
 			if got := asPerson(t, r, "admin", http.MethodPut,
 				"/v1/settings/remediation.due.critical",
@@ -1012,7 +1012,7 @@ func TestTheCallerIsToldWhatTheyMayDoRatherThanFindingOut(t *testing.T) {
 	// Without this the client either offers everything and lets people walk
 	// into a refusal, or re-implements the mapping from roles to capabilities
 	// and drifts from the one the server actually enforces.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		type can struct {
 			Product   string `json:"product"`
 			MaySee    bool   `json:"may_see"`

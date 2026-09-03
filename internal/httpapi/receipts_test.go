@@ -74,7 +74,7 @@ func TestASenderReadsBackWhatBecameOfWhatItSent(t *testing.T) {
 func TestAnUnreadableUploadSaysSoToWhoeverSentIt(t *testing.T) {
 	// The producer's own text back at them. A file this deployment cannot use
 	// is the producer's to fix, so it is reported rather than logged away.
-	eachIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
+	twoIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
 		// Well-formed enough to be taken, and unusable: a component with no
 		// name cannot be identified, so it cannot be tracked.
 		nameless := `{

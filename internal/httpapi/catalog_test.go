@@ -68,9 +68,24 @@ func (d *declaring) do(t *testing.T, req *http.Request) (int, map[string]any) {
 	return rec.Code, body
 }
 
+// The four-engine form and the two-engine form of the same fixture. Which
+// one a test uses is decided by the rule at dbtest.Two: a test that pins what
+// a query does — what a list contains, what a filter hides, what a conflict
+// looks like, what text comes back — runs on every engine, and a test that
+// pins routing, who may reach what, or the shape of a response runs on two.
 func eachCatalog(t *testing.T, fn func(t *testing.T, d *declaring)) {
 	t.Helper()
-	dbtest.Each(t, func(t *testing.T, db *database.DB) {
+	catalogOn(t, dbtest.Each, fn)
+}
+
+func twoCatalog(t *testing.T, fn func(t *testing.T, d *declaring)) {
+	t.Helper()
+	catalogOn(t, dbtest.Two, fn)
+}
+
+func catalogOn(t *testing.T, on engines, fn func(t *testing.T, d *declaring)) {
+	t.Helper()
+	on(t, func(t *testing.T, db *database.DB) {
 		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
 		if err := schema.Up(t.Context(), db, quiet); err != nil {
 			t.Fatalf("migrate: %v", err)
@@ -143,7 +158,7 @@ func TestRedeclaringSomethingDifferentlyIsRefused(t *testing.T) {
 func TestAVariantShipsUnlessItSaysOtherwise(t *testing.T) {
 	// An unclassified artifact should rank as though it reaches customers, so
 	// leaving the field out must not read as a denial.
-	eachCatalog(t, func(t *testing.T, d *declaring) {
+	twoCatalog(t, func(t *testing.T, d *declaring) {
 		d.post(t, "/v1/products", `{"name": "sonic"}`)
 		d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
 
@@ -163,7 +178,7 @@ func TestAVariantShipsUnlessItSaysOtherwise(t *testing.T) {
 }
 
 func TestDeclaringUnderSomethingUndeclaredSaysWhichPart(t *testing.T) {
-	eachCatalog(t, func(t *testing.T, d *declaring) {
+	twoCatalog(t, func(t *testing.T, d *declaring) {
 		code, body := d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
 		if code != http.StatusNotFound {
 			t.Fatalf("a stream under an undeclared product returned %d, want 404", code)
@@ -223,7 +238,7 @@ func TestWhatHasBeenDeclaredCanBeListed(t *testing.T) {
 func TestADeclaredTargetCanBeUploadedAgainst(t *testing.T) {
 	// The two halves have to meet: what declaration writes is what an upload
 	// resolves. Testing them apart would let the names diverge.
-	eachCatalog(t, func(t *testing.T, d *declaring) {
+	twoCatalog(t, func(t *testing.T, d *declaring) {
 		d.post(t, "/v1/products", `{"name": "sonic"}`)
 		d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
 		d.post(t, "/v1/products/sonic/variants", `{"name": "broadcom"}`)

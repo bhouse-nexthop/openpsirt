@@ -56,7 +56,7 @@ func TestDecidingAboutSomethingNobodyScannedIsNotThere(t *testing.T) {
 	// A decision is about a finding. Naming a place freely would be choosing
 	// which decisions apply where, so the names are resolved against what was
 	// actually scanned.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		const body = `{"outcome":"wont-fix","reasoning":"Not worth it."}`
 		got := asPerson(t, r, "triager", http.MethodPost,
 			"/v1/products/mine/streams/master/variants/broadcom/findings/CVE-2026-1/places/nowhere/decision", body)
@@ -67,7 +67,7 @@ func TestDecidingAboutSomethingNobodyScannedIsNotThere(t *testing.T) {
 }
 
 func TestDecidingIsRefusedToSomebodyWhoOnlyReads(t *testing.T) {
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		const body = `{"outcome":"wont-fix","reasoning":"Not worth it."}`
 		got := asPerson(t, r, "reader", http.MethodPost,
 			"/v1/products/mine/streams/master/variants/broadcom/findings/CVE-2026-1/places/somewhere/decision", body)
@@ -81,7 +81,7 @@ func TestDecidingIsRefusedToSomebodyWhoOnlyReads(t *testing.T) {
 }
 
 func TestApprovingSomethingThatIsNotThereSaysSo(t *testing.T) {
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		got := asPerson(t, r, "triager", http.MethodPost, "/v1/decisions/999999/approval", `{}`)
 		if got.Code != http.StatusNotFound {
 			t.Errorf("approving a decision that does not exist answered %d", got.Code)
@@ -99,7 +99,7 @@ func TestARefusalOfTypedTextSaysWhereToLook(t *testing.T) {
 	// identifier nothing had ever created, so it was asserting that a missing
 	// decision is not found — which it would have done just as well with the
 	// text check removed altogether.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		place := r.scanned(t)
 		id := r.decided(t, place)
 
@@ -148,7 +148,7 @@ func TestARefusalOfTypedTextSaysWhereToLook(t *testing.T) {
 
 func TestAPipelineHasNoJudgment(t *testing.T) {
 	// A build server has no business deciding anything about what it uploaded.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		if got := r.asKey(t, http.MethodGet, "/v1/review-queue"); got != http.StatusForbidden {
 			t.Errorf("a pipeline read the review queue: %d", got)
 		}
@@ -158,7 +158,7 @@ func TestAPipelineHasNoJudgment(t *testing.T) {
 func TestATokenDecidesOnlyWhatItsOwnerCould(t *testing.T) {
 	// A personal token is a live reference to its owner, so it reaches the
 	// queue exactly when they do.
-	eachReach(t, func(t *testing.T, r *reach) {
+	twoReach(t, func(t *testing.T, r *reach) {
 		ctx := t.Context()
 		person, err := r.rights.ByIdentity(ctx, "triager")
 		if err != nil {
