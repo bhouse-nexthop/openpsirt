@@ -1445,6 +1445,14 @@ body path only; multipart uploads went through `ParseMultipartForm` with no
 ceiling, spilling to the temp directory before the parser's own limit was
 consulted. `http.MaxBytesReader` now wraps the upload route.
 
+**And the version fix uncovered the next gap.** Once the cross-build post
+named the right version, a build partly reached by lookup refused it as a
+second claim about the places at matching versions. The route now takes
+`remaining` — decide only what nothing stands at — and the guided review
+sends it on every build it applies to. Two live audits on the two-variant
+demo, one browser error each time, found both; the first review's lesson
+holds that the audit is the control the tests are not.
+
 **The test rule that halved the gate was never written down**, and eight of
 the fifty-four handler tests moved to two engines pinned what a query
 returns — exactly the class the MySQL pair caught twice in one week. They

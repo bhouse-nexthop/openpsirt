@@ -279,13 +279,16 @@ func TestOnlyTheWorkerHoldingAJobMayFinishIt(t *testing.T) {
 	// finishes first records the ending of what the other is in the middle of
 	// — a job marked done while a second worker is still working it, or
 	// handed back for retry while it is being finished.
-	// Long enough that the second retake below cannot find the first one's
-	// claim already stale — under the race detector two claims take longer
-	// than a millisecond, and the test then held one job twice.
+	// The clock is the test's, not the wall's: a claim goes stale when the
+	// test says time has passed. Waiting for it instead made the second
+	// retake find the first one's claim already stale — under the race
+	// detector, and on engines storing the moment to the second — and the
+	// test then held one job twice.
 	opts := queue.DefaultOptions()
-	opts.ClaimTimeout = 50 * time.Millisecond
 	each(t, opts, func(t *testing.T, db *database.DB, q *queue.Queue) {
 		ctx := t.Context()
+		moment := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+		queue.SetClock(q, func() time.Time { return moment })
 		for _, ref := range []string{"finished-late", "failed-late"} {
 			if _, err := q.Add(ctx, "ingest", ref); err != nil {
 				t.Fatal(err)
@@ -299,7 +302,7 @@ func TestOnlyTheWorkerHoldingAJobMayFinishIt(t *testing.T) {
 			}
 			lost = append(lost, job)
 		}
-		time.Sleep(100 * time.Millisecond)
+		moment = moment.Add(opts.ClaimTimeout + time.Minute)
 		var taken []*queue.Job
 		for range 2 {
 			job, err := q.Claim(ctx, "fresh", "ingest")
