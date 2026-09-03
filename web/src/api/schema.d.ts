@@ -2308,6 +2308,8 @@ export interface components {
             places?: string[] | null;
             /** @description Why this holds */
             reasoning: string;
+            /** @description Decide only the places nothing currently stands at, and leave the rest as they are. For applying a decision to another build, where some of its places are already reached by lookup */
+            remaining?: boolean;
         };
         FindingRefBody: {
             component: string;

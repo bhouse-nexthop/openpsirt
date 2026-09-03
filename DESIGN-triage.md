@@ -795,6 +795,12 @@ component is a patched fork, the shipped version otherwise — and each such
 build is named with the version it ships, one entry per version, which is what
 a request applying the decision there names the component by.
 
+A decision applied to another build is asked to cover **what remains
+there**: the places already reached by lookup, at matching versions, are left
+as they are rather than refused as a second claim, and the count of what was
+written says how much that was. A build wholly reached that way records
+nothing, and that is not an error.
+
 Those are offered **one at a time rather than as one answer**. A component may
 be used in a later release and not an earlier one, and the reasoning that made
 something harmless in one build is not automatically true in another. All-or-

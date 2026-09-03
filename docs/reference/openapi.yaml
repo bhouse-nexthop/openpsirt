@@ -1302,6 +1302,9 @@ components:
           description: Why this holds
           minLength: 1
           type: string
+        remaining:
+          description: Decide only the places nothing currently stands at, and leave the rest as they are. For applying a decision to another build, where some of its places are already reached by lookup
+          type: boolean
       required:
         - outcome
         - reasoning

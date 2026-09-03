@@ -212,7 +212,10 @@ export function Decide({
                   // there; without it, a build with four is a refusal.
                   query: other.version ? { version: other.version } : {},
                 },
-                body: body(false),
+                // Only what nothing stands at there: the places at matching
+                // versions are already reached by lookup, and a second
+                // claim about them would be refused.
+                body: { ...body(false), remaining: true },
               },
             ),
           );

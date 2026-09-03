@@ -491,6 +491,11 @@ type FindingDecisionBody struct {
 	// outcome and justification have to be the source's, and the places have
 	// to be ones the source sits at.
 	Extends int64 `json:"extends,omitempty" doc:"An approved claim at the same component and consumer to carry to this issue. The outcome and justification must match it; the new claim is recorded as an extension of it and still needs a second person"`
+	// Remaining decides only the places nothing stands at yet. For applying
+	// a decision to another build, where the places at matching versions
+	// are already reached by lookup and a second claim about them would be
+	// refused.
+	Remaining bool `json:"remaining,omitempty" doc:"Decide only the places nothing currently stands at, and leave the rest as they are. For applying a decision to another build, where some of its places are already reached by lookup"`
 }
 
 // DecidedBody is what one judgment about a finding recorded.
@@ -576,6 +581,40 @@ func registerFindingDecision(api huma.API, in Ingest) {
 				return nil, huma.Error422UnprocessableEntity(
 					"this finding does not sit at every place you named")
 			}
+		}
+		if input.Body.Remaining {
+			asked := make([]triage.Place, 0, len(places))
+			for _, place := range places {
+				asked = append(asked, triage.Place{
+					ProductID: place.ProductID, VulnerabilityID: place.VulnerabilityID,
+					PlaceIdentity: place.PlaceIdentity, Visibility: place.Visibility,
+					ComponentUpstream: place.ComponentUpstream,
+					ConsumerUpstream:  place.ConsumerUpstream,
+				})
+			}
+			left, err := store.Undecided(ctx, asked)
+			if err != nil {
+				return nil, wentWrong(in.Logger, "cannot tell what already stands here", err)
+			}
+			standing := make(map[string]bool, len(left))
+			for _, at := range left {
+				standing[at.PlaceIdentity+"\x00"+at.ComponentUpstream+"\x00"+at.ConsumerUpstream] = true
+			}
+			remaining := make([]finding.Deciding, 0, len(left))
+			for _, place := range places {
+				if standing[place.PlaceIdentity+"\x00"+place.ComponentUpstream+"\x00"+place.ConsumerUpstream] {
+					remaining = append(remaining, place)
+				}
+			}
+			// Everything already reached by lookup: nothing to record, and
+			// nothing wrong either. The count says so.
+			if len(remaining) == 0 {
+				out := &struct{ Body DecidedBody }{}
+				out.Body.IDs = []int64{}
+				out.Body.Left = len(all)
+				return out, nil
+			}
+			places = remaining
 		}
 
 		var until *time.Time

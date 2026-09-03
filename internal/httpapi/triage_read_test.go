@@ -730,6 +730,42 @@ func TestReachSortsBuildsByTheVersionTheDecisionIsKeyedOn(t *testing.T) {
 	})
 }
 
+func TestReachingAnotherBuildCoversOnlyWhatIsLeftThere(t *testing.T) {
+	// A build at the same versions is already reached by lookup, so a second
+	// claim about its places is refused — and the guided review, which posts
+	// to each build it applies to, has no way to know which places those are.
+	// Asked to decide only what remains, the route records nothing there and
+	// says so, rather than refusing.
+	eachReach(t, func(t *testing.T, r *reach) {
+		place := r.scanned(t)
+		r.scannedAlso(t, "arista", "3.7.0")
+		r.decided(t, place)
+		body := `{"outcome":"not-applicable","justification":"vulnerable_code_not_in_execute_path",` +
+			`"reasoning":"The parser is never reached there either."`
+		path := "/v1/products/mine/streams/master/variants/arista/findings/CVE-2026-9999" +
+			"/components/libnl-3-200/decision?version=3.7.0"
+		if got := asPerson(t, r, "triager", http.MethodPost, path, body+`}`); got.Code != http.StatusUnprocessableEntity {
+			t.Errorf("a second claim about a place already reached answered %d, want 422: %s",
+				got.Code, got.Body.String())
+		}
+		got := asPerson(t, r, "triager", http.MethodPost, path, body+`,"remaining":true}`)
+		if got.Code != http.StatusCreated {
+			t.Fatalf("deciding what remains answered %d: %s", got.Code, got.Body.String())
+		}
+		var out struct {
+			Recorded int `json:"recorded"`
+			Left     int `json:"left"`
+		}
+		if err := json.Unmarshal(got.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		if out.Recorded != 0 || out.Left != 1 {
+			t.Errorf("recorded %d and left %d on a build wholly reached by lookup, want 0 and 1",
+				out.Recorded, out.Left)
+		}
+	})
+}
+
 func TestHowFarADecisionWouldReachComesBackInThreeParts(t *testing.T) {
 	// Presenting it as one number is what turns a considered judgment into a
 	// reflex, and it is how a decision comes to reach builds the person making

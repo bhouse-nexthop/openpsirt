@@ -551,6 +551,40 @@ func visibilityOf(at Place) access.Visibility {
 	return access.Private
 }
 
+// Undecided keeps the places nothing currently stands at.
+//
+// For a decision reaching another build: the places its matching versions
+// already cover by lookup are not to be claimed about again — that would be
+// a second claim beside a standing one — and the rest are what is left to
+// decide. Asked as one statement over the keys.
+func (s *Store) Undecided(ctx context.Context, places []Place) ([]Place, error) {
+	if len(places) == 0 {
+		return nil, nil
+	}
+	keys := make([]string, 0, len(places))
+	for _, at := range places {
+		keys = append(keys, liveKeyFor(at))
+	}
+	var standing []string
+	if err := s.db.NewSelect().Model((*Decision)(nil)).
+		ColumnExpr("de.live_key").
+		Where("de.live_key IN (?)", bun.List(keys)).
+		Scan(ctx, &standing); err != nil {
+		return nil, fmt.Errorf("read what already stands: %w", err)
+	}
+	covered := make(map[string]bool, len(standing))
+	for _, key := range standing {
+		covered[key] = true
+	}
+	left := make([]Place, 0, len(places))
+	for i, at := range places {
+		if !covered[keys[i]] {
+			left = append(left, at)
+		}
+	}
+	return left, nil
+}
+
 // liveAt reads the claim currently standing over a combination of code, if
 // there is one. Used to explain a refusal rather than to prevent one.
 func (s *Store) liveAt(ctx context.Context, key string) (*Decision, bool) {

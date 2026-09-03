@@ -42,6 +42,9 @@ type Ready func(context.Context) error
 // nothing, and it is the second line SEC-15 accepted behind the sanitizer:
 // a bug there lands in a page that can run no inline script.
 const contentSecurityPolicy = "default-src 'self'; img-src 'self' data:; " +
+	// The bundler inlines the small font files as data URIs, so fonts are
+	// allowed from the page itself as well as from the origin.
+	"font-src 'self' data:; " +
 	"style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; " +
 	"frame-ancestors 'none'"
 

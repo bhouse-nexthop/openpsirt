@@ -29,7 +29,7 @@ func TestEveryResponseCarriesTheBrowserHeaders(t *testing.T) {
 		// from loading anything else, rather than the string verbatim: what
 		// is pinned is what the policy permits and refuses.
 		for _, directive := range []string{
-			"default-src 'self'", "script-src 'self'", "connect-src 'self'",
+			"default-src 'self'", "font-src 'self' data:", "script-src 'self'", "connect-src 'self'",
 			"frame-ancestors 'none'", "img-src 'self' data:",
 		} {
 			if !strings.Contains(policy, directive) {
