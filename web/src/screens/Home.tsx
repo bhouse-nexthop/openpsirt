@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { scopeQuery, useScope } from "../app/scope";
+import type { Scoped } from "../app/scope";
 import { unwrap } from "../api/queries";
 import { Failed } from "../ui/Failed";
 import { Pace, Mix, Ring } from "../ui/Charts";
@@ -99,26 +100,140 @@ export function Home({ who }: { who: Who }) {
           <p className="reading">Exploited is counted with what it is rated.</p>
         </div>
 
-        <div className="panel">
-          <header>
-            <h3>
-              Release readiness <span className="todo">not built</span>
-            </h3>
-          </header>
-          <p className="reading">Critical count now, against the last shipped release.</p>
-          {at.product && (
-            <footer>
-              <Link to={`/products/${encodeURIComponent(at.product)}/comparison`} className="linkish">
-                Release comparison →
-              </Link>
-            </footer>
-          )}
-        </div>
+        <Readiness at={at} />
 
         <Status />
       </div>
     </>
   );
+}
+
+// A branch beside the last release cut from it: is what we are about to ship
+// better or worse than what we last shipped (RPT-12).
+//
+// Drawn only where the question has an answer. It needs a whole build picked,
+// because a count across products is not a release; and it needs a branch,
+// because a tag is one frozen point and was not cut into anything. Where a
+// branch has released nothing that has been scanned, the panel says so rather
+// than drawing zeroes — a release that shipped clean and a release nobody
+// scanned are not the same answer.
+function Readiness({ at }: { at: Scoped }) {
+  const whole = !!at.product && !!at.stream && !!at.variant;
+  const ready = useQuery({
+    queryKey: ["readiness", at],
+    enabled: whole,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/products/{product}/streams/{stream}/variants/{variant}/readiness", {
+          params: {
+            path: { product: at.product ?? "", stream: at.stream ?? "", variant: at.variant ?? "" },
+          },
+        }),
+      ),
+  });
+
+  if (!whole) {
+    return (
+      <div className="panel">
+        <header>
+          <h3>Release readiness</h3>
+        </header>
+        <p className="reading">
+          Pick a branch and a variant to compare it against the last release cut from it.
+        </p>
+      </div>
+    );
+  }
+  if (ready.isPending) return null;
+  if (ready.isError) {
+    return (
+      <div className="panel">
+        <header>
+          <h3>Release readiness</h3>
+        </header>
+        <Failed error={ready.error} what="The comparison could not be read." />
+      </div>
+    );
+  }
+  // A tag is not compared against itself, and the panel is absent rather than
+  // present and explaining itself on every visit.
+  if (ready.data?.now?.kind === "tag") return null;
+
+  const now = ready.data?.now;
+  const shipped = ready.data?.shipped;
+  const floor = ready.data?.floor;
+
+  return (
+    <div className="panel">
+      <header>
+        <h3>Release readiness</h3>
+        <span className="eyebrow" style={{ marginLeft: "auto" }}>
+          {at.stream} · {at.variant}
+        </span>
+      </header>
+      {shipped ? (
+        <>
+          <table className="plain">
+            <thead>
+              <tr>
+                <th />
+                <th className="num">Now</th>
+                <th className="num">{shipped.stream}</th>
+                <th className="num">Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(["critical", "high", "medium", "low"] as const).map((band) => (
+                <tr key={band}>
+                  <td style={{ textTransform: "capitalize" }}>{band}</td>
+                  <td className="num">{now?.[band] ?? 0}</td>
+                  <td className="num hint">{shipped[band] ?? 0}</td>
+                  <td className="num">
+                    <Change from={shipped[band] ?? 0} to={now?.[band] ?? 0} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="reading">
+            {reading(now?.critical ?? 0, shipped.critical ?? 0, shipped.stream ?? "")}
+            {floor ? ` Counted at ${floor} and above.` : ""}
+          </p>
+        </>
+      ) : (
+        <p className="reading">{ready.data?.why || "Nothing to compare against yet."}</p>
+      )}
+      {at.product && (
+        <footer>
+          <Link to={`/products/${encodeURIComponent(at.product)}/comparison`} className="linkish">
+            Release comparison →
+          </Link>
+        </footer>
+      )}
+    </div>
+  );
+}
+
+// The move, said as a direction rather than as a signed number. Fewer is
+// better here, so the colour follows the meaning and not the arithmetic.
+function Change({ from, to }: { from: number; to: number }) {
+  const by = to - from;
+  if (by === 0) return <span className="hint">same</span>;
+  return (
+    <span style={{ color: by > 0 ? "var(--sev-high)" : "var(--ok)", fontWeight: 600 }}>
+      {by > 0 ? "+" : "−"}
+      {Math.abs(by)}
+    </span>
+  );
+}
+
+// One sentence somebody can repeat in a meeting.
+function reading(now: number, shipped: number, release: string): string {
+  if (now === shipped) return `${now} critical now, the same as ${release} shipped with.`;
+  if (now > shipped) {
+    return `${now} critical now against ${shipped} in ${release} — ${now - shipped} more than last shipped.`;
+  }
+  return `${now} critical now against ${shipped} in ${release} — ${shipped - now} fewer than last shipped.`;
 }
 
 // The four figures. Each names what it counts, because the picker narrows

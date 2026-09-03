@@ -553,6 +553,14 @@ button { font: inherit; color: inherit; }
 .vchip.differs { border-color: var(--sev-high); color: var(--sev-high); background: color-mix(in oklab, var(--sev-high) 10%, transparent); }
 .variants { display: flex; gap: 5px; flex-wrap: wrap; }
 
+/* A small table inside a panel: no wrapper, no scroll, four short columns.
+   The page's main table style assumes a full-width list with a scrolling
+   wrapper, which inside a panel draws a scrollbar under four numbers. */
+.panel table.plain { width: 100%; border-collapse: collapse; margin: 4px 0 2px; }
+.panel table.plain th,
+.panel table.plain td { padding: 4px 6px; border: 0; font-size: var(--step--1); }
+.panel table.plain thead th { color: var(--faint); font-weight: 500; }
+
 /* What an upload was made of. Not a chip: a chip is something you press, and
    these are a reading of what arrived. Struck through once the contents have
    been let go, because the row is then a record rather than a file. */

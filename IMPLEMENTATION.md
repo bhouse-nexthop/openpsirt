@@ -173,7 +173,9 @@ deadlines and what a new line would inherit.
   next scan of each answers whether it arrived. Nothing records "done".
   `DESIGN-remediation.md` says what it deliberately does not do
 - Reports: dismissals, coverage, metrics — **release comparison is built**
-- **Trends on calendar time are built.** Release over release is not
+- **Trends on calendar time are built**, and so is **release readiness** — a
+  branch beside the last release cut from it. Release over release as a trend
+  axis is not
 - Email, digest, operational alerts — **the in-app notification area is
   built**, with both lifetimes and two of its producers; see
   `DESIGN-notifications.md` for what is told and what is not yet

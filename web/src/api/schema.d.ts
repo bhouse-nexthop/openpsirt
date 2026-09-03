@@ -1253,6 +1253,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product}/streams/{stream}/variants/{variant}/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare a branch against the last release cut from it
+         * @description Answers the question asked before shipping: is what we are about to ship better or worse than what we last shipped. "8 criticals now, v2.4.1 shipped with 4."
+         *
+         *     The release is the newest one cut from this branch, **built the same way**, that has been scanned here — a branch built for one chip beside a release built for another compares two different pieces of software and reads as a regression somebody then goes looking for.
+         *
+         *     Both sides come from scans already collected, so this asks nothing new of a build pipeline. Where there is nothing to compare against, `shipped` is absent and `why` says what is missing rather than reporting zeroes, because a release that shipped clean and a release nobody scanned are not the same answer.
+         *
+         *     Counted as issues at components at or above the deployment's line, which `floor` names.
+         */
+        get: operations["get-readiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product}/streams/{stream}/variants/{variant}/scans": {
         parameters: {
             query?: never;
@@ -1847,6 +1873,23 @@ export interface components {
         };
         BuildBody: {
             stream: string;
+            variant: string;
+        };
+        BuildCountsBody: {
+            /** Format: int64 */
+            critical: number;
+            /** Format: int64 */
+            high: number;
+            /** @enum {string} */
+            kind?: "branch" | "tag";
+            last_scanned_at?: string;
+            /** Format: int64 */
+            low: number;
+            /** Format: int64 */
+            medium: number;
+            stream: string;
+            /** Format: int64 */
+            total: number;
             variant: string;
         };
         CanBody: {
@@ -3224,6 +3267,20 @@ export interface components {
              * @description Places in this build the judgment covers
              */
             here: number;
+        };
+        ReadinessBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ReadinessBody.json
+             */
+            readonly $schema?: string;
+            /** @description The least severity counted, or empty where everything is */
+            floor?: string;
+            now: components["schemas"]["BuildCountsBody"];
+            shipped?: components["schemas"]["BuildCountsBody"];
+            /** @description What is missing, where there is nothing to compare against */
+            why?: string;
         };
         "Reaffirm-decisionRequest": {
             /**
@@ -5889,6 +5946,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReachBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+                stream: string;
+                variant: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadinessBody"];
                 };
             };
             /** @description Error */

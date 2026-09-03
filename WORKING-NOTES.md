@@ -2339,3 +2339,33 @@ The control itself is offered only to the author, so nobody is invited into a
 refusal, and the editor opens on the stored text without a draft key — a draft
 exists so a half-written thought survives a sign-out, and keeping one here
 would hand somebody their own comment back later as an unsent draft.
+
+## Release readiness, the last thing home was pretending about (2026-09-03)
+
+Home carried a panel headed "Release readiness — not built", and the interface
+document said so twice. RPT-12 calls it "the reason a branch trend is worth
+having at all": is what we are about to ship better or worse than what we last
+shipped. Both halves were already in the database — the branch is scanned
+nightly and the release was scanned when it was cut — so it asked nothing new
+of a build pipeline.
+
+Three answers it has to keep apart, each pinned by a test watched failing:
+
+- **The same variant on both sides.** A branch built for one chip beside a
+  release built for another compares two different pieces of software, and the
+  difference reads as a regression somebody goes looking for.
+- **A release nobody scanned is not zero.** "We shipped with none" and "we do
+  not know what we shipped with" are acted on differently, so the comparison is
+  absent and what is missing is said instead.
+- **A tag is not compared against itself.** It was not cut into anything, so
+  the panel is absent rather than present explaining itself every visit — which
+  is why the answer carries the stream's kind.
+
+Counted as issues at components, not places: the third mutant, counting rows,
+read three criticals where two exist, because libnl sits under two consumers.
+
+One tooling note worth keeping: `grep` (ugrep here) silently matches nothing in
+`web/src/screens/Home.tsx`. I concluded from that the trend charts had no
+consumer and were dead code — they are imported and rendered on line 7 and
+below. Read the file, or use another tool, before concluding something is
+unreachable.

@@ -2,7 +2,7 @@
 
 The numbers this produces, and what each of them is honestly a number of.
 
-Satisfies RPT-05 to RPT-07, RPT-10, RPT-11, RPT-13, RPT-15 to RPT-17, REM-25,
+Satisfies RPT-05 to RPT-07, RPT-10 to RPT-13, RPT-15 to RPT-17, REM-25,
 REL-08, ING-13. RPT-09 is only half done and says where.
 
 Everything here reads what the findings and decisions already hold. Nothing in
@@ -185,6 +185,36 @@ with when most of it is not.
 Days remaining are rounded down rather than truncated toward zero. Truncation
 reports something twelve hours overdue as having zero days left, which reads as
 due today.
+
+## Release readiness
+
+A branch beside the last release cut from it: *8 criticals now, v2.4.1 shipped
+with 4*. The question asked before shipping, and the reason a branch trend is
+worth having at all (RPT-12).
+
+Both halves come from scans already collected — the branch is scanned nightly
+and the release was scanned when it was cut — so this asks nothing new of a
+build pipeline.
+
+**The same variant on both sides.** A branch built for one chip beside a
+release built for another compares two different pieces of software, and the
+difference reads as a regression somebody then goes looking for.
+
+**The release is the newest one cut from this branch that has been scanned
+here.** A tag is cut at a moment and never moves again, so the newest
+declaration is the last thing shipped. One declared and never built has no
+counts, and answering with zeroes would report a clean release that does not
+exist — so where there is nothing to compare against, the comparison is absent
+and what is missing is said instead. *We shipped with none* and *we do not know
+what we shipped with* are answers a person acts on differently.
+
+**A tag is not compared against itself.** It is one frozen point and was not
+cut into anything, so there is no "since we shipped" for it. Said rather than
+answered with an empty comparison, which reads as a branch that has released
+nothing.
+
+Counted as issues at components, at or above the deployment's line, and the
+line is named beside the number (RPT-14).
 
 ## Who is holding what
 

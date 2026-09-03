@@ -948,8 +948,13 @@ deliberately" apart. The record does not keep which builds were reached by
 lookup and which by an applied decision, and the number an approval keeps is
 one (TRI-31).
 
-**Release readiness on home is still the marker the mockup carries.**
-Comparing a branch against the last release cut from it is not built.
+**Release readiness on home compares the picked branch against the last
+release cut from it**, band by band, with the move shown as a direction rather
+than a signed number — fewer is better here, so the colour follows the meaning
+and not the arithmetic. The panel is drawn only where the question has an
+answer: it needs a whole build picked, because a count across products is not a
+release, and it needs a branch, because a tag is one frozen point. On a tag it
+is absent rather than present and explaining itself on every visit.
 
 **The users table grants roles inline.** The mockup's columns are user,
 identity, last sign-in, roles and assigned; here the last two give way to a
@@ -1002,9 +1007,6 @@ a hint sentence rather than the panel the mockup draws.
 component.** The mockup opens on the component with the path above it already
 expanded, which means walking upward a step at a time before anything can be
 drawn.
-
-**Release readiness.** Comparing a branch's current state against the last
-release cut from it (RPT-12) has no endpoint; the home panel says so.
 
 **A claim scoped to a consumer subtree, and ownership by subtree.** Both were
 proposed in the workflow review and neither is decided (DECISIONS.md Section 4).
