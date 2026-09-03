@@ -3,10 +3,10 @@
 What somebody intends to fix, where, and how the tool finds out whether it
 happened.
 
-Satisfies REM-02, REM-03, REM-07 to REM-10, REM-13, REM-16. REM-04's escalation
-view, REM-05's work distribution and REM-06's cross-branch status read what is
-here and are described in `DESIGN-reporting.md` and `DESIGN-findings.md`.
-REM-11 and REM-12 are the external hand-off, which is not built.
+Satisfies REM-02, REM-03, REM-06 to REM-10, REM-13, REM-16. REM-04's escalation
+view and REM-05's work distribution read what is here and are described in
+`DESIGN-reporting.md` and `DESIGN-findings.md`. REM-11 and REM-12 are the
+external hand-off, which is not built.
 
 ## Nothing here is declared done
 
@@ -69,10 +69,10 @@ is for callers that name a build by identifier.
 **Declaring is triage work.** Being able to see a finding is not being able to
 plan the work on it, and the plan is a write.
 
-## The five things a build can be
+## The six things a build can be
 
-Every build of the product that holds the issue is listed, chosen or not, and
-so is every build that was chosen and no longer holds it.
+Every build of the product that has ever held the issue is listed, chosen or
+not, and so is every build that was chosen.
 
 | | What it means |
 |---|---|
@@ -80,7 +80,18 @@ so is every build that was chosen and no longer holds it.
 | **fixing** | Chosen, and no scan has looked since |
 | **undecided** | Holds the issue, and nobody has said whether it will be fixed here |
 | **clear** | Chosen, and the issue is gone |
+| **gone** | Nobody chose it, and the issue has left anyway |
 | **retired** | Out of support, so it carries no target at all |
+
+**A build the issue has left is listed even though nobody planned it.** This is
+the other half of the question — "gone from main, still present in 2.4 and 2.3"
+(REM-06) — and it is derived only from scans, because that is the only evidence
+there is. Leaving it out would drop a fixed build from the list entirely, which
+reads identically to a build that never shipped the component; those are
+opposite answers, and the first is the one somebody came to find out.
+
+It is not tickable. There is nothing left to plan for a release the issue has
+already left, and offering the box would invite a claim on work that is done.
 
 **Undecided is not a kind of outstanding.** Nobody is made to answer the same
 question for six releases, so silence is allowed — but "open because we chose
@@ -93,7 +104,9 @@ written, which is most of them, and the flag would be worthless within a week.
 Only a *finished* run counts: one still going may be about to report the issue.
 
 **A clear build is still listed.** It is the one that worked, and dropping it
-would leave finished work looking like work nobody ever planned.
+would leave finished work looking like work nobody ever planned. What separates
+it from **gone** is only whether anybody said in advance that it would happen —
+the evidence is the same scan either way.
 
 **A retired release is listed and not counted.** Nothing on it will be fixed
 (REM-16), so counting it as outstanding fills the figure permanently and

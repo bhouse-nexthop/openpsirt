@@ -2294,3 +2294,23 @@ which DAT-02 forbids — so the insert reads what is already declared inside the
 transaction instead, which DAT-31 wanted anyway. And `dbtest.Reset` deletes in
 foreign-key order, so a new table pointing at `person` fails every unrelated
 test on three engines until it is listed; SQLite said nothing.
+
+## "Gone from main" was missing from what I had just built (2026-09-03)
+
+The fix-target panel listed every build holding the issue plus every build
+somebody had chosen. A build the issue had *left*, that nobody had planned,
+appeared nowhere — so "is this fixed in main?" and "did main ever ship this
+component?" gave the same answer, which is no row at all. They are opposite
+answers and the first is the one somebody came to find out. That is REM-06,
+listed under the same stage, and I had read it as satisfied by the place counts.
+
+Every build that has ever held the issue is listed now, and one that has left
+reads as **gone**: derived only from scans, because that is the only evidence
+there is. It is distinct from **clear** by exactly one thing — whether anybody
+said in advance that it would happen — and it is not tickable, since there is
+nothing left to plan for a release the issue has already left.
+
+Counted with a second pass rather than a conditional sum in the first: that sum
+comes back as a decimal on two of the four engines, and the cast that fixes it
+is the engine-specific spelling the core does not carry. That is the second
+time on this feature.

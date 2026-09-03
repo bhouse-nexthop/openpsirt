@@ -46,6 +46,10 @@ type Intent struct {
 	// Places is how many findings of this issue the build still holds. Zero
 	// where it holds none.
 	Places int
+	// WasHere says the build has held this issue at some point. With Places at
+	// zero it is the answer somebody is looking for — it was here and it is
+	// gone — and a build that never shipped the component has neither.
+	WasHere bool
 	// Declared says somebody chose this build, and by whom and when.
 	Declared   bool
 	DeclaredBy int64
@@ -80,6 +84,15 @@ func (i Intent) Clear() bool { return i.Counts() && i.Places == 0 }
 // most of them and would make the flag worthless within a week.
 func (i Intent) Missed() bool { return i.Counts() && i.Places > 0 && i.ScannedSince }
 
+// Gone says the build held this issue, no longer does, and nobody planned it.
+//
+// The other half of "gone from main, still present in 2.4 and 2.3" (REM-06).
+// Derived only from scans: nobody claimed it, and a build that fixed something
+// on the way past is still a build that fixed it.
+func (i Intent) Gone() bool {
+	return !i.Declared && i.Places == 0 && i.WasHere
+}
+
 // Undecided says the build holds the issue and nobody has said whether it will
 // be fixed there.
 //
@@ -93,9 +106,14 @@ func (i Intent) Undecided() bool {
 // FixingIn reports every build's part in fixing one issue in one component.
 //
 // The candidate list is where the issue currently appears, which is what
-// somebody choosing has in front of them (REM-07), plus anywhere already
-// chosen — including builds that no longer hold it, because those are the ones
-// that worked.
+// somebody choosing has in front of them (REM-07), plus every build that once
+// held it and no longer does — which is the other half of the same question:
+// "gone from main, still present in 2.4 and 2.3" (REM-06).
+//
+// Listing only where it still is would leave a build that was fixed missing
+// from the list entirely, which reads identically to a build that never
+// shipped the component. Those are opposite answers, and the first is the one
+// somebody is looking for.
 func (s *Store) FixingIn(ctx context.Context, subject access.Subject,
 	productID, vulnerabilityID, componentID int64) ([]Intent, error) {
 
@@ -129,19 +147,43 @@ func (s *Store) FixingIn(ctx context.Context, subject access.Subject,
 		return nil, fmt.Errorf("read where the issue still is: %w", err)
 	}
 
+	// And where it ever was. A second pass rather than one query counting both
+	// with a conditional sum: that sum comes back as a decimal on two of the
+	// four engines, and the cast to make it an integer is engine-specific
+	// spelling the core does not carry (DAT-02).
+	var ever []int64
+	err = s.db.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN target AS tg ON tg.id = f.target_id").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		ColumnExpr("f.target_id").
+		Where("st.product_id = ?", productID).
+		Where("f.vulnerability_id = ?", vulnerabilityID).
+		Where("f.component_id = ?", componentID).
+		Where("f.visibility IN (?)", bun.List(visible)).
+		GroupExpr("f.target_id").
+		Scan(ctx, &ever)
+	if err != nil {
+		return nil, fmt.Errorf("read where the issue has ever been: %w", err)
+	}
+
 	declared, err := s.declaredFor(ctx, productID, vulnerabilityID, componentID)
 	if err != nil {
 		return nil, err
 	}
 
 	places := map[int64]int{}
-	ids := make([]int64, 0, len(open)+len(declared))
 	for _, row := range open {
 		places[row.TargetID] = row.Places
-		ids = append(ids, row.TargetID)
+	}
+	everHeld := map[int64]bool{}
+	ids := make([]int64, 0, len(ever)+len(declared))
+	for _, id := range ever {
+		everHeld[id] = true
+		ids = append(ids, id)
 	}
 	for id := range declared {
-		if _, seen := places[id]; !seen {
+		if !everHeld[id] {
 			ids = append(ids, id)
 		}
 	}
@@ -167,7 +209,7 @@ func (s *Store) FixingIn(ctx context.Context, subject access.Subject,
 		build := named[id]
 		intent := Intent{
 			TargetID: id, Stream: build.Stream, Variant: build.Variant,
-			Places: places[id], PastEndOfLife: retired[id],
+			Places: places[id], WasHere: everHeld[id], PastEndOfLife: retired[id],
 		}
 		if row, ok := declared[id]; ok {
 			at := row.DeclaredAt
@@ -448,8 +490,10 @@ func sortIntents(intents []Intent) {
 			return 2
 		case i.Clear():
 			return 3
-		default:
+		case i.Gone():
 			return 4
+		default:
+			return 5
 		}
 	}
 	for i := 1; i < len(intents); i++ {

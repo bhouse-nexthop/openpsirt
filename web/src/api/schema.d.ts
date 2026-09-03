@@ -1142,7 +1142,7 @@ export interface paths {
         };
         /**
          * List which builds this is to be fixed in
-         * @description Returns every build of the product that holds this issue, plus every build somebody has already chosen to fix it in — including ones that no longer hold it, because those are the ones that worked.
+         * @description Returns every build of the product that holds this issue, plus every build that once held it and no longer does — "gone from main, still present in 2.4 and 2.3". A build that was fixed and left out of the list would read identically to one that never shipped the component, and those are opposite answers.
          *
          *     **Nothing here is declared done.** A build is clear when it stops holding the issue, which the scans already say; a chosen build that still holds it after a scan has run is a missed target, and the scan is independent evidence against the claim. A build nobody chose reads as `undecided` rather than as outstanding work: nobody is made to answer the same question for six releases, but silence has to read as silence.
          *
@@ -2610,7 +2610,7 @@ export interface components {
              * @description Where this build stands
              * @enum {string}
              */
-            state: "missed" | "fixing" | "undecided" | "clear" | "retired";
+            state: "missed" | "fixing" | "undecided" | "clear" | "gone" | "retired";
             stream: string;
             variant: string;
         };

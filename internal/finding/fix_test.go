@@ -333,3 +333,55 @@ func TestAPlanCannotReachIntoAnotherProduct(t *testing.T) {
 		}
 	})
 }
+
+func TestABuildTheIssueHasLeftSaysSoRatherThanVanishing(t *testing.T) {
+	// REM-06: "gone from main, still present in 2.4 and 2.3", derived only
+	// from scans.
+	//
+	// Listing only where the issue still is leaves a build that was fixed
+	// missing from the list, which reads identically to a build that never
+	// shipped the component at all. Those are opposite answers, and the first
+	// is the one somebody came to find out.
+	each(t, func(t *testing.T, f *fixture) {
+		old := f.anotherBuild(t, "2.3")
+		issue, component := f.fixing(t, f.target)
+		f.shippedTo(t, old, twoConsumers())
+		if _, err := f.store.Apply(t.Context(), old, f.runOn(t, old),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+
+		// The newer build stops reporting it. Nobody planned anything.
+		if _, err := f.store.Apply(t.Context(), f.target, f.runOn(t, f.target), nil); err != nil {
+			t.Fatal(err)
+		}
+
+		who := f.planner(t, access.PublicTriage)
+		intents, err := f.store.FixingIn(t.Context(), who, f.productID, issue, component)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intents) != 2 {
+			t.Fatalf("%d builds in the answer, want both the one it left and the one it is in",
+				len(intents))
+		}
+		left := stateOf(t, intents, "master")
+		if !left.Gone() {
+			t.Errorf("the build the issue left reads as %+v, not as gone", left)
+		}
+		if left.Places != 0 || !left.WasHere {
+			t.Errorf("the build the issue left reports places=%d wasHere=%v",
+				left.Places, left.WasHere)
+		}
+		still := stateOf(t, intents, "2.3")
+		if !still.Undecided() || still.Gone() {
+			t.Errorf("the build still holding it reads as %+v", still)
+		}
+
+		// And it counts as nobody's plan: gone is what the scans say, not
+		// something anybody claimed.
+		if left.Declared || left.Clear() {
+			t.Errorf("a build nobody chose is being reported as part of a plan: %+v", left)
+		}
+	})
+}

@@ -1260,7 +1260,9 @@ function FixingIn({
 
   // The set is written whole, so a tick sends the whole list rather than one
   // build: intent spans several releases and is decided in one sitting.
-  const chosen = items.filter((row) => row.state !== "undecided" && row.state !== "retired");
+  const chosen = items.filter(
+    (row) => row.state === "fixing" || row.state === "missed" || row.state === "clear",
+  );
   const toggle = (row: { stream?: string; variant?: string; state?: string }) => {
     const named = { stream: row.stream ?? "", variant: row.variant ?? "" };
     const now = chosen.map((each) => ({ stream: each.stream ?? "", variant: each.variant ?? "" }));
@@ -1312,8 +1314,8 @@ function FixingIn({
                       <input
                         type="checkbox"
                         aria-label={`Fix this in ${row.stream} ${row.variant}`}
-                        checked={row.state !== "undecided" && row.state !== "retired"}
-                        disabled={set.isPending || row.state === "retired"}
+                        checked={row.state === "fixing" || row.state === "missed" || row.state === "clear"}
+                        disabled={set.isPending || row.state === "retired" || row.state === "gone"}
                         onChange={() => toggle(row)}
                       />
                     </td>
@@ -1334,7 +1336,8 @@ function FixingIn({
           </div>
           <p className="hint" style={{ margin: "10px 0 0" }}>
             Declared intent, not commits. A release clears when the next scan of it stops finding
-            the issue &mdash; nothing here is marked done by hand.
+            the issue &mdash; nothing here is marked done by hand, and a release it has left says
+            so whether anybody planned it or not.
           </p>
         </>
       )}
@@ -1349,6 +1352,7 @@ function FixState({ state }: { state: string }) {
     fixing: "Fixing",
     undecided: "Not decided",
     clear: "Clear",
+    gone: "Gone",
     retired: "Out of support",
   };
   const means: Record<string, string> = {
@@ -1356,6 +1360,7 @@ function FixState({ state }: { state: string }) {
     fixing: "Chosen, and no scan has looked since",
     undecided: "Nobody has said whether it will be fixed here",
     clear: "Chosen, and the issue is gone",
+    gone: "Nobody chose it, and the issue has left anyway",
     retired: "Out of support, so nothing here is a target",
   };
   const cls: Record<string, string> = {
@@ -1363,6 +1368,7 @@ function FixState({ state }: { state: string }) {
     fixing: "waiting",
     undecided: "open",
     clear: "agreed",
+    gone: "agreed",
     retired: "open",
   };
   return (

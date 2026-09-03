@@ -29,8 +29,9 @@ type FixTargetBody struct {
 	//   fixing    — chosen, and no scan has looked since
 	//   undecided — nobody has said whether it will be fixed here
 	//   clear     — chosen, and the issue is gone
+	//   gone      — nobody chose it, and the issue has left anyway
 	//   retired   — out of support, so it carries no target at all
-	State      string `json:"state" enum:"missed,fixing,undecided,clear,retired" doc:"Where this build stands"`
+	State      string `json:"state" enum:"missed,fixing,undecided,clear,gone,retired" doc:"Where this build stands"`
 	DeclaredBy string `json:"declared_by,omitempty" doc:"Who said it would be fixed here"`
 	DeclaredAt string `json:"declared_at,omitempty" doc:"When they said so"`
 }
@@ -56,8 +57,10 @@ func registerFixTargets(api huma.API, in Ingest) {
 		OperationID: "list-fix-targets", Method: http.MethodGet, Path: path,
 		Summary: "List which builds this is to be fixed in",
 		Description: "Returns every build of the product that holds this issue, plus every " +
-			"build somebody has already chosen to fix it in — including ones that no longer " +
-			"hold it, because those are the ones that worked.\n\n" +
+			"build that once held it and no longer does — \"gone from main, still present in " +
+			"2.4 and 2.3\". A build that was fixed and left out of the list would read " +
+			"identically to one that never shipped the component, and those are opposite " +
+			"answers.\n\n" +
 			"**Nothing here is declared done.** A build is clear when it stops holding the " +
 			"issue, which the scans already say; a chosen build that still holds it after a " +
 			"scan has run is a missed target, and the scan is independent evidence against " +
@@ -220,6 +223,8 @@ func fixState(intent finding.Intent) string {
 		return "fixing"
 	case intent.Clear():
 		return "clear"
+	case intent.Gone():
+		return "gone"
 	default:
 		return "undecided"
 	}
