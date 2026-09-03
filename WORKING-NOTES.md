@@ -256,21 +256,22 @@ rows in 7,292 groups and a few claims had been made. Every later column is the
 recreated demo — 241,479 open rows in 7,329 groups for the same build, the
 mellanox build beside it, and no claims until step 4 makes some.
 
-| Request | Before | 1. Index | 2. Split |
-|---|---|---|---|
-| Findings page, warm | 2.02 s | 1.06 s | 0.34 s |
-| Findings page, first request after start | 2.04 s | 1.08 s | 0.33 s |
-| Page two | 2.05 s | 1.09 s | 0.34 s |
-| Findings, `exploited` | 2.01 s | 1.51 s | 0.24 s |
-| Findings, `search=ssl` | 2.01 s | 1.08 s | 0.34 s |
-| Findings, `state=undecided` | 2.33 s | 1.60 s | 0.38 s |
-| By component | 0.81 s | 0.79 s | 0.26 s |
-| The kernel's issue list | 1.08 s | 0.68 s | 0.15 s |
-| One finding | 0.48 s | 0.02 s | 0.02 s |
-| Unassigned | 0.18 s | 1.07 s | 0.40 s |
-| Tree root | 0.53 s | 0.81 s | 0.82 s |
-| Around the kernel | 0.28 s | 0.94 s | 0.95 s |
-| Review queue | 0.28 s | 0.00 s | 0.00 s |
+| Request | Before | 1. Index | 2. Split | 3. Graph |
+|---|---|---|---|---|
+| Findings page, warm | 2.02 s | 1.06 s | 0.34 s | 0.32 s |
+| Findings page, first request after start | 2.04 s | 1.08 s | 0.33 s | 0.48 s |
+| Page two | 2.05 s | 1.09 s | 0.34 s | 0.32 s |
+| Findings, `exploited` | 2.01 s | 1.51 s | 0.24 s | 0.22 s |
+| Findings, `search=ssl` | 2.01 s | 1.08 s | 0.34 s | 0.32 s |
+| Findings, `state=undecided` | 2.33 s | 1.60 s | 0.38 s | 0.36 s |
+| Findings, `beneath` the root | | | | 0.58 s |
+| By component | 0.81 s | 0.79 s | 0.26 s | 0.26 s |
+| The kernel's issue list | 1.08 s | 0.68 s | 0.15 s | 0.15 s |
+| One finding | 0.48 s | 0.02 s | 0.02 s | 0.01 s |
+| Unassigned | 0.18 s | 1.07 s | 0.40 s | 0.39 s |
+| Tree root | 0.53 s | 0.81 s | 0.82 s | 0.41 s |
+| Around the kernel | 0.28 s | 0.94 s | 0.95 s | 0.43 s |
+| Review queue | 0.28 s | 0.00 s | 0.00 s | 0.00 s |
 
 *Step 1, the index.* `finding_group_idx (target_id, closed_run_id,
 visibility, vulnerability_id, component_id, urgency)` replaces
@@ -317,6 +318,44 @@ ends), 9 after — the page is two statements. What is
 left of the 0.34 s is mostly step 3's: the chain ends still read every edge
 of the build into memory, and the tree and the unassigned list pay the
 loaded machine as before.
+
+*Step 3, the graph.* The three walks are `WITH RECURSIVE` statements, bound
+at sixty-four steps: upward from the components on a page for the way down
+to each (2 ms for a page, fifteen rows back, where the edge read was 18,561
+rows into Go); downward from a component for the set beneath it, which the
+findings list now narrows by as a subquery rather than a bound list of up to
+6,845 identifiers; and downward from a row of the tree's children for the
+distinct issues beneath each, one statement for the row (0.08 s for the
+root's thirty children in raw SQL, against two statements and a walk).
+`Subtree`, `edges` and the in-memory walkers are gone. Two things found on
+the way, both in the tree:
+
+- **SQLite's planner put the recursion's queue on the inside of the
+  downward join** and scanned every edge in the build once per queued row:
+  6.6 s to list what sits under the root, 9 s for the tree's first screen.
+  `CROSS JOIN ... WHERE` in place of `JOIN ... ON` is an inner join on every
+  engine and, on SQLite, the instruction to keep the queue outside; the same
+  two statements take 0.018 s and 0.08 s. Written down in the code and in
+  the data-model design, because the spelling looks like a whim.
+- **The covering index from step 1 created a trap in the tree's per-child
+  count.** The correlated `COUNT(DISTINCT vulnerability_id)` per child could
+  take the index on (target, component, open) or the new one on (target,
+  open, visibility), and SQLite without statistics took the second, which
+  matches every open row in the build, once per child: 0.30 s for the
+  root's thirty. It is now one grouped pass over the build joined in, like
+  the child count beside it, 0.09 s. And the count beneath is asked once
+  per request rather than once for the children and again for the root.
+
+The findings page did not move — the edge walk was never its cost; the
+per-statement profile puts the page at 100 ms for the groups, 76 ms for the
+count and 150 ms for the decoration, of which the last two are step 4's.
+`beneath` under the root costs 0.58 s because each of the page's statements
+tests 241,479 rows against the subtree; the shape that would fix it is an
+index led by the component, which is not in this plan. The tree's first
+screen went from 0.82 s to 0.41 s and the neighbours of the kernel from
+0.95 s to 0.43 s; what is left of each is one 150 ms statement for the
+children and one 200 ms recursion for what is beneath them, on the loaded
+machine.
 
 ## Decided on 2026-09-02, from the workflow review
 

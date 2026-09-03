@@ -246,11 +246,14 @@ type Filter struct {
 	Under         string
 	UnderTheBuild bool
 	// Beneath keeps what sits at a component or anywhere under it, by the
-	// component identifiers a walk over the build's edges produced: the same
-	// walk the dependency tree's cumulative count makes, so the number the
-	// tree draws and the list it opens agree. Nil is no narrowing; empty is
-	// nothing, which a component with no findings under it legitimately is.
-	Beneath []int64
+	// component's identifier: the same walk over the build's edges the
+	// dependency tree's cumulative count makes, so the number the tree draws
+	// and the list it opens agree. Nil is no narrowing.
+	Beneath *int64
+	// TargetID is which build the query is over, set by the store rather than
+	// by a caller, for the same reason ProductID is: the walk beneath a
+	// component is a walk over one build's edges.
+	TargetID int64
 	// State keeps groups by how far they have been decided. A group is an
 	// issue in a component across every place it sits, and its places can be
 	// in different states, so what a group's state *is* had to be chosen:
@@ -348,11 +351,9 @@ func (f Filter) narrow(q *bun.SelectQuery) *bun.SelectQuery {
 		q = q.Where("f.consumer_id IN (?)", componentsWhere(q, "c.name = ?", under))
 	}
 	if f.Beneath != nil {
-		if len(f.Beneath) == 0 {
-			q = q.Where("1 = 0")
-		} else {
-			q = q.Where("f.component_id IN (?)", bun.List(f.Beneath))
-		}
+		// The subtree as the engine walks it, not as a list of identifiers
+		// bound back in: under a build's root that list is the whole build.
+		q = q.Where("f.component_id IN (?)", graph.Within(q.DB(), f.TargetID, *f.Beneath))
 	}
 	q = f.byState(q)
 	if !f.BelowFloor {
@@ -394,6 +395,7 @@ func (s *Store) Hidden(ctx context.Context, subject access.Subject, targetID int
 	// The same reason as everywhere else this narrows: a place identity
 	// carries no product, so the correlation has to be given one.
 	below.ProductID = productID
+	below.TargetID = targetID
 	counted := s.db.NewSelect().
 		TableExpr("finding AS f").
 		ColumnExpr("f.vulnerability_id").
@@ -585,6 +587,7 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 	// correlates one to a decision and is handed a zero would match every
 	// product in the deployment.
 	filter.ProductID = productID
+	filter.TargetID = targetID
 
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -1396,6 +1399,7 @@ func (s *Store) ComponentGroups(ctx context.Context, subject access.Subject, tar
 		return nil, 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
 	filter.ProductID = productID
+	filter.TargetID = targetID
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}

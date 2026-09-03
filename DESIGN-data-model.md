@@ -318,4 +318,12 @@ how many routes exist is a property of the producer's graph, and nothing stops
 the next one being worse than this.
 
 Recursive traversal is portable across all four engines, so this needs no
-engine-specific path.
+engine-specific path. Every walk the application makes is one `WITH
+RECURSIVE` statement, bounded at sixty-four steps: upward from the
+components on a page for the way down to each, downward from a component
+for the set beneath it, and downward from a row of the tree's children for
+the distinct issues beneath each. The downward walks are spelled `CROSS JOIN
+... WHERE`, which is an inner join everywhere and, on SQLite, also the
+instruction to keep the recursion's queue on the outside of the join — the
+planner put the edge table there on its own and scanned every edge once per
+queued row, 6.6 s to list what sits under a build's root against 0.018 s.

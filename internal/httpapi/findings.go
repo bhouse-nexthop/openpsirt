@@ -303,19 +303,18 @@ func registerFindings(api huma.API, in Ingest) {
 	})
 }
 
-// beneath resolves the component a list is narrowed beneath to the set of
-// components the tree's cumulative count covers: it and everything under it,
-// in one pass over the build's edges. Nil where nothing was asked.
+// beneath resolves the component a list is narrowed beneath. Nil where
+// nothing was asked. The walk under it is the store's, in the statement that
+// lists.
 //
 // A name the build does not hold is refused rather than answered with an
 // empty list: an empty list is also what a subtree with nothing open looks
 // like, and the two mean different things to whoever typed the name.
-func beneath(ctx context.Context, in Ingest, targetID int64, name string) ([]int64, error) {
+func beneath(ctx context.Context, in Ingest, targetID int64, name string) (*int64, error) {
 	if name == "" {
 		return nil, nil
 	}
-	store := graph.NewStore(in.DB.DB)
-	componentID, err := store.ComponentAt(ctx, targetID, name)
+	componentID, err := graph.NewStore(in.DB.DB).ComponentAt(ctx, targetID, name)
 	if err != nil {
 		if errors.Is(err, graph.ErrAmbiguous) {
 			return nil, huma.Error422UnprocessableEntity(
@@ -323,11 +322,7 @@ func beneath(ctx context.Context, in Ingest, targetID int64, name string) ([]int
 		}
 		return nil, huma.Error422UnprocessableEntity("this build does not hold a component called " + name)
 	}
-	within, err := store.Subtree(ctx, targetID, componentID)
-	if err != nil {
-		return nil, wentWrong(in.Logger, "the build's edges could not be read", err)
-	}
-	return within, nil
+	return &componentID, nil
 }
 
 // ReferenceBody is somewhere an issue is written up, or fixed.

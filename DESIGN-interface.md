@@ -373,16 +373,17 @@ the product this is, the bottom is what a decision is about — and the steps
 between them rarely distinguish anything, so they are counted rather than
 named.
 
-Both ends cost one pass over the build's edges for the whole page, not a walk
-per row — the same pass the dependency tree makes, and a test pins the cost to
-the page size rather than to a statement count somebody has to maintain. **What
-that pass costs on a full-size build has not been measured here.** The tree's
-equivalent walk over 19,192 edges took a request from 0.16 s to 0.57 s, and
-this screen is the one opened first against the largest product, so the number
-is worth having before it is relied on. If it turns out to matter, the cheaper
-shape is climbing a level at a time from the consumers on the page rather than
-reading every edge: bounded by the depth of the graph instead of its size, and
-still flat in the number of rows.
+Both ends cost one recursive statement for the whole page, not a walk per
+row: the database climbs from every consumer on the page to the root and
+returns the nodes on the way, and the shortest way down to each is unwound
+from those rows. A test pins the cost to the page size rather than to a
+statement count somebody has to maintain. The first version read every edge
+of the build into memory — 18,561 rows on a switch operating-system image,
+a couple of megabytes allocated on the screen opened most — and walked them
+in Go; it was measured at three to eighteen milliseconds, which was true and
+scaled with the graph rather than with the page. Climbing is bounded by the
+depth of the graph instead of its size, and the walk is bounded at
+sixty-four steps so a document in a loop is answered rather than followed.
 
 A row covers every place its component sits at, and those places can be reached
 different ways. Where they are, the row says the pair it shows is one of
@@ -437,12 +438,17 @@ count is now the distinct issues open against that component, which is the
 same at every place it sits, and the cumulative count is the distinct issues
 across it and everything under it, each component counted once however many
 ways it is reached. The root counts the distinct issues open in the build.
-Still one pass over the build's edges and one grouped read of what is open,
-not a query per node.
+One recursive statement for the row's whole set of children: the subtree
+under each as a set of components, joined to the distinct (component, issue)
+pairs open in the build and counted per child. Not a query per node, and no
+longer every edge of the build read into memory and walked — 0.08 s for the
+root's thirty children on the full-size image.
 
 **The list a tree number opens is `beneath`**: every open finding at the
-component or anywhere under it, by the same walk. `under` stays the direct
-consumer. The two do not always show the same figure and are not forced to:
+component or anywhere under it, by the same walk — a recursive statement the
+list's own query narrows by, rather than a set of identifiers walked in Go
+and bound back in, which under the root is the whole build. `under` stays
+the direct consumer. The two do not always show the same figure and are not forced to:
 the tree counts distinct issues and the list is one row per issue and
 component, so a subtree holding one issue at two components is two rows in the
 list and one in the tree. A name the build does not hold is refused rather than

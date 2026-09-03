@@ -92,7 +92,7 @@ func TestThePageIsTheGroupsInOrder(t *testing.T) {
 		for _, n := range named {
 			components[n.ID] = n.Name
 		}
-		swssID := int64(0)
+		swssID, nowhere := int64(0), int64(0)
 		for id, name := range components {
 			if name == swss.Name {
 				swssID = id
@@ -166,9 +166,9 @@ func TestThePageIsTheGroupsInOrder(t *testing.T) {
 			{"inside one container", finding.Filter{Under: swss.Name},
 				func(g *group) bool { return g.consumer[swssID] }},
 			{"held by the build", finding.Filter{UnderTheBuild: true}, func(g *group) bool { return g.direct }},
-			{"beneath nothing", finding.Filter{Beneath: []int64{}}, func(*group) bool { return false }},
-			{"beneath one", finding.Filter{Beneath: []int64{swssID}},
-				func(g *group) bool { return g.component == swssID }},
+			{"beneath nothing", finding.Filter{Beneath: &nowhere}, func(*group) bool { return false }},
+			{"beneath one", finding.Filter{Beneath: &swssID},
+				func(g *group) bool { return g.component == swssID || g.consumer[swssID] }},
 			{"undecided", finding.Filter{State: "undecided"}, func(*group) bool { return true }},
 			{"agreed", finding.Filter{State: "agreed"}, func(*group) bool { return false }},
 		}

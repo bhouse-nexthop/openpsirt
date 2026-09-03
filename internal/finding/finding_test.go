@@ -1104,9 +1104,9 @@ func TestNamingAPageOfFindingsDoesNotCostAQueryPerRow(t *testing.T) {
 				"the cost grows with the page", atFew, atMany)
 		}
 		// And a loose ceiling, so a flat pass nobody needs is still noticed:
-		// which product this is, the list, the count, a lookup per kind of
-		// name, and — for both ends of the chain each row sits at — the
-		// build's root, its edges, and the names along the way.
+		// which product this is, the groups, the count, what is shown about
+		// them, a lookup per kind of name, and — for both ends of the chain
+		// each row sits at — the build's product and one climb to its root.
 		const ceiling = 12
 		if atMany > ceiling {
 			t.Errorf("naming a page took %d statements, want no more than %d", atMany, ceiling)

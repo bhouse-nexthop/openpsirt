@@ -1,0 +1,196 @@
+package graph_test
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
+)
+
+// The three walks over a build's edges are recursive statements, and these pin
+// what they answer on a constructed graph: the shortest way down to a
+// component reached several ways, a component the inventory placed nowhere, a
+// subtree with a shared library in it counted once, and a document in a loop.
+
+// everyone reads everything, which is what these walks are narrowed by.
+func everyone() access.Subject {
+	return access.Subject{Kind: access.Person, Admin: true, Identity: "tester"}
+}
+
+// chain spells a way down as words, root first.
+func chain(steps []graph.Step) string {
+	names := make([]string, 0, len(steps))
+	for _, step := range steps {
+		names = append(names, step.Name)
+	}
+	return strings.Join(names, " > ")
+}
+
+func TestTheShortestWayDownIsTheOneShown(t *testing.T) {
+	each(t, func(t *testing.T, f *fixture) {
+		// openssl is reached directly and through curl; libz only through
+		// curl and then openssl, which is the longer of its two routes to
+		// nothing — it has one. A component listed and placed nowhere has
+		// no way down at all.
+		unplaced := at("orphan", "0.1")
+		snap := tree()
+		snap.Components = append(snap.Components, zlib, unplaced)
+		snap.Dependencies = append(snap.Dependencies, graph.Dependency{Parent: openssl, Child: zlib})
+		if _, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), snap); err != nil {
+			t.Fatal(err)
+		}
+		ids := map[string]int64{}
+		for _, name := range []string{"sonic", "curl", "openssl", "zlib", "orphan"} {
+			id, err := f.store.ComponentAt(t.Context(), f.targetID, name)
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			ids[name] = id
+		}
+
+		chains, err := f.store.Chains(t.Context(), everyone(), f.targetID,
+			[]int64{ids["sonic"], ids["curl"], ids["openssl"], ids["zlib"], ids["orphan"]})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := map[string]string{
+			"sonic":   "sonic",
+			"curl":    "sonic > curl",
+			"openssl": "sonic > openssl",
+			"zlib":    "sonic > openssl > zlib",
+		}
+		for name, way := range want {
+			if got := chain(chains[ids[name]]); got != way {
+				t.Errorf("%s is reached by %q, wanted %q", name, got, way)
+			}
+		}
+		if _, placed := chains[ids["orphan"]]; placed {
+			t.Errorf("a component placed nowhere came back with a way down: %q", chain(chains[ids["orphan"]]))
+		}
+		// The version at each step, since that is what UIX-14 asks for.
+		if steps := chains[ids["zlib"]]; len(steps) == 3 && steps[1].Version != openssl.Version {
+			t.Errorf("the step through openssl carries version %q, wanted %q", steps[1].Version, openssl.Version)
+		}
+	})
+}
+
+func TestWhatIsBeneathACountsEachComponentOnce(t *testing.T) {
+	each(t, func(t *testing.T, f *fixture) {
+		// Two containers each pull in the same library, which has two issues.
+		// Each container is asked separately and answers with two; the root
+		// answers with two as well, not four, and not eight for the places.
+		a, b, lib := at("container-a", "1"), at("container-b", "1"), at("libshared", "1.0")
+		snap := graph.Snapshot{
+			Root:       root,
+			Components: []graph.Described{a, b, lib},
+			Dependencies: []graph.Dependency{
+				{Parent: root, Child: a}, {Parent: root, Child: b},
+				{Parent: a, Child: lib}, {Parent: b, Child: lib},
+			},
+		}
+		if _, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), snap); err != nil {
+			t.Fatal(err)
+		}
+		findings := finding.NewStore(f.store.DB())
+		run, err := findings.Begin(t.Context(), finding.Run{
+			TargetID: f.targetID, Scanner: "grype", ScannerVersion: "0.100.0",
+			DatabaseVersion: "2026-08-28", RanHere: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		reported := func(id string, component graph.Described) finding.Reported {
+			return finding.Reported{
+				Issue:     finding.Named{Identifier: id, Severity: "high"},
+				Component: component, FixState: finding.FixedUpstream, FixedIn: "2.0",
+			}
+		}
+		if _, err := findings.Apply(t.Context(), f.targetID, run.ID, []finding.Reported{
+			reported("CVE-2026-1", lib), reported("CVE-2026-2", lib), reported("CVE-2026-3", a),
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		top, kids, err := f.store.Roots(t.Context(), everyone(), f.targetID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if top == nil || top.Beneath != 3 {
+			t.Fatalf("the root reads %+v beneath, wanted 3 distinct issues", top)
+		}
+		for _, kid := range kids {
+			want := 2
+			if kid.Name == a.Name {
+				want = 3
+			}
+			if kid.Beneath != want {
+				t.Errorf("%s reads %d beneath, wanted %d", kid.Name, kid.Beneath, want)
+			}
+		}
+
+		// The list a tree number opens agrees with it: narrowed beneath a
+		// container, the findings list holds the library's two issues, and
+		// beneath the root everything.
+		aID, err := f.store.ComponentAt(t.Context(), f.targetID, a.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, total, err := findings.Groups(t.Context(), everyone(), f.targetID, 50, 0,
+			finding.Filter{Beneath: &aID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if total != 3 {
+			t.Errorf("beneath %s the list counts %d groups, wanted 3", a.Name, total)
+		}
+		bID, err := f.store.ComponentAt(t.Context(), f.targetID, b.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, total, err = findings.Groups(t.Context(), everyone(), f.targetID, 50, 0,
+			finding.Filter{Beneath: &bID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if total != 2 {
+			t.Errorf("beneath %s the list counts %d groups, wanted 2", b.Name, total)
+		}
+	})
+}
+
+func TestADocumentInALoopIsWalkedOnceAndStops(t *testing.T) {
+	each(t, func(t *testing.T, f *fixture) {
+		// a depends on b, b on a, and the product on a. Every walk has to
+		// come back, and the components in the loop are still placed.
+		a, b := at("a", "1"), at("b", "1")
+		snap := graph.Snapshot{
+			Root:       root,
+			Components: []graph.Described{a, b},
+			Dependencies: []graph.Dependency{
+				{Parent: root, Child: a}, {Parent: a, Child: b}, {Parent: b, Child: a},
+			},
+		}
+		if _, err := f.store.Apply(t.Context(), f.targetID, f.scan(t), snap); err != nil {
+			t.Fatal(err)
+		}
+		aID, _ := f.store.ComponentAt(t.Context(), f.targetID, "a")
+		bID, _ := f.store.ComponentAt(t.Context(), f.targetID, "b")
+
+		chains, err := f.store.Chains(t.Context(), everyone(), f.targetID, []int64{aID, bID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := chain(chains[bID]); got != "sonic > a > b" {
+			t.Errorf("b is reached by %q, wanted the way that does not loop", got)
+		}
+		root, kids, err := f.store.Roots(t.Context(), everyone(), f.targetID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if root == nil || len(kids) != 1 || kids[0].Beneath != 0 {
+			t.Errorf("the tree under a loop reads root %+v, children %+v", root, kids)
+		}
+	})
+}

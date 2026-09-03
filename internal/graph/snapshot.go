@@ -390,15 +390,51 @@ func (s *Store) Around(ctx context.Context, subject access.Subject, targetID int
 	if err != nil {
 		return nil, nil, err
 	}
-	below, err := s.step(ctx, subject, targetID, componentID, true)
+	readable, err := s.visibleIn(ctx, subject, targetID)
 	if err != nil {
 		return nil, nil, err
 	}
-	above, err := s.step(ctx, subject, targetID, componentID, false)
+	below, err := s.step(ctx, readable, targetID, componentID, true)
 	if err != nil {
+		return nil, nil, err
+	}
+	above, err := s.step(ctx, readable, targetID, componentID, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	// What is beneath each neighbour, both directions in one statement.
+	if err := s.filled(ctx, targetID, readable, above, below); err != nil {
 		return nil, nil, err
 	}
 	return above, below, nil
+}
+
+// filled writes what is open beneath each of these rows, in one statement
+// for all of them however many lists they arrive in.
+//
+// What is in each of them, not only what is on it. A container holds no
+// findings of its own, so without this every one of them reads zero while
+// the packages inside hold thousands — and a tree whose counts cannot tell a
+// full branch from an empty one is not something anybody can descend by.
+func (s *Store) filled(ctx context.Context, targetID int64, readable []access.Visibility,
+	lists ...[]Neighbour) error {
+
+	var ids []int64
+	for _, rows := range lists {
+		for _, row := range rows {
+			ids = append(ids, row.ComponentID)
+		}
+	}
+	totals, err := s.beneath(ctx, targetID, readable, ids)
+	if err != nil {
+		return err
+	}
+	for _, rows := range lists {
+		for i := range rows {
+			rows[i].Beneath = totals[rows[i].ComponentID]
+		}
+	}
+	return nil
 }
 
 // Roots reports the build's own component and what it pulls in directly.
@@ -427,14 +463,29 @@ func (s *Store) Roots(ctx context.Context, subject access.Subject, targetID int6
 		return nil, nil, fmt.Errorf("look up what this build is: %w", err)
 	}
 
-	kids, err := s.step(ctx, subject, targetID, rootID, true)
+	readable, err := s.visibleIn(ctx, subject, targetID)
 	if err != nil {
 		return nil, nil, err
 	}
-	root, err := s.describe(ctx, subject, targetID, rootID, len(kids))
+	kids, err := s.step(ctx, readable, targetID, rootID, true)
 	if err != nil {
 		return nil, nil, err
 	}
+	root, err := s.describe(ctx, readable, targetID, rootID, len(kids))
+	if err != nil {
+		return nil, nil, err
+	}
+	if root == nil {
+		return nil, kids, nil
+	}
+	// The root and its children counted in the one statement. The root's own
+	// number is the whole build's, and it was a second walk of the same
+	// edges when asked for on its own.
+	top := []Neighbour{*root}
+	if err := s.filled(ctx, targetID, readable, top, kids); err != nil {
+		return nil, nil, err
+	}
+	root.Beneath = top[0].Beneath
 	return root, kids, nil
 }
 
@@ -443,16 +494,11 @@ func (s *Store) Roots(ctx context.Context, subject access.Subject, targetID int6
 // The child count is passed in rather than counted again: the caller has just
 // walked that edge and holds the answer, and asking the database a second time
 // for a number already in hand is how the same walk ends up costing twice.
-func (s *Store) describe(ctx context.Context, subject access.Subject, targetID, componentID int64,
+func (s *Store) describe(ctx context.Context, readable []access.Visibility, targetID, componentID int64,
 	children int) (*Neighbour, error) {
 
-	readable, err := s.visibleIn(ctx, subject, targetID)
-	if err != nil {
-		return nil, err
-	}
-
 	row := &Neighbour{Children: children, ComponentID: componentID}
-	err = s.db.NewSelect().
+	err := s.db.NewSelect().
 		TableExpr("component AS c").
 		ColumnExpr("c.name AS name").
 		ColumnExpr("c.version AS version").
@@ -471,11 +517,6 @@ func (s *Store) describe(ctx context.Context, subject access.Subject, targetID, 
 	if err != nil {
 		return nil, fmt.Errorf("read what this build is: %w", err)
 	}
-	totals, err := s.beneath(ctx, targetID, readable, []int64{componentID})
-	if err != nil {
-		return nil, err
-	}
-	row.Beneath = totals[componentID]
 	return row, nil
 }
 
@@ -485,20 +526,15 @@ func (s *Store) describe(ctx context.Context, subject access.Subject, targetID, 
 // in one build — so both ends go through the node table. Reading the edge
 // columns as component identifiers is the mistake this comment exists to stop
 // somebody making twice.
-func (s *Store) step(ctx context.Context, subject access.Subject, targetID, componentID int64,
+func (s *Store) step(ctx context.Context, readable []access.Visibility, targetID, componentID int64,
 	down bool) ([]Neighbour, error) {
 	near, far := "parent_id", "child_id"
 	if !down {
 		near, far = far, near
 	}
 
-	readable, err := s.visibleIn(ctx, subject, targetID)
-	if err != nil {
-		return nil, err
-	}
-
 	var rows []Neighbour
-	err = s.db.NewSelect().
+	err := s.db.NewSelect().
 		TableExpr("graph_edge AS e").
 		Join("JOIN graph_node AS nn ON nn.id = e."+near).
 		Join("JOIN graph_node AS fn ON fn.id = e."+far).
@@ -517,10 +553,19 @@ func (s *Store) step(ctx context.Context, subject access.Subject, targetID, comp
 		// tree gets an accurate count of the undisclosed findings under each
 		// component and can bisect down to which one holds them — a leak that
 		// needs no row to be shown.
-		ColumnExpr(`(SELECT COUNT(DISTINCT f.vulnerability_id) FROM "finding" AS f
-			WHERE f.target_id = ? AND f.component_id = c.id
-			  AND f.closed_run_id IS NULL AND f.visibility IN (?)) AS findings`,
-			targetID, bun.List(readable)).
+		//
+		// Counted once for the build and joined, like the children below,
+		// rather than asked per row. As a correlated subquery this had two
+		// indexes to choose from once the findings list's covering index
+		// existed — the target and the component, or the target, open and
+		// visibility — and SQLite without statistics took the second, which
+		// matches every open row in the build, once per child: 0.30 s for
+		// the root's thirty children against 0.09 s as one grouped pass.
+		Join(`LEFT JOIN (SELECT f.component_id AS cid, COUNT(DISTINCT f.vulnerability_id) AS n
+			FROM "finding" AS f
+			WHERE f.target_id = ? AND f.closed_run_id IS NULL AND f.visibility IN (?)
+			GROUP BY f.component_id) AS open ON open.cid = c.id`, targetID, bun.List(readable)).
+		ColumnExpr("COALESCE(open.n, 0) AS findings").
 		// Whether anything is under it, so a node that opens can be told from
 		// one that does not before somebody clicks it.
 		//
@@ -537,11 +582,11 @@ func (s *Store) step(ctx context.Context, subject access.Subject, targetID, comp
 		Where("e.target_id = ?", targetID).
 		Where("nn.component_id = ?", componentID).
 		Where("e.closed_scan_id IS NULL").
-		// kids.n is grouped on as well as selected. It is one value per c.id
-		// and so adds nothing, but the engines that enforce the rule strictly
-		// will not take a column from a joined subquery on the strength of a
-		// primary key belonging to a different table.
-		GroupExpr("c.id, c.name, c.version, kids.n").
+		// kids.n and open.n are grouped on as well as selected. Each is one
+		// value per c.id and so adds nothing, but the engines that enforce
+		// the rule strictly will not take a column from a joined subquery on
+		// the strength of a primary key belonging to a different table.
+		GroupExpr("c.id, c.name, c.version, kids.n, open.n").
 		// What opens comes before what does not, and within each the most
 		// findings first.
 		//
@@ -557,21 +602,8 @@ func (s *Store) step(ctx context.Context, subject access.Subject, targetID, comp
 		return nil, fmt.Errorf("walk the graph: %w", err)
 	}
 
-	// What is in each of them, not only what is on it. A container holds no
-	// findings of its own, so without this every one of them reads zero while
-	// the packages inside hold thousands — and a tree whose counts cannot tell
-	// a full branch from an empty one is not something anybody can descend by.
-	ids := make([]int64, 0, len(rows))
-	for _, row := range rows {
-		ids = append(ids, row.ComponentID)
-	}
-	totals, err := s.beneath(ctx, targetID, readable, ids)
-	if err != nil {
-		return nil, err
-	}
-	for i := range rows {
-		rows[i].Beneath = totals[rows[i].ComponentID]
-	}
+	// What is beneath each is filled in by the caller, for every list it
+	// holds in one statement (filled).
 
 	// What opens comes first, then leaves by what is open against them.
 	//
@@ -636,158 +668,6 @@ func (s *Store) visibleIn(ctx context.Context, subject access.Subject, targetID 
 type Step struct {
 	Name    string
 	Version string
-}
-
-// Chains returns the way down to each of these components, root first.
-//
-// `UIX-14` asks a finding to show the complete chain, root to component, with
-// the version at each step, because that is where somebody judges whether the
-// vulnerable code is reached. The immediate parent alone cannot answer it:
-// where a component is reached several ways the parent is often the same word
-// twice, and two identical rows are not two answers.
-//
-// Read as one pass over the build's edges rather than as a query per step.
-// A walk upward is only two or three hops deep here — the graph an SBOM
-// describes is mostly containment — but it is a hop per query per place, and a
-// finding can sit at sixty. One pass over nineteen thousand edges is cheaper
-// than that and does not grow with how widely a library is shared.
-//
-// Where a component is reached several ways, the shortest way down is the one
-// returned. A path is being shown to explain a position rather than to
-// enumerate the graph, and the shortest is the one somebody can hold in mind.
-func (s *Store) Chains(ctx context.Context, subject access.Subject, targetID int64,
-	componentIDs []int64) (map[int64][]Step, error) {
-
-	chains := map[int64][]Step{}
-	if len(componentIDs) == 0 {
-		return chains, nil
-	}
-	if _, err := s.visibleIn(ctx, subject, targetID); err != nil {
-		return nil, err
-	}
-
-	var rootID int64
-	err := s.db.NewSelect().
-		TableExpr("graph_node AS n").
-		ColumnExpr("n.component_id").
-		Where("n.target_id = ?", targetID).
-		Where("n.closed_scan_id IS NULL").
-		Where("n.is_root = ?", true).
-		Limit(1).Scan(ctx, &rootID)
-	if database.IsNoRows(err) {
-		return chains, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("look up what this build is: %w", err)
-	}
-
-	var edges []struct {
-		Parent int64 `bun:"parent"`
-		Child  int64 `bun:"child"`
-	}
-	err = s.db.NewSelect().
-		TableExpr("graph_edge AS e").
-		Join("JOIN graph_node AS pn ON pn.id = e.parent_id").
-		Join("JOIN graph_node AS cn ON cn.id = e.child_id").
-		ColumnExpr("pn.component_id AS parent").
-		ColumnExpr("cn.component_id AS child").
-		Where("e.target_id = ?", targetID).
-		Where("e.closed_scan_id IS NULL").
-		Scan(ctx, &edges)
-	if err != nil {
-		return nil, fmt.Errorf("read the build's edges: %w", err)
-	}
-
-	parents := map[int64][]int64{}
-	for _, edge := range edges {
-		if edge.Parent != edge.Child {
-			parents[edge.Child] = append(parents[edge.Child], edge.Parent)
-		}
-	}
-
-	// Breadth-first upward, so the first way out is the shortest. Every
-	// component asked about is walked separately because they rarely share a
-	// route, and a shared answer would have to be recomputed anyway once the
-	// paths diverge.
-	routes := map[int64][]int64{}
-	needed := map[int64]bool{rootID: true}
-	for _, id := range componentIDs {
-		if _, done := routes[id]; done {
-			continue
-		}
-		route := climb(id, rootID, parents)
-		if route == nil {
-			continue
-		}
-		routes[id] = route
-		for _, step := range route {
-			needed[step] = true
-		}
-	}
-	if len(routes) == 0 {
-		return chains, nil
-	}
-
-	ids := make([]int64, 0, len(needed))
-	for id := range needed {
-		ids = append(ids, id)
-	}
-	var named []Component
-	if err := s.db.NewSelect().Model(&named).
-		Column("id", "name", "version").
-		Where("id IN (?)", bun.List(ids)).Scan(ctx); err != nil {
-		return nil, fmt.Errorf("read what is on the way down: %w", err)
-	}
-	words := map[int64]Step{}
-	for _, one := range named {
-		words[one.ID] = Step{Name: one.Name, Version: one.Version}
-	}
-
-	for id, route := range routes {
-		chain := make([]Step, 0, len(route))
-		for _, step := range route {
-			if word, ok := words[step]; ok {
-				chain = append(chain, word)
-			}
-		}
-		chains[id] = chain
-	}
-	return chains, nil
-}
-
-// climb walks upward from one component to the root and returns the way back
-// down, root first and the component itself last. Nil where the root is not
-// reachable, which a build whose inventory left a component unplaced will have.
-func climb(from, root int64, parents map[int64][]int64) []int64 {
-	if from == root {
-		return []int64{root}
-	}
-	came := map[int64]int64{from: 0}
-	queue := []int64{from}
-	for len(queue) > 0 {
-		at := queue[0]
-		queue = queue[1:]
-		for _, up := range parents[at] {
-			if _, seen := came[up]; seen {
-				continue
-			}
-			came[up] = at
-			if up == root {
-				// Unwound downward: the map points at where each step was
-				// reached from, which walking back is the way down.
-				route := []int64{root}
-				for step := at; ; step = came[step] {
-					route = append(route, step)
-					if step == from {
-						break
-					}
-				}
-				return route
-			}
-			queue = append(queue, up)
-		}
-	}
-	return nil
 }
 
 // Counts reports how much the build's graph holds, which is what the screen
