@@ -110,7 +110,8 @@ DEMO_USER ?= dev
 # product is what exercises decisions carrying across variants (REL-01,
 # REL-09), so the mellanox build of the switch image belongs here once it is
 # saved beside the broadcom one.
-DEMO_BUILDS ?= internal/sbom/testdata/switch-image.cdx.json.xz,sonic,SONiC,master,broadcom
+DEMO_BUILDS ?= internal/sbom/testdata/switch-image.cdx.json.xz,sonic,SONiC,master,broadcom \
+               internal/sbom/testdata/switch-image-mellanox.cdx.json.xz,sonic,SONiC,master,mellanox
 # In the tree rather than under $HOME: a command that writes to somebody's home
 # directory from a checkout is a surprise, and everything here is throwaway
 # state that should be deleted by deleting the checkout. Git-ignored.

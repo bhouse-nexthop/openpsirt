@@ -59,12 +59,16 @@ worth reading once in a test and not a size worth keeping in every checkout.
 
 ## A second variant of the same image
 
-The mellanox build of the same switch image is being produced and belongs
-beside `switch-image.cdx.json.xz` as `switch-image-mellanox.cdx.json.xz`,
-compressed the same way. It is the fixture that exercises a decision carrying
-across variants: where the chain and the upstream versions match it reaches
-the other variant by lookup (REL-01, REL-09), and where a version differs it
-is the build the guided review walks (UIX-45). To seed it into the demo and
-the dev loop, add one line to `DEMO_BUILDS` in the Makefile:
+`switch-image-mellanox.cdx.json.xz` is the mellanox build of the same switch
+image, from the same producer on the same day, compressed the same way: 6727
+components and 16754 edges against the broadcom build's 6,845 and 18,561. It is
+the fixture that exercises a decision carrying across variants: where the
+chain and the upstream versions match it reaches the other variant by lookup
+(REL-01, REL-09), and where a version differs it is the build the guided
+review walks (UIX-45). The demo and the dev loop seed both, as two variants
+of one branch, from `DEMO_BUILDS` in the Makefile.
 
-    internal/sbom/testdata/switch-image-mellanox.cdx.json.xz,sonic,SONiC,master,mellanox
+It is not yet read by any test. The full-size test reads the broadcom build,
+and a second full-size read would add its cost to every run; what this one
+proves — matching across variants — wants a test that constructs the two
+builds small rather than one that reads sixteen megabytes twice.
