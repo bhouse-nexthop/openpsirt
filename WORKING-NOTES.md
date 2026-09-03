@@ -13,8 +13,7 @@ be picked up:
 
 | | |
 |---|---|
-| **Next** | **Measured slow, on the demo's SQLite with the 7,292-row build, 2026-09-03.** The findings list costs about 2 s a page warm and 5.6 s cold, and `limit=1` costs the same 2 s — so it is the grouped count and the urgency sort over 241k finding rows, not the fifty rows' decoration. `unassigned` 0.9 s, the by-component view 0.9 s, the kernel's issue list 2.0 s, the trend 0.8 s; the tree, the queue and a finding are under 0.5 s. Taken apart on a copy of that database: the grouping over `finding` alone costs 0.33 s and the total's second grouping 0.32 s, both walking `finding_urgency_idx` and then building temp B-trees for the group and the order; the joins for likelihood and score and the five correlated decision lookups per row add about 0.1 s; the rest is the ends walk and the names pass. **A covering index on `(target_id, closed_run_id, visibility, vulnerability_id, component_id, urgency)` makes the same grouping 0.02 s and the total 0.01 s** — an index-only scan on every engine, and the composite is the portable shape (PostgreSQL could combine single-column indexes, MySQL and MariaDB mostly cannot). To do: add that index in the finding migration, and split the page into the grouping over `finding` alone for the fifty most urgent groups and a second pass that decorates only those fifty — joins, decision states, consumers, fix data — so the correlated lookups run fifty times rather than 241,000. Expected: a page in tens of milliseconds on SQLite. **Third part: keep the graph work in the database.** The chain walk reads every edge of the build — about 18,500 rows — into memory and walks them in Go, once per findings page for the two ends of each row's path and once per finding for its chains; the subtree filter computes a node's descendants in Go and binds them back as a list of up to 6,845 ids; the tree's cumulative counts use the same in-memory pass. `WITH RECURSIVE` works on all four engines (Section 6 of the decisions), so each of those is one statement that never leaves the database. Then the same numbers on PostgreSQL |
-| **Next** | **The test suite is run too often and takes too long.** The full gate ran six times in one day where once, before the push, was the rule. Tests in files that use the engine helper — about 200 of 480 — run on all four engines, `-p 1` serializes 23 packages because they share one database per engine, and `-count=1` refuses the cache. To decide, with the timings being taken: a quick loop (SQLite, packages in parallel, cached) as the default `make test` with the four-engine run reserved for `make check`; a database per package so `-p 1` can go; and whether the HTTP-level tests need every engine when the store tests under them already run on all four |
+| **Next** | **Performance and the development loop** — measured, with a plan in order, in the section of that name below. The findings list at 2 s a page and the test suite at over half an hour are the two figures to beat |
 | **Next** | The mellanox build of the switch image, once saved as `internal/sbom/testdata/switch-image-mellanox.cdx.json.xz`, is one line in `DEMO_BUILDS` — see the testdata README. It is the first real cross-variant data: a decision made on broadcom should reach it by lookup where chains match, and the review should walk it where versions differ |
 | **Built, uncommitted** | The demo and the dev loop seed a second product: OpenPSIRT itself, from the inventory the image now carries at `/usr/share/openpsirt/openpsirt.cdx.json`. Two products is what makes the cross-product screens and the scope picker's "all" mean anything |
 | **Built, uncommitted** | The first day of use against the demo, 2026-09-03: the scope picker stays open until the variant is picked; the queue card and the decision screen carry the finding's context (`TRI-09`) and link to the finding; findings rows carry a server-side decision state; the tree's counts are distinct issues per path and its node pane links to the findings at, and beneath, a node (`beneath=` filter); arriving from a finding opens the chain; a menu opens the rail on narrow screens; the trend is the mockup's two-band chart; three class names that collided with Tailwind utilities were renamed; "issues" and "findings" are the two words for the two units, and home counts issues |
@@ -143,6 +142,78 @@ palette, type scale and shell in `web/src/index.css` were taken from it
 verbatim rather than approximated — that was the correction after a first
 attempt built from the decision text alone and came out looking nothing like
 it.
+
+## Performance, measured, and the plan to fix it
+
+Two problems that look like one: the development loop is slow, and some of
+the application's own work is slow. Everything here was measured on
+2026-09-03; the numbers are what to check against afterwards. The bet is that
+fixing the second helps production as much as it helps the loop.
+
+### The development loop
+
+| Measured | What it says |
+|---|---|
+| The full gate ran six times in one day, where the rule is once before a push | Cadence, not code. The gate belongs before a push; while iterating, the package that changed, on SQLite, is the loop. Now written into `AGENTS.md` |
+| SQLite only, no race detector, packages in parallel: the API package alone takes **120 s** for 98 tests, findings 78 s, triage 76 s, access 65 s | About a second per test of pure setup: each SQLite test creates a fresh database file and runs all eighteen migrations before it does anything |
+| The full four-engine run: `-race -count=1 -p 1` — *being timed; well over half an hour* | The race detector roughly triples the work; `-p 1` runs 23 packages one at a time because they share one database per server; `-count=1` refuses the cache, so an untouched package is rebuilt and rerun every time |
+| About 200 of 480 tests run as four subtests, one per engine | The store-level ones earn it — every portability bug so far was a query behaving differently on one engine (`DAT-33` to `DAT-36`), one of them reached only through a handler. The 36 HTTP-level tests in the API package prove routing, authorization mapping and JSON shapes that do not vary by engine, over store queries the store tests already run on all four |
+
+**Plan, in order:**
+
+1. **`make test` becomes the quick loop**: SQLite only, packages in parallel,
+   the cache on. The four-engine run stays in `make check`, which runs once
+   before a push, and CI keeps all four, so `DAT-12` holds. Nothing proved
+   changes; when it is proved does.
+2. **Build the schema once per package.** Migrate one SQLite file per
+   package and copy it per test, and give each package its own database on
+   the three servers (created on first use, named for the package) so
+   `-p 1` can go. Removes the per-test migration and the serialization —
+   the two largest terms.
+3. **Run the API package's handler tests on SQLite and PostgreSQL only**,
+   keeping every store test on all four. Decide by reading the 36, not by
+   the package they sit in: one that pins a query's behavior stays on four.
+4. Re-measure, and put the numbers here.
+
+### The application
+
+| Measured on the demo's SQLite, 7,292-row build, 240,945 open finding rows | |
+|---|---|
+| Findings list, one page: **2.0 s warm, 5.6 s cold**; `limit=1` also 2.0 s | The cost is the grouping, not the page: every page groups all 240,945 rows by issue and component to find the fifty most urgent, then groups them all again to count. Both walk `finding_urgency_idx`, which stops at urgency, and then build temporary B-trees for the group and the order: 0.33 s and 0.32 s in raw SQL. The joins for likelihood and score, and the five correlated decision lookups per row for the row's state, add about 0.1 s; the rest is Go — the chain walk and the names pass |
+| The same grouping with a covering index over `(target_id, closed_run_id, visibility, vulnerability_id, component_id, urgency)`: **0.02 s**; the total **0.01 s** | An index-only scan on every engine. The composite is the portable shape: PostgreSQL could combine single-column indexes with a bitmap scan, MySQL and MariaDB mostly will not |
+| By-component view 0.94 s, unassigned 0.93 s, the kernel's issue list 2.0 s, trend 0.8 s | Same family — grouping over the whole build per request. Tree root 0.54 s, a finding 0.9 s, the queue 0.24 s, running-out 2 ms |
+| Approving a claim: **15.6 s for 1,760 rows** as a loop with a count per row; **55 ms for 2,000 rows** as 11 statements, since fixed | The shape to look for elsewhere: one statement per row where a set would do |
+| The chain walk reads **every edge of the build, ~18,500 rows**, into memory and walks them in Go — once per findings page for the two ends of each row's path, once per finding for its chains, and for the tree's cumulative counts. The subtree filter computes descendants in Go and binds them back as up to 6,845 ids | Work that should stay in the database. The walk itself was measured at 3 to 18 ms, which is true, and it is a couple of megabytes allocated per request on the screen opened most, and it scales with the graph rather than with the page |
+| The review queue reads the deferred-so-far total with one query per entry | Small today; the same one-per-row shape |
+| Bulk inserts already go in as multi-row `INSERT ... VALUES` of 500 rows, about 5,000 placeholders a statement, and identifier lists on deletes are bounded the same way | Nothing to do here. The batch size was chosen for the statement-size cap on MySQL and MariaDB, well inside every engine's placeholder cap |
+
+**Plan, in order, each step measured before and after:**
+
+1. **The covering index** on `finding`, in the finding migration (DAT-29:
+   edit the migration; recreate development and demo databases).
+2. **Split the findings page in two.** First the grouping over `finding`
+   alone — issue, component, count, max urgency — ordered and limited, off
+   the covering index. Then decorate only the fifty groups on the page:
+   the joins for likelihood, score and names, the decision-state counts,
+   the consumer count and the fix data. The correlated lookups run fifty
+   times instead of 240,945. Count the total with the same index-only
+   grouping. Same shape for the by-component view, the unassigned list and
+   the issue list at a component.
+3. **Keep the graph in the database.** `WITH RECURSIVE` works on all four
+   engines (Section 6 of the decisions): the two ends of a chain for a page
+   of rows, a finding's chains, the members of a subtree for `beneath`, and
+   the count beneath a node each become one statement, and the in-memory
+   edge pass goes.
+4. **One query per page, not per row**, wherever the queue and the
+   finding's `standing` still do the latter.
+5. **The same numbers on PostgreSQL**, before and after, since the demo is
+   SQLite and production is not. `make measure` is where a year of nightly
+   scans is modeled; the per-screen timings here are the other half and
+   want a target of their own so they are re-run rather than remembered.
+
+**What "fast enough" means, so this is done at some point:** a findings page
+under 100 ms on SQLite with the full-size build, the full four-engine suite
+under ten minutes, and the quick loop under two.
 
 ## Decided on 2026-09-02, from the workflow review
 
