@@ -282,6 +282,31 @@ gets ticked without being read.
 - Branch protection is not enforced yet — early development. The static analysis
   gate still runs; do not push past it on the grounds that nothing blocks you.
 
+### Development workflow
+
+**Commit and push as work lands. Never leave finished work sitting in a working
+tree.** A working tree is one disk, one machine and one accident away from
+being gone; a pushed commit is not. So a stretch of work ends with a commit
+and a push, and a long stretch is committed in purposeful pieces along the
+way — a decision recorded, a behavior built with its design document, a
+screen rebuilt — each with a body that says why.
+
+**Never force-push.** As long as history is only ever added to, everything is
+recoverable, and a mistake is fixed by a commit on top rather than by
+rewriting what somebody else may already have pulled.
+
+**Where it goes.** Early development commits and pushes to `main`. Once
+branch protection is on, the same rule applies to a pull-request branch: the
+work is pushed as it lands, and the pull request is where it is reviewed. The
+gate (`make check && make check-engines`) runs before the push either way;
+a push that skips it on the grounds that nothing blocks it is the failure the
+gate exists to prevent.
+
+**Two steps of the gate pass only on a commit.** `openapi-current` and
+`web-api` diff a regenerated file against the last commit, so on an
+uncommitted tree they report the file as stale. Regenerate, commit the
+generated file with the change that produced it, and they pass.
+
 ## Building
 
 Everything CI runs is a `make` target, so a failure reproduces locally with the

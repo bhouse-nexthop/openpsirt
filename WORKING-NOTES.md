@@ -13,6 +13,10 @@ be picked up:
 
 | | |
 |---|---|
+| **Next** | The mellanox build of the switch image, once saved as `internal/sbom/testdata/switch-image-mellanox.cdx.json.xz`, is one line in `DEMO_BUILDS` — see the testdata README. It is the first real cross-variant data: a decision made on broadcom should reach it by lookup where chains match, and the review should walk it where versions differ |
+| **Built, uncommitted** | The demo and the dev loop seed a second product: OpenPSIRT itself, from the inventory the image now carries at `/usr/share/openpsirt/openpsirt.cdx.json`. Two products is what makes the cross-product screens and the scope picker's "all" mean anything |
+| **Built, uncommitted** | The first day of use against the demo, 2026-09-03: the scope picker stays open until the variant is picked; the queue card and the decision screen carry the finding's context (`TRI-09`) and link to the finding; findings rows carry a server-side decision state; the tree's counts are distinct issues per path and its node pane links to the findings at, and beneath, a node (`beneath=` filter); arriving from a finding opens the chain; a menu opens the rail on narrow screens; the trend is the mockup's two-band chart; three class names that collided with Tailwind utilities were renamed; "issues" and "findings" are the two words for the two units, and home counts issues |
+| **Built, uncommitted** | What the 2026-09-02 workflow review decided — see the section below. `TRI-45` to `TRI-47` in the backend (a claim table, the queue at claim grain, approval and rejection by claim with set-aside, extension), and `UIX-43` to `UIX-51` in the interface, rebuilt from the restyled mockup and audited against it screen by screen with a headless browser, as two identities. Approving a 2,000-row claim is 11 statements and 55 ms; it was one statement per row and 15.6 s for 1,760 on the demo before that was measured. `make check` is green through the suite on all four engines and stops only at the two steps that diff generated files against the commit; `make check-engines` is green. **A development database against the four servers has to be recreated** (`make engines-down && make engines-up`), and so does the demo's (`make demo-reset`): the triage migration was edited in place |
 | **Done** | The rebuilt SBOM is in as the fixture, the demo is reseeded from it, and `ING-36`/`ING-37` carry their new numbers |
 | **Built** | `ING-41`, end to end: the `upstream.currency` setting (off by default), the pass that fills the columns, a third worker beside the reader and the runner, and the finding screen showing both what upstream has released and why there is no fix |
 | **Done** | `DESIGN-interface.md` is level with the code again: the picker and what a partial scope refuses, home's order, the upstream and age columns, the decided count, the currency panel, the ambiguous-name chooser, and the finding-split divergence recorded as a divergence |
@@ -137,6 +141,44 @@ palette, type scale and shell in `web/src/index.css` were taken from it
 verbatim rather than approximated — that was the correction after a first
 attempt built from the decision text alone and came out looking nothing like
 it.
+
+## Decided on 2026-09-02, from the workflow review
+
+The mockup was restyled and then reviewed as a workflow against thousands of
+findings and few people. Each of these is recorded in `DECISIONS.md`; they are
+listed here so the build order is visible while the work is fresh. The
+restyled mockup is `https://claude.ai/code/artifact/c4a16431-f5ba-4148-bba6-7d4592777b64`
+and is the reference for everything visual; the original mockup is kept as the
+record of the approved workflow and is not edited.
+
+| | |
+|---|---|
+| **`TRI-45`** | A claim is one proposer's action and the unit the approver works at. Confirmed in code before deciding: `internal/triage/queue.go` is one row per decision with no grouping, and `approve` takes one decision id |
+| **`TRI-46`** | A bulk claim's card shows its outliers, and an approver may set them aside — approve the rest, return those as their own claim with the table as the reason |
+| **`TRI-47`** | An approved claim may be extended to a new issue at the same component, consumer and justification; recorded as derived from it, queued as an extension |
+| **`UIX-43`** | Triage mode on the findings list: decide inline, keys move and submit-and-advance. Amends the reading of `UIX-36` — width was the cause, not page-ness |
+| **`UIX-44`** | Location scope: all by default, exclusions grouped by consumer |
+| **`UIX-45`** | Where a decision applies beyond this build is a guided review on submit — matching builds named, differing versions walked one at a time, past-fix builds shown and not offered, a confirmation the approver also sees. The old checkbox list sat after the comments |
+| **`UIX-46`** | The finding is the working screen after a decision: standing decision, activity, revisions, comments, previous decisions at this location. Settles the one-screen-versus-three question |
+| **`UIX-47`** | Conventional labels everywhere. Reject, Trend, Assignments, Unassigned, Justification, Path, EPSS, Locations, Users and roles, Lapsed decisions, Submit |
+| **`UIX-48`** | Adding is a header action and a floating action opening a drawer, not a form above the table |
+| **`UIX-49`** | Upload an inventory from the interface — top bar everywhere, and the Inventories screen, which is what Scans is now called. Exactly the endpoint's two parts: one CycloneDX 1.x inventory, any number of OpenVEX suppressions. No producer report (ING-28's secondary path is not built), no SPDX (intended, not built) |
+| **`UIX-50`** | The restyled mockup is the visual reference; its three looks are token sets, Dojo default, chosen per person in the browser; fonts bundled |
+| **`UIX-51`** | Home leads with four figures that follow the scope |
+
+**Proposed in the same review and left open**, recorded in `DECISIONS.md`
+Section 4: a claim scoped to a consumer subtree (the third bulk axis), and
+ownership by subtree rather than assignment per finding.
+
+**A test gap noted and not closed:** the CycloneDX reader accepts any 1.x and
+refuses 2.x by name, and every fixture is 1.6 — a 1.7 fixture through the
+existing reader tests would turn "accepted by construction" into something
+checked.
+
+**Build order for the above.** The backend half of `TRI-45` to `TRI-47` first,
+because it is a schema change and free before release (`DAT-29`); the
+interface can be rebuilt against the current API for everything else and take
+the queue last.
 
 ## Decided during this stretch
 
