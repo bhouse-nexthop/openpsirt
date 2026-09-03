@@ -442,6 +442,15 @@ drawing five thousand rows inside an expandable tree is a page that stops
 responding rather than a page that is long. Past it the node says how many
 there are and offers all of them.
 
+**Arriving from a finding opens the tree on the component**, with every parent
+that pulls it in already expanded. The chain travels in the link rather than
+being walked upward here — the finding already carries how it is reached, and
+asking for it a step at a time would mean a round trip per level before
+anything could be drawn. Where a level is past its cap, the step on the path is
+kept whatever its position: drawing the whole level instead would render the
+5,157 rows under one of them, and a link that opens a tree without the
+component it was opened for shows the one thing it exists to show.
+
 **A version every component at a level shares is drawn once, not on every
 row.** A version shared by components of different names is not describing any
 of them; it is the producer describing the build, and the real case is a
@@ -1028,11 +1037,6 @@ the server has to do, because it needs to know what the reader may see.
 
 **The carry-forward preview.** What a decision will cover when a build moves is
 a hint sentence rather than the panel the mockup draws.
-
-**Arriving at the tree from a finding opens at the root, not at the
-component.** The mockup opens on the component with the path above it already
-expanded, which means walking upward a step at a time before anything can be
-drawn.
 
 **A claim scoped to a consumer subtree, and ownership by subtree.** Both were
 proposed in the workflow review and neither is decided (DECISIONS.md Section 4).

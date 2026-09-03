@@ -114,18 +114,20 @@ export function Tree() {
       for (const step of steps) next.add(step);
       return next;
     });
-    // A wide node draws a handful of its branches and says how many more
-    // there are; a step on the way to the component has to be drawn whether
-    // or not it is among that handful, so each parent on the path is widened.
-    if (steps.length > 0) {
-      setWidened((prev) => {
-        const next = new Set(prev);
-        next.add(rootName);
-        for (const step of steps) next.add(step);
-        return next;
-      });
-    }
   }, [rootName, path]);
+
+  // The components on the way down to the one being arrived at.
+  //
+  // A level past the cap draws its first few hundred and offers the rest, and
+  // the step on the path has to be drawn whether or not it is among them —
+  // otherwise arriving from a finding lands on a tree that does not contain
+  // the component it was opened for. Each of those rows is kept individually
+  // rather than by drawing the whole level: the step here is `host-image`,
+  // whose level is 5,157 rows, and widening it renders every one of them.
+  const onPath = useMemo(
+    () => new Set(path.split("\u001f").filter(Boolean)),
+    [path],
+  );
 
   // Children are read for each node the reader has opened. The root's own are
   // already in hand from the query above, so it is not asked for twice.
@@ -242,6 +244,7 @@ export function Tree() {
                 below={below}
                 opened={opened}
                 widened={widened}
+                onPath={onPath}
                 focus={focus}
                 onToggle={toggle}
                 onSelect={select}
@@ -326,6 +329,7 @@ function Branches({
   below,
   opened,
   widened,
+  onPath,
   focus,
   onToggle,
   onSelect,
@@ -335,6 +339,7 @@ function Branches({
   below: Map<string, Node[] | undefined>;
   opened: Set<string>;
   widened: Set<string>;
+  onPath: Set<string>;
   focus: string;
   onToggle: (name: string) => void;
   onSelect: (name: string) => void;
@@ -417,7 +422,15 @@ function Branches({
     // what opens first, then the most findings. Truncation, where it happens
     // at all, therefore takes from the end rather than from the middle.
     const all = widened.has(name);
-    const shown = all ? kids : kids.slice(0, CHILDREN);
+    // Past the cap, the step on the way to the component being arrived at is
+    // kept whatever its position. Otherwise a link from a finding opens a tree
+    // that does not contain the component it was opened for, which is the one
+    // thing the link exists to show.
+    const shown = all
+      ? kids
+      : kids
+          .slice(0, CHILDREN)
+          .concat(kids.slice(CHILDREN).filter((kid) => onPath.has(kid.component)));
     const hidden = kids.length - shown.length;
 
     // A version every child at this level shares is not a version of any of

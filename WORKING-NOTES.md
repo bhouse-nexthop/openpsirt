@@ -2408,3 +2408,20 @@ rediscovered.
 level, which on a container with 324 children showed twenty. A level is drawn
 whole now, with the cap raised to 400 and kept only for the inventory that
 describes 5,270 components under one root.
+
+## A "not built" note that was built, and the trap under it (2026-09-03)
+
+`DESIGN-interface.md` listed "arriving at the tree from a finding opens at the
+root, not at the component" as not built. It is built: the finding screen puts
+the chain in the link as `path`, and the tree opens every step of it. The
+document had lagged behind the code, which is the failure AGENTS warns about —
+a design document that lags is worse than none, because it is trusted.
+
+What was actually wrong was underneath. To make sure a step on the path got
+drawn, the tree **widened** each level along it — and widening means drawing
+the level whole. With the cap raised, one of those levels is `host-image` with
+5,157 children, so arriving at a kernel finding from the findings list rendered
+five thousand rows to show one of them.
+
+The step on the path is kept individually now, past the cap, wherever it sits.
+Same guarantee, one row instead of five thousand.
