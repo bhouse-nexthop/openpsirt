@@ -496,8 +496,9 @@ where the old code walked an in-memory map it had already paid to read.
 `EXPLAIN ANALYZE` puts the recursion at 86 ms for the root's thirty
 children; on SQLite the same screen halved because reading 18,561 edges
 through its driver was the larger cost there. The tree's first screen is
-a wash on PostgreSQL for the same reason. The fix, if it matters, is the
-one named above: ask what is beneath a row when it is opened. And the
+a wash on PostgreSQL for the same reason. Judged within margin and left
+alone (2026-09-03); the fix, should it ever matter, is the one named
+above: ask what is beneath a row when it is opened. And the
 unassigned list is the one screen where SQLite reads slower after than
 before; the before number was on the earlier database with a different
 set of open rows and no claims, so it is the after column that is the
