@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
 import { Markdown } from "./Markdown";
+import { keep, restore } from "../app/drafts";
 
 // Write and Preview over a plain textarea, with a formatting toolbar. Not a
 // rich-text editor: what is stored is markdown, and an editor that hides that
@@ -105,23 +106,12 @@ export function Editor({
   useEffect(() => {
     if (restored.current || !draftKey || value !== "") return;
     restored.current = true;
-    try {
-      const kept = window.localStorage.getItem(draftKey);
-      if (kept) onChange(kept);
-    } catch {
-      // A browser that refuses storage is not a reason to fail. The draft is
-      // a convenience; the text in front of somebody is the real thing.
-    }
+    const kept = restore(draftKey);
+    if (kept) onChange(kept);
   }, [draftKey, value, onChange]);
 
   useEffect(() => {
-    if (!draftKey) return;
-    try {
-      if (value) window.localStorage.setItem(draftKey, value);
-      else window.localStorage.removeItem(draftKey);
-    } catch {
-      // As above.
-    }
+    keep(draftKey, value);
   }, [draftKey, value]);
 
   function surround(mark: Mark) {
@@ -226,13 +216,7 @@ export function Editor({
   );
 }
 
-// forget clears a draft once its text has actually been accepted. Called on
-// success only: a failed submission keeps what somebody wrote.
-export function forget(draftKey?: string) {
-  if (!draftKey) return;
-  try {
-    window.localStorage.removeItem(draftKey);
-  } catch {
-    // Nothing to clear if storage was refused in the first place.
-  }
-}
+// forget clears a draft once its text has actually been accepted, re-exported
+// here because that is where every caller already looks for it. Where a draft
+// is kept, and under whose name, is decided in one place (`app/drafts`).
+export { forget } from "../app/drafts";

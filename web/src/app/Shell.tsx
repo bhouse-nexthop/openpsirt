@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useScope } from "./scope";
+import { forgetAll } from "./drafts";
 import { Scope } from "./Scope";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
@@ -332,11 +333,20 @@ function Me({ who }: { who: Who }) {
             className="opt"
             role="menuitem"
             onClick={async () => {
-              await api.DELETE("/v1/session", {});
-              // A full load rather than a route change: signing out has to
-              // drop every cached answer, and starting again is the way to
-              // be sure.
-              window.location.assign("/");
+              // Cleared first, and whatever the server says. Drafts hold
+              // triage text, private findings included, and text that
+              // survived a sign-out would be exposed in a way the
+              // application itself is not (UIX-31). A sign-out that failed
+              // to reach the server is the case where clearing matters most.
+              forgetAll();
+              try {
+                await api.DELETE("/v1/session", {});
+              } finally {
+                // A full load rather than a route change: signing out has to
+                // drop every cached answer, and starting again is the way to
+                // be sure.
+                window.location.assign("/");
+              }
             }}
           >
             Sign out

@@ -1392,6 +1392,47 @@ So: when running `go test` by hand rather than through `make check`, export the
 engine URLs, and check the subtest names in the output actually list four
 engines before believing a result.
 
+## Drafts stopped surviving a sign-out (2026-09-03)
+
+Seventh of the 2026-09-03 review's open items, and the one that was a security
+control rather than a defect: `UIX-31` says a draft is "cleared on successful
+submission **and on sign-out**", with the reason spelled out — drafts hold
+triage text, private findings included, and browser storage is no more exposed
+than the application already open in the same profile *only while the person at
+the browser is the person who typed the text*. The clearing on submission was
+built; the clearing on sign-out was not.
+
+Two halves, and the second is the one worth having:
+
+1. **Sign-out clears every draft the browser holds**, every writer's rather
+   than only the one signing out — a draft left by an earlier session is
+   exactly the one nobody would think to clear. Cleared *before* the request
+   that ends the session and whatever it answers: a sign-out that could not
+   reach the server is the case where clearing matters most.
+2. **A draft is kept under the identity that wrote it.** That covers the
+   sign-out that never happened — a session expiring quietly, somebody else
+   signing in on that browser and opening the same finding. The decision does
+   not ask for this; it is what the decision's *reason* asks for, and the
+   review's phrasing ("drafts survive sign-out") named only the half that had
+   a control attached.
+
+Text typed before anybody is recognized is now kept nowhere rather than kept
+under nobody's name, which is what a key with an empty identity would have
+been.
+
+The six call sites each built their own key and called `localStorage`
+directly. That is now one module: where a draft lives and under whose name is
+decided once, because a control spelled at six call sites is a control that is
+missing at the seventh.
+
+**What is still not covered**: the sign-out control itself. There is no
+component test here to click it, so what connects the button to the clearing is
+checked by reading. Written into `DESIGN-interface.md` under what the interface
+does not have tests for, rather than left to be discovered.
+
+`UIX-32`, re-authenticating in place, is still not built and is still recorded
+as open.
+
 ## A product can now say what it triages (2026-09-03)
 
 Sixth of the 2026-09-03 review's open items. `TRI-43` says a deployment states

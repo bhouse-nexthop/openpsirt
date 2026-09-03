@@ -676,6 +676,29 @@ Storage that a browser refuses is not a failure. The draft is a convenience;
 the text in front of somebody is the real thing, so every read and write of it
 tolerates being turned down.
 
+**Signing out clears every draft the browser holds** — every writer's, not only
+the one signing out, because a draft left by an earlier session is exactly the
+one nobody would think to clear. Browser storage is no more exposed than the
+application already open in the same profile; text surviving a sign-out would
+be, and drafts hold triage text with private findings among it. It is cleared
+before the request that ends the session and whatever that request answers: a
+sign-out that could not reach the server is the case where clearing matters
+most.
+
+**A draft is kept under the identity that wrote it**, which is what covers the
+sign-out that never happened. A session can expire quietly, and the next person
+to sign in on that browser opening the same finding must not be handed somebody
+else's reasoning. Text typed before anybody is recognized is not kept at all,
+rather than kept under nobody's name and inherited by whoever signs in next.
+
+Where a draft lives, and under whose name, is decided in one place. A control
+spelled at each of six call sites is a control that is missing at the seventh.
+
+**Re-authenticating in place is not built.** An expired session still means a
+redirect to sign in, and what protects the words at that moment is that the
+draft was already written as they were typed. The decision recording what
+should happen instead stands unimplemented rather than forgotten.
+
 ## What the initial load carries
 
 Screens are split by route. The findings list has to stay usable against a
@@ -833,14 +856,20 @@ document, so a screen cannot disagree with the shape the server sends and a
 drifted endpoint is a compile error rather than a blank panel. That is real
 coverage and it is most of what the frontend needs.
 
-What it is not is a test of what a screen *says*. Two pieces are pulled out and
-tested on their own — what a notification is called, and the count on the
-control that opens it — because saying the wrong thing there is a defect rather
-than a matter of taste. Everything else is checked by a person looking at it.
+What it is not is a test of what a screen *says*. Three pieces are pulled out
+and tested on their own — what a notification is called, the count on the
+control that opens it, and where an unsent draft is kept — because each is a
+defect rather than a matter of taste if it is wrong. Everything else is checked
+by a person looking at it.
 
-The honest summary: several thousand lines of interface, two test files. Where
-a screen computes something rather than draws it, that computation should come
-out into a function beside them.
+The draft rules are tested; **the sign-out that calls them is not**. There is
+no component test here to click the control, so what connects the two is
+checked by reading. That is the weakest link in the chain UIX-31 describes and
+it is written down rather than left to be discovered.
+
+The honest summary: several thousand lines of interface, three test files.
+Where a screen computes something rather than draws it, that computation should
+come out into a function beside them — which is what happened here.
 
 ## Where this diverges from the mockup
 

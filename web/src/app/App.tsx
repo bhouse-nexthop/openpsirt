@@ -1,6 +1,7 @@
 import { Suspense, lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useWho } from "./session";
+import { belongTo } from "./drafts";
 import { Shell } from "./Shell";
 import { SignIn } from "../screens/SignIn";
 import { Findings } from "../screens/Findings";
@@ -39,6 +40,12 @@ const build = "/products/:product/streams/:stream/variants/:variant";
 
 export function App() {
   const who = useWho();
+
+  // Whose drafts this page reads and writes, decided here because this is the
+  // one place that knows who is signed in and every screen below it takes the
+  // answer for granted. Nobody recognized means no drafts are kept at all
+  // rather than drafts kept under nobody's name (UIX-31).
+  belongTo(who.data?.identity);
 
   if (who.isPending) return <Waiting />;
 
