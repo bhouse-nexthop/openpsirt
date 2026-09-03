@@ -2,6 +2,8 @@ package httpapi_test
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -375,6 +377,115 @@ func TestHowLongASignInLastsIsTheSettingAnAdministratorChanged(t *testing.T) {
 		if lasts > 2*chosen || lasts >= access.DefaultSessionLifetime {
 			t.Errorf("the session lasts %v, want about %v — the setting was not read",
 				lasts.Round(time.Minute), chosen)
+		}
+	})
+}
+
+// signedInFrom runs a whole sign-in that began at one address, and returns
+// where the browser is sent afterwards.
+func signedInFrom(t *testing.T, r *signInReach, began string) string {
+	t.Helper()
+	start := httptest.NewRequest(http.MethodGet, "/v1/sign-in/stub"+began, nil)
+	started := httptest.NewRecorder()
+	r.handler.ServeHTTP(started, start)
+	if started.Code != http.StatusFound {
+		t.Fatalf("starting a sign-in answered %d", started.Code)
+	}
+
+	back := httptest.NewRequest(http.MethodGet, "/v1/sign-in/stub/callback?state=the-state&code=a-code", nil)
+	for _, cookie := range started.Result().Cookies() {
+		back.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	r.handler.ServeHTTP(rec, back)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("completing a sign-in answered %d, want 302: %s", rec.Code, rec.Body.String())
+	}
+	return rec.Header().Get("Location")
+}
+
+func TestSigningInComesBackToWhereSomebodyWas(t *testing.T) {
+	// A session ends while somebody is halfway through a justification. The
+	// text survives, because a draft is written as it is typed — but a
+	// sign-in that always lands on the home page still makes them find their
+	// way back to the screen they were on, which for a long piece of
+	// reasoning is the difference between carrying on and starting again
+	// (UIX-32).
+	twoSignIn(t, func(t *testing.T, r *signInReach) {
+		where := signedInFrom(t, r,
+			"?return=%2Fproducts%2Fsonic%2Fstreams%2Fmaster%2Fvariants%2Fbroadcom%2Ffindings")
+		if where != "/products/sonic/streams/master/variants/broadcom/findings" {
+			t.Errorf("a sign-in that began on a findings list landed on %q", where)
+		}
+
+		// And a sign-in that began nowhere in particular still lands home, so
+		// the address is an addition rather than a requirement.
+		if home := signedInFrom(t, r, ""); home != "/" {
+			t.Errorf("a sign-in with no address landed on %q, want /", home)
+		}
+	})
+}
+
+func TestASignInWillNotSendABrowserOffThisDeployment(t *testing.T) {
+	// The classic bug in exactly this flow: a sign-in that sends a browser
+	// wherever a parameter says makes this deployment's own domain vouch for
+	// somebody else's page. Everything that is not a path here becomes the
+	// home page — refusing to sign somebody in over it would punish the person
+	// for a link somebody else wrote.
+	twoSignIn(t, func(t *testing.T, r *signInReach) {
+		for _, hostile := range []struct {
+			what  string
+			given string
+		}{
+			{"an absolute address", "https%3A%2F%2Felsewhere.example%2Fpage"},
+			{"a protocol-relative address", "%2F%2Felsewhere.example%2Fpage"},
+			{"a backslash browsers read as protocol-relative", "%2F%5Celsewhere.example%2Fpage"},
+			{"a scheme with no host", "javascript%3Aalert(1)"},
+			{"a bare host", "elsewhere.example"},
+			{"a relative path that climbs out", "..%2F..%2Fsomewhere"},
+			{"an address with a host and a leading slash", "%2F%2Fuser%40elsewhere.example%2F"},
+		} {
+			where := signedInFrom(t, r, "?return="+hostile.given)
+			if where != "/" {
+				t.Errorf("%s (%s) sent the browser to %q, want /",
+					hostile.what, hostile.given, where)
+			}
+		}
+	})
+}
+
+func TestATamperedReturnAddressIsStillRefused(t *testing.T) {
+	// The address is checked on the way in and again on the way out. The
+	// cookie holding it is the browser's own, so somebody may edit it — and
+	// while a person redirecting themselves gains nothing, an address that
+	// left here is an address this deployment sent, which is what an open
+	// redirect is.
+	twoSignIn(t, func(t *testing.T, r *signInReach) {
+		// What begin would have left behind, with the address replaced.
+		forged, err := json.Marshal(map[string]any{
+			"pending": map[string]string{
+				"State": "the-state", "Nonce": "the-nonce", "Verifier": "the-verifier",
+			},
+			"return": "https://elsewhere.example/page",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodGet,
+			"/v1/sign-in/stub/callback?state=the-state&code=a-code", nil)
+		// Set as a header rather than built as a cookie value: a browser sends
+		// a name and a value and nothing else, so this is what a tampered
+		// request actually looks like on the wire.
+		req.Header.Set("Cookie",
+			"openpsirt_pending="+base64.RawURLEncoding.EncodeToString(forged))
+		rec := httptest.NewRecorder()
+		r.handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusFound {
+			t.Fatalf("completing a sign-in answered %d, want 302: %s", rec.Code, rec.Body.String())
+		}
+		if where := rec.Header().Get("Location"); where != "/" {
+			t.Errorf("a tampered address sent the browser to %q, want /", where)
 		}
 	})
 }

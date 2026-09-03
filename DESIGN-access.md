@@ -3,8 +3,8 @@
 Who is asking, and what they may reach.
 
 Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-50 to ACC-53, SEC-03,
-SEC-07, SEC-09, SEC-20, ACC-44, ACC-54 to ACC-59, and the half of ACC-43 that
-has a trigger today.
+SEC-07, SEC-09, SEC-20, ACC-44, ACC-54 to ACC-59, UIX-32's server half, and the
+half of ACC-43 that has a trigger today.
 
 ## Authenticating is not being authorized
 
@@ -535,6 +535,34 @@ not say who is asking.
 The safe-looking alternative — treating absence as "nobody, so show nothing" —
 hides that until somebody writes the query that treats absence as "everybody".
 One of those is a blank screen and the other is a disclosure.
+
+## Where a sign-in comes back to
+
+A sign-in may carry the address it began at, so somebody whose session ended
+halfway through writing lands back on the screen they were on rather than on
+the home page. Losing the words is prevented in the browser; losing the *place*
+is prevented here.
+
+**The address never leaves this deployment.** It is kept in the same cookie
+that already holds what a sign-in has to remember while the browser is away, so
+nothing a provider echoes back can decide where somebody ends up.
+
+**It is a path here or it is discarded**, and this is the whole of the defense.
+A sign-in that sends a browser wherever a parameter says makes this
+deployment's own domain vouch for somebody else's page, which is the classic
+bug in exactly this flow. So an address is kept only when it starts with a
+single `/`; does not start with `//` or `/\`, which browsers read as
+protocol-relative and would send the browser to another host; and parses with
+no scheme and no host of its own. Anything else becomes the home page — which
+is where a sign-in landed unconditionally before this existed.
+
+**Checked on the way in and again on the way out.** The cookie is the browser's
+own, so somebody may edit it. A person redirecting themselves gains nothing,
+but an address that left here is an address this deployment sent, and that is
+what an open redirect is.
+
+**Discarded rather than refused.** Turning a bad address into a failed sign-in
+would punish the person for a link somebody else wrote.
 
 ## The way back in
 

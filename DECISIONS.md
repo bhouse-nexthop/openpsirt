@@ -701,12 +701,17 @@ that is not part of that index is already free text, with the reason in the
 schema. What changed is the failure: a version that will not fit is refused
 with a sentence rather than a driver's message about a column, and **refused
 rather than shortened**, because a decision keyed on a truncated version would
-be compared against the finding's full one, match nothing, and say so nowhere. *There is no in-place re-authentication (UIX-32)*: an
-expired session still means a redirect to sign in, and what protects the words
-at that moment is that the draft was written as they were typed. The other half
-of that pair is built — drafts are cleared on sign-out and kept under the
-identity that wrote them, so a session that expired quietly does not hand the
-next person somebody else's reasoning.
+be compared against the finding's full one, match nothing, and say so nowhere. *UIX-32 is built as far as it can be, and the
+part that is not is recorded rather than pending.* A write refused for want of
+a session offers the way back **over** the screen rather than instead of it,
+and a sign-in carries the address it began at, so the person comes back to what
+they were writing with it still there. What is not built is authenticating
+without leaving the page: a provider sign-in is a redirect to somebody else's
+host, which cannot be framed and increasingly cannot be done silently either,
+and the one arrangement that would avoid it — a proxy authenticating for us —
+has no session to expire. The decision allows for exactly this: "where a
+redirect is unavoidable, the draft is saved first and the person returns to
+what they were writing".
 
 ## 5. What we ingest
 

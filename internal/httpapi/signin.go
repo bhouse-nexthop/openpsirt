@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -70,7 +71,13 @@ func begin(w http.ResponseWriter, r *http.Request, in Ingest) {
 		return
 	}
 
-	encoded, err := json.Marshal(pending)
+	encoded, err := json.Marshal(inProgress{
+		Pending: pending,
+		// Where to land afterwards, carried in our own cookie rather than
+		// through the provider. It never leaves this browser, so nothing a
+		// provider echoes back can decide where somebody ends up.
+		Return: aLocalPath(r.URL.Query().Get("return")),
+	})
 	if err != nil {
 		wentWrongHere(w, in, "a sign-in could not be started", err)
 		return
@@ -94,11 +101,12 @@ func complete(w http.ResponseWriter, r *http.Request, in Ingest) {
 		return
 	}
 
-	pending, err := pendingFrom(r)
+	held, err := pendingFrom(r)
 	if err != nil {
 		refuseSignIn(w, in)
 		return
 	}
+	pending := held.Pending
 	// Compared before anything is exchanged. The state is what stops somebody
 	// handing a signed-in person a callback of their own making and having the
 	// session come back as theirs.
@@ -185,7 +193,15 @@ func complete(w http.ResponseWriter, r *http.Request, in Ingest) {
 	http.SetCookie(w, &session)
 	http.SetCookie(w, &csrf)
 	http.SetCookie(w, &cleared)
-	http.Redirect(w, r, "/", http.StatusFound)
+	// Back to what they were doing, where they were doing something. A
+	// sign-in that always lands on the home page loses somebody's place every
+	// time a session ends, which for a long justification is the difference
+	// between carrying on and starting again (UIX-32).
+	where := held.Return
+	if where == "" {
+		where = "/"
+	}
+	http.Redirect(w, r, where, http.StatusFound)
 }
 
 // admit decides whether somebody who authenticated may be here, in whichever
@@ -219,23 +235,66 @@ func admit(r *http.Request, in Ingest, rights *access.Store, provider string, id
 }
 
 // pendingFrom reads back what the sign-in remembered.
-func pendingFrom(r *http.Request) (signin.Pending, error) {
+func pendingFrom(r *http.Request) (inProgress, error) {
 	cookie, err := r.Cookie(pendingCookie)
 	if err != nil || cookie.Value == "" {
-		return signin.Pending{}, errors.New("no sign-in is in progress")
+		return inProgress{}, errors.New("no sign-in is in progress")
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(cookie.Value)
 	if err != nil {
-		return signin.Pending{}, err
+		return inProgress{}, err
 	}
-	var pending signin.Pending
-	if err := json.Unmarshal(raw, &pending); err != nil {
-		return signin.Pending{}, err
+	var held inProgress
+	if err := json.Unmarshal(raw, &held); err != nil {
+		return inProgress{}, err
 	}
-	if pending.State == "" || pending.Verifier == "" {
-		return signin.Pending{}, errors.New("the sign-in in progress is incomplete")
+	if held.Pending.State == "" || held.Pending.Verifier == "" {
+		return inProgress{}, errors.New("the sign-in in progress is incomplete")
 	}
-	return pending, nil
+	// Checked again on the way out as well as on the way in. The cookie is the
+	// browser's, so somebody may edit it — and while a person redirecting
+	// themselves somewhere gains nothing, an address that left here is an
+	// address this deployment sent, which is the thing an open redirect is
+	// about.
+	held.Return = aLocalPath(held.Return)
+	return held, nil
+}
+
+// inProgress is a sign-in that has been started: what the provider needs to
+// finish it, and where the person was when they began.
+type inProgress struct {
+	Pending signin.Pending `json:"pending"`
+	Return  string         `json:"return,omitempty"`
+}
+
+// aLocalPath keeps a return address that names somewhere on this deployment,
+// and nothing else.
+//
+// **The whole of the open-redirect defense.** A sign-in that will send a
+// browser wherever a parameter says is a way to make this deployment's own
+// domain vouch for somebody else's page, and it is the classic bug in exactly
+// this flow. So the address is a path here or it is discarded:
+//
+//   - it starts with a single "/", so no scheme and no host;
+//   - it does not start with "//" or "/", which browsers read as
+//     protocol-relative and would send the browser to another host;
+//   - it parses, and carries no scheme or host of its own.
+//
+// Anything else becomes the home page, which is where a sign-in used to land
+// unconditionally. Refusing to sign somebody in over it would punish the
+// person for a link somebody else wrote.
+func aLocalPath(where string) string {
+	if where == "" || !strings.HasPrefix(where, "/") {
+		return ""
+	}
+	if strings.HasPrefix(where, "//") || strings.HasPrefix(where, `/\`) {
+		return ""
+	}
+	parsed, err := url.Parse(where)
+	if err != nil || parsed.Scheme != "" || parsed.Host != "" {
+		return ""
+	}
+	return parsed.RequestURI()
 }
 
 // redirectURI is where the provider sends the browser back to.

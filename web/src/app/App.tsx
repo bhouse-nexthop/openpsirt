@@ -1,7 +1,8 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useSyncExternalStore } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useWho } from "./session";
 import { belongTo } from "./drafts";
+import { snapshot, subscribe } from "./ended";
 import { Shell } from "./Shell";
 import { SignIn } from "../screens/SignIn";
 import { Findings } from "../screens/Findings";
@@ -40,6 +41,7 @@ const build = "/products/:product/streams/:stream/variants/:variant";
 
 export function App() {
   const who = useWho();
+  const ended = useSyncExternalStore(subscribe, snapshot, snapshot);
 
   // Whose drafts this page reads and writes, decided here because this is the
   // one place that knows who is signed in and every screen below it takes the
@@ -54,7 +56,9 @@ export function App() {
   if (!who.data) return <SignIn />;
 
   return (
-    <Shell who={who.data}>
+    <>
+      {ended && <Resume />}
+      <Shell who={who.data}>
       <Suspense fallback={<p className="hint">Loading…</p>}>
       <Routes>
         <Route path="/" element={<Home who={who.data} />} />
@@ -80,7 +84,33 @@ export function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </Suspense>
-    </Shell>
+      </Shell>
+    </>
+  );
+}
+
+// Resume offers a way back in over the screen somebody was already on.
+//
+// Over it rather than instead of it: the words are safe either way, because a
+// draft is written as it is typed, but the finding they were reading, the
+// filters they had set and the row they had open are not — and a sign-in page
+// that replaced all of it would throw those away for nothing. The way in
+// carries the address of this screen, so the round trip through the provider
+// comes back here (UIX-32).
+//
+// It is not dismissible. The session is gone; there is nothing behind this to
+// do, and a control that closed it would only hide the reason the next thing
+// somebody pressed did not work.
+function Resume() {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Your session ended"
+      className="fixed inset-0 z-50 bg-[color-mix(in_srgb,var(--ink)_55%,transparent)] backdrop-blur-sm"
+    >
+      <SignIn resuming />
+    </div>
   );
 }
 

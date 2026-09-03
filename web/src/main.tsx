@@ -1,11 +1,21 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./app/App";
+import { sessionEnded } from "./app/ended";
 import "./index.css";
 
 const queries = new QueryClient({
+  // A write refused for want of a session is noticed once, here, rather than
+  // by every screen that writes. Recognizing it at each call site is how the
+  // one that forgets shows "not authorized" against a button somebody just
+  // pressed and leaves them to work out that their session ended (UIX-32).
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      if (isUnauthorized(error)) sessionEnded();
+    },
+  }),
   defaultOptions: {
     queries: {
       // A finding list read a second ago is still the finding list. What

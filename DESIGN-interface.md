@@ -694,10 +694,42 @@ rather than kept under nobody's name and inherited by whoever signs in next.
 Where a draft lives, and under whose name, is decided in one place. A control
 spelled at each of six call sites is a control that is missing at the seventh.
 
-**Re-authenticating in place is not built.** An expired session still means a
-redirect to sign in, and what protects the words at that moment is that the
-draft was already written as they were typed. The decision recording what
-should happen instead stands unimplemented rather than forgotten.
+### A session that ends under somebody
+
+The worst version of this failure is a long justification, a session that
+quietly expired, a submit that becomes a sign-in page, and the words gone. The
+words are safe — a draft is written as it is typed — but that is only half of
+it. **The finding somebody was reading, the filters they had set and the row
+they had open are not a draft**, and a sign-in page that replaced the screen
+would throw all of it away for nothing.
+
+So a write refused for want of a session **offers the way back over the screen
+rather than instead of it**. What the person was looking at stays behind it, and
+comes back when they return.
+
+That is noticed once, where the client is built, rather than by each screen
+that writes. Recognizing it at each call site is how the one that forgets shows
+"not authorized" against a button somebody just pressed and leaves them to work
+out for themselves that their session ended.
+
+**A sign-in carries the address it began at**, so the round trip through the
+provider comes back to the screen rather than to the home page. It carries the
+query as well as the path: a findings list *is* its filters, and coming back to
+the same path with none of them is coming back to a different screen.
+
+**Re-authenticating without leaving the page is not what this does**, and the
+decision allows for that: where a redirect is unavoidable, the draft is saved
+first and the person returns to what they were writing. It is unavoidable here.
+A provider sign-in is a redirect to somebody else's host, which cannot be
+framed and increasingly cannot be done silently in a hidden frame either. The
+one arrangement where it would not be needed — a proxy that authenticates for
+us — has no session to expire in the first place, because the subject is
+resolved from the request every time.
+
+**Where the address is checked is the server**, not here. A sign-in that sends a
+browser wherever a parameter says makes this deployment's own domain vouch for
+somebody else's page, and that is the classic bug in exactly this flow; see
+`DESIGN-access.md`.
 
 ## What the initial load carries
 
@@ -856,20 +888,22 @@ document, so a screen cannot disagree with the shape the server sends and a
 drifted endpoint is a compile error rather than a blank panel. That is real
 coverage and it is most of what the frontend needs.
 
-What it is not is a test of what a screen *says*. Three pieces are pulled out
+What it is not is a test of what a screen *says*. Five pieces are pulled out
 and tested on their own — what a notification is called, the count on the
-control that opens it, and where an unsent draft is kept — because each is a
-defect rather than a matter of taste if it is wrong. Everything else is checked
-by a person looking at it.
+control that opens it, where an unsent draft is kept, where a sign-in comes
+back to, and how a session that ended is noticed — because each is a defect
+rather than a matter of taste if it is wrong. Everything else is checked by a
+person looking at it.
 
-The draft rules are tested; **the sign-out that calls them is not**. There is
-no component test here to click the control, so what connects the two is
-checked by reading. That is the weakest link in the chain UIX-31 describes and
-it is written down rather than left to be discovered.
+The draft rules are tested; **the sign-out that calls them is not**, and nor is
+the panel that offers a way back in. There is no component test here to click a
+control or to see what is drawn over what, so both of those connections are
+checked by reading. They are the weakest links in the chains UIX-31 and UIX-32
+describe, and they are written down rather than left to be discovered.
 
-The honest summary: several thousand lines of interface, three test files.
-Where a screen computes something rather than draws it, that computation should
-come out into a function beside them — which is what happened here.
+The honest summary: several thousand lines of interface, five test files. Where
+a screen computes something rather than draws it, that computation should come
+out into a function beside them — which is what happened in both of these.
 
 ## Where this diverges from the mockup
 

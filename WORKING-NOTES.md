@@ -1392,6 +1392,47 @@ So: when running `go test` by hand rather than through `make check`, export the
 engine URLs, and check the subtest names in the output actually list four
 engines before believing a result.
 
+## A session that ends no longer costs you your place (2026-09-03)
+
+`UIX-32`, the last recorded decision with nothing behind it. The half everybody
+thinks of — losing the words — was already covered by drafts. The half that was
+actually broken is the other one.
+
+**A sign-in always landed on `/`.** So a session ending halfway through a
+justification meant: text safe, screen gone, and find your way back to the
+finding, the filters and the row you had open. A sign-in now carries the
+address it began at — path *and* query, because a findings list is its filters
+and the same path without them is a different screen.
+
+**Where that address is checked is the server, and it is the whole point.** A
+sign-in that redirects wherever a parameter says makes this deployment's domain
+vouch for somebody else's page. It is kept only if it starts with a single `/`,
+does not start with `//` or `/\` (browsers read both as protocol-relative), and
+parses with no scheme and no host. Carried in our own cookie rather than through
+the provider, and re-checked coming out of it — the cookie is the browser's, so
+somebody may edit it, and while a person redirecting themselves gains nothing,
+an address that left here is an address this deployment sent. Bad addresses are
+*discarded* rather than refused: failing the sign-in would punish the person for
+a link somebody else wrote.
+
+**A refused write now offers the way back over the screen**, not instead of it.
+Noticed once in the query client rather than by each screen that writes — the
+one that forgets is how "not authorized" ends up printed against a button
+somebody just pressed.
+
+**What is not built, and why it is not a gap.** Authenticating without leaving
+the page. A provider sign-in is a redirect to somebody else's host: it cannot be
+framed, and silent renewal in a hidden frame is going away with third-party
+cookies. The one arrangement that would avoid the redirect — a proxy
+authenticating for us — has no session to expire, because the subject is
+resolved from the request every time. The decision's own wording allows for
+this: "where a redirect is unavoidable". Recorded in `DECISIONS.md` §4 as
+answered rather than left looking pending.
+
+Seven mutants across the two halves, each watched failing — including one that
+took a second test to reach: the address is validated twice, and the check on
+the way *out* needed a forged cookie before anything exercised it.
+
 ## End-of-life dates, and the two things they switch off (2026-09-03)
 
 The last of the 2026-09-03 review's open items with code implications, and the
