@@ -458,6 +458,21 @@ which finding is being looked at, and what is assigned is the work it belongs
 to. Assigning one build would leave the identical work unassigned beside it,
 and the person would hold half of what they think they hold.
 
+**And counting it counts the same way.** How much each person is holding is
+counted in pieces of work, like every list it links to. Counted in findings it
+was a different measurement wearing the same word: one kernel flaw assigned to
+one person read as forty-eight held against her on the summary and as the
+single item it is in her own list. The larger number is not a stricter version
+of the smaller one — it moves with how far a component fans out through an
+image rather than with how much anybody has to do, so it says nothing about
+whether somebody is keeping up.
+
+The fan-out is still reported, beside the work rather than instead of it: one
+thing to answer, forty-eight rows to write, and both are true. **Late is
+counted the same way** — a piece of work is late when any of its places is,
+because a group with one late place among forty is late, and calling it a
+fortieth of one is a number nobody acts on.
+
 ## A finding carries what it takes to act on it
 
 There may be thousands of findings and very few people, so the difference

@@ -95,7 +95,9 @@ export interface paths {
         };
         /**
          * List how much each person is dealing with
-         * @description Returns everyone holding open findings you can see, with how many.
+         * @description Returns everyone holding open work you can see, with how much.
+         *
+         *     Counted in pieces of work — an issue in a component in a product — which is the unit the list behind each person is in. `places` says how many findings those cover: one flaw in a kernel is one thing to answer and can be dozens of rows to write.
          *
          *     The number worth watching is not how many findings exist but how many are waiting behind somebody: an idle account holding nothing is harmless, and work stuck behind a person who has gone is the problem — nothing tells this software that somebody has left.
          */
@@ -2558,15 +2560,20 @@ export interface components {
         HoldingBody: {
             /**
              * Format: int64
-             * @description Open findings assigned to them
+             * @description Pieces of work assigned to them: an issue in a component in a product
              */
             open: number;
             /**
              * Format: int64
-             * @description How many of those are past their deadline
+             * @description How many of those pieces are past their deadline
              */
             overdue: number;
             person: string;
+            /**
+             * Format: int64
+             * @description How many findings those cover, across every build
+             */
+            places: number;
         };
         Info: {
             /**

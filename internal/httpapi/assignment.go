@@ -33,9 +33,12 @@ type UnassignedBody struct {
 
 // HoldingBody is how much work one person has.
 type HoldingBody struct {
-	Person  string `json:"person"`
-	Open    int    `json:"open" doc:"Open findings assigned to them"`
-	Overdue int    `json:"overdue" doc:"How many of those are past their deadline"`
+	Person string `json:"person"`
+	// Open counts pieces of work — an issue in a component in a product — and
+	// not the findings they cover, so this agrees with the list behind it.
+	Open    int `json:"open" doc:"Pieces of work assigned to them: an issue in a component in a product"`
+	Places  int `json:"places" doc:"How many findings those cover, across every build"`
+	Overdue int `json:"overdue" doc:"How many of those pieces are past their deadline"`
 }
 
 func registerAssignment(api huma.API, in Ingest) {
@@ -262,7 +265,11 @@ func registerAssignment(api huma.API, in Ingest) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-holdings", Method: http.MethodGet, Path: "/v1/assignments",
 		Summary: "List how much each person is dealing with",
-		Description: "Returns everyone holding open findings you can see, with how many.\n\n" +
+		Description: "Returns everyone holding open work you can see, with how much.\n\n" +
+			"Counted in pieces of work — an issue in a component in a product — which is the " +
+			"unit the list behind each person is in. `places` says how many findings those " +
+			"cover: one flaw in a kernel is one thing to answer and can be dozens of rows to " +
+			"write.\n\n" +
 			"The number worth watching is not how many findings exist but how many are waiting " +
 			"behind somebody: an idle account holding nothing is harmless, and work stuck behind " +
 			"a person who has gone is the problem — nothing tells this software that somebody " +
@@ -289,7 +296,7 @@ func registerAssignment(api huma.API, in Ingest) {
 		out.Body.Items = make([]HoldingBody, 0, len(held))
 		for _, h := range held {
 			out.Body.Items = append(out.Body.Items, HoldingBody{
-				Person: names[h.PersonID], Open: h.Open, Overdue: h.Overdue,
+				Person: names[h.PersonID], Open: h.Open, Places: h.Places, Overdue: h.Overdue,
 			})
 		}
 		return out, nil

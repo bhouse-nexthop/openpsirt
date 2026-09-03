@@ -182,7 +182,13 @@ func (s *Store) handOver(ctx context.Context, subject access.Subject, from int64
 // Holding is how much work one person has, and how much of it is late.
 type Holding struct {
 	PersonID int64 `bun:"person_id"`
-	Open     int   `bun:"open"`
+	// Open is how many pieces of work they hold — an issue in a component in
+	// a product, which is the unit everything else here counts in (REL-01).
+	Open int `bun:"open"`
+	// Places is how many findings those cover. The fan-out, kept alongside
+	// rather than instead: one kernel flaw at forty-eight places is one thing
+	// to answer and forty-eight rows to write, and both are worth saying.
+	Places int `bun:"places"`
 	// Overdue is how much of it is past its deadline. The number that says
 	// whether somebody is holding work or sitting on it — a large open count
 	// on somebody who is keeping up is not the same signal at all.
@@ -195,6 +201,14 @@ type Holding struct {
 // The number that matters is not how many findings exist but how many are
 // stuck behind somebody: an idle account holding nothing is harmless, and work
 // waiting on a person who is not here is the thing worth surfacing.
+//
+// **Counted in pieces of work, not in rows** — an issue in a component in a
+// product, the same unit Unassigned and AssignedTo list in (REL-01). Counting
+// rows made this screen disagree with every screen it links to: measured
+// against a real image, one kernel flaw assigned to one person read as 48 held
+// against her here and as the single item it is in her own list. The larger
+// number is not even a worse version of the smaller one, because it moves with
+// how far a component fans out rather than with how much anybody has to do.
 func (s *Store) HeldBy(ctx context.Context, subject access.Subject) ([]Holding, error) {
 	products, all := subject.Products()
 	if subject.Kind != access.Person || (!all && len(products) == 0) {
@@ -217,14 +231,47 @@ func (s *Store) HeldBy(ctx context.Context, subject access.Subject) ([]Holding, 
 		return onlyVisible(query, subject, products, all)
 	}
 
-	var held []Holding
-	if err := mine().
+	// One row per person per piece of work, counted by grouping and counting
+	// the groups. The derived table is named and quoted, because GROUPS is a
+	// reserved word in MySQL 8 and the obvious alias is a syntax error on one
+	// engine and fine on the other three (DAT-33).
+	pieces := mine().
 		ColumnExpr("f.assigned_to AS person_id").
+		GroupExpr("f.assigned_to, f.vulnerability_id, f.component_id, st.product_id")
+
+	var held []Holding
+	if err := s.db.NewSelect().
+		TableExpr(`(?) AS "work"`, pieces).
+		ColumnExpr(`"work".person_id AS person_id`).
 		ColumnExpr("COUNT(*) AS open").
+		ColumnExpr("0 AS places").
 		ColumnExpr("0 AS overdue").
-		GroupExpr("f.assigned_to").
+		GroupExpr(`"work".person_id`).
 		Scan(ctx, &held); err != nil {
 		return nil, fmt.Errorf("read who is holding what: %w", err)
+	}
+
+	// The fan-out, as its own pass rather than summed out of the grouping.
+	// Summing a count across a derived table comes back as a decimal on two of
+	// the four engines, and a cast to make it an integer is exactly the kind
+	// of engine-specific spelling that has already been wrong here once.
+	var spread []struct {
+		PersonID int64 `bun:"person_id"`
+		Places   int   `bun:"places"`
+	}
+	if err := mine().
+		ColumnExpr("f.assigned_to AS person_id").
+		ColumnExpr("COUNT(*) AS places").
+		GroupExpr("f.assigned_to").
+		Scan(ctx, &spread); err != nil {
+		return nil, fmt.Errorf("read how far what they hold reaches: %w", err)
+	}
+	places := map[int64]int{}
+	for _, row := range spread {
+		places[row.PersonID] = row.Places
+	}
+	for i := range held {
+		held[i].Places = places[held[i].PersonID]
 	}
 
 	// How much of it is late. One pass, against the deadline stored on the
@@ -241,17 +288,26 @@ func (s *Store) HeldBy(ctx context.Context, subject access.Subject) ([]Holding, 
 		PersonID int64 `bun:"person_id"`
 		Overdue  int   `bun:"overdue"`
 	}
+	//
+	// Counted in the same units as the rest of this: a piece of work is late
+	// when any of its places is. The alternative reads worse in both
+	// directions — a group with one late place among forty is late, and
+	// calling it a fortieth of one is a number nobody acts on.
 	standing, args := OffTheClock("st.product_id", s.now())
-	err := mine().
+	late := mine().
 		Join("JOIN component AS c ON c.id = f.component_id").
 		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
 		ColumnExpr("f.assigned_to AS person_id").
-		ColumnExpr("COUNT(*) AS overdue").
 		Where("f.due_at IS NOT NULL").
 		Where("f.due_at < ?", s.now().UTC()).
 		Where("f.suppressed_by IS NULL").
 		Where("NOT "+standing, args...).
-		GroupExpr("f.assigned_to").
+		GroupExpr("f.assigned_to, f.vulnerability_id, f.component_id, st.product_id")
+	err := s.db.NewSelect().
+		TableExpr(`(?) AS "work"`, late).
+		ColumnExpr(`"work".person_id AS person_id`).
+		ColumnExpr("COUNT(*) AS overdue").
+		GroupExpr(`"work".person_id`).
 		Scan(ctx, &counted)
 	if err != nil {
 		return nil, fmt.Errorf("read how much of it is late: %w", err)

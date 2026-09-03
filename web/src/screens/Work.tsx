@@ -146,7 +146,7 @@ function ByPerson({
   query,
   onPick,
 }: {
-  rows: { person?: string; open?: number; overdue?: number }[];
+  rows: { person?: string; open?: number; places?: number; overdue?: number }[];
   query: Query;
   onPick: (identity: string) => void;
 }) {
@@ -187,6 +187,7 @@ function ByPerson({
             <tr>
               <th>Assignee</th>
               <th className="num">Open</th>
+              <th className="num">Findings</th>
               <th className="num">Overdue</th>
               <th />
             </tr>
@@ -208,6 +209,9 @@ function ByPerson({
                   </button>
                 </td>
                 <td className="num">{(row.open ?? 0).toLocaleString()}</td>
+                <td className="num" style={{ color: "var(--faint)" }}>
+                  {(row.places ?? 0).toLocaleString()}
+                </td>
                 <td className="num">
                   {(row.overdue ?? 0) > 0 ? (
                     <span className="due over">{row.overdue}</span>
@@ -231,6 +235,11 @@ function ByPerson({
           </tbody>
         </table>
       </div>
+      <p className="hint" style={{ marginTop: 10 }}>
+        <b>Open</b> counts things to answer &mdash; one issue in one component &mdash; and{" "}
+        <b>Findings</b> how many rows those cover across every build. One flaw in a kernel is one
+        decision and can be dozens of rows.
+      </p>
       <p className="hint" style={{ marginTop: 10 }}>
         Nothing tells the tool somebody has left, so giving their work back is an action rather than
         something it discovers.

@@ -168,12 +168,35 @@ func TestOverdueIsCountedAgainstWhoeverIsHoldingIt(t *testing.T) {
 		if len(held) != 1 {
 			t.Fatalf("%d people are holding something, want 1", len(held))
 		}
-		if held[0].Open != 2 {
-			t.Errorf("they hold %d findings, want 2", held[0].Open)
+		// One issue in one component: one thing to answer, whichever consumer
+		// reaches it. Counted as two, this screen disagreed with the list it
+		// links to, which reports the same work as one item.
+		if held[0].Open != 1 {
+			t.Errorf("they hold %d pieces of work, want 1", held[0].Open)
+		}
+		if held[0].Places != 2 {
+			t.Errorf("what they hold covers %d findings, want 2", held[0].Places)
 		}
 		// A high at a hundred days is seventy days past its thirty-day window.
-		if held[0].Overdue != 2 {
-			t.Errorf("%d of what they hold is overdue, want 2", held[0].Overdue)
+		// Late in the same units: the piece of work is late, not two of it.
+		if held[0].Overdue != 1 {
+			t.Errorf("%d of what they hold is overdue, want 1", held[0].Overdue)
+		}
+
+		// And the two screens say the same thing. This is the check the
+		// numbers are for: what one person is reported to hold, and what that
+		// person's own list has in it, are one measurement.
+		theirs, total, err := f.store.AssignedTo(t.Context(), triager, 7, finding.Scope{}, 50, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if total != held[0].Open || len(theirs) != held[0].Open {
+			t.Errorf("who-holds-what says %d, their own list says %d in %d rows",
+				held[0].Open, total, len(theirs))
+		}
+		if len(theirs) == 1 && theirs[0].Places != held[0].Places {
+			t.Errorf("who-holds-what says %d places, their own list says %d",
+				held[0].Places, theirs[0].Places)
 		}
 	})
 }

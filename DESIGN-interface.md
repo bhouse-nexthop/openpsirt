@@ -620,6 +620,12 @@ nobody holds says "unassigned" in muted text rather than drawing nobody as a
 person with an avatar — a name in that column is a person to go and ask, and
 "nobody" is not.
 
+**Every figure on it counts pieces of work, and says so.** A person's row and
+the list behind their name are one measurement, so clicking through never turns
+one number into a different one. The findings those cover are a second, quieter
+column, and the screen states in words what each of the two counts — a figure
+whose unit has to be inferred is one people infer wrongly.
+
 **Release comparison carries a chart across every build**, not only the two
 being compared: the comparison answers what changed between two, and the chart
 answers whether it is getting better or worse. It is bars rather than a line,

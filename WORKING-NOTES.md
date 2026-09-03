@@ -2184,3 +2184,30 @@ external connectivity" does not.
 approval is refused with "the person who proposed a claim may not be the one who
 agrees to it", ben's is accepted, and the audit record reports both names, both
 timestamps and `two_people: true`.
+
+## Who holds what was counted in a different unit (2026-09-03)
+
+"Who is working on what" counted finding rows while everything it links to
+counts pieces of work. Measured on the demo: one kernel flaw assigned to one
+person read as **48 held against her** on the summary and as **1 item** in her
+own list — the same work, two units, the same word.
+
+The larger number is not a stricter version of the smaller one. It moves with
+how far a component fans out through an image, so it says nothing about whether
+somebody is keeping up, which is the only thing this screen exists to say.
+
+Both counts now group by issue, component and product, the key `Unassigned` and
+`AssignedTo` already use. Late is counted the same way: a piece of work is late
+when any of its places is. The fan-out is kept beside the work rather than
+dropped — one thing to answer, 48 rows to write — as its own pass rather than
+summed out of the grouping, because `SUM` over a derived table comes back as a
+decimal on two of the four engines and the cast that fixes it is the same
+engine-specific spelling that has already been wrong here once.
+
+The test now asserts the two screens agree rather than asserting a number, so
+the next thing that changes one has to change the other.
+
+Ironically, `AssignedTo` already carried the comment naming this exact failure —
+"how a screen ends up saying somebody holds ninety things because it counted
+places where the other counted judgments" — written about the function that was
+made consistent and not about the one that was not.
