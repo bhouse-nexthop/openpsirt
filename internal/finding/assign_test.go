@@ -265,3 +265,191 @@ func TestTheCountsBesideTheseListsAreAskedForOnEveryEngine(t *testing.T) {
 		}
 	})
 }
+
+func TestTheSameWorkInTwoVariantsIsOneItemToDealWith(t *testing.T) {
+	// REL-01. Variants are mostly the same thing built twice, and a judgment
+	// carries no variant — so answering this on one build answers it on the
+	// other. Listed per build, importing a second variant doubled the list of
+	// what nobody is dealing with while doubling none of the work, which is
+	// how a queue stops being read.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(ctx, f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+		who := f.holding(t, access.PublicTriage)
+
+		alone, one, err := f.store.Unassigned(ctx, who, finding.Scope{}, 50, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if one != 1 || len(alone) != 1 {
+			t.Fatalf("one build holds %d items: %+v", one, alone)
+		}
+		if alone[0].Builds != 1 {
+			t.Errorf("one build reported as %d", alone[0].Builds)
+		}
+		places := alone[0].Places
+
+		second := f.anotherVariant(t, "mellanox")
+		f.shippedTo(t, second, twoConsumers())
+		if _, err := f.store.Apply(ctx, second, f.runOn(t, second),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+
+		both, total, err := f.store.Unassigned(ctx, who, finding.Scope{}, 50, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if total != 1 || len(both) != 1 {
+			t.Fatalf("a second variant made %d items out of one piece of work: %+v", total, both)
+		}
+		if both[0].Builds != 2 {
+			t.Errorf("the item covers %d builds, want 2", both[0].Builds)
+		}
+		// The places do double, and should: they are what a judgment here
+		// would be written against, and there are now twice as many.
+		if both[0].Places != places*2 {
+			t.Errorf("it covers %d places, want %d — twice the one build's %d",
+				both[0].Places, places*2, places)
+		}
+		// And it still names a build, because a screen has to link somewhere
+		// and an action has to name a finding.
+		if both[0].Stream == "" || both[0].Variant == "" {
+			t.Errorf("the item names no build to act through: %+v", both[0])
+		}
+	})
+}
+
+func TestVariantsAtDifferentVersionsAreDifferentWork(t *testing.T) {
+	// The other half of REL-01: only genuine differences are broken out. A
+	// component row is one name at one version, shared by every build shipping
+	// it, so this falls out of the model rather than being decided anywhere.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(ctx, f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+
+		second := f.anotherVariant(t, "mellanox")
+		f.shippedTo(t, second, movedTo(libnlNew))
+		if _, err := f.store.Apply(ctx, second, f.runOn(t, second),
+			[]finding.Reported{found("CVE-2026-1", libnlNew)}); err != nil {
+			t.Fatal(err)
+		}
+
+		who := f.holding(t, access.PublicTriage)
+		rows, total, err := f.store.Unassigned(ctx, who, finding.Scope{}, 50, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if total != 2 || len(rows) != 2 {
+			t.Fatalf("two versions of the same component made %d items: %+v", total, rows)
+		}
+		versions := map[string]int{}
+		for _, row := range rows {
+			if row.Component != libnl.Name {
+				t.Errorf("a row is about %q, want the one component under two versions", row.Component)
+			}
+			versions[row.Version] = row.Builds
+		}
+		for version, builds := range versions {
+			if builds != 1 {
+				t.Errorf("%s %s reads as %d builds, want 1 each", libnl.Name, version, builds)
+			}
+		}
+		if len(versions) != 2 {
+			t.Errorf("the two rows are not the two versions: %v", versions)
+		}
+	})
+}
+
+func TestTheSameComponentInTwoProductsIsTwoPiecesOfWork(t *testing.T) {
+	// The limit of collapsing. A decision is a claim about one product's code,
+	// so two products shipping the identical component at the identical
+	// version are two judgments — answered separately, and usually by
+	// different people.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(ctx, f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+
+		elsewhere := f.inAnotherProduct(t, "another-product")
+		f.shippedTo(t, elsewhere, twoConsumers())
+		if _, err := f.store.Apply(ctx, elsewhere, f.runOn(t, elsewhere),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+
+		who := access.NewPerson(1, "someone", true, nil)
+		rows, total, err := f.store.Unassigned(ctx, who, finding.Scope{}, 50, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if total != 2 || len(rows) != 2 {
+			t.Fatalf("two products holding the same component made %d items: %+v", total, rows)
+		}
+		products := map[string]bool{}
+		for _, row := range rows {
+			if row.Builds != 1 {
+				t.Errorf("%s reads as %d builds, want 1 each", row.Product, row.Builds)
+			}
+			products[row.Product] = true
+		}
+		if len(products) != 2 {
+			t.Errorf("the two rows are not two products: %v", products)
+		}
+	})
+}
+
+func TestAssigningCoversEveryBuildOfTheProductHoldingIt(t *testing.T) {
+	// The other side of collapsing the list: an item covering two builds has
+	// to be assignable as one, or it comes straight back. Assigning one build
+	// leaves the identical work unassigned beside it, and the person holds
+	// half of what they think they hold.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(ctx, f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+		second := f.anotherVariant(t, "mellanox")
+		f.shippedTo(t, second, twoConsumers())
+		if _, err := f.store.Apply(ctx, second, f.runOn(t, second),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+
+		f.recorded(t, 7, "somebody")
+		who := f.holding(t, access.PublicTriage)
+		issue := f.issue(t, "CVE-2026-1")
+		component := f.componentID(t, libnl.Name)
+		person := int64(7)
+
+		// Named by the build being looked at; what is assigned is the work it
+		// belongs to.
+		moved, err := f.store.Assign(ctx, who, f.target, issue, component, &person)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if moved == 0 {
+			t.Fatal("assigning moved nothing")
+		}
+		rows, total, err := f.store.Unassigned(ctx, who, finding.Scope{}, 50, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if total != 0 || len(rows) != 0 {
+			t.Errorf("%d items are still unassigned after one assignment: %+v", total, rows)
+		}
+	})
+}
