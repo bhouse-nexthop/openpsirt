@@ -1,0 +1,323 @@
+package httpapi
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/notify"
+	"github.com/bhouse-nexthop/openpsirt/internal/triage"
+)
+
+// ClaimApprovalBody is what agreeing to a claim asks for.
+type ClaimApprovalBody struct {
+	Batch string `json:"batch,omitempty" doc:"Name a batch to agree to several claims under one name, so they can be undone together"`
+	// Except sets rows aside. What is left is approved as one claim; these go
+	// back to the proposer as a claim of their own, with the reason.
+	Except  []int64 `json:"except,omitempty" doc:"Decisions in this claim to set aside rather than approve. They return to the proposer as a claim of their own, carrying the reason given in because"`
+	Because string  `json:"because,omitempty" doc:"Why the rows in except are set aside, in markdown. Required when any are"`
+}
+
+// ClaimApprovedBody is what agreeing to a claim did.
+type ClaimApprovedBody struct {
+	Approved      int   `json:"approved" doc:"How many decisions were agreed to"`
+	ReturnedClaim int64 `json:"returned_claim,omitempty" doc:"The claim the rows set aside went into, where any were"`
+}
+
+func registerClaims(api huma.API, in Ingest) {
+	huma.Register(api, huma.Operation{
+		OperationID: "approve-claim", Method: http.MethodPost, Path: "/v1/claims/{id}/approval",
+		Summary: "Approve a claim",
+		Description: "Approves every waiting decision in a claim as one action, under the same " +
+			"rules each decision is approved under: not by the person who proposed it, and " +
+			"against the revision of the reasoning that stands now.\n\n" +
+			"Name decisions in `except` to set them aside. The rest is approved; those are " +
+			"moved into a claim of their own, marked sent back, and `because` is recorded on " +
+			"each as a comment — the same way sending back records a reason. The response " +
+			"names that claim.\n\n" +
+			"Pass `batch` to approve several claims under one name, undone together with " +
+			"`DELETE /v1/approval-batches/{batch}`.\n\n" +
+			"Returns 404 for a claim you may not act on every row of, and 409 if you proposed it.",
+		Tags: []string{"Triage"},
+	}, func(ctx context.Context, input *struct {
+		ID   int64 `path:"id"`
+		Body ClaimApprovalBody
+	}) (*struct{ Body ClaimApprovedBody }, error) {
+		subject, store, err := triaging(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		done, err := store.ApproveClaim(ctx, subject, input.ID, input.Body.Batch,
+			input.Body.Except, input.Body.Because)
+		switch {
+		case errors.Is(err, triage.ErrSamePerson):
+			return nil, huma.Error409Conflict(
+				"the person who proposed a claim may not be the one who agrees to it")
+		case errors.Is(err, triage.ErrNotTheirs):
+			return nil, noSuchClaim()
+		case err != nil:
+			return nil, refusedDecision(err)
+		}
+
+		out := &struct{ Body ClaimApprovedBody }{}
+		out.Body.Approved = done.Approved
+		if done.Returned != nil {
+			out.Body.ReturnedClaim = done.Returned.ID
+			// The rows went back to whoever proposed them, and they should
+			// hear rather than find out (NTF-05). Logged on failure: the rows
+			// are returned either way.
+			if err := notify.NewStore(in.DB.DB).Tell(ctx, notify.Telling{
+				PersonID: done.Returned.ProposedBy, Kind: notify.SentBack,
+				Body: "Part of a claim of yours was set aside: " + input.Body.Because,
+				Link: "/review-queue",
+			}); err != nil && in.Logger != nil {
+				in.Logger.Error("could not say that rows were set aside",
+					"error", err, "claim", input.ID)
+			}
+		}
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "send-claim-back", Method: http.MethodPost, Path: "/v1/claims/{id}/send-back",
+		Summary: "Send a claim back for more",
+		Description: "Asks the author for more before agreeing to any of a claim. Every waiting " +
+			"decision in it leaves the review queue together and comes back when the author " +
+			"revises.\n\n" +
+			"`because` is required and is recorded as a comment on each decision. Needs no " +
+			"approval of its own. You cannot send back a claim whose words are your own.",
+		Tags: []string{"Triage"}, DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, input *struct {
+		ID   int64 `path:"id"`
+		Body struct {
+			Because string `json:"because" minLength:"1" doc:"What needs to change, in markdown"`
+		}
+	}) (*struct{}, error) {
+		subject, store, err := triaging(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		author, _, err := store.SendBackClaim(ctx, subject, input.ID, input.Body.Because)
+		if err != nil {
+			if errors.Is(err, triage.ErrNotTheirs) {
+				return nil, noSuchClaim()
+			}
+			return nil, refusedDecision(err)
+		}
+		if err := notify.NewStore(in.DB.DB).Tell(ctx, notify.Telling{
+			PersonID: author, Kind: notify.SentBack,
+			Body: "A claim of yours was sent back: " + input.Body.Because,
+			Link: "/review-queue?claim=" + strconv.FormatInt(input.ID, 10),
+		}); err != nil && in.Logger != nil {
+			in.Logger.Error("could not say that a claim was sent back",
+				"error", err, "claim", input.ID)
+		}
+		return &struct{}{}, nil
+	})
+}
+
+// noSuchClaim is the one answer for a claim that is not there or not yours.
+func noSuchClaim() error {
+	return huma.Error404NotFound("no such claim")
+}
+
+func claimBody(c triage.Claim, proposedBy string) ClaimBody {
+	body := ClaimBody{
+		ID: c.ID, Kind: string(c.Kind), ProposedBy: proposedBy,
+		ProposedAt: c.ProposedAt.Format(time.RFC3339),
+	}
+	if c.DerivedFrom != nil {
+		body.DerivedFrom = *c.DerivedFrom
+	}
+	if c.SelectedBy != nil {
+		body.SelectedBy = *c.SelectedBy
+	}
+	return body
+}
+
+func outliersBody(o triage.Outliers) *OutliersBody {
+	body := &OutliersBody{
+		Exploited: o.Exploited, Severe: o.Severe, Fixable: o.Fixable, Unmatched: o.Unmatched,
+		Rows: make([]OutlierBody, 0, len(o.Rows)),
+	}
+	for _, row := range o.Rows {
+		body.Rows = append(body.Rows, OutlierBody{
+			DecisionID: row.DecisionID, Vulnerability: row.Vulnerability,
+			Severity: row.Severity, Exploited: row.Exploited, FixedIn: row.FixedIn,
+			Description: row.Description, Why: row.Why,
+		})
+	}
+	return body
+}
+
+// StandingClaimBody is a live claim covering some of a finding's places.
+type StandingClaimBody struct {
+	ClaimID    int64  `json:"claim_id"`
+	Kind       string `json:"kind" enum:"finding,together,extension,returned"`
+	DecisionID int64  `json:"decision_id" doc:"A representative row of the claim at this finding"`
+	// State is the claim's as a whole, not a representative row's: approved
+	// only where every live row here is.
+	State string           `json:"state" enum:"proposed,approved" doc:"The claim's state as a whole: approved only when every live row here is approved, otherwise proposed"`
+	Rows  RowsStandingBody `json:"rows" doc:"How the claim's rows here stand"`
+	// What an approver asked for, where rows were sent back.
+	SentBackAt      string   `json:"sent_back_at,omitempty" doc:"When rows were last sent back to the author"`
+	SentBackBecause string   `json:"sent_back_because,omitempty" doc:"The reason given when they were, in markdown"`
+	Outcome         string   `json:"outcome"`
+	Justification   string   `json:"justification,omitempty"`
+	NeedsApproval   bool     `json:"needs_approval,omitempty"`
+	ProposedBy      string   `json:"proposed_by"`
+	ProposedAt      string   `json:"proposed_at"`
+	Places          int      `json:"places" doc:"How many of this finding's places the claim covers"`
+	Builds          []string `json:"builds" doc:"Every build the claim currently covers, as stream and variant"`
+	ApprovedBy      string   `json:"approved_by,omitempty"`
+	ApprovedAt      string   `json:"approved_at,omitempty"`
+}
+
+// RowsStandingBody counts a claim's live rows by where they stand.
+type RowsStandingBody struct {
+	Proposed int `json:"proposed" doc:"Waiting for a second person"`
+	SentBack int `json:"sent_back" doc:"Returned to the author for more"`
+	Approved int `json:"approved" doc:"Agreed to and in force"`
+}
+
+// EarlierBody is a decision once made here that no longer applies.
+type EarlierBody struct {
+	DecisionID    int64  `json:"decision_id"`
+	ClaimID       int64  `json:"claim_id"`
+	Outcome       string `json:"outcome"`
+	Justification string `json:"justification,omitempty"`
+	DeferredUntil string `json:"deferred_until,omitempty"`
+	ProposedBy    string `json:"proposed_by"`
+	ProposedAt    string `json:"proposed_at"`
+	Ended         string `json:"ended" enum:"lapsed,withdrawn" doc:"Why it stopped applying"`
+	EndedAt       string `json:"ended_at,omitempty"`
+	About         string `json:"about,omitempty" doc:"The component upstream version it was a claim about"`
+	Reasoning     string `json:"reasoning" doc:"The reasoning as it last stood, in markdown, offered back rather than thrown away"`
+	ApprovedBy    string `json:"approved_by,omitempty" doc:"Who last agreed to it, where anybody did"`
+}
+
+// SimilarBody is an approved claim at the same places about another issue,
+// which may reach this one.
+type SimilarBody struct {
+	ClaimID       int64  `json:"claim_id" doc:"Pass as extends when deciding to carry it to this issue"`
+	DecisionID    int64  `json:"decision_id"`
+	Justification string `json:"justification,omitempty"`
+	Reasoning     string `json:"reasoning"`
+	ApprovedBy    string `json:"approved_by,omitempty"`
+	ApprovedAt    string `json:"approved_at,omitempty"`
+	Issues        int    `json:"issues" doc:"How many distinct issues the claim covers"`
+}
+
+// decidedAbout gathers what has been decided at a finding's places: what
+// stands, what stood before, and what was argued about other issues at the
+// same places (UIX-46, TRI-47).
+func decidedAbout(ctx context.Context, in Ingest, subject access.Subject, productID, issueID int64,
+	places []string) ([]StandingClaimBody, []EarlierBody, []SimilarBody, error) {
+
+	store := triage.NewStore(in.DB.DB)
+	standing, err := store.StandingAt(ctx, subject, productID, issueID, places)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	earlier, err := store.EarlierAt(ctx, subject, productID, issueID, places)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	similar, err := store.SimilarAt(ctx, subject, productID, issueID, places)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	people := []int64{}
+	for _, one := range standing {
+		people = append(people, one.Claim.ProposedBy, one.ApprovedBy)
+	}
+	for _, one := range earlier {
+		people = append(people, one.Decision.ProposedBy, one.ApprovedBy)
+	}
+	for _, one := range similar {
+		people = append(people, one.ApprovedBy)
+	}
+	names, err := access.NewStore(in.DB.DB).Names(ctx, people)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	standingOut := make([]StandingClaimBody, 0, len(standing))
+	for _, one := range standing {
+		body := StandingClaimBody{
+			ClaimID: one.Claim.ID, Kind: string(one.Claim.Kind), DecisionID: one.Decision.ID,
+			State: string(one.State), Outcome: string(one.Decision.Outcome),
+			Rows: RowsStandingBody{
+				Proposed: one.Rows.Proposed, SentBack: one.Rows.SentBack, Approved: one.Rows.Approved,
+			},
+			SentBackBecause: one.SentBackBecause,
+			Justification:   orBlank(one.Decision.Justification),
+			NeedsApproval:   one.Decision.NeedsApproval,
+			ProposedBy:      names[one.Claim.ProposedBy],
+			ProposedAt:      one.Claim.ProposedAt.Format(time.RFC3339),
+			Places:          one.Places, Builds: one.Builds,
+		}
+		if body.Builds == nil {
+			body.Builds = []string{}
+		}
+		if one.ApprovedAt != nil {
+			body.ApprovedBy = names[one.ApprovedBy]
+			body.ApprovedAt = one.ApprovedAt.Format(time.RFC3339)
+		}
+		if one.SentBackAt != nil {
+			body.SentBackAt = one.SentBackAt.Format(time.RFC3339)
+		}
+		standingOut = append(standingOut, body)
+	}
+
+	earlierOut := make([]EarlierBody, 0, len(earlier))
+	for _, one := range earlier {
+		d := one.Decision
+		body := EarlierBody{
+			DecisionID: d.ID, ClaimID: d.ClaimID, Outcome: string(d.Outcome),
+			Justification: orBlank(d.Justification),
+			ProposedBy:    names[d.ProposedBy], ProposedAt: d.ProposedAt.Format(time.RFC3339),
+			Ended:     string(d.State),
+			About:     orBlank(d.ComponentUpstreamVersion),
+			Reasoning: one.Reasoning,
+		}
+		if d.DeferredUntil != nil {
+			body.DeferredUntil = d.DeferredUntil.Format(time.DateOnly)
+		}
+		if d.EndedAt != nil {
+			body.EndedAt = d.EndedAt.Format(time.RFC3339)
+		}
+		if one.ApprovedBy != 0 {
+			body.ApprovedBy = names[one.ApprovedBy]
+		}
+		earlierOut = append(earlierOut, body)
+	}
+
+	similarOut := make([]SimilarBody, 0, len(similar))
+	for _, one := range similar {
+		body := SimilarBody{
+			ClaimID: one.Claim.ID, DecisionID: one.Decision.ID,
+			Justification: orBlank(one.Decision.Justification),
+			Reasoning:     one.Reasoning, Issues: one.Issues,
+		}
+		if one.ApprovedAt != nil {
+			body.ApprovedBy = names[one.ApprovedBy]
+			body.ApprovedAt = one.ApprovedAt.Format(time.RFC3339)
+		}
+		similarOut = append(similarOut, body)
+	}
+	return standingOut, earlierOut, similarOut, nil
+}
+
+func orBlank(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}

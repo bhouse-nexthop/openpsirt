@@ -38,6 +38,37 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 	}
 
 	statements := []string{
+		// One proposer's action, which is the unit an approver works at.
+		//
+		// A judgment about a finding writes one decision per place, and a
+		// judgment about many issues writes one per issue and per place. The
+		// records underneath stay that fine, because each is keyed and lapses
+		// on its own — but the thing a second person reads and agrees to is
+		// the action, not its rows. Without an identity for the action the
+		// review queue was one card per row, and a finding at sixty-two places
+		// was sixty-two identical cards (TRI-45).
+		//
+		// derived_from names the claim this one came from: the approved claim
+		// an extension carries to a new issue (TRI-47), or the claim an
+		// approver set some rows aside from when agreeing to the rest
+		// (TRI-46). Either way the link is what makes "how many claims rest on
+		// this argument" answerable.
+		`CREATE TABLE "claim" (
+			"id"           ` + t.id + `,
+			"kind"         ` + t.kind + ` NOT NULL,
+			"proposed_by"  ` + t.ref + ` NOT NULL,
+			"proposed_at"  ` + t.timestamp + ` NOT NULL,
+			"derived_from" ` + t.refNull + ` NULL,
+			-- How the set was narrowed, for a claim recorded over many issues.
+			-- Copied from the action rather than read off a row, so a claim
+			-- whose rows were all set aside still says how it was found.
+			"selected_by"  ` + t.free + ` NULL,
+			CONSTRAINT "claim_proposer_fk" FOREIGN KEY ("proposed_by") REFERENCES "person"("id"),
+			CONSTRAINT "claim_derived_fk" FOREIGN KEY ("derived_from") REFERENCES "claim"("id")
+		)` + t.suffix,
+
+		`CREATE INDEX "claim_derived_idx" ON "claim" ("derived_from")`,
+
 		// One claim about one combination of code.
 		//
 		// place_identity is the structural half — the hashed pair of names,
@@ -52,6 +83,9 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 		// because its version changes on every build (MDL-07).
 		`CREATE TABLE "decision" (
 			"id"                         ` + t.id + `,
+			-- The action this row was written by. Every decision belongs to
+			-- one; the claim is what the queue lists and what is approved.
+			"claim_id"                   ` + t.ref + ` NOT NULL,
 			"product_id"                 ` + t.ref + ` NOT NULL,
 			"vulnerability_id"           ` + t.ref + ` NOT NULL,
 			"place_identity"             ` + t.hash + ` NOT NULL,
@@ -93,6 +127,12 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 			"sent_back_at"               ` + t.timestamp + ` NULL,
 			"proposed_by"                ` + t.ref + ` NOT NULL,
 			"proposed_at"                ` + t.timestamp + ` NOT NULL,
+			-- When this stopped applying: withdrawn by somebody, or lapsed
+			-- because the code moved. Null while it is live. What a finding
+			-- reports as its earlier decisions needs the date, and nothing
+			-- else recorded one — an approval's withdrawn_at only exists
+			-- where somebody had agreed.
+			"ended_at"                   ` + t.timestamp + ` NULL,
 			-- How the set this claim was part of was narrowed, where it was
 			-- one of many recorded in a single action. Kept because "how were
 			-- these chosen" is the question asked of a bulk judgment months
@@ -119,6 +159,7 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 			-- arriving at once both walk through.
 			"live_key"                   ` + t.hash + ` NULL,
 			CONSTRAINT "decision_live_unique" UNIQUE ("live_key"),
+			CONSTRAINT "decision_claim_fk" FOREIGN KEY ("claim_id") REFERENCES "claim"("id"),
 			CONSTRAINT "decision_product_fk" FOREIGN KEY ("product_id") REFERENCES "product"("id"),
 			CONSTRAINT "decision_vulnerability_fk" FOREIGN KEY ("vulnerability_id") REFERENCES "vulnerability"("id"),
 			CONSTRAINT "decision_proposer_fk" FOREIGN KEY ("proposed_by") REFERENCES "person"("id")
@@ -134,6 +175,7 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 		// from a blank page.
 		`CREATE INDEX "decision_applies_idx" ON "decision" ("product_id", "vulnerability_id", "place_identity", "component_upstream_version", "consumer_upstream_version")`,
 		`CREATE INDEX "decision_place_idx" ON "decision" ("product_id", "vulnerability_id", "place_identity")`,
+		`CREATE INDEX "decision_claim_idx" ON "decision" ("claim_id")`,
 
 		// The reasoning, revised and never overwritten.
 		//
@@ -241,6 +283,7 @@ func downTriage(ctx context.Context, tx *sql.Tx) error {
 		`DROP TABLE "decision_approval"`,
 		`DROP TABLE "decision_revision"`,
 		`DROP TABLE "decision"`,
+		`DROP TABLE "claim"`,
 	} {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return fmt.Errorf("%s: %w", firstLine(stmt), err)

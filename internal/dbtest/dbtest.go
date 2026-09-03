@@ -104,6 +104,9 @@ var tables = []string{
 	"decision_approval",
 	"decision_revision",
 	"decision",
+	// Before person, which it points at, and after decision, which points
+	// at it.
+	"claim",
 	// Before person and vulnerability, which it points at.
 	"assessment",
 	"personal_token",
@@ -147,6 +150,11 @@ func Reset(t *testing.T, db *database.DB) {
 	// PostgreSQL and SQLite happen not to.
 	if _, err := db.ExecContext(ctx, "UPDATE stream SET parent_id = NULL"); err != nil {
 		t.Fatalf("detach stream parents: %v", err)
+	}
+	// A claim points at the claim it was derived from, which is the same
+	// shape and the same two engines.
+	if _, err := db.ExecContext(ctx, "UPDATE claim SET derived_from = NULL"); err != nil {
+		t.Fatalf("detach derived claims: %v", err)
 	}
 	for _, table := range tables {
 		if _, err := db.ExecContext(ctx, "DELETE FROM "+table); err != nil {

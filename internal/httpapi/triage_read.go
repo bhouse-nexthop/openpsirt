@@ -16,12 +16,15 @@ import (
 // DecisionDetail is a decision with everything needed to understand it without
 // asking again: where it applies, what it says, and how far it has got.
 type DecisionDetail struct {
-	Decision   DecisionBody `json:"decision"`
-	Place      PlaceBody    `json:"place"`
-	Reasoning  string       `json:"reasoning" doc:"The justification as it currently stands, in markdown"`
-	ProposedBy string       `json:"proposed_by"`
-	ProposedAt string       `json:"proposed_at" doc:"When the claim was made, as a date and time"`
-	AgeDays    int          `json:"age_days" doc:"How long the claim has stood. An old judgment should look like one"`
+	Decision DecisionBody `json:"decision"`
+	Place    PlaceBody    `json:"place"`
+	// Finding is what the decision is about, where an open finding still
+	// sits at its place. Absent where none does.
+	Finding    *FindingRefBody `json:"finding,omitempty" doc:"What the decision is about — build, issue, component, where it sits — read from the open finding at its place. Absent where none is open there"`
+	Reasoning  string          `json:"reasoning" doc:"The justification as it currently stands, in markdown"`
+	ProposedBy string          `json:"proposed_by"`
+	ProposedAt string          `json:"proposed_at" doc:"When the claim was made, as a date and time"`
+	AgeDays    int             `json:"age_days" doc:"How long the claim has stood. An old judgment should look like one"`
 }
 
 // RevisionBody is one statement of a justification.
@@ -342,10 +345,19 @@ func describeDecisions(ctx context.Context, in Ingest, store *triage.Store,
 	if err != nil {
 		return nil, err
 	}
+	subject, err := reading(ctx)
+	if err != nil {
+		return nil, err
+	}
+	described, err := store.Describe(ctx, subject, decisions)
+	if err != nil {
+		return nil, err
+	}
 
 	details := make([]DecisionDetail, 0, len(decisions))
 	for _, decision := range decisions {
 		details = append(details, DecisionDetail{
+			Finding:  findingRef(described, decision.ID),
 			Decision: decisionBody(decision),
 			Place: PlaceBody{
 				Product:       productNames[decision.ProductID],
@@ -359,6 +371,41 @@ func describeDecisions(ctx context.Context, in Ingest, store *triage.Store,
 		})
 	}
 	return details, nil
+}
+
+// findingRef renders what a decision is about, where an open finding sits at
+// its place.
+func findingRef(described map[int64]triage.Described, decisionID int64) *FindingRefBody {
+	d, ok := described[decisionID]
+	if !ok {
+		return nil
+	}
+	severity := d.Issue.Severity
+	if d.Issue.AssessedSeverity != nil && *d.Issue.AssessedSeverity != "" {
+		severity = *d.Issue.AssessedSeverity
+	}
+	body := &FindingRefBody{
+		Product: d.Product, Stream: d.Stream, Variant: d.Variant,
+		Vulnerability: d.Issue.Identifier, Component: d.Component, Version: d.Version,
+		Severity: severity, Exploited: d.Issue.Exploited,
+		FixState: d.FixState, FixedIn: d.FixedIn,
+		Description: excerpt(d.Issue.Description, 400),
+		Owner:       d.Owner, Parent: d.Parent,
+		Places: d.Places, Decided: d.Decided,
+	}
+	if d.Issue.ScoreCenti != nil {
+		body.Score = float64(*d.Issue.ScoreCenti) / 100
+	}
+	return body
+}
+
+// excerpt shortens text to n characters on a rune boundary.
+func excerpt(text string, n int) string {
+	runes := []rune(text)
+	if len(runes) <= n {
+		return text
+	}
+	return string(runes[:n]) + "\u2026"
 }
 
 // StandingBody is what a place currently has decided about it, and what it had

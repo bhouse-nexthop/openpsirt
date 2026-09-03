@@ -56,3 +56,15 @@ and can stop exercising a rule without anybody deciding it should.
 
 It is stored compressed. The uncompressed document is 18 MB, which is a size
 worth reading once in a test and not a size worth keeping in every checkout.
+
+## A second variant of the same image
+
+The mellanox build of the same switch image is being produced and belongs
+beside `switch-image.cdx.json.xz` as `switch-image-mellanox.cdx.json.xz`,
+compressed the same way. It is the fixture that exercises a decision carrying
+across variants: where the chain and the upstream versions match it reaches
+the other variant by lookup (REL-01, REL-09), and where a version differs it
+is the build the guided review walks (UIX-45). To seed it into the demo and
+the dev loop, add one line to `DEMO_BUILDS` in the Makefile:
+
+    internal/sbom/testdata/switch-image-mellanox.cdx.json.xz,sonic,SONiC,master,mellanox

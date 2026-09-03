@@ -1,12 +1,13 @@
 package finding_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
-	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
-
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 )
 
@@ -168,6 +169,7 @@ func TestAClaimInAnotherProductDoesNotDecideThisOne(t *testing.T) {
 		place := finding.PlaceIdentity(swss.Name, "")
 		if _, err := f.db.DB.NewInsert().
 			Model(&map[string]any{
+				"claim_id":         claimBy(t, f.db, somebody.ID),
 				"product_id":       elsewhere.ID,
 				"vulnerability_id": issueID,
 				"place_identity":   place,
@@ -241,6 +243,7 @@ func TestEachDecisionStateSelectsWhatItNames(t *testing.T) {
 				t.Fatal(err)
 			}
 			row := map[string]any{
+				"claim_id":   claimBy(t, f.db, somebody.ID),
 				"product_id": f.productID, "vulnerability_id": issueID,
 				"place_identity": place, "visibility": "public",
 				"outcome": "not-applicable", "state": state,
@@ -264,8 +267,30 @@ func TestEachDecisionStateSelectsWhatItNames(t *testing.T) {
 			}
 			return n
 		}
+		// The row says the same word the filter would find it by, from the
+		// same counts in the same statement.
+		said := func(want string) {
+			t.Helper()
+			groups, _, err := f.store.Groups(ctx, who, f.target, 50, 0, finding.Filter{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, group := range groups {
+				if group.Vulnerability == "CVE-2026-1" && group.State != want {
+					t.Errorf("the row reads as %q, want %q", group.State, want)
+				}
+			}
+		}
 
+		said("undecided")
+		// A proposed row that holds no key is a shape nothing writes — a
+		// proposal is live until it is withdrawn or lapses, and both change
+		// its state — and it is none of the four words, for the row as for
+		// the filter.
 		record("proposed", false)
+		said("")
+		record("proposed", true)
+		said("waiting")
 		if n := count("waiting"); n != 1 {
 			t.Errorf("a proposed claim: waiting kept %d, want 1", n)
 		}
@@ -277,6 +302,7 @@ func TestEachDecisionStateSelectsWhatItNames(t *testing.T) {
 		}
 
 		record("approved", true)
+		said("agreed")
 		if n := count("agreed"); n != 1 {
 			t.Errorf("an approved live claim: agreed kept %d, want 1", n)
 		}
@@ -285,6 +311,7 @@ func TestEachDecisionStateSelectsWhatItNames(t *testing.T) {
 		}
 
 		record("lapsed", false)
+		said("lapsed")
 		if n := count("lapsed"); n != 1 {
 			t.Errorf("a lapsed claim: lapsed kept %d, want 1", n)
 		}
@@ -342,4 +369,23 @@ func TestNarrowingByHowFarDecided(t *testing.T) {
 			}
 		}
 	})
+}
+
+// claimBy records the action a directly written decision belongs to. Every
+// decision is one row of a claim, and a row written without one is refused.
+func claimBy(t *testing.T, db *database.DB, personID int64) int64 {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := db.DB.NewInsert().
+		Model(&map[string]any{
+			"kind": "finding", "proposed_by": personID, "proposed_at": time.Now().UTC(),
+		}).
+		TableExpr("claim").Exec(ctx); err != nil {
+		t.Fatalf("record a claim: %v", err)
+	}
+	var id int64
+	if err := db.DB.NewSelect().TableExpr("claim").ColumnExpr("MAX(id)").Scan(ctx, &id); err != nil {
+		t.Fatalf("read the claim back: %v", err)
+	}
+	return id
 }

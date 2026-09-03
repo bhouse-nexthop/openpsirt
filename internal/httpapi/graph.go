@@ -122,21 +122,27 @@ func registerGraph(api huma.API, in Ingest) {
 			"is where the size lives.\n\n" +
 			"A component reached several ways appears once with several parents. It is a graph " +
 			"rather than a tree, so anything drawing it has to expect the same component under " +
-			"many places.",
+			"many places.\n\n" +
+			"**A component name is not unique within a build.** Where one ships at several " +
+			"versions, `version` says which — without it, a name that matches more than one is " +
+			"refused with 409, naming the choices, rather than guessed at.",
 		Tags: []string{"Findings"},
 	}, func(ctx context.Context, input *struct {
 		Product   string `path:"product"`
 		Stream    string `path:"stream"`
 		Variant   string `path:"variant"`
 		Component string `path:"component" doc:"The component's name, as the findings list gives it"`
+		Version   string `query:"version" doc:"Which version, where the build ships that name at more than one"`
+		Ecosystem string `query:"ecosystem" doc:"Which ecosystem, for the few names one build holds at one version as two components"`
 	}) (*struct{ Body AroundBody }, error) {
 		subject, target, err := browsing(ctx, in, input.Product, input.Stream, input.Variant)
 		if err != nil {
 			return nil, err
 		}
-		above, below, err := graph.NewStore(in.DB.DB).Around(ctx, subject, target, input.Component)
+		above, below, err := graph.NewStore(in.DB.DB).Around(ctx, subject, target,
+			input.Component, input.Version, input.Ecosystem)
 		if err != nil {
-			return nil, noSuchFinding()
+			return nil, ambiguousOrMissing(err)
 		}
 		return &struct{ Body AroundBody }{Body: AroundBody{
 			Above: neighbours(above), Below: neighbours(below),

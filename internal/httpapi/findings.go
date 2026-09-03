@@ -34,6 +34,10 @@ type FindingBody struct {
 
 	Places   int `json:"places" doc:"How many places this component sits at here"`
 	Answered int `json:"answered,omitempty" doc:"How many of those the build has already argued do not apply"`
+	// State is how far we have decided this group, by the definition the
+	// state filter uses, so a row and the filter that found it agree.
+	State    string `json:"state,omitempty" enum:"undecided,waiting,agreed,lapsed" doc:"How far this has been decided: undecided when no place has a decision of any kind, waiting when a claim stands proposed and nobody has agreed, agreed when every place is answered by a standing decision, lapsed when a decision here stopped applying and nothing replaced it. Absent where some places are approved and the rest never decided"`
+	SentBack bool   `json:"sent_back,omitempty" doc:"A live claim at one of these places is currently with its author, sent back for more"`
 	// Exploited is why something is at the top when it is. A position nobody
 	// can explain is one people stop trusting, and then they sort by something
 	// else and lose the point of the order entirely.
@@ -100,7 +104,12 @@ func registerFindings(api huma.API, in Ingest) {
 			"Narrowing happens here rather than in the client, and `total` counts what the " +
 			"filter admits. A filter applied to a page already fetched answers a different " +
 			"question from the one it appears to: `exploited` over fifty rows means exploited " +
-			"among those fifty.",
+			"among those fifty.\n\n" +
+			"`under` keeps what one container holds directly; `beneath` keeps what sits at a " +
+			"component or anywhere under it, which is what the dependency tree's cumulative " +
+			"count counts. The tree counts distinct issues and this list is one row per issue " +
+			"and component, so a subtree holding one issue at two components is two rows here " +
+			"and one there.",
 		Tags: []string{"Findings"},
 	}, func(ctx context.Context, input *struct {
 		Product    string   `path:"product"`
@@ -115,6 +124,7 @@ func registerFindings(api huma.API, in Ingest) {
 		Ecosystem  string   `query:"ecosystem" doc:"Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"`
 		Under      string   `query:"under" doc:"Keep only what sits inside the container of this name"`
 		UnderBuild bool     `query:"under_build" doc:"Keep only what the build holds directly, which is what has no container above it"`
+		Beneath    string   `query:"beneath" doc:"Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused"`
 		State      string   `query:"state" enum:"undecided,waiting,agreed,lapsed" doc:"Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"`
 		Exclude    []string `query:"exclude" doc:"Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows"`
 		Limit      int      `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"How many to return"`
@@ -162,6 +172,9 @@ func registerFindings(api huma.API, in Ingest) {
 			Floor:         floor,
 			BelowFloor:    input.BelowFloor,
 		}
+		if narrowed.Beneath, err = beneath(ctx, in, target.ID, input.Beneath); err != nil {
+			return nil, err
+		}
 		store := finding.NewStore(in.DB.DB)
 		groups, total, err := store.Groups(ctx, subject, target.ID,
 			input.Limit, input.Offset, narrowed)
@@ -188,6 +201,7 @@ func registerFindings(api huma.API, in Ingest) {
 				Owner: group.Owner, Parent: group.Parent,
 				Middle: group.Middle, Chains: group.Chains,
 				Places: group.Places, Answered: group.Answered,
+				State: group.State, SentBack: group.SentBack,
 				Exploited:  group.Exploited,
 				Likelihood: float64(group.LikelihoodPPM) / 1_000_000,
 				Score:      float64(group.ScoreCenti) / 100,
@@ -224,6 +238,7 @@ func registerFindings(api huma.API, in Ingest) {
 		Ecosystem  string   `query:"ecosystem" doc:"Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"`
 		Under      string   `query:"under" doc:"Keep only what sits inside the container of this name"`
 		UnderBuild bool     `query:"under_build" doc:"Keep only what the build holds directly, which is what has no container above it"`
+		Beneath    string   `query:"beneath" doc:"Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused"`
 		State      string   `query:"state" enum:"undecided,waiting,agreed,lapsed" doc:"Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"`
 		Exclude    []string `query:"exclude" doc:"Drop components of these names"`
 		Limit      int      `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"How many to return"`
@@ -266,6 +281,9 @@ func registerFindings(api huma.API, in Ingest) {
 			Floor:         floor,
 			BelowFloor:    input.BelowFloor,
 		}
+		if narrowed.Beneath, err = beneath(ctx, in, target.ID, input.Beneath); err != nil {
+			return nil, err
+		}
 		groups, total, err := finding.NewStore(in.DB.DB).ComponentGroups(ctx, subject, target.ID,
 			input.Limit, input.Offset, narrowed)
 		if err != nil {
@@ -283,6 +301,33 @@ func registerFindings(api huma.API, in Ingest) {
 		}
 		return out, nil
 	})
+}
+
+// beneath resolves the component a list is narrowed beneath to the set of
+// components the tree's cumulative count covers: it and everything under it,
+// in one pass over the build's edges. Nil where nothing was asked.
+//
+// A name the build does not hold is refused rather than answered with an
+// empty list: an empty list is also what a subtree with nothing open looks
+// like, and the two mean different things to whoever typed the name.
+func beneath(ctx context.Context, in Ingest, targetID int64, name string) ([]int64, error) {
+	if name == "" {
+		return nil, nil
+	}
+	store := graph.NewStore(in.DB.DB)
+	componentID, err := store.ComponentAt(ctx, targetID, name)
+	if err != nil {
+		if errors.Is(err, graph.ErrAmbiguous) {
+			return nil, huma.Error422UnprocessableEntity(
+				"this build holds " + name + " at more than one version, so it cannot be narrowed beneath by name alone")
+		}
+		return nil, huma.Error422UnprocessableEntity("this build does not hold a component called " + name)
+	}
+	within, err := store.Subtree(ctx, targetID, componentID)
+	if err != nil {
+		return nil, wentWrong(in.Logger, "the build's edges could not be read", err)
+	}
+	return within, nil
 }
 
 // ReferenceBody is somewhere an issue is written up, or fixed.
@@ -349,6 +394,15 @@ type EvidenceBody struct {
 	NothingSince     bool   `json:"nothing_since,omitempty" doc:"Upstream has released nothing since the year this issue was named, and there is no fix. Two dates compared — it says why there is no fix, not that the project is abandoned"`
 
 	Places []SittingBody `json:"places"`
+
+	// What has been decided here, so the finding is the working screen after
+	// a decision as well as before it (UIX-46): the live claims covering any
+	// of its places, the decisions that stopped applying with their reasoning
+	// offered back, and approved claims about other issues at the same places
+	// that may reach this one (TRI-47).
+	Standing []StandingClaimBody `json:"standing" doc:"Live claims covering any of this finding's places, newest first. A proposed one is waiting for a second person"`
+	Previous []EarlierBody       `json:"previous" doc:"Decisions made at these places that lapsed or were withdrawn, newest first, with their reasoning"`
+	Similar  []SimilarBody       `json:"similar" doc:"Approved not-applicable claims about other issues at the same component and consumer, which extends can carry to this one. At most five"`
 }
 
 func registerFindingDetail(api huma.API, in Ingest) {
@@ -444,7 +498,18 @@ func registerFindingDetail(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, noSuchFinding()
 		}
-		return &struct{ Body EvidenceBody }{Body: evidenceBody(*evidence)}, nil
+		body := evidenceBody(*evidence)
+
+		places := make([]string, 0, len(evidence.Places))
+		for _, place := range evidence.Places {
+			places = append(places, place.PlaceIdentity)
+		}
+		body.Standing, body.Previous, body.Similar, err = decidedAbout(ctx, in, subject,
+			named.ProductID, issue, places)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "what was decided here could not be read", err)
+		}
+		return &struct{ Body EvidenceBody }{Body: body}, nil
 	})
 }
 
@@ -458,7 +523,8 @@ func evidenceBody(e finding.Evidence) EvidenceBody {
 		Component: e.Component, Version: e.Version, Upstream: e.Upstream,
 		FixState: string(e.FixState), FixedIn: e.FixedIn, ArrivedFrom: e.ArrivedFrom,
 		LatestVersion: e.LatestVersion, NothingSince: e.NothingSince,
-		Places: make([]SittingBody, 0, len(e.Places)),
+		Places:   make([]SittingBody, 0, len(e.Places)),
+		Standing: []StandingClaimBody{}, Previous: []EarlierBody{}, Similar: []SimilarBody{},
 	}
 	if e.LatestReleasedAt != nil {
 		body.LatestReleasedAt = e.LatestReleasedAt.Format(time.DateOnly)

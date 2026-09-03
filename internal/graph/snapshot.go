@@ -351,13 +351,18 @@ func EcosystemOf(purl string) string {
 type Neighbour struct {
 	Name    string `bun:"name"`
 	Version string `bun:"version"`
-	// Findings is what is open against this component itself, and Beneath is
-	// that plus everything under it.
+	// Findings is how many distinct issues are open against this component
+	// itself, and Beneath is that over it and everything under it.
 	//
 	// Both, because they answer different questions and a container answers
 	// zero to the first: it holds no findings of its own, so a tree showing
 	// only that says every container is clean while the packages inside them
 	// hold thousands. What makes a branch worth opening is what is in it.
+	//
+	// Issues rather than finding rows. A finding is one issue at one place,
+	// and the issues open against a component are the same at every place it
+	// sits — so a node drawn beneath one parent is looking at one place, and
+	// the count is the issues there, not the rows across every place.
 	Findings int `bun:"findings"`
 	Beneath  int `bun:"beneath,scanonly"`
 	Children int `bun:"children"`
@@ -375,10 +380,13 @@ type Neighbour struct {
 //
 // Naming a component rather than an identifier: it is what a findings list
 // gives out and what somebody composing a request has.
+// Version and ecosystem say which component, where the build ships the name
+// at more than one: a name alone is refused as ambiguous, naming the choices,
+// the way a finding is.
 func (s *Store) Around(ctx context.Context, subject access.Subject, targetID int64,
-	name string) ([]Neighbour, []Neighbour, error) {
+	name, version, ecosystem string) ([]Neighbour, []Neighbour, error) {
 
-	componentID, err := s.ComponentAt(ctx, targetID, name)
+	componentID, err := s.ComponentAs(ctx, targetID, name, version, ecosystem)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -451,7 +459,7 @@ func (s *Store) describe(ctx context.Context, subject access.Subject, targetID, 
 		// Narrowed exactly as the neighbours are. The root is one row, but a
 		// count that is not narrowed the same way is still a count of what the
 		// reader may not see.
-		ColumnExpr(`(SELECT COUNT(*) FROM "finding" AS f
+		ColumnExpr(`(SELECT COUNT(DISTINCT f.vulnerability_id) FROM "finding" AS f
 			WHERE f.target_id = ? AND f.component_id = c.id
 			  AND f.closed_run_id IS NULL AND f.visibility IN (?)) AS findings`,
 			targetID, bun.List(readable)).
@@ -509,7 +517,7 @@ func (s *Store) step(ctx context.Context, subject access.Subject, targetID, comp
 		// tree gets an accurate count of the undisclosed findings under each
 		// component and can bisect down to which one holds them — a leak that
 		// needs no row to be shown.
-		ColumnExpr(`(SELECT COUNT(*) FROM "finding" AS f
+		ColumnExpr(`(SELECT COUNT(DISTINCT f.vulnerability_id) FROM "finding" AS f
 			WHERE f.target_id = ? AND f.component_id = c.id
 			  AND f.closed_run_id IS NULL AND f.visibility IN (?)) AS findings`,
 			targetID, bun.List(readable)).

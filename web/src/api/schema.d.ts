@@ -108,6 +108,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/claims/{id}/approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a claim
+         * @description Approves every waiting decision in a claim as one action, under the same rules each decision is approved under: not by the person who proposed it, and against the revision of the reasoning that stands now.
+         *
+         *     Name decisions in `except` to set them aside. The rest is approved; those are moved into a claim of their own, marked sent back, and `because` is recorded on each as a comment — the same way sending back records a reason. The response names that claim.
+         *
+         *     Pass `batch` to approve several claims under one name, undone together with `DELETE /v1/approval-batches/{batch}`.
+         *
+         *     Returns 404 for a claim you may not act on every row of, and 409 if you proposed it.
+         */
+        post: operations["approve-claim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/claims/{id}/send-back": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a claim back for more
+         * @description Asks the author for more before agreeing to any of a claim. Every waiting decision in it leaves the review queue together and comes back when the author revises.
+         *
+         *     `because` is required and is recorded as a comment on each decision. Needs no approval of its own. You cannot send back a claim whose words are your own.
+         */
+        post: operations["send-claim-back"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/comments/{id}": {
         parameters: {
             query?: never;
@@ -799,6 +847,8 @@ export interface paths {
          *     `above` is the direction people actually use. Somebody arrives from a finding and asks why the component is here, which is walking up — and up is short. Walking down is where the size lives.
          *
          *     A component reached several ways appears once with several parents. It is a graph rather than a tree, so anything drawing it has to expect the same component under many places.
+         *
+         *     **A component name is not unique within a build.** Where one ships at several versions, `version` says which — without it, a name that matches more than one is refused with 409, naming the choices, rather than guessed at.
          */
         get: operations["get-component-neighbours"];
         put?: never;
@@ -873,6 +923,8 @@ export interface paths {
          *     Ordered by urgency — known-exploited first, then whether the build ships to customers, then likelihood, then severity. Supports limit and offset.
          *
          *     Narrowing happens here rather than in the client, and `total` counts what the filter admits. A filter applied to a page already fetched answers a different question from the one it appears to: `exploited` over fifty rows means exploited among those fifty.
+         *
+         *     `under` keeps what one container holds directly; `beneath` keeps what sits at a component or anywhere under it, which is what the dependency tree's cumulative count counts. The tree counts distinct issues and this list is one row per issue and component, so a subtree holding one issue at two components is two rows here and one there.
          */
         get: operations["list-findings"];
         put?: never;
@@ -973,6 +1025,8 @@ export interface paths {
          *     One action still writes one record per place, each keyed and expiring on its own (REL-02), so a place that later diverges is not silently covered by a decision nobody made about it.
          *
          *     The ordinary approval rules apply however many places this reaches. Always needing a second person is about a claim covering **several issues** nobody read one by one; this is one claim about one issue (TRI-38).
+         *
+         *     Pass `extends` to carry an approved claim to this issue: the source must be approved, sit at the same component under the same consumer, and the outcome and justification must match it. The new claim is recorded as an extension of it and still waits for a second person. `similar` on `GET .../findings/{vulnerability}/components/{component}` lists the claims that qualify.
          */
         post: operations["decide-finding"];
         delete?: never;
@@ -1126,10 +1180,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List decisions awaiting approval
-         * @description Returns triage decisions proposed but not yet approved, limited to products you hold a triage role on.
+         * List claims awaiting approval
+         * @description Returns the claims waiting for a second person, newest first, limited to what you may approve every row of. One entry is one claim — one proposer's action, however many decisions it wrote — with a representative decision and place, how many rows, issues and places it covers, and every build it currently reaches.
          *
-         *     Each row includes the full justification text, whether the decision was previously approved and came back, how long the finding has been deferred in total, and how old the claim is — enough to judge it without a second request.
+         *     Each entry carries the full reasoning, whether it was previously approved and came back, how long the finding has been deferred in total, and how old the claim is. A claim over many issues also carries `outliers`: the rows that do not look like the rest, which is what to read instead of all of them.
+         *
+         *     Approve, send back or set rows aside with `POST /v1/claims/{id}/approval` and `POST /v1/claims/{id}/send-back`.
          */
         get: operations["list-review-queue"];
         put?: never;
@@ -1652,6 +1708,57 @@ export interface components {
             severity?: string;
             vulnerability: string;
         };
+        ClaimApprovalBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ClaimApprovalBody.json
+             */
+            readonly $schema?: string;
+            /** @description Name a batch to agree to several claims under one name, so they can be undone together */
+            batch?: string;
+            /** @description Why the rows in except are set aside, in markdown. Required when any are */
+            because?: string;
+            /** @description Decisions in this claim to set aside rather than approve. They return to the proposer as a claim of their own, carrying the reason given in because */
+            except?: number[] | null;
+        };
+        ClaimApprovedBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ClaimApprovedBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description How many decisions were agreed to
+             */
+            approved: number;
+            /**
+             * Format: int64
+             * @description The claim the rows set aside went into, where any were
+             */
+            returned_claim?: number;
+        };
+        ClaimBody: {
+            /**
+             * Format: int64
+             * @description The claim this one came from, for an extension or a returned set
+             */
+            derived_from?: number;
+            /** Format: int64 */
+            id: number;
+            /**
+             * @description What sort of action it was: one judgment about a finding, one about many issues at a component, an approved claim carried to a new issue, or rows an approver set aside
+             * @enum {string}
+             */
+            kind: "finding" | "together" | "extension" | "returned";
+            /** @description When the action was taken, as a date and time */
+            proposed_at: string;
+            proposed_by: string;
+            /** @description How a bulk set was narrowed. Never part of the claim itself */
+            selected_by?: string;
+        };
         "Comment-on-decisionRequest": {
             /**
              * Format: uri
@@ -1791,6 +1898,11 @@ export interface components {
              * @example https://example.com/schemas/Decide-togetherResponse.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description The claim this action made, which is what the review queue lists and what is approved
+             */
+            claim_id: number;
             ids: number[] | null;
             /** Format: int64 */
             recorded: number;
@@ -1802,6 +1914,11 @@ export interface components {
              * @example https://example.com/schemas/DecidedBody.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description The claim this action made, which is what the review queue lists and what is approved
+             */
+            claim_id: number;
             /**
              * Format: int64
              * @description How many findings those places hold
@@ -1828,6 +1945,11 @@ export interface components {
              * @example https://example.com/schemas/DecisionBody.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description The claim this decision is one row of: the action that wrote it, which is what the review queue lists and what is approved
+             */
+            claim_id?: number;
             /** @description When a deferral returns, as a date. Required for a deferral */
             deferred_until?: string;
             /**
@@ -1884,6 +2006,8 @@ export interface components {
              */
             age_days: number;
             decision: components["schemas"]["DecisionBody"];
+            /** @description What the decision is about — build, issue, component, where it sits — read from the open finding at its place. Absent where none is open there */
+            finding?: components["schemas"]["FindingRefBody"];
             place: components["schemas"]["PlaceBody"];
             /** @description When the claim was made, as a date and time */
             proposed_at: string;
@@ -1951,6 +2075,29 @@ export interface components {
             readonly $schema?: string;
             created: boolean;
             item: components["schemas"]["VariantBody"];
+        };
+        EarlierBody: {
+            /** @description The component upstream version it was a claim about */
+            about?: string;
+            /** @description Who last agreed to it, where anybody did */
+            approved_by?: string;
+            /** Format: int64 */
+            claim_id: number;
+            /** Format: int64 */
+            decision_id: number;
+            deferred_until?: string;
+            /**
+             * @description Why it stopped applying
+             * @enum {string}
+             */
+            ended: "lapsed" | "withdrawn";
+            ended_at?: string;
+            justification?: string;
+            outcome: string;
+            proposed_at: string;
+            proposed_by: string;
+            /** @description The reasoning as it last stood, in markdown, offered back rather than thrown away */
+            reasoning: string;
         };
         "Edit-commentRequest": {
             /**
@@ -2045,6 +2192,8 @@ export interface components {
             /** @description Upstream has released nothing since the year this issue was named, and there is no fix. Two dates compared — it says why there is no fix, not that the project is abandoned */
             nothing_since?: boolean;
             places: components["schemas"]["SittingBody"][] | null;
+            /** @description Decisions made at these places that lapsed or were withdrawn, newest first, with their reasoning */
+            previous: components["schemas"]["EarlierBody"][] | null;
             references?: components["schemas"]["ReferenceBody"][] | null;
             /**
              * Format: double
@@ -2053,6 +2202,10 @@ export interface components {
             score?: number;
             /** @description As the data rates it. A word */
             severity?: string;
+            /** @description Approved not-applicable claims about other issues at the same component and consumer, which extends can carry to this one. At most five */
+            similar: components["schemas"]["SimilarBody"][] | null;
+            /** @description Live claims covering any of this finding's places, newest first. A proposed one is waiting for a second person */
+            standing: components["schemas"]["StandingClaimBody"][] | null;
             /** @description What a fork was made from, where it is one */
             upstream?: string;
             /** @description What the score assumes — reachability, privilege, interaction */
@@ -2108,8 +2261,15 @@ export interface components {
              * @description The severity as a number, which is what the order compares
              */
             score?: number;
+            /** @description A live claim at one of these places is currently with its author, sent back for more */
+            sent_back?: boolean;
             /** @description As the scanner rated it. A word, not a score */
             severity?: string;
+            /**
+             * @description How far this has been decided: undecided when no place has a decision of any kind, waiting when a claim stands proposed and nobody has agreed, agreed when every place is answered by a standing decision, lapsed when a decision here stopped applying and nothing replaced it. Absent where some places are approved and the rest never decided
+             * @enum {string}
+             */
+            state?: "undecided" | "waiting" | "agreed" | "lapsed";
             /** @description What a fork was made from, where it is one */
             upstream?: string;
             /** @description The version that ships */
@@ -2127,6 +2287,11 @@ export interface components {
             /** @description Required when it is deferred. A date, as 2026-03-31 */
             deferred_until?: string;
             /**
+             * Format: int64
+             * @description An approved claim at the same component and consumer to carry to this issue. The outcome and justification must match it; the new claim is recorded as an extension of it and still needs a second person
+             */
+            extends?: number;
+            /**
              * @description Why it does not apply. Required when it does not
              * @enum {string}
              */
@@ -2139,6 +2304,41 @@ export interface components {
             places?: string[] | null;
             /** @description Why this holds */
             reasoning: string;
+        };
+        FindingRefBody: {
+            component: string;
+            /**
+             * Format: int64
+             * @description How many of those this claim covers
+             */
+            decided: number;
+            /** @description The first four hundred characters of what the report says, as plain text */
+            description?: string;
+            exploited?: boolean;
+            /** @enum {string} */
+            fix_state?: "fixed" | "none" | "wont-fix";
+            fixed_in?: string;
+            /** @description The part of the product this belongs to */
+            owner?: string;
+            /** @description What directly pulls it in, which is what the decision is about */
+            parent?: string;
+            /**
+             * Format: int64
+             * @description How many places the issue sits at in that component in that build
+             */
+            places: number;
+            /** @description The build to link to, by product, branch or tag, and variant */
+            product: string;
+            /** Format: double */
+            score?: number;
+            /** @description Our rating where one stands, else as published */
+            severity?: string;
+            stream: string;
+            variant: string;
+            /** @description The version that ships */
+            version: string;
+            /** @description The issue, under the name it is most widely known by */
+            vulnerability: string;
         };
         FindingsOutputBody: {
             /**
@@ -2546,6 +2746,45 @@ export interface components {
              */
             total: number;
         };
+        OutlierBody: {
+            /**
+             * Format: int64
+             * @description A row of the claim about this issue, to set aside when approving
+             */
+            decision_id: number;
+            /** @description The first two hundred characters of what the report says */
+            description?: string;
+            exploited?: boolean;
+            fixed_in?: string;
+            severity?: string;
+            vulnerability: string;
+            /** @description Which of the four signals made it stand out */
+            why: string[] | null;
+        };
+        OutliersBody: {
+            /**
+             * Format: int64
+             * @description Issues in the set known to be exploited
+             */
+            exploited: number;
+            /**
+             * Format: int64
+             * @description Issues a fix is available for
+             */
+            fixable: number;
+            /** @description The issues that stood out, exploited first and then by severity, at most twenty */
+            rows: components["schemas"]["OutlierBody"][] | null;
+            /**
+             * Format: int64
+             * @description Issues rated critical or high
+             */
+            severe: number;
+            /**
+             * Format: int64
+             * @description Issues whose description does not carry the term the set was narrowed by
+             */
+            unmatched: number;
+        };
         PersonBody: {
             /**
              * Format: uri
@@ -2810,6 +3049,33 @@ export interface components {
             /** @description The search this answers, where one was asked */
             term?: string;
         };
+        RowsStandingBody: {
+            /**
+             * Format: int64
+             * @description Agreed to and in force
+             */
+            approved: number;
+            /**
+             * Format: int64
+             * @description Waiting for a second person
+             */
+            proposed: number;
+            /**
+             * Format: int64
+             * @description Returned to the author for more
+             */
+            sent_back: number;
+        };
+        "Send-claim-backRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Send-claim-backRequest.json
+             */
+            readonly $schema?: string;
+            /** @description What needs to change, in markdown */
+            because: string;
+        };
         "Send-decision-backRequest": {
             /**
              * Format: uri
@@ -2842,6 +3108,24 @@ export interface components {
             provider: string;
             username: string;
         };
+        SimilarBody: {
+            approved_at?: string;
+            approved_by?: string;
+            /**
+             * Format: int64
+             * @description Pass as extends when deciding to carry it to this issue
+             */
+            claim_id: number;
+            /** Format: int64 */
+            decision_id: number;
+            /**
+             * Format: int64
+             * @description How many distinct issues the claim covers
+             */
+            issues: number;
+            justification?: string;
+            reasoning: string;
+        };
         SittingBody: {
             /** @description The way down to here, the build first and this component last. Empty where the inventory left the component unplaced */
             chain?: components["schemas"]["StepBody"][] | null;
@@ -2866,6 +3150,42 @@ export interface components {
             readonly $schema?: string;
             previously: components["schemas"]["DecisionDetail"][] | null;
             standing?: components["schemas"]["DecisionDetail"];
+        };
+        StandingClaimBody: {
+            approved_at?: string;
+            approved_by?: string;
+            /** @description Every build the claim currently covers, as stream and variant */
+            builds: string[] | null;
+            /** Format: int64 */
+            claim_id: number;
+            /**
+             * Format: int64
+             * @description A representative row of the claim at this finding
+             */
+            decision_id: number;
+            justification?: string;
+            /** @enum {string} */
+            kind: "finding" | "together" | "extension" | "returned";
+            needs_approval?: boolean;
+            outcome: string;
+            /**
+             * Format: int64
+             * @description How many of this finding's places the claim covers
+             */
+            places: number;
+            proposed_at: string;
+            proposed_by: string;
+            /** @description How the claim's rows here stand */
+            rows: components["schemas"]["RowsStandingBody"];
+            /** @description When rows were last sent back to the author */
+            sent_back_at?: string;
+            /** @description The reason given when they were, in markdown */
+            sent_back_because?: string;
+            /**
+             * @description The claim's state as a whole: approved only when every live row here is approved, otherwise proposed
+             * @enum {string}
+             */
+            state: "proposed" | "approved";
         };
         StepBody: {
             component: string;
@@ -2989,13 +3309,35 @@ export interface components {
              * @description How long the claim has stood. An old judgment should look like one
              */
             age_days: number;
+            /** @description Every build the claim currently covers, as stream and variant */
+            builds: string[] | null;
+            claim: components["schemas"]["ClaimBody"];
             decision: components["schemas"]["DecisionBody"];
+            /**
+             * Format: int64
+             * @description How many rows the claim wrote
+             */
+            decisions: number;
             /**
              * Format: int64
              * @description How long this finding has been put off in total
              */
             deferred_days?: number;
+            /** @description What the representative decision is about — build, issue, component, where it sits — so the card can be judged without opening it. Absent where no open finding sits at its place */
+            finding?: components["schemas"]["FindingRefBody"];
+            /**
+             * Format: int64
+             * @description How many distinct issues it covers
+             */
+            issues: number;
+            /** @description For a claim over many issues: the rows that do not look like the rest, and how many there are */
+            outliers?: components["schemas"]["OutliersBody"];
             place: components["schemas"]["PlaceBody"];
+            /**
+             * Format: int64
+             * @description How many distinct places it covers
+             */
+            places: number;
             /** @description This was agreed to before and came back */
             previously_approved?: boolean;
             proposed_by: string;
@@ -3185,6 +3527,74 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ListBodyHoldingBody"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "approve-claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimApprovalBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimApprovedBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "send-claim-back": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Send-claim-backRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {
@@ -4340,7 +4750,12 @@ export interface operations {
     };
     "get-component-neighbours": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Which version, where the build ships that name at more than one */
+                version?: string;
+                /** @description Which ecosystem, for the few names one build holds at one version as two components */
+                ecosystem?: string;
+            };
             header?: never;
             path: {
                 product: string;
@@ -4471,6 +4886,8 @@ export interface operations {
                 under?: string;
                 /** @description Keep only what the build holds directly, which is what has no container above it */
                 under_build?: boolean;
+                /** @description Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused */
+                beneath?: string;
                 /** @description Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered */
                 state?: "undecided" | "waiting" | "agreed" | "lapsed";
                 /** @description Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows */
@@ -4529,6 +4946,8 @@ export interface operations {
                 under?: string;
                 /** @description Keep only what the build holds directly, which is what has no container above it */
                 under_build?: boolean;
+                /** @description Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused */
+                beneath?: string;
                 /** @description Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered */
                 state?: "undecided" | "waiting" | "agreed" | "lapsed";
                 /** @description Drop components of these names */

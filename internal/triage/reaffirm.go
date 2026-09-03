@@ -163,7 +163,13 @@ func (s *Store) reaffirm(ctx context.Context, subject access.Subject, r Reaffirm
 	if err := proposal.valid(); err != nil {
 		return nil, err
 	}
-	made, err := s.propose(ctx, proposal)
+	// A re-affirmation is an action of its own. It carries the earlier
+	// agreement where it may, but the claim it makes is a new one.
+	claim, err := s.newClaim(ctx, FindingClaim, r.By, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	made, err := s.propose(ctx, claim.ID, proposal)
 	if err != nil {
 		return nil, err
 	}
@@ -303,6 +309,7 @@ func (s *Store) Lapse(ctx context.Context, targetID int64) (int64, error) {
 	// decision recorded against no version matches a component stating none.
 	result, err := s.db.NewUpdate().Model((*Decision)(nil)).
 		Set("state = ?", LapsedState).
+		Set("ended_at = ?", s.now().Truncate(time.Microsecond)).
 		// Released for the same reason a withdrawal is: the code moved out
 		// from under this, so it covers nothing, and somebody has to be able
 		// to decide about what is there now.

@@ -284,6 +284,27 @@ It is written out rather than using the engines' greatest-of function, which is
 not agreed on when one side is absent: two of the four answer "unknown" where
 the useful answer is the number that is known.
 
+## A row says how far it has been decided
+
+Each row of the findings list carries how far we have decided it, in the same
+four words the state filter takes and by the same definition: undecided when
+no place has a decision of any kind, waiting when a claim stands proposed and
+nobody has agreed, agreed when every place is answered by a standing decision,
+lapsed when a decision here stopped applying and nothing replaced it. Some
+places approved and the rest never decided, with nothing waiting or lapsed, is
+none of the four and the row says nothing rather than guessing.
+
+It is counted in the statement that lists the page, as four correlated counts
+over our decisions in this product at each place — the filter's own shape —
+so the row and the filter that found it cannot disagree, and a page of fifty
+costs no query per row. Before this the row carried only what the build had
+argued away, and an interface reading that as the decision state showed
+"undecided" over forty-four proposed records.
+
+A row also says when a live claim at one of its places is with its author,
+sent back for more. That is the row a proposer is looking for in the list, and
+it is the one the queue no longer shows.
+
 ## What somebody with an hour sees first
 
 A findings list has to open on what matters. Ordering by how many places

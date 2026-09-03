@@ -1,0 +1,366 @@
+package triage
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/uptrace/bun"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
+)
+
+// StandingClaim is a live claim covering some of a finding's places, as the
+// finding reports it (UIX-46).
+type StandingClaim struct {
+	Claim Claim
+	// Decision is the representative row: the earliest of the claim's rows at
+	// these places.
+	Decision Decision
+	// Places is how many of the finding's places the claim covers.
+	Places int
+	// Builds names every build the claim currently covers.
+	Builds []string
+	// ApprovedBy and ApprovedAt are the standing agreement, where one stands.
+	ApprovedBy int64
+	ApprovedAt *time.Time
+	// Rows is how the claim's rows here stand: waiting, sent back to the
+	// author, or approved. State is the claim's as a whole — approved only
+	// where every live row is — because a representative row's state read
+	// as the claim's, and one row approved beside forty-three sent back read
+	// as "approved".
+	Rows  RowsStanding
+	State State
+	// SentBackAt is the latest time any row was sent back, and
+	// SentBackBecause the reason given then, so the finding can say what an
+	// approver asked for.
+	SentBackAt      *time.Time
+	SentBackBecause string
+}
+
+// RowsStanding counts a claim's live rows by where they stand.
+type RowsStanding struct {
+	Proposed, SentBack, Approved int
+}
+
+// StandingAt reads the live claims covering any of a finding's places.
+//
+// Grouped by claim, because that is what a person returning to a finding asks
+// about: what stands here, in what state, agreed to by whom. Live means the
+// row still holds its key — proposed or approved — so a claim waiting for a
+// second person is reported as standing and pending rather than as absent.
+func (s *Store) StandingAt(ctx context.Context, subject access.Subject, productID, issueID int64,
+	places []string) ([]StandingClaim, error) {
+
+	if len(places) == 0 {
+		return nil, nil
+	}
+	var rows []Decision
+	if err := readableBy(s.db.NewSelect().Model(&rows), subject, "de").
+		Where("product_id = ?", productID).
+		Where("vulnerability_id = ?", issueID).
+		Where("place_identity IN (?)", bun.List(places)).
+		Where("live_key IS NOT NULL").
+		Order("id ASC").Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read what stands here: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return s.groupByClaim(ctx, rows)
+}
+
+// groupByClaim folds rows into one entry per claim, newest claim first.
+func (s *Store) groupByClaim(ctx context.Context, rows []Decision) ([]StandingClaim, error) {
+	order := []int64{}
+	byClaim := map[int64]*StandingClaim{}
+	ids := make([]int64, 0, len(rows))
+	var sentBack []int64
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+		entry, seen := byClaim[row.ClaimID]
+		if !seen {
+			entry = &StandingClaim{Decision: row}
+			byClaim[row.ClaimID] = entry
+			order = append(order, row.ClaimID)
+		}
+		entry.Places++
+		switch {
+		case row.State == Approved:
+			entry.Rows.Approved++
+		case row.SentBackAt != nil:
+			entry.Rows.SentBack++
+			sentBack = append(sentBack, row.ID)
+			if entry.SentBackAt == nil || row.SentBackAt.After(*entry.SentBackAt) {
+				when := *row.SentBackAt
+				entry.SentBackAt = &when
+			}
+		default:
+			entry.Rows.Proposed++
+		}
+	}
+	for _, entry := range byClaim {
+		entry.State = Proposed
+		if entry.Rows.Approved == entry.Places {
+			entry.State = Approved
+		}
+	}
+
+	var claims []Claim
+	if err := s.db.NewSelect().Model(&claims).
+		Where("id IN (?)", bun.List(order)).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read the claims standing here: %w", err)
+	}
+	for _, claim := range claims {
+		if entry, ok := byClaim[claim.ID]; ok {
+			entry.Claim = claim
+		}
+	}
+	if len(sentBack) > 0 {
+		// The reason is the comment written when the rows were sent back:
+		// the newest on any sent-back row by somebody other than the author
+		// of the claim, since the author's own remarks are answers rather
+		// than requests.
+		var comments []Comment
+		if err := s.db.NewSelect().Model(&comments).
+			Where("decision_id IN (?)", bun.List(sentBack)).
+			Order("id DESC").Scan(ctx); err != nil {
+			return nil, fmt.Errorf("read why this was sent back: %w", err)
+		}
+		claimOfRow := make(map[int64]int64, len(rows))
+		for _, row := range rows {
+			claimOfRow[row.ID] = row.ClaimID
+		}
+		for _, comment := range comments {
+			entry := byClaim[claimOfRow[comment.DecisionID]]
+			if entry == nil || entry.SentBackBecause != "" || entry.SentBackAt == nil {
+				continue
+			}
+			if comment.WrittenBy != entry.Claim.ProposedBy {
+				entry.SentBackBecause = comment.Body
+			}
+		}
+	}
+
+	// The agreement that stands, where one does: the newest approval not
+	// since withdrawn, on any of the claim's rows here.
+	var approvals []Approval
+	if err := s.db.NewSelect().Model(&approvals).
+		Where("decision_id IN (?)", bun.List(ids)).
+		Where("withdrawn_at IS NULL").
+		Order("id DESC").Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read who agreed: %w", err)
+	}
+	claimOf := make(map[int64]int64, len(rows))
+	for _, row := range rows {
+		claimOf[row.ID] = row.ClaimID
+	}
+	for _, approval := range approvals {
+		entry := byClaim[claimOf[approval.DecisionID]]
+		if entry == nil || entry.ApprovedAt != nil {
+			continue
+		}
+		when := approval.ApprovedAt
+		entry.ApprovedBy, entry.ApprovedAt = approval.ApprovedBy, &when
+	}
+
+	builds, err := s.buildsCovered(ctx, order)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]StandingClaim, 0, len(order))
+	// Newest claim first: the most recent action is the one somebody
+	// returning to the finding is most likely asking about.
+	for i := len(order) - 1; i >= 0; i-- {
+		entry := byClaim[order[i]]
+		entry.Builds = builds[order[i]]
+		out = append(out, *entry)
+	}
+	return out, nil
+}
+
+// Earlier is a decision once made at one of a finding's places that no longer
+// applies, with the reasoning it rested on.
+type Earlier struct {
+	Decision  Decision
+	Reasoning string
+	// ApprovedBy is who last agreed to it, where anybody did. A withdrawn
+	// agreement counts: the question is what was argued and by whom.
+	ApprovedBy int64
+}
+
+// EarlierAt reads the decisions at a finding's places that stopped applying,
+// newest first.
+//
+// What was argued last time is offered back rather than thrown away. A claim
+// that lapsed on a version bump is usually still the right answer, and making
+// somebody start from a blank page is how a tool teaches people to stop
+// writing reasoning at all.
+func (s *Store) EarlierAt(ctx context.Context, subject access.Subject, productID, issueID int64,
+	places []string) ([]Earlier, error) {
+
+	if len(places) == 0 {
+		return nil, nil
+	}
+	var rows []Decision
+	if err := readableBy(s.db.NewSelect().Model(&rows), subject, "de").
+		Where("product_id = ?", productID).
+		Where("vulnerability_id = ?", issueID).
+		Where("place_identity IN (?)", bun.List(places)).
+		Where("state IN (?, ?)", Withdrawn, LapsedState).
+		Order("id DESC").Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read what was decided here before: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	reasoning, err := s.currentReasoning(ctx, rows)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	var approvals []Approval
+	if err := s.db.NewSelect().Model(&approvals).
+		Where("decision_id IN (?)", bun.List(ids)).
+		Order("id DESC").Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read who agreed: %w", err)
+	}
+	approver := map[int64]int64{}
+	for _, approval := range approvals {
+		if _, seen := approver[approval.DecisionID]; !seen {
+			approver[approval.DecisionID] = approval.ApprovedBy
+		}
+	}
+	out := make([]Earlier, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, Earlier{
+			Decision: row, Reasoning: reasoning[row.ID], ApprovedBy: approver[row.ID],
+		})
+	}
+	return out, nil
+}
+
+// Similar is an approved claim at the same places about another issue: an
+// argument that may reach this one (TRI-47).
+type Similar struct {
+	Claim      Claim
+	Decision   Decision
+	Reasoning  string
+	ApprovedBy int64
+	ApprovedAt *time.Time
+	// Issues is how many distinct issues the claim covers.
+	Issues int
+}
+
+// similarOffered is how many similar claims a finding offers. A handful is a
+// choice; a page is a search.
+const similarOffered = 5
+
+// SimilarAt reads the approved not-applicable claims standing at a finding's
+// places about other issues, newest first.
+func (s *Store) SimilarAt(ctx context.Context, subject access.Subject, productID, issueID int64,
+	places []string) ([]Similar, error) {
+
+	if len(places) == 0 {
+		return nil, nil
+	}
+	var rows []Decision
+	if err := readableBy(s.db.NewSelect().Model(&rows), subject, "de").
+		Where("product_id = ?", productID).
+		Where("vulnerability_id <> ?", issueID).
+		Where("place_identity IN (?)", bun.List(places)).
+		Where("outcome = ?", NotApplicable).
+		Where("state = ?", Approved).
+		Where("live_key IS NOT NULL").
+		Order("id DESC").Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read what was argued about other issues here: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+
+	order := []int64{}
+	representative := map[int64]Decision{}
+	for _, row := range rows {
+		if _, seen := representative[row.ClaimID]; seen {
+			continue
+		}
+		representative[row.ClaimID] = row
+		order = append(order, row.ClaimID)
+		if len(order) == similarOffered {
+			break
+		}
+	}
+
+	var claims []Claim
+	if err := s.db.NewSelect().Model(&claims).
+		Where("id IN (?)", bun.List(order)).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read the claims standing here: %w", err)
+	}
+	byID := make(map[int64]Claim, len(claims))
+	for _, claim := range claims {
+		byID[claim.ID] = claim
+	}
+
+	// Every row of each claim, for the issue count and the standing
+	// agreement — a claim about many issues has rows this finding does not
+	// sit at.
+	var all []Decision
+	if err := s.db.NewSelect().Model(&all).
+		Where("claim_id IN (?)", bun.List(order)).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read what those claims cover: %w", err)
+	}
+	issues := map[int64]map[int64]bool{}
+	claimOf := map[int64]int64{}
+	allIDs := make([]int64, 0, len(all))
+	for _, row := range all {
+		if issues[row.ClaimID] == nil {
+			issues[row.ClaimID] = map[int64]bool{}
+		}
+		issues[row.ClaimID][row.VulnerabilityID] = true
+		claimOf[row.ID] = row.ClaimID
+		allIDs = append(allIDs, row.ID)
+	}
+	var approvals []Approval
+	if err := s.db.NewSelect().Model(&approvals).
+		Where("decision_id IN (?)", bun.List(allIDs)).
+		Where("withdrawn_at IS NULL").
+		Order("id DESC").Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read who agreed: %w", err)
+	}
+	agreed := map[int64]Approval{}
+	for _, approval := range approvals {
+		claim := claimOf[approval.DecisionID]
+		if _, seen := agreed[claim]; !seen {
+			agreed[claim] = approval
+		}
+	}
+
+	heads := make([]Decision, 0, len(order))
+	for _, id := range order {
+		heads = append(heads, representative[id])
+	}
+	reasoning, err := s.currentReasoning(ctx, heads)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]Similar, 0, len(order))
+	for _, id := range order {
+		one := Similar{
+			Claim: byID[id], Decision: representative[id],
+			Reasoning: reasoning[representative[id].ID],
+			Issues:    len(issues[id]),
+		}
+		if approval, ok := agreed[id]; ok {
+			when := approval.ApprovedAt
+			one.ApprovedBy, one.ApprovedAt = approval.ApprovedBy, &when
+		}
+		out = append(out, one)
+	}
+	return out, nil
+}

@@ -137,6 +137,7 @@ func registerBulk(api huma.API, in Ingest) {
 		}
 	}) (*struct {
 		Body struct {
+			ClaimID  int64   `json:"claim_id" doc:"The claim this action made, which is what the review queue lists and what is approved"`
 			Recorded int     `json:"recorded"`
 			IDs      []int64 `json:"ids"`
 		}
@@ -200,7 +201,7 @@ func registerBulk(api huma.API, in Ingest) {
 		// first and passing them in would authorize this against rows as they
 		// stood before the transaction (DAT-31), and would let a caller's
 		// selection decide which places a decision lands on.
-		recorded, err := store.Together(ctx, subject, triage.TogetherAt{
+		claimID, recorded, err := store.Together(ctx, subject, triage.TogetherAt{
 			TargetID: target, ComponentID: component, VulnerabilityIDs: issues,
 		}, triage.Proposal{
 			Outcome:       triage.Outcome(input.Body.Outcome),
@@ -224,10 +225,12 @@ func registerBulk(api huma.API, in Ingest) {
 
 		out := &struct {
 			Body struct {
+				ClaimID  int64   `json:"claim_id" doc:"The claim this action made, which is what the review queue lists and what is approved"`
 				Recorded int     `json:"recorded"`
 				IDs      []int64 `json:"ids"`
 			}
 		}{}
+		out.Body.ClaimID = claimID
 		out.Body.Recorded = len(recorded)
 		out.Body.IDs = recorded
 		return out, nil

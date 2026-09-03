@@ -134,6 +134,17 @@ type Group struct {
 	Places int
 	// Answered counts the places the build has already argued about.
 	Answered int
+	// State is how far we have decided this group, in the same four words
+	// the state filter takes and by the same definition: undecided when no
+	// place has a decision of any kind, waiting when a claim stands proposed
+	// and nobody has agreed, agreed when every place is answered by a
+	// standing decision, lapsed when a decision here stopped applying and
+	// nothing replaced it. Empty where none of the four holds — some places
+	// approved and the rest never decided, with nothing waiting or lapsed.
+	State string
+	// SentBack says a live claim at one of the places is currently with its
+	// author, which is the row the proposer is looking for in the list.
+	SentBack bool
 	// Urgency is how far up the list this belongs, and Exploited says whether
 	// it is there because somebody is using it. The flag is carried rather
 	// than left to be inferred from the number: a position nobody can explain
@@ -234,6 +245,12 @@ type Filter struct {
 	// consumer to name.
 	Under         string
 	UnderTheBuild bool
+	// Beneath keeps what sits at a component or anywhere under it, by the
+	// component identifiers a walk over the build's edges produced: the same
+	// walk the dependency tree's cumulative count makes, so the number the
+	// tree draws and the list it opens agree. Nil is no narrowing; empty is
+	// nothing, which a component with no findings under it legitimately is.
+	Beneath []int64
 	// State keeps groups by how far they have been decided. A group is an
 	// issue in a component across every place it sits, and its places can be
 	// in different states, so what a group's state *is* had to be chosen:
@@ -315,6 +332,13 @@ func (f Filter) narrow(q *bun.SelectQuery) *bun.SelectQuery {
 			q.NewSelect().TableExpr("component AS uc").
 				Column("uc.id").Where("uc.name = ?", under))
 	}
+	if f.Beneath != nil {
+		if len(f.Beneath) == 0 {
+			q = q.Where("1 = 0")
+		} else {
+			q = q.Where("f.component_id IN (?)", bun.List(f.Beneath))
+		}
+	}
 	q = f.byState(q)
 	if !f.BelowFloor {
 		q = f.Floor.narrow(q)
@@ -369,6 +393,27 @@ func (s *Store) Hidden(ctx context.Context, subject access.Subject, targetID int
 		return 0, fmt.Errorf("count what the line keeps out: %w", err)
 	}
 	return n, nil
+}
+
+// stateWord says how far a group has been decided, from the same counts the
+// state filter uses. The order is the filter's: a group every place of which
+// is answered is agreed whatever else its history holds; one with a claim
+// waiting is waiting; one where a decision lapsed and nothing stands is
+// lapsed; one nobody ever decided about is undecided. Some places approved
+// and the rest never decided, with nothing waiting or lapsed, is none of the
+// four, and says so by saying nothing.
+func stateWord(places, anyClaim, waiting, approved, lapsed int) string {
+	switch {
+	case places > 0 && approved == places:
+		return "agreed"
+	case waiting > 0:
+		return "waiting"
+	case lapsed > 0 && approved == 0:
+		return "lapsed"
+	case anyClaim == 0:
+		return "undecided"
+	}
+	return ""
 }
 
 // byState keeps groups by how far they have been decided.
@@ -537,6 +582,21 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		ConsumerID      *int64 `bun:"consumer_id"`
 		Consumers       int    `bun:"consumers"`
 		Direct          int    `bun:"direct"`
+		AnyClaim        int    `bun:"any_claim"`
+		Waiting         int    `bun:"waiting_here"`
+		Approved        int    `bun:"approved_here"`
+		Lapsed          int    `bun:"lapsed_here"`
+		SentBack        int    `bun:"sent_back_here"`
+	}
+	// How far each group has been decided, counted the way the state filter
+	// counts it and in the same statement, so the row and the filter cannot
+	// disagree. Four correlated counts over our decisions in this product at
+	// each place, plus whether any live claim is with its author.
+	decided := func(alias, condition string) string {
+		return `SUM(CASE WHEN EXISTS (SELECT 1 FROM "decision" AS de
+			WHERE de.product_id = ?
+			  AND de.vulnerability_id = f.vulnerability_id
+			  AND de.place_identity = f.place_identity` + condition + `) THEN 1 ELSE 0 END) AS ` + alias
 	}
 	page := s.db.NewSelect().
 		TableExpr("finding AS f").
@@ -570,6 +630,15 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		ColumnExpr("MIN(f.consumer_id) AS consumer_id").
 		ColumnExpr("COUNT(DISTINCT f.consumer_id) AS consumers").
 		ColumnExpr("SUM(CASE WHEN f.consumer_id IS NULL THEN 1 ELSE 0 END) AS direct").
+		ColumnExpr(decided("any_claim", ""), productID).
+		ColumnExpr(decided("waiting_here", " AND de.state = ? AND de.live_key IS NOT NULL"),
+			productID, "proposed").
+		ColumnExpr(decided("approved_here", " AND de.state = ? AND de.live_key IS NOT NULL"),
+			productID, "approved").
+		ColumnExpr(decided("lapsed_here", " AND de.state = ?"), productID, "lapsed").
+		ColumnExpr(decided("sent_back_here",
+			" AND de.state = ? AND de.live_key IS NOT NULL AND de.sent_back_at IS NOT NULL"),
+			productID, "proposed").
 		Where("f.target_id = ?", targetID).
 		Where("f.closed_run_id IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
@@ -653,6 +722,8 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 			Urgency: row.Urgency, Exploited: row.Exploited,
 			LikelihoodPPM: row.LikelihoodPPM, ScoreCenti: row.ScoreCenti,
 			FixState: FixState(row.FixState), FixedIn: row.FixedIn,
+			State:    stateWord(row.Places, row.AnyClaim, row.Waiting, row.Approved, row.Lapsed),
+			SentBack: row.SentBack > 0,
 		}
 		if issue, held := named[row.VulnerabilityID]; held {
 			group.Vulnerability, group.Severity = issue.Identifier, issue.Severity
@@ -673,7 +744,7 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		if row.ConsumerID != nil {
 			down = chains[*row.ConsumerID]
 		}
-		group.Owner, group.Parent, group.Middle = ends(down)
+		group.Owner, group.Parent, group.Middle = Ends(down)
 		groups = append(groups, group)
 	}
 	return groups, total, nil
@@ -685,7 +756,12 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 // The chain arrives build-first. The build itself is not one of the two: every
 // row in a list scoped to one build shares it, so naming it in every row says
 // nothing and costs the width that the parts which differ need.
-func ends(down []graph.Step) (owner, parent string, middle int) {
+// Ends returns the two ends of a way down and how many steps sit between
+// them: the part of the product a component belongs to, and what directly
+// pulls it in (UIX-12). Exported because a decision is described the same way
+// wherever it is listed, and a second spelling of which step is which is how
+// two screens disagree about where a component sits.
+func Ends(down []graph.Step) (owner, parent string, middle int) {
 	switch len(down) {
 	case 0:
 		// The inventory placed the component nowhere. Saying so is the honest

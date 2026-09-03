@@ -3,7 +3,8 @@
 What people decide about findings, and when a decision stops applying.
 
 Satisfies TRI-01 to TRI-03, TRI-05 to TRI-08, TRI-10 to TRI-18, TRI-20 to
-TRI-36, REM-25, UIX-35, REL-05, REL-06, REL-09, MDL-08, MDL-19, ACC-09. The
+TRI-36, TRI-45 to TRI-47, REM-25, UIX-35, UIX-46, REL-05, REL-06, REL-09,
+MDL-08, MDL-19, ACC-09. The
 text rules themselves are in `DESIGN-text.md`, and the reports these numbers
 feed are in `DESIGN-reporting.md`.
 
@@ -205,13 +206,147 @@ Undoing a bulk approval narrows to what the person undoing it may reach. A
 batch is one reviewer's afternoon and may span products, so taking it back
 wholesale would let somebody act on products they hold nothing on.
 
+## A claim is one action, and it is what an approver works at
+
+A judgment about a finding writes one decision per place, and a judgment
+about many issues writes one per issue and per place. Those rows stay that
+fine, because each is keyed and lapses on its own. But the thing a second
+person reads and agrees to is the action — one argument, with its reach — so
+every decision belongs to a **claim**, and the review queue, approval, sending
+back and undoing work on claims rather than on rows.
+
+A claim records what sort of action it was, who took it and when, how a bulk
+set was narrowed, and — for two kinds — which claim it came from:
+
+| Kind | What it is |
+|---|---|
+| **finding** | One judgment about one issue in one component, covering the places it sits at. A re-affirmation is one too |
+| **together** | One judgment about many issues at one component |
+| **extension** | An approved claim carried to a new issue at the same component under the same consumer, with the same justification |
+| **returned** | The rows an approver set aside from a claim they agreed the rest of |
+
+The queue lists one entry per claim, newest first, carrying a representative
+row — the earliest — with its place and reasoning, how many rows, issues and
+places the claim covers, and every build it currently reaches by matching.
+The count beside the queue counts claims.
+
+**An entry says what it is about** (TRI-09): the build to open, the issue and
+what the report says of it, the component and version, how bad and whether it
+is being exploited, what upstream has done, the two ends of the way down as
+the findings list gives them, how many places the issue sits at in that
+component in that build, and how many of those the claim covers. A decision
+read on its own carries the same. All of it is read from the open finding the
+row matches — by place and versions while the claim is live, by place alone
+once it has lapsed, so a lapsed judgment can still be named — narrowed to what
+the reader may see, and in a handful of statements for a page rather than one
+per entry. An entry carried only an identifier before, and the approver's card
+could not say what the issue was or where it sat.
+
+**A claim is shown only to somebody who may act on every row of it.** Acting
+on a claim is acting on the argument, which does not come in halves: shown the
+part they may approve, a reader would agree to words whose other half stays
+waiting on somebody else, and the size beside the card would be wrong. A claim
+spanning a disclosed and an undisclosed finding is therefore not shown to
+somebody who may agree to only the disclosed one.
+
+### Approving a claim
+
+Approving a claim approves every waiting row in it, in one transaction, under
+the rules each row is approved under: by somebody other than whoever wrote the
+words, against the revision that stands now, with what it covered counted and
+kept. A row already approved, withdrawn or lapsed is left alone. A batch name
+still names several *claims* approved under one name, undone together.
+
+The per-row endpoints remain, for the decision screen; nothing there changed.
+
+**Approving a claim is a set operation, not a loop.** A claim over a kernel is
+two thousand rows. Agreed to one row at a time — a count of what each row
+covers and a conditional update per row — 1,760 rows took 15.6 s on the demo,
+and 500 rows were 2,500 statements in a test. As a set it is a bounded number
+of statements whatever the size: the authors of the rows' current reasoning
+read in one statement; the approvals inserted from a select over the rows,
+each carrying what its row covers as a correlated count, narrowed to what the
+approver may read; the rows moved to approved in one update conditioned on
+the approval naming the revision the row still rests on; and the matched
+count of both statements checked against what was meant, refusing the whole
+claim where either falls short (DAT-35) — so a revision landing in between
+leaves nothing half agreed to. Measured on SQLite after the change: 500 rows
+with two set aside in 11 statements and 29 ms; 2,000 rows in 11 statements and
+55 ms. Setting rows aside is the same shape: one comment inserted per row from
+a select, one update moving them. Sending a claim back is one comment
+statement and one update. A test pins the statement count rather than the
+time, because the count is what a per-row loop cannot satisfy.
+
+**A row already sent back is not approved with the rest.** It is with the
+author, and agreeing to it before they answer would undo the sending back; it
+is out of the queue for the same reason.
+
+### Rows may be set aside
+
+An approver of a bulk claim should not have to choose between refusing
+everything and agreeing to everything. The queue entry for a claim over many
+issues carries its **outliers** — the rows that do not look like the rest —
+and the approver may set some aside: the rest is approved as one claim, and
+the rows set aside move into a claim of their own, of kind returned, derived
+from the original, belonging to the original proposer, marked sent back, with
+the reason recorded on each as a comment the way sending back records one. A
+reason is required. Setting aside a row that is not part of the claim is
+refused rather than ignored, because a stray identifier is more likely a
+mistake than a wish.
+
+The outliers are four signals, all already stored, counted over the distinct
+issues in the claim and listed for the issues that carry any: known to be
+exploited; rated critical or high, by our assessment where one stands;
+a fix available; and, where the record of how the set was narrowed names a
+term (`contains "…"`), a description that does not carry it. Exploited first,
+then the worst rated, then by name, capped at twenty. The counts say how many
+there are behind the cap.
+
+### An approved claim may be extended
+
+Every nightly scan adds issues to components that already carry agreed claims,
+and each arrived as a blank decision. An extension records the same judgment
+against a new issue at the same places, as a claim of its own derived from the
+one it carries. Three things have to hold, read inside the transaction that
+writes: the source is approved — every row of it, none withdrawn or lapsed —
+so an extension never carries an argument nobody agreed with; the new rows sit
+at places the source sits at, in the same product, because a place is the
+component and its consumer and "the same argument" is about the same code; and
+the outcome and justification are the source's, because a different conclusion
+is a different claim. It needs a second person like any other dismissal. The
+queue marks it as an extension and names its source, so the approver knows the
+argument was read once already rather than that it was agreed to twice.
+
+Whether rejecting a source should reach its extensions is not decided.
+
+### What a finding reports
+
+The finding is the working screen after a decision as well as before it, so it
+carries three lists, each narrowed to what the reader may see:
+
+- **Standing**: the live claims covering any of its places, newest first,
+  with how many of the finding's places each covers, every build it reaches,
+  and who agreed to it and when. Each carries how its rows here stand —
+  waiting, sent back, approved — and its state as a whole, approved only where
+  every live row is: a representative row's state stood in for the claim's,
+  and one row approved beside forty-three sent back read as approved. Where
+  rows were sent back it carries when, and the reason the approver gave, so
+  the finding can say what was asked for.
+- **Previous**: decisions at its places that lapsed or were withdrawn, newest
+  first, with when they ended and the reasoning as it last stood. A decision
+  now records when it stopped applying, because nothing else did — an
+  approval's withdrawal date exists only where somebody had agreed.
+- **Similar**: approved not-applicable claims about *other* issues at the same
+  places, at most five, newest first, each with its reasoning and how many
+  issues it covers. These are what an extension can carry.
+
 ## The queue carries what an approver needs
 
 A reviewer works down a list. A list where judging each row means opening it is
 a list that gets approved without being read — which is the failure the queue
-exists to prevent, arriving by a different route. So each row carries the
-reasoning as it currently stands, whether this was agreed to before, and how
-long the finding has already been put off.
+exists to prevent, arriving by a different route. So each entry — one claim —
+carries the reasoning as it currently stands, whether this was agreed to
+before, and how long the finding has already been put off.
 
 It shows only work the reader can actually do, narrowed in the query. A work
 list containing work somebody cannot do teaches them to skip rows.

@@ -22,7 +22,10 @@ import (
 
 // DecisionBody is a claim about a finding.
 type DecisionBody struct {
-	ID      int64  `json:"id,omitempty" doc:"What to name this decision in a later request"`
+	ID int64 `json:"id,omitempty" doc:"What to name this decision in a later request"`
+	// ClaimID is the action this row was written by. The review queue lists
+	// claims and approval works on them; a decision is one row of one.
+	ClaimID int64  `json:"claim_id,omitempty" doc:"The claim this decision is one row of: the action that wrote it, which is what the review queue lists and what is approved"`
 	Outcome string `json:"outcome" enum:"affected,not-applicable,deferred,wont-fix" doc:"What was decided"`
 	// Justification is required for not-applicable and meaningless elsewhere:
 	// the claim that something does not affect us is which of the recognized
@@ -56,6 +59,27 @@ type DecisionBody struct {
 	SelectedBy string `json:"selected_by,omitempty" doc:"How the set was narrowed, for a claim recorded as one of many. Never part of the claim itself"`
 }
 
+// FindingRefBody is what a decision is about, as the findings list would
+// show it: the build to link to, the issue, the component and where it sits.
+type FindingRefBody struct {
+	Product       string  `json:"product" doc:"The build to link to, by product, branch or tag, and variant"`
+	Stream        string  `json:"stream"`
+	Variant       string  `json:"variant"`
+	Vulnerability string  `json:"vulnerability" doc:"The issue, under the name it is most widely known by"`
+	Component     string  `json:"component"`
+	Version       string  `json:"version" doc:"The version that ships"`
+	Severity      string  `json:"severity,omitempty" doc:"Our rating where one stands, else as published"`
+	Score         float64 `json:"score,omitempty"`
+	Exploited     bool    `json:"exploited,omitempty"`
+	FixState      string  `json:"fix_state,omitempty" enum:"fixed,none,wont-fix"`
+	FixedIn       string  `json:"fixed_in,omitempty"`
+	Description   string  `json:"description,omitempty" doc:"The first four hundred characters of what the report says, as plain text"`
+	Owner         string  `json:"owner,omitempty" doc:"The part of the product this belongs to"`
+	Parent        string  `json:"parent,omitempty" doc:"What directly pulls it in, which is what the decision is about"`
+	Places        int     `json:"places" doc:"How many places the issue sits at in that component in that build"`
+	Decided       int     `json:"decided" doc:"How many of those this claim covers"`
+}
+
 // PlaceBody names what a decision is about.
 //
 // Stated by the caller and checked against what is stored, rather than taken
@@ -67,8 +91,24 @@ type PlaceBody struct {
 	Place         string `json:"place" minLength:"1" doc:"Which place in the build, as the findings list gives it"`
 }
 
-// WaitingBody is one row of the review queue.
+// ClaimBody is one proposer's action: what the review queue lists and what an
+// approver agrees to.
+type ClaimBody struct {
+	ID          int64  `json:"id"`
+	Kind        string `json:"kind" enum:"finding,together,extension,returned" doc:"What sort of action it was: one judgment about a finding, one about many issues at a component, an approved claim carried to a new issue, or rows an approver set aside"`
+	DerivedFrom int64  `json:"derived_from,omitempty" doc:"The claim this one came from, for an extension or a returned set"`
+	ProposedBy  string `json:"proposed_by"`
+	ProposedAt  string `json:"proposed_at" doc:"When the action was taken, as a date and time"`
+	SelectedBy  string `json:"selected_by,omitempty" doc:"How a bulk set was narrowed. Never part of the claim itself"`
+}
+
+// WaitingBody is one entry of the review queue: one claim, with what an
+// approver needs to judge it.
 type WaitingBody struct {
+	Claim ClaimBody `json:"claim"`
+	// Decision is a representative row of the claim — the earliest — and
+	// Place is where it sits. A claim over many issues has many; the counts
+	// below say how many.
 	Decision DecisionBody `json:"decision"`
 	Place    PlaceBody    `json:"place"`
 	// Everything an approver needs to judge without opening it. A list where
@@ -78,6 +118,40 @@ type WaitingBody struct {
 	DeferredDays       int    `json:"deferred_days,omitempty" doc:"How long this finding has been put off in total"`
 	ProposedBy         string `json:"proposed_by"`
 	AgeDays            int    `json:"age_days" doc:"How long the claim has stood. An old judgment should look like one"`
+	Decisions          int    `json:"decisions" doc:"How many rows the claim wrote"`
+	Issues             int    `json:"issues" doc:"How many distinct issues it covers"`
+	Places             int    `json:"places" doc:"How many distinct places it covers"`
+	// Builds is every build the claim's rows currently cover, by matching.
+	Builds []string `json:"builds" doc:"Every build the claim currently covers, as stream and variant"`
+	// Outliers is what in a bulk set does not look like the rest. Only for a
+	// claim over many issues.
+	Outliers *OutliersBody `json:"outliers,omitempty" doc:"For a claim over many issues: the rows that do not look like the rest, and how many there are"`
+	// Finding is what the representative decision is about: the build to
+	// link to, the issue, the component and where it sits (TRI-09). For a
+	// claim over many issues it describes the component and the build, with
+	// the representative issue.
+	Finding *FindingRefBody `json:"finding,omitempty" doc:"What the representative decision is about — build, issue, component, where it sits — so the card can be judged without opening it. Absent where no open finding sits at its place"`
+}
+
+// OutliersBody is what an approver of a bulk claim checks instead of reading
+// every row.
+type OutliersBody struct {
+	Exploited int           `json:"exploited" doc:"Issues in the set known to be exploited"`
+	Severe    int           `json:"severe" doc:"Issues rated critical or high"`
+	Fixable   int           `json:"fixable" doc:"Issues a fix is available for"`
+	Unmatched int           `json:"unmatched" doc:"Issues whose description does not carry the term the set was narrowed by"`
+	Rows      []OutlierBody `json:"rows" doc:"The issues that stood out, exploited first and then by severity, at most twenty"`
+}
+
+// OutlierBody is one issue in a bulk claim that does not look like the rest.
+type OutlierBody struct {
+	DecisionID    int64    `json:"decision_id" doc:"A row of the claim about this issue, to set aside when approving"`
+	Vulnerability string   `json:"vulnerability"`
+	Severity      string   `json:"severity,omitempty"`
+	Exploited     bool     `json:"exploited,omitempty"`
+	FixedIn       string   `json:"fixed_in,omitempty"`
+	Description   string   `json:"description,omitempty" doc:"The first two hundred characters of what the report says"`
+	Why           []string `json:"why" doc:"Which of the four signals made it stand out"`
 }
 
 // QueueOutput is a page of the review queue, with how much is behind it.
@@ -93,12 +167,17 @@ type QueueOutput struct {
 func registerTriage(api huma.API, in Ingest) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-review-queue", Method: http.MethodGet, Path: "/v1/review-queue",
-		Summary: "List decisions awaiting approval",
-		Description: "Returns triage decisions proposed but not yet approved, limited to products " +
-			"you hold a triage role on.\n\n" +
-			"Each row includes the full justification text, whether the decision was previously " +
-			"approved and came back, how long the finding has been deferred in total, and how " +
-			"old the claim is — enough to judge it without a second request.",
+		Summary: "List claims awaiting approval",
+		Description: "Returns the claims waiting for a second person, newest first, limited to " +
+			"what you may approve every row of. One entry is one claim — one proposer's action, " +
+			"however many decisions it wrote — with a representative decision and place, how " +
+			"many rows, issues and places it covers, and every build it currently reaches.\n\n" +
+			"Each entry carries the full reasoning, whether it was previously approved and came " +
+			"back, how long the finding has been deferred in total, and how old the claim is. A " +
+			"claim over many issues also carries `outliers`: the rows that do not look like the " +
+			"rest, which is what to read instead of all of them.\n\n" +
+			"Approve, send back or set rows aside with `POST /v1/claims/{id}/approval` and " +
+			"`POST /v1/claims/{id}/send-back`.",
 		Tags: []string{"Triage"},
 	}, func(ctx context.Context, input *struct {
 		Limit  int `query:"limit" default:"50" minimum:"1" maximum:"200"`
@@ -130,7 +209,8 @@ func registerTriage(api huma.API, in Ingest) {
 		out := &QueueOutput{}
 		out.Body.Items = make([]WaitingBody, 0, len(waiting))
 		for i, row := range waiting {
-			out.Body.Items = append(out.Body.Items, WaitingBody{
+			entry := WaitingBody{
+				Claim:              claimBody(row.Claim, named[i].ProposedBy),
 				Decision:           decisionBody(row.Decision),
 				Place:              named[i].Place,
 				Reasoning:          row.Reasoning,
@@ -138,7 +218,19 @@ func registerTriage(api huma.API, in Ingest) {
 				DeferredDays:       int(row.DeferredSoFar.Hours() / 24),
 				ProposedBy:         named[i].ProposedBy,
 				AgeDays:            int(store.Age(&row.Decision).Hours() / 24),
-			})
+				Decisions:          row.Decisions,
+				Issues:             row.Issues,
+				Places:             row.Places,
+				Builds:             row.Builds,
+			}
+			if entry.Builds == nil {
+				entry.Builds = []string{}
+			}
+			if row.Outliers != nil {
+				entry.Outliers = outliersBody(*row.Outliers)
+			}
+			entry.Finding = named[i].Finding
+			out.Body.Items = append(out.Body.Items, entry)
 		}
 		out.Body.Total = total
 		return out, nil
@@ -395,10 +487,15 @@ type FindingDecisionBody struct {
 	// Places is the deliberate narrowing. Absent means every place, which is
 	// the default TRI-29 asks for.
 	Places []string `json:"places,omitempty" doc:"Which places this covers, as the finding names them. Omit for all of them"`
+	// Extends names an approved claim this one carries to a new issue. The
+	// outcome and justification have to be the source's, and the places have
+	// to be ones the source sits at.
+	Extends int64 `json:"extends,omitempty" doc:"An approved claim at the same component and consumer to carry to this issue. The outcome and justification must match it; the new claim is recorded as an extension of it and still needs a second person"`
 }
 
 // DecidedBody is what one judgment about a finding recorded.
 type DecidedBody struct {
+	ClaimID       int64   `json:"claim_id" doc:"The claim this action made, which is what the review queue lists and what is approved"`
 	Recorded      int     `json:"recorded" doc:"How many places it was written against"`
 	Covered       int     `json:"covered" doc:"How many findings those places hold"`
 	Left          int     `json:"left" doc:"Places of this finding left open, because they were not named"`
@@ -427,7 +524,12 @@ func registerFindingDecision(api huma.API, in Ingest) {
 			"nobody made about it.\n\n" +
 			"The ordinary approval rules apply however many places this reaches. Always " +
 			"needing a second person is about a claim covering **several issues** nobody read " +
-			"one by one; this is one claim about one issue (TRI-38).",
+			"one by one; this is one claim about one issue (TRI-38).\n\n" +
+			"Pass `extends` to carry an approved claim to this issue: the source must be " +
+			"approved, sit at the same component under the same consumer, and the outcome and " +
+			"justification must match it. The new claim is recorded as an extension of it and " +
+			"still waits for a second person. `similar` on `GET .../findings/{vulnerability}/" +
+			"components/{component}` lists the claims that qualify.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
@@ -526,12 +628,18 @@ func registerFindingDecision(api huma.API, in Ingest) {
 		// One action, one transaction. Half the places written and the rest
 		// abandoned leaves a finding neither answered nor open, with nothing
 		// saying which places were which.
-		recorded, err := store.ProposeMany(ctx, subject, proposals)
+		var recorded []*triage.Decision
+		if input.Body.Extends != 0 {
+			recorded, err = store.Extend(ctx, subject, input.Body.Extends, proposals)
+		} else {
+			recorded, err = store.ProposeMany(ctx, subject, proposals)
+		}
 		if err != nil {
 			return nil, refusedDecision(err)
 		}
 		for _, decision := range recorded {
 			out.Body.IDs = append(out.Body.IDs, decision.ID)
+			out.Body.ClaimID = decision.ClaimID
 		}
 		out.Body.Recorded = len(recorded)
 		out.Body.Left = len(all) - out.Body.Recorded
@@ -737,7 +845,7 @@ func refusedText(faults markdown.Faults) error {
 // decisionBody renders a decision as the API states it.
 func decisionBody(d triage.Decision) DecisionBody {
 	body := DecisionBody{
-		ID: d.ID, Outcome: string(d.Outcome), State: string(d.State),
+		ID: d.ID, ClaimID: d.ClaimID, Outcome: string(d.Outcome), State: string(d.State),
 	}
 	if d.Mitigation != nil {
 		body.Mitigation = *d.Mitigation

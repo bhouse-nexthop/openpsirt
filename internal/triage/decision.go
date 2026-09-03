@@ -22,7 +22,10 @@ import (
 type Decision struct {
 	bun.BaseModel `bun:"table:decision,alias:de"`
 
-	ID              int64             `bun:"id,pk,autoincrement"`
+	ID int64 `bun:"id,pk,autoincrement"`
+	// ClaimID is the action this row was written by, which is what the queue
+	// lists and what an approver agrees to (TRI-45).
+	ClaimID         int64             `bun:"claim_id,notnull"`
 	ProductID       int64             `bun:"product_id,notnull"`
 	VulnerabilityID int64             `bun:"vulnerability_id,notnull"`
 	PlaceIdentity   string            `bun:"place_identity,notnull"`
@@ -63,7 +66,10 @@ type Decision struct {
 	SelectedBy *string   `bun:"selected_by"`
 	ProposedBy int64     `bun:"proposed_by,notnull"`
 	ProposedAt time.Time `bun:"proposed_at,notnull"`
-	RevisionID *int64    `bun:"revision_id"`
+	// EndedAt is when this stopped applying — withdrawn, or lapsed because
+	// the code moved. Null while it is live.
+	EndedAt    *time.Time `bun:"ended_at"`
+	RevisionID *int64     `bun:"revision_id"`
 	// LiveKey is what this decision is a claim about, while it is still a live
 	// claim. Null once it is withdrawn or has lapsed, which is what lets a
 	// fresh claim be made at a place a dead one used to cover.
@@ -251,8 +257,11 @@ func (s *Store) Propose(ctx context.Context, subject access.Subject, p Proposal)
 	var recorded *Decision
 	err := database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
 		within := &Store{db: tx, now: s.now}
-		var err error
-		recorded, err = within.propose(ctx, p)
+		claim, err := within.newClaim(ctx, FindingClaim, p.By, nil, "")
+		if err != nil {
+			return err
+		}
+		recorded, err = within.propose(ctx, claim.ID, p)
 		return err
 	})
 	if errors.Is(err, ErrAlreadyDecided) {
@@ -308,8 +317,15 @@ func (s *Store) ProposeMany(ctx context.Context, subject access.Subject, proposa
 	err := database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
 		within := &Store{db: tx, now: s.now}
 		recorded = recorded[:0]
+		// One action, one claim, however many places it covers. The claim is
+		// what the queue lists and what an approver agrees to; the rows
+		// underneath stay one per place (TRI-45).
+		claim, err := within.newClaim(ctx, FindingClaim, subject.ID, nil, "")
+		if err != nil {
+			return err
+		}
 		for _, p := range proposals {
-			one, err := within.propose(ctx, p)
+			one, err := within.propose(ctx, claim.ID, p)
 			if err != nil {
 				return err
 			}
@@ -335,11 +351,12 @@ func (s *Store) ProposeMany(ctx context.Context, subject access.Subject, proposa
 	return recorded, nil
 }
 
-func (s *Store) propose(ctx context.Context, p Proposal) (*Decision, error) {
+func (s *Store) propose(ctx context.Context, claimID int64, p Proposal) (*Decision, error) {
 	now := s.now().Truncate(time.Microsecond)
 	key := liveKeyFor(p.Place)
 	liveKey := &key
 	decision := &Decision{
+		ClaimID:   claimID,
 		ProductID: p.Place.ProductID, VulnerabilityID: p.Place.VulnerabilityID,
 		PlaceIdentity:            p.Place.PlaceIdentity,
 		Visibility:               visibilityOf(p.Place),
@@ -695,26 +712,26 @@ type TogetherAt struct {
 // places this actually resolves to — the count somebody is asked to narrow is
 // the number of rows about to be written, not the number of names they typed.
 func (s *Store) Together(ctx context.Context, subject access.Subject, at TogetherAt, p Proposal,
-	cap int) ([]int64, error) {
+	cap int) (claimID int64, recorded []int64, err error) {
 
 	if len(at.VulnerabilityIDs) == 0 {
-		return nil, fmt.Errorf("nothing was selected, so there is nothing to claim")
+		return 0, nil, fmt.Errorf("nothing was selected, so there is nothing to claim")
 	}
 	if p.By != subject.ID {
-		return nil, fmt.Errorf("a decision is recorded as made by whoever made it")
+		return 0, nil, fmt.Errorf("a decision is recorded as made by whoever made it")
 	}
 
 	db, ok := s.db.(*bun.DB)
 	if !ok {
-		return nil, fmt.Errorf("this store is already inside a transaction")
+		return 0, nil, fmt.Errorf("this store is already inside a transaction")
 	}
 
-	var recorded []int64
-	err := database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+	err = database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
 		// Cleared on every attempt. A retry re-runs this against a database
 		// that has moved, and carrying identifiers over from the attempt that
 		// failed would report claims that no longer exist.
 		recorded = recorded[:0]
+		claimID = 0
 		within := &Store{db: tx, now: s.now}
 
 		places, err := placesWithin(ctx, tx, subject, at)
@@ -729,6 +746,11 @@ func (s *Store) Together(ctx context.Context, subject access.Subject, at Togethe
 				"selection, or raise the limit deliberately", len(places), cap)
 		}
 
+		claim, err := within.newClaim(ctx, TogetherClaim, subject.ID, nil, p.SelectedBy)
+		if err != nil {
+			return err
+		}
+		claimID = claim.ID
 		for _, place := range places {
 			if !mayDecide(subject, place.ProductID, visibilityOf(place.Place)) {
 				return ErrNotTheirs
@@ -739,7 +761,7 @@ func (s *Store) Together(ctx context.Context, subject access.Subject, at Togethe
 			if err := each.valid(); err != nil {
 				return err
 			}
-			made, err := within.propose(ctx, each)
+			made, err := within.propose(ctx, claim.ID, each)
 			if err != nil {
 				// One live claim per combination of code holds here too. A
 				// selection covering something already decided is a selection
@@ -756,9 +778,9 @@ func (s *Store) Together(ctx context.Context, subject access.Subject, at Togethe
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
-	return recorded, nil
+	return claimID, recorded, nil
 }
 
 // onlyDecidable narrows a places query to what this subject may argue about.
