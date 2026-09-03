@@ -3,7 +3,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, type Body } from "../api/client";
 import { at as choicesAt, unwrap } from "../api/queries";
-import { useComment, useRevise, useWithdraw } from "../api/mutations";
+import { useComment, useEditComment, useRevise, useWithdraw } from "../api/mutations";
 import { useWho } from "../app/session";
 import { Failed } from "../ui/Failed";
 import { Severity, Exploited } from "../ui/Severity";
@@ -340,7 +340,7 @@ export function Finding() {
           <>
             <Activity decisionId={claims[0].decision.id} claim={claims[0]} places={it.standing?.[0]?.places} previous={previous} />
             <Revisions decisionId={claims[0].decision.id} />
-            <Comments decisionId={claims[0].decision.id} />
+            <Comments decisionId={claims[0].decision.id} mine={mine} />
           </>
         )}
 
@@ -794,8 +794,9 @@ function Revisions({ decisionId }: { decisionId: number }) {
 }
 
 // Comments are separate from the reasoning and never affect an approval.
-function Comments({ decisionId }: { decisionId: number }) {
+function Comments({ decisionId, mine }: { decisionId: number; mine: (who: string) => boolean }) {
   const [text, setText] = useState("");
+  const [editing, setEditing] = useState<number | null>(null);
   const comment = useComment();
   const draftKey = `comment:${decisionId}`;
   const comments = useQuery({
@@ -819,9 +820,27 @@ function Comments({ decisionId }: { decisionId: number }) {
                   <span className="when">{each.written_at?.replace("T", " ").slice(0, 16)}</span>
                   {each.edited_at && <span className="edited">edited</span>}
                 </div>
-                <div className="bubble">
-                  <Markdown source={each.body ?? ""} />
-                </div>
+                {editing === each.id ? (
+                  <Edit
+                    id={each.id ?? 0}
+                    was={each.body ?? ""}
+                    onDone={() => setEditing(null)}
+                  />
+                ) : (
+                  <div className="bubble">
+                    <Markdown source={each.body ?? ""} />
+                    {mine(each.written_by ?? "") && (
+                      <button
+                        type="button"
+                        className="linkish"
+                        style={{ marginTop: 6, display: "block" }}
+                        onClick={() => setEditing(each.id ?? null)}
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -859,6 +878,41 @@ function Comments({ decisionId }: { decisionId: number }) {
           Comment
         </button>
         <span className="consequence">Does not affect the approval</span>
+      </div>
+    </div>
+  );
+}
+
+// Rewriting a comment in place.
+//
+// Only its author can, which the server enforces; the button is offered only
+// to them so that nobody is invited into a refusal. The new text replaces the
+// old rather than being kept as a revision — a comment is a remark and a
+// justification is the record, and those are kept differently on purpose. What
+// a reader is told is that it was edited, which is already on the row.
+//
+// No draft is saved. A draft exists so a half-written thought survives a
+// sign-out; this one starts as text that is already stored, so keeping a copy
+// of it would offer somebody their own comment back as an unsent draft.
+function Edit({ id, was, onDone }: { id: number; was: string; onDone: () => void }) {
+  const [text, setText] = useState(was);
+  const edit = useEditComment();
+  return (
+    <div className="field" style={{ margin: 0, maxWidth: "78ch" }}>
+      <Editor value={text} onChange={setText} rows={4} label="Comment" />
+      {edit.error != null && <Failed error={edit.error} what="That could not be changed." />}
+      <div className="actions">
+        <button
+          type="button"
+          className="btn"
+          disabled={!text.trim() || text === was || edit.isPending}
+          onClick={() => edit.mutate({ id, body: text }, { onSuccess: onDone })}
+        >
+          Save
+        </button>
+        <button type="button" className="btn quiet" onClick={onDone}>
+          Cancel
+        </button>
       </div>
     </div>
   );

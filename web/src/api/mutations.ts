@@ -67,6 +67,26 @@ export function useRevise() {
   });
 }
 
+// Replacing the text of a comment somebody already wrote.
+//
+// The new text overwrites the old rather than being kept as a revision: a
+// comment is a remark, not a justification, and the two are kept differently
+// on purpose (TRI-24, TRI-27, UIX-26). What the reader is told is only that it
+// was edited.
+export function useEditComment() {
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, body }: { id: number; body: string }) =>
+      unwrap(
+        await api.PUT("/v1/comments/{id}", {
+          params: { path: { id } },
+          body: { body },
+        }),
+      ),
+    onSuccess: () => void queries.invalidateQueries({ queryKey: ["comments"] }),
+  });
+}
+
 export function useComment() {
   const queries = useQueryClient();
   return useMutation({

@@ -1,6 +1,7 @@
 package triage_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/triage"
@@ -104,6 +105,47 @@ func TestDiscussionIsNotReachableWithoutTheRightToTriage(t *testing.T) {
 		}
 		if _, err := f.store.Discussion(ctx, f.onlooker, claimed.ID); err == nil {
 			t.Error("somebody holding only a read role read the discussion")
+		}
+	})
+}
+
+func TestARewriteRefusedForOneReasonRatherThanTwo(t *testing.T) {
+	// ACC-56. A comment that is not there and a comment on a decision this
+	// person may not reach have to answer identically.
+	//
+	// Refusing on authorship first answered them differently — "only the
+	// person who wrote a comment may change it" against "no comment to
+	// change" — so anybody holding triage on any product could walk the
+	// identifiers and learn which comments exist, including on findings
+	// nobody has disclosed. The refusal is the same one and the counting
+	// works by hand.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		claimed := f.agreed(t, f.at())
+		said, err := f.store.Say(ctx, f.triager, claimed.ID, "Something worth knowing.")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Somebody who may read the product but not argue about it. Two
+		// requests: one naming a comment that exists, one naming a number that
+		// never has.
+		here := f.store.Reword(ctx, f.onlooker, said.ID, "Not my words.")
+		nowhere := f.store.Reword(ctx, f.onlooker, said.ID+9_999, "Not my words.")
+		if here == nil || nowhere == nil {
+			t.Fatalf("a reader rewrote a comment: existing=%v absent=%v", here, nowhere)
+		}
+		if here.Error() != nowhere.Error() {
+			t.Errorf("a comment that exists is refused as %q and one that does not as %q,\n"+
+				"which is how the identifiers get walked", here, nowhere)
+		}
+		if !errors.Is(here, triage.ErrNotTheirs) {
+			t.Errorf("the refusal is %v, which is not the one that answers 'not there'", here)
+		}
+
+		// And the author is still refused nothing.
+		if err := f.store.Reword(ctx, f.triager, said.ID, "Second thought."); err != nil {
+			t.Errorf("the author could not change their own comment: %v", err)
 		}
 	})
 }

@@ -64,17 +64,30 @@ func (s *Store) Say(ctx context.Context, subject access.Subject, decisionID int6
 // Overwritten rather than revised, and marked as edited. Nobody else may
 // change somebody's words — an edit that could be made by another person is
 // not a correction, it is a forgery with a timestamp.
+//
+// **Whether the asker may reach the decision is settled before anything about
+// the comment is said back** (ACC-56). The row is read first, because the
+// decision it hangs off is not knowable otherwise, but no answer turns on what
+// was in it until the asker has been let in: refusing on authorship first told
+// anybody holding triage anywhere that a comment with this identifier exists,
+// one request at a time, including on findings nobody has disclosed. A comment
+// that is not there and one on a decision this person may not reach answer
+// identically.
 func (s *Store) Reword(ctx context.Context, subject access.Subject, commentID int64, body string) error {
 	comment := new(Comment)
 	if err := s.db.NewSelect().Model(comment).
 		Where("id = ?", commentID).Scan(ctx); err != nil {
-		return fmt.Errorf("no comment to change: %w", err)
-	}
-	if comment.WrittenBy != subject.ID {
-		return fmt.Errorf("only the person who wrote a comment may change it")
+		// The bare sentinel, not a wrapped one. The identifier in the message
+		// is the difference a caller counts: "change comment 10000: not
+		// authorized" against "not authorized" separates the two answers this
+		// is written to make identical.
+		return ErrNotTheirs
 	}
 	if _, err := s.reaching(ctx, subject, comment.DecisionID, readable); err != nil {
 		return err
+	}
+	if comment.WrittenBy != subject.ID {
+		return fmt.Errorf("only the person who wrote a comment may change it")
 	}
 	if strings.TrimSpace(body) == "" {
 		return fmt.Errorf("a comment has to say something")

@@ -2314,3 +2314,28 @@ Counted with a second pass rather than a conditional sum in the first: that sum
 comes back as a decimal on two of the four engines, and the cast that fixes it
 is the engine-specific spelling the core does not carry. That is the second
 time on this feature.
+
+## Wiring up the edit button found an enumeration oracle (2026-09-03)
+
+`DESIGN-interface.md` listed "editing a comment after it is written — the
+endpoint exists; nothing calls it, so a typo stands". Offering the control is
+half an hour. Reading the endpoint it calls was the useful part.
+
+`Reword` checked **authorship before readability**, and the two refusals read
+differently: "only the person who wrote a comment may change it" against "no
+comment to change". So anybody holding triage on any product could walk the
+identifiers one request at a time and learn which comment identifiers exist —
+on every product, including on findings nobody has disclosed. That is ACC-56,
+which was written after exactly this shape was found twice in the person
+lookups, and it had never been applied to comments.
+
+Readability is settled first now, and a comment that is not there answers with
+the same sentinel a decision nobody may reach gives. The first attempt still
+failed its own test: the missing-row branch wrapped the sentinel as "change
+comment 10000: not authorized", and the identifier in the message is precisely
+the difference a caller counts.
+
+The control itself is offered only to the author, so nobody is invited into a
+refusal, and the editor opens on the stored text without a draft key — a draft
+exists so a half-written thought survives a sign-out, and keeping one here
+would hand somebody their own comment back later as an unsent draft.

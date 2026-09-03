@@ -968,6 +968,15 @@ and the approvals, and those are kept in full.
 Nobody else may edit somebody's words. An edit anybody could make is not a
 correction; it is a forgery with a timestamp.
 
+**Being allowed near the decision is settled before anything about the comment
+is said back** (ACC-56). The row has to be read first, because the decision it
+hangs off cannot be known otherwise, but no answer turns on what was in it
+until the asker has been let in. Refusing on authorship first made "that is not
+your comment" and "there is no such comment" two different answers, so anybody
+holding triage anywhere could walk the identifiers and learn which comments
+exist — on any product, including on findings nobody has disclosed. The two are
+one refusal now, and it is the same one a decision nobody may reach gives.
+
 ## Every field somebody types into runs through the same policy
 
 The reasoning, a revision of it, and a comment all go through the check before

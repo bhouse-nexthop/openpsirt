@@ -470,6 +470,15 @@ their reasoning offered back as "reuse this reasoning". The revisions and
 comments shown are the claim's representative decision's, which the finding
 names; a claim's records share one reasoning, so any of them answers.
 
+**A comment can be rewritten by whoever wrote it**, in place, and the row goes
+on saying only that it was edited — the previous text is not kept, because
+discussion is not the record a decision rests on. The control is offered only
+to the author, so nobody is invited into a refusal the server would give them
+anyway, and the box opens on the text as stored rather than as a draft: a draft
+exists so a half-written thought survives a sign-out, and a copy of something
+already stored would come back later as an unsent draft of somebody's own
+comment.
+
 **Which locations a decision covers is a summary with an exception, not a
 list of checkboxes** (UIX-44). The form says "all 62 locations"; "exclude
 locations" opens the list grouped by what pulls the component in — the
@@ -980,9 +989,6 @@ days" — sits beside it rather than in it.
 
 Named so that what is missing is a plan rather than something rediscovered by
 clicking.
-
-**Editing a comment after it is written.** The endpoint exists; nothing calls
-it, so a typo stands.
 
 **A mention links nobody.** The editor offers the right candidates and writes
 `@name` into the text, but the renderer treats it as ordinary words. UIX-24
