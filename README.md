@@ -114,8 +114,10 @@ each is built:
 | [DESIGN-findings.md](DESIGN-findings.md) | What a scan run found, and where |
 | [DESIGN-ingest.md](DESIGN-ingest.md) | What happens to a scan when it arrives, and how one is read |
 | [DESIGN-interface.md](DESIGN-interface.md) | The web interface, how it is built and how it reaches the server |
+| [DESIGN-notifications.md](DESIGN-notifications.md) | What people are told about, and what they are not |
 | [DESIGN-packaging.md](DESIGN-packaging.md) | Container image and Helm chart |
 | [DESIGN-queue.md](DESIGN-queue.md) | How work waiting to be done is held and picked up |
+| [DESIGN-remediation.md](DESIGN-remediation.md) | Which releases a fix is meant to reach, and how the scans answer |
 | [DESIGN-reporting.md](DESIGN-reporting.md) | Trends, release comparison, deadlines, settings |
 | [DESIGN-text.md](DESIGN-text.md) | What may be written, and how it is rendered |
 | [DESIGN-triage.md](DESIGN-triage.md) | What people decide about findings, and when a decision stops applying |

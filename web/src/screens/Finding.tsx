@@ -346,6 +346,8 @@ export function Finding() {
 
         <Holder at={at} assigned={it.assigned_to ?? ""} />
 
+        <FixingIn at={at} />
+
         {places.some((p) => p.decision == null) && (
           <>
             <Assess vulnerability={vulnerability} published={it.severity ?? ""} assessed={it.assessed ?? ""} />
@@ -1223,6 +1225,153 @@ function References({ advisory, refs }: { advisory?: string; refs: { url?: strin
 //
 // It covers every build of the product holding this component, which is what
 // assigning means: the same code built several ways is one piece of work.
+// Which releases this is meant to be fixed in, and what the scans say became of
+// that.
+//
+// Nothing here is ticked off as done. A build clears when it stops holding the
+// issue, which the next scan of it answers; a build chosen and still holding it
+// after a scan has run is a missed target, and the scan is evidence against the
+// claim rather than a reminder. A build nobody chose says so rather than
+// sitting among the outstanding ones — nobody is made to answer the same
+// question for six releases, but silence has to read as silence.
+function FixingIn({
+  at,
+}: {
+  at: { product: string; stream: string; variant: string; vulnerability: string; component: string };
+}) {
+  const queries = useQueryClient();
+  const path =
+    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/fix-targets" as const;
+  const plan = useQuery({
+    queryKey: ["fix-targets", at],
+    queryFn: async () => unwrap(await api.GET(path, { params: { path: at } })),
+  });
+  const set = useMutation({
+    mutationFn: async (builds: { stream: string; variant: string }[]) =>
+      unwrap(await api.PUT(path, { params: { path: at }, body: { builds } })),
+    onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: ["fix-targets"] });
+      void queries.invalidateQueries({ queryKey: ["finding"] });
+    },
+  });
+
+  const items = plan.data?.items ?? [];
+  if (plan.isPending) return null;
+
+  // The set is written whole, so a tick sends the whole list rather than one
+  // build: intent spans several releases and is decided in one sitting.
+  const chosen = items.filter((row) => row.state !== "undecided" && row.state !== "retired");
+  const toggle = (row: { stream?: string; variant?: string; state?: string }) => {
+    const named = { stream: row.stream ?? "", variant: row.variant ?? "" };
+    const now = chosen.map((each) => ({ stream: each.stream ?? "", variant: each.variant ?? "" }));
+    const already = now.some((each) => each.stream === named.stream && each.variant === named.variant);
+    set.mutate(
+      already
+        ? now.filter((each) => !(each.stream === named.stream && each.variant === named.variant))
+        : [...now, named],
+    );
+  };
+
+  const declared = plan.data?.declared ?? 0;
+  const clear = plan.data?.clear ?? 0;
+  const missed = plan.data?.missed ?? 0;
+
+  return (
+    <div className="card">
+      <h3>Which releases this is fixed in</h3>
+      {set.error != null && <Failed error={set.error} what="That could not be recorded." />}
+      {items.length === 0 ? (
+        <p className="hint" style={{ margin: 0 }}>
+          No build of this product holds this issue.
+        </p>
+      ) : (
+        <>
+          <p className="reading" style={{ marginBottom: 10 }}>
+            {declared === 0
+              ? "Nobody has said where this will be fixed."
+              : plan.data?.resolved
+                ? `Fixed in all ${declared} of the releases chosen.`
+                : `${clear} of ${declared} chosen ${clear === 1 ? "release is" : "releases are"} clear` +
+                  (missed > 0 ? `, and ${missed} ${missed === 1 ? "was" : "were"} scanned since and still hold it.` : ".")}
+          </p>
+          <div className="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th />
+                  <th>Release</th>
+                  <th className="num">Places</th>
+                  <th>State</th>
+                  <th>Chosen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((row) => (
+                  <tr key={`${row.stream}/${row.variant}`}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        aria-label={`Fix this in ${row.stream} ${row.variant}`}
+                        checked={row.state !== "undecided" && row.state !== "retired"}
+                        disabled={set.isPending || row.state === "retired"}
+                        onChange={() => toggle(row)}
+                      />
+                    </td>
+                    <td>
+                      {row.stream} <span className="hint">{row.variant}</span>
+                    </td>
+                    <td className="num">{row.places || "—"}</td>
+                    <td>
+                      <FixState state={row.state ?? ""} />
+                    </td>
+                    <td className="hint">
+                      {row.declared_by ? `${row.declared_by}, ${(row.declared_at ?? "").slice(0, 10)}` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="hint" style={{ margin: "10px 0 0" }}>
+            Declared intent, not commits. A release clears when the next scan of it stops finding
+            the issue &mdash; nothing here is marked done by hand.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Where one release stands, in one word.
+function FixState({ state }: { state: string }) {
+  const label: Record<string, string> = {
+    missed: "Missed",
+    fixing: "Fixing",
+    undecided: "Not decided",
+    clear: "Clear",
+    retired: "Out of support",
+  };
+  const means: Record<string, string> = {
+    missed: "Chosen, scanned since, and the issue is still there",
+    fixing: "Chosen, and no scan has looked since",
+    undecided: "Nobody has said whether it will be fixed here",
+    clear: "Chosen, and the issue is gone",
+    retired: "Out of support, so nothing here is a target",
+  };
+  const cls: Record<string, string> = {
+    missed: "lapsed",
+    fixing: "waiting",
+    undecided: "open",
+    clear: "agreed",
+    retired: "open",
+  };
+  return (
+    <span className={`state ${cls[state] ?? "open"}`} title={means[state]}>
+      {label[state] ?? state}
+    </span>
+  );
+}
+
 function Holder({
   at,
   assigned,

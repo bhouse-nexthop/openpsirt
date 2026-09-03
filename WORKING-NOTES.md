@@ -2255,3 +2255,42 @@ every upload rather than for the ones somebody might ask about.
 Stage 7's retention bullet was already built otherwise, and is now marked as
 such. Verified by putting the delete back: the receipt reports zero documents
 after reading, and the store test loses the hash.
+
+## A fix can now be declared, and the scans answer (2026-09-03)
+
+Stage 6's own stated proof — "a declared fix that did not land shows as a
+missed target" — had nothing behind it. REM-02, REM-03 and REM-07 to REM-16
+decide the whole feature thoroughly and none of it existed, with no design
+document; `DESIGN-remediation.md` is the one Stage 6 says it produces.
+
+The shape worth stating, because the obvious alternative is what every tracker
+does: **nothing records "done"**. A build clears when it stops holding the
+issue, which the next scan of it already answers. A state column somebody moves
+along is a second record of a fact we have independent evidence for, and the
+way that fails is the tool reporting a fix that shipped in nobody's release. So
+the stored row is the declaration and nothing else — which build, who, when.
+
+Four things that had to be got right and are each pinned by a test that was
+watched failing:
+
+- **A missed target needs a scan that finished *after* the claim.** Without the
+  "since", every declaration made between two nights is flagged the moment it
+  is written, which is most of them.
+- **A release that goes out of support after it was chosen is listed and not
+  counted.** Counted as outstanding it never clears; counted as delivered it
+  claims a fix nobody shipped. Choosing one already retired is refused rather
+  than dropped, because dropping it leaves somebody believing a release is
+  covered.
+- **Adding a release to the plan must not move the first one's date.** When
+  somebody committed to a release is a fact about a moment. The first version
+  upserted, which rewrote every date on every edit; the test that caught the
+  regression had to be a mutant that *updated* rather than one that errored.
+- **A build of another product is refused with the whole request**, not
+  narrowed out of it.
+
+Two traps found by the four-engine gate rather than by reading. `ON CONFLICT DO
+NOTHING` is PostgreSQL and SQLite spelling — engine-specific SQL in the core,
+which DAT-02 forbids — so the insert reads what is already declared inside the
+transaction instead, which DAT-31 wanted anyway. And `dbtest.Reset` deletes in
+foreign-key order, so a new table pointing at `person` fails every unrelated
+test on three engines until it is listed; SQLite said nothing.

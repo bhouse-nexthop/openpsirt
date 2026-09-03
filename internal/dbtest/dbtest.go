@@ -363,6 +363,9 @@ var tables = []string{
 	"lease",
 	// Before person, which it points at.
 	"notification",
+	// Before person, vulnerability, component and target, all of which it
+	// points at.
+	"fix_target",
 	"decision_comment",
 	"vulnerability_reference",
 	"decision_approval",

@@ -168,7 +168,10 @@ and shaping them against a screen after the fact would have meant shaping them
 twice. `DESIGN-reporting.md` records what exists: release comparison, trends,
 deadlines and what a new line would inherit.
 
-- Declared targets, computed resolution, reconciliation against scans
+- **Declared targets, computed resolution and reconciliation against scans
+  are built** — somebody says which releases a fix is meant to reach, and the
+  next scan of each answers whether it arrived. Nothing records "done".
+  `DESIGN-remediation.md` says what it deliberately does not do
 - Reports: dismissals, coverage, metrics — **release comparison is built**
 - **Trends on calendar time are built.** Release over release is not
 - Email, digest, operational alerts — **the in-app notification area is

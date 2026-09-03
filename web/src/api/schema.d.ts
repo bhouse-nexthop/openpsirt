@@ -1133,6 +1133,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/fix-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List which builds this is to be fixed in
+         * @description Returns every build of the product that holds this issue, plus every build somebody has already chosen to fix it in — including ones that no longer hold it, because those are the ones that worked.
+         *
+         *     **Nothing here is declared done.** A build is clear when it stops holding the issue, which the scans already say; a chosen build that still holds it after a scan has run is a missed target, and the scan is independent evidence against the claim. A build nobody chose reads as `undecided` rather than as outstanding work: nobody is made to answer the same question for six releases, but silence has to read as silence.
+         *
+         *     A release out of support is `retired` and carries no target — nothing on it will be fixed, so counting it as outstanding would fill this permanently.
+         */
+        get: operations["list-fix-targets"];
+        /**
+         * Say which builds this will be fixed in
+         * @description Replaces the set of builds this issue is to be fixed in. Declared intent, not commits — nothing here watches a repository.
+         *
+         *     **A set, written whole.** Intent spans several releases and is decided in one sitting, so what is sent is what the answer now is; sending an empty list withdraws the plan. A build already chosen keeps the date it was chosen on, because rewriting the set to add one release would otherwise move every date in it to today.
+         *
+         *     **It covers the product, not the build in the path**, like assignment: the path says which finding is being looked at, and the plan belongs to the work it is part of.
+         *
+         *     A release out of support cannot be chosen, and naming one is refused rather than quietly dropped — dropping it leaves somebody believing a release is covered.
+         */
+        put: operations["set-fix-targets"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision": {
         parameters: {
             query?: never;
@@ -1810,6 +1844,10 @@ export interface components {
              * @enum {string}
              */
             role: "reporting" | "approver" | "public-read" | "private-read" | "public-triage" | "private-triage" | "admin";
+        };
+        BuildBody: {
+            stream: string;
+            variant: string;
         };
         CanBody: {
             /** @description Agree to somebody else's claim */
@@ -2531,6 +2569,50 @@ export interface components {
             items: components["schemas"]["FindingBody"][] | null;
             /** Format: int64 */
             total: number;
+        };
+        FixBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FixBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description How many of those no longer hold the issue
+             */
+            clear: number;
+            /**
+             * Format: int64
+             * @description Builds somebody said this would be fixed in
+             */
+            declared: number;
+            items: components["schemas"]["FixTargetBody"][] | null;
+            /**
+             * Format: int64
+             * @description How many were scanned since and still hold it
+             */
+            missed: number;
+            /** @description Every chosen build is clear, and at least one was chosen */
+            resolved: boolean;
+        };
+        FixTargetBody: {
+            /** @description When they said so */
+            declared_at?: string;
+            /** @description Who said it would be fixed here */
+            declared_by?: string;
+            /**
+             * Format: int64
+             * @description How many places the issue still sits at in this build
+             */
+            places: number;
+            /**
+             * @description Where this build stands
+             * @enum {string}
+             */
+            state: "missed" | "fixing" | "undecided" | "clear" | "retired";
+            stream: string;
+            variant: string;
         };
         GrantBody: {
             /** @description The product the role is held against */
@@ -3366,6 +3448,29 @@ export interface components {
              * @description How large it was
              */
             size_bytes: number;
+        };
+        "Set-fix-targetsRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Set-fix-targetsRequest.json
+             */
+            readonly $schema?: string;
+            /** @description The builds it will be fixed in. Empty withdraws the plan */
+            builds: components["schemas"]["BuildBody"][] | null;
+        };
+        "Set-fix-targetsResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Set-fix-targetsResponse.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Builds newly chosen by this request
+             */
+            declared: number;
         };
         "Set-settingRequest": {
             /**
@@ -5558,6 +5663,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DecidedBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-fix-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+                stream: string;
+                variant: string;
+                vulnerability: string;
+                component: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FixBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-fix-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+                stream: string;
+                variant: string;
+                vulnerability: string;
+                component: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Set-fix-targetsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Set-fix-targetsResponse"];
                 };
             };
             /** @description Error */
