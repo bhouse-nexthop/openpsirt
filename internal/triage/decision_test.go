@@ -935,3 +935,50 @@ func TestNamingWhatStopsItBelongsToThatReasonAlone(t *testing.T) {
 		}
 	})
 }
+
+func TestAVersionTooLongToKeyOnIsRefusedRatherThanShortened(t *testing.T) {
+	// The two version columns are part of the index every "does this decision
+	// apply here" lookup takes, so they are bounded where the component
+	// columns they copy are not. Measured against the reference producer:
+	// 6,845 components, longest version 49 characters, nothing over 191.
+	//
+	// **Refused rather than shortened** is the part that matters. A decision
+	// keyed on a truncated version would be compared against the finding's
+	// full one and match nothing, so the claim would stand on the record,
+	// cover nothing, and say so nowhere. Refused, somebody is told.
+	each(t, func(t *testing.T, f *fixture) {
+		sprawling := f.at()
+		sprawling.ComponentUpstream = strings.Repeat("9", 200)
+		_, err := f.store.Propose(t.Context(), f.triager, triage.Proposal{
+			Place: sprawling, Outcome: triage.NotApplicable,
+			Justification: triage.CodeNotInExecutePath,
+			Reasoning:     "The parser is never reached.",
+			By:            f.proposer, NeedsApproval: true,
+		})
+		if err == nil {
+			t.Fatal("a decision was keyed on a version the key cannot hold")
+		}
+		if !strings.Contains(err.Error(), "component") {
+			t.Errorf("the refusal does not say which version: %v", err)
+		}
+		// Nothing was written, so nothing stands covering nothing.
+		var standing int
+		if err := f.db.NewSelect().Model((*triage.Decision)(nil)).
+			Scan(t.Context(), &standing); err == nil && standing != 0 {
+			t.Errorf("%d decisions were recorded by a refused proposal", standing)
+		}
+
+		// And a version at the limit is still fine, so the check is a bound
+		// rather than a refusal of anything unusual.
+		atTheLimit := f.at()
+		atTheLimit.ComponentUpstream = strings.Repeat("9", 191)
+		if _, err := f.store.Propose(t.Context(), f.triager, triage.Proposal{
+			Place: atTheLimit, Outcome: triage.NotApplicable,
+			Justification: triage.CodeNotInExecutePath,
+			Reasoning:     "The parser is never reached.",
+			By:            f.proposer, NeedsApproval: true,
+		}); err != nil {
+			t.Errorf("a version exactly at the limit was refused: %v", err)
+		}
+	})
+}

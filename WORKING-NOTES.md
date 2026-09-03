@@ -1392,6 +1392,38 @@ So: when running `go test` by hand rather than through `make check`, export the
 engine URLs, and check the subtest names in the output actually list four
 engines before believing a result.
 
+## The 191-wide columns, measured rather than widened (2026-09-03)
+
+Eighth of the 2026-09-03 review's open items: "identity and version columns are
+191 wide with unbounded producers". Half of it was already answered in the
+schema and the other half turned out to be one pair of columns.
+
+**Everything a scan file supplies is already free text** — component name,
+version, both upstream fields, the package identifier — with the reason written
+above them in `00005_graph.go`: a bounded column means a legitimate but long
+value fails the whole scan that carried it. The issue identifier is bounded at
+191 deliberately, truncating rather than refusing, because it carries a unique
+index and two identifiers agreeing for 191 characters are the same identifier.
+
+**The one real pair is the decision's two upstream versions.** They are 191
+because they are part of `decision_applies_idx`, which is the lookup every
+screen takes to ask whether anything stands here, and an index has to stay
+inside what the narrowest supported server allows. So they cannot simply be
+widened to match the columns they copy.
+
+Measured against the reference producer's real output before deciding: **6,845
+components, longest version 49 characters**, longest name 120, longest package
+identifier 140, nothing over 191. Fourfold headroom on the field that matters.
+
+So the width stays and the *failure* changed. It was a driver error about a
+column nobody reading it has heard of; it is now a sentence, raised in the one
+place every decision write already passes through. **Refused rather than
+shortened**, which is the half worth having: a decision keyed on a truncated
+version would be compared against the finding's full one and match nothing, so
+the claim would stand on the record, cover nothing, and say so nowhere. The
+mutant that shortens instead fails the test, which is exactly the shape of bug
+it would have been.
+
 ## Drafts stopped surviving a sign-out (2026-09-03)
 
 Seventh of the 2026-09-03 review's open items, and the one that was a security

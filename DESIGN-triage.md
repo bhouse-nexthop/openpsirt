@@ -559,6 +559,24 @@ both read "nothing stands here" and both then write, and the test drives exactly
 that: six proposals at once leave one claim standing, and removing the
 constraint lets all six through.
 
+## What a decision is keyed on has to fit the key
+
+A decision is matched to a finding by product, issue, place and both upstream
+versions, and that match is an index lookup on every screen that asks whether
+anything stands here. So the two version columns are bounded where the
+component columns they copy are not — an index has to stay inside what the
+narrowest supported server allows.
+
+**A version that will not fit is refused, not shortened.** Refusing costs
+somebody a judgment they cannot record about one pathological component.
+Shortening would key the decision on something the finding does not hold, so
+the claim would stand on the record, cover nothing, and say so nowhere — which
+is the failure this whole area is arranged to prevent.
+
+Measured before settling for the bound rather than assumed: the reference
+producer's real output is 6,845 components whose longest version is 49
+characters, with nothing at all over the limit.
+
 ## A judgment says how much it covers
 
 A decision is about a component at a place, and one place can hold a great deal

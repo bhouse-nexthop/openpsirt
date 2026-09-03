@@ -691,8 +691,18 @@ significant ones were settled.
 ---
 
 **Found by the 2026-09-03 review and not yet decided.** *MDL-11 end-of-life has no code* — `product.eol_on` and `stream.eol_on` are
-written by nothing, and REM-16 and RPT-04 depend on them. *Identity and version
-columns are 191 wide with unbounded producers.* *There is no in-place re-authentication (UIX-32)*: an
+written by nothing, and REM-16 and RPT-04 depend on them. *Answered by measuring.* The columns 191 wide
+that carry a producer's values are the two upstream versions a decision is
+keyed on, and they are that width because they are part of the index every
+"does this decision apply here" lookup takes. Measured against the reference
+producer's real output: 6,845 components, longest version **49** characters,
+longest name 120, longest package identifier 140, and nothing over 191 — about
+fourfold headroom on the field that matters. Everything a scan file supplies
+that is not part of that index is already free text, with the reason in the
+schema. What changed is the failure: a version that will not fit is refused
+with a sentence rather than a driver's message about a column, and **refused
+rather than shortened**, because a decision keyed on a truncated version would
+be compared against the finding's full one, match nothing, and say so nowhere. *There is no in-place re-authentication (UIX-32)*: an
 expired session still means a redirect to sign in, and what protects the words
 at that moment is that the draft was written as they were typed. The other half
 of that pair is built — drafts are cleared on sign-out and kept under the

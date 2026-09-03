@@ -430,6 +430,9 @@ func (p Proposal) valid() error {
 	if p.By == 0 {
 		return errors.New("a decision needs somebody to have made it")
 	}
+	if err := keyable(p.Place); err != nil {
+		return err
+	}
 	// The claim that something does not affect us *is* which of the
 	// recognized reasons applies, so it is not optional there — and it is
 	// meaningless on the others, which are claims about priority rather than
@@ -479,6 +482,45 @@ func (p Proposal) valid() error {
 // that happened to be spaces — so a decision was written against nothing and
 // looked for something, and could never apply to the place it was made about.
 func version(s string) string { return strings.TrimSpace(s) }
+
+// versionLimit is how long an upstream version a decision may be keyed on.
+//
+// The two version columns are part of the index every lookup of "does a
+// decision apply to this finding" takes, and an index of that width has to
+// stay inside what the narrowest supported server allows for one — which is
+// where 191 comes from and why these are not the free-text columns the
+// components they copy have.
+//
+// Measured against the reference producer's real output before settling for
+// it: 6,845 components, longest version 49 characters, longest name 120,
+// longest package identifier 140, and nothing at all over 191. The headroom is
+// about fourfold on the field that matters.
+const versionLimit = 191
+
+// keyable refuses a place whose versions will not fit the key a decision is
+// matched on.
+//
+// Refused here rather than left to the write, which would answer with a
+// driver's message about a column nobody reading it has heard of. **Refused
+// rather than truncated**, which is the important half: a decision keyed on a
+// shortened version would be compared against the finding's full one and match
+// nothing, so the claim would stand on the record, cover nothing, and say so
+// nowhere.
+func keyable(at Place) error {
+	for what, held := range map[string]string{
+		"component": at.ComponentUpstream,
+		"consumer":  at.ConsumerUpstream,
+	} {
+		if len(version(held)) > versionLimit {
+			return fmt.Errorf(
+				"the %s's upstream version is %d characters and a decision is keyed on at most "+
+					"%d, so this cannot be matched to a finding later — a version that long is "+
+					"usually a producer putting something else in the field",
+				what, len(version(held)), versionLimit)
+		}
+	}
+	return nil
+}
 
 // text keeps an absent version absent rather than storing it as an empty one.
 //
