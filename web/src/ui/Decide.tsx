@@ -200,6 +200,10 @@ export function Decide({
                     vulnerability: at.vulnerability,
                     component: at.component,
                   },
+                  // The other build may ship this component at several
+                  // versions, and the reach named the one the issue sits at
+                  // there; without it, a build with four is a refusal.
+                  query: other.version ? { version: other.version } : {},
                 },
                 body: body(false),
               },
