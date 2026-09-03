@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { Icon } from "./Icons";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
 import { label, waiting } from "./notices";
@@ -44,13 +45,14 @@ export function Notices() {
     <div className="notices">
       <button
         type="button"
-        className="who noticebell"
+        className="bell"
         aria-expanded={open}
         aria-label={total > 0 ? `${total} waiting on you` : "Nothing waiting on you"}
         title={total > 0 ? `${total} waiting on you` : "Nothing waiting on you"}
         onClick={() => setOpen(!open)}
       >
-        {waiting(total)}
+        <Icon name="bell" />
+        {total > 0 && <span className="n">{waiting(total)}</span>}
       </button>
 
       {open && (

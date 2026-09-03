@@ -5,7 +5,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Line,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -59,39 +58,110 @@ function day(at?: string): string {
 }
 
 // New, resolved and open together. Separately they are three numbers.
+//
+// Two bands rather than one axis. Open runs to thousands and a week's new or
+// resolved to tens, so on a shared scale the two lines the chart exists for
+// flatten into the baseline and vanish — which is what the first version did.
+// Open is an area in the upper band with its endpoint named, because that is
+// the number anybody reads; new against resolved sit beneath as paired bars on
+// their own scale, so a week where new outran resolved shows as a taller bar,
+// not as a second axis (the one thing a chart must never grow).
 export function Pace({ points }: { points: Point[] }) {
-  const data = points.map((p) => ({
-    at: day(p.at),
-    Open: p.open ?? 0,
-    New: p.opened ?? 0,
-    Resolved: p.resolved ?? 0,
-  }));
-  if (data.length === 0) return null;
+  if (points.length === 0) return null;
+  const W = 560, L = 40, R = 10, T = 8;
+  const topH = 96, gap = 16, botH = 46;
+  const n = points.length;
+  const x = (i: number) => (n === 1 ? (L + W - R) / 2 : L + (i * (W - L - R)) / (n - 1));
+  const opens = points.map((p) => p.open ?? 0);
+  const news = points.map((p) => p.opened ?? 0);
+  const dones = points.map((p) => p.resolved ?? 0);
+
+  // The upper band's scale is fitted to what open actually spans, so a flat
+  // backlog reads as flat rather than as a line pinned to the floor.
+  const hiOpen = Math.max(1, ...opens);
+  const loOpen = Math.min(...opens);
+  const pad = Math.max(1, (hiOpen - loOpen) * 0.15);
+  const lo = Math.max(0, loOpen - pad), hi = hiOpen + pad;
+  const y = (v: number) => T + topH - ((v - lo) / (hi - lo)) * topH;
+  const ticks = niceTicks(lo, hi, 3);
+
+  const zero = T + topH + gap + botH / 2;
+  const most = Math.max(1, ...news, ...dones);
+  const scale = (botH / 2 - 4) / most;
+  const bw = Math.max(2, ((W - L - R) / n) * 0.34);
+
+  const pts = opens.map((v, i) => `${x(i)},${y(v)}`).join(" ");
+  const last = n - 1;
+
   return (
-    <ResponsiveContainer width="100%" height={180}>
-      <AreaChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-        <CartesianGrid strokeOpacity={0.14} vertical={false} />
-        <XAxis dataKey="at" tick={axis} tickLine={false} axisLine={false} />
-        <YAxis
-          tick={axis}
-          tickLine={false}
-          axisLine={false}
-          width={46}
-          tickFormatter={brief}
-        />
-        <Tooltip contentStyle={tip} />
-        <Area
-          type="monotone"
-          dataKey="Open"
-          stroke="var(--accent)"
-          fill="var(--accent)"
-          fillOpacity={0.12}
-        />
-        <Line type="monotone" dataKey="New" stroke="var(--sev-high)" dot={false} />
-        <Line type="monotone" dataKey="Resolved" stroke="var(--ok)" dot={false} />
-      </AreaChart>
-    </ResponsiveContainer>
+    <svg
+      className="chart"
+      viewBox={`0 0 ${W} ${T + topH + gap + botH + 18}`}
+      role="img"
+      aria-label={paceLabel(points)}
+    >
+      {ticks.map((v) => (
+        <g key={v}>
+          <line className="gridline" x1={L} x2={W - R} y1={y(v)} y2={y(v)} />
+          <text className="axis" x={2} y={y(v) + 3}>{brief(v)}</text>
+        </g>
+      ))}
+      <polygon className="open-area" points={`${L},${T + topH} ${pts} ${W - R},${T + topH}`} />
+      <polyline className="open-line" points={pts} />
+      <circle className="tip" cx={x(last)} cy={y(opens[last] ?? 0)} r={3.5} />
+      <text
+        className="axis"
+        x={x(last) - 5}
+        y={y(opens[last] ?? 0) - 8}
+        textAnchor="end"
+        style={{ fill: "var(--accent)", fontWeight: 600, fontSize: 11 }}
+      >
+        {(opens[last] ?? 0).toLocaleString()} open issues
+      </text>
+
+      <line className="zero" x1={L} x2={W - R} y1={zero} y2={zero} />
+      {points.map((p, i) => {
+        const cx = x(i);
+        const up = (news[i] ?? 0) * scale;
+        const down = (dones[i] ?? 0) * scale;
+        return (
+          <g key={p.at ?? i}>
+            <rect className="bar-new" x={cx - bw - 1} y={zero - up} width={bw} height={up} rx={1}>
+              <title>{`${day(p.at)}: ${news[i]} new`}</title>
+            </rect>
+            <rect className="bar-res" x={cx + 1} y={zero} width={bw} height={down} rx={1}>
+              <title>{`${day(p.at)}: ${dones[i]} resolved`}</title>
+            </rect>
+          </g>
+        );
+      })}
+      {points.map((p, i) =>
+        i % 3 === 0 || i === last ? (
+          <text key={p.at ?? i} className="axis" x={x(i)} y={zero + botH / 2 + 12} textAnchor="middle">
+            {day(p.at)}
+          </text>
+        ) : null,
+      )}
+    </svg>
   );
+}
+
+// A handful of round values inside a range, for the upper band's grid.
+function niceTicks(lo: number, hi: number, want: number): number[] {
+  const span = Math.max(1, hi - lo);
+  const raw = span / want;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? mag * 10;
+  const out: number[] = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) out.push(v);
+  return out;
+}
+
+function paceLabel(points: Point[]): string {
+  const first = points[0]?.open ?? 0;
+  const last = points[points.length - 1]?.open ?? 0;
+  const outran = points.filter((p) => (p.opened ?? 0) > (p.resolved ?? 0)).length;
+  return `Open findings from ${first.toLocaleString()} to ${last.toLocaleString()} over ${points.length} steps, with new findings outrunning resolved in ${outran} of them`;
 }
 
 // The same total, split. A flat line with a rising critical share is getting
@@ -155,7 +225,7 @@ export function Ring({ point }: { point?: Point }) {
   }
 
   return (
-    <div className="ring">
+    <div className="sevring">
       <PieChart width={132} height={132}>
         <Pie
           data={slices}

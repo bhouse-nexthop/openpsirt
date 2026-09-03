@@ -30,17 +30,14 @@ export function Reach({
 
   return (
     <section className="mb-5 rounded-lg border border-[var(--line)] bg-[var(--raised)] p-3 text-sm">
-      <h2 className="mb-2 font-semibold">What a judgment here would cover</h2>
+      <h2 className="mb-2 font-semibold">Scope</h2>
       <ul className="flex flex-col gap-1">
         <li>
-          <strong>{here}</strong> {here === 1 ? "place" : "places"} in this build. One judgment
-          covers all of them — they are the same code at the same versions.
+          <strong>{here}</strong> {here === 1 ? "location" : "locations"} in this build, one decision.
         </li>
         <li>
           <strong>{automatic.length}</strong> other{" "}
-          {automatic.length === 1 ? "build" : "builds"} already match, so it reaches them without
-          anybody doing anything. A decision is a claim about a combination of code, not about a
-          release.
+          {automatic.length === 1 ? "build" : "builds"} already match, so it reaches them automatically.
         </li>
         <li>
           <strong>{differing.length}</strong>{" "}
@@ -51,7 +48,7 @@ export function Reach({
 
       {differing.length > 0 && (
         <details className="mt-2">
-          <summary className="cursor-pointer text-[var(--muted)]">Which ones differ</summary>
+          <summary className="cursor-pointer text-[var(--muted)]">Builds at other versions</summary>
           <ul className="mt-1 flex flex-col gap-0.5 text-[var(--muted)]">
             {differing.map((match) => (
               <li key={`${match.stream}-${match.variant}-${match.version}`}>

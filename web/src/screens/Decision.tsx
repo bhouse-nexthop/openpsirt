@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
 import { useComment, useRevise, useWithdraw } from "../api/mutations";
 import { Failed } from "../ui/Failed";
 import { Outcome } from "../ui/Outcome";
+import { Exploited, Severity } from "../ui/Severity";
 import { State } from "../ui/State";
 import { Markdown } from "../ui/Markdown";
 import { Editor, forget } from "../ui/Editor";
@@ -24,7 +25,7 @@ export function Decision({ who }: { who: Who }) {
     queryFn: async () => unwrap(await api.GET("/v1/decisions/{id}", { params: { path: { id } } })),
   });
 
-  if (decision.isPending) return <p className="text-sm text-[var(--muted)]">Loading…</p>;
+  if (decision.isPending) return <p className="hint">Loading…</p>;
   if (decision.isError) {
     return <Failed error={decision.error} what="That decision could not be read." />;
   }
@@ -41,9 +42,36 @@ export function Decision({ who }: { who: Who }) {
           <Outcome outcome={it.decision?.outcome} />
           <State state={it.decision?.state} />
         </div>
+        {it.finding && (
+          <p className="text-sm">
+            {it.finding.severity && <Severity word={it.finding.severity} />}{" "}
+            {it.finding.exploited && <Exploited when />}{" "}
+            in <span className="id">{it.finding.component}</span>{" "}
+            {it.finding.version && <span className="id text-[var(--faint)]">{it.finding.version}</span>}
+            {" · "}
+            {it.finding.product} · {it.finding.stream} · {it.finding.variant}
+            {" · "}
+            <Link
+              className="linkish"
+              to={
+                `/products/${encodeURIComponent(it.finding.product ?? "")}` +
+                `/streams/${encodeURIComponent(it.finding.stream ?? "")}` +
+                `/variants/${encodeURIComponent(it.finding.variant ?? "")}` +
+                `/findings/${encodeURIComponent(it.finding.vulnerability ?? "")}` +
+                `/components/${encodeURIComponent(it.finding.component ?? "")}` +
+                (it.finding.version ? `?version=${encodeURIComponent(it.finding.version)}` : "")
+              }
+            >
+              Open the finding →
+            </Link>
+          </p>
+        )}
+        {it.finding?.description && (
+          <p className="mt-1 text-sm text-[var(--muted)]" style={{ whiteSpace: "pre-wrap" }}>{it.finding.description}</p>
+        )}
         <p className="text-sm text-[var(--muted)]">
           {it.place?.product}
-          {it.proposed_by && <> · claimed by {it.proposed_by}</>}
+          {it.proposed_by && <> · proposed by {it.proposed_by}</>}
           {it.proposed_at && <> on {it.proposed_at.slice(0, 10)}</>}
           {typeof it.age_days === "number" && it.age_days > 365 && (
             <> · <span className="text-[var(--sev-medium)]">a judgment this old is worth re-reading</span></>
@@ -51,13 +79,13 @@ export function Decision({ who }: { who: Who }) {
         </p>
         {it.decision?.sent_back_at && (
           <p className="mt-2 rounded border border-[var(--wait)] bg-[var(--wait-bg)] px-3 py-2 text-sm">
-            An approver asked for more on {it.decision.sent_back_at.slice(0, 10)}. It is back with
-            whoever wrote it, and out of the review queue until they revise it.
+            Rejected on {it.decision.sent_back_at.slice(0, 10)}. Back with whoever wrote it, and out of
+            the review queue until they revise it.
           </p>
         )}
         {it.decision?.selected_by && (
           <p className="mt-2 text-sm text-[var(--muted)]">
-            One of many recorded together. Narrowed by: {it.decision.selected_by}
+            One of a bulk decision. Narrowed by: {it.decision.selected_by}
           </p>
         )}
       </header>
@@ -100,7 +128,7 @@ function Reasoning({
   return (
     <section className="mb-6">
       <div className="mb-2 flex items-center gap-2">
-        <h2 className="text-sm font-semibold">Why</h2>
+        <h2 className="text-sm font-semibold">Reasoning</h2>
         {mine && live && !editing && (
           <button
             type="button"
@@ -118,8 +146,8 @@ function Reasoning({
       {editing ? (
         <>
           <p className="mb-2 text-sm text-[var(--muted)]">
-            Revising takes back any approval this has and returns it to the queue, marked as
-            agreed before. The old words stay readable.
+            Revising withdraws any approval this has and returns it to the queue, marked as previously
+            approved. The earlier words stay readable.
           </p>
           <Editor value={text} onChange={setText} draftKey={draftKey} label="Reasoning" />
           {revise.error != null && <Failed error={revise.error} what="That could not be stored." />}
@@ -168,7 +196,7 @@ function Reasoning({
             onClick={() => withdraw.mutate({ id })}
             className="text-sm text-[var(--muted)] hover:text-[var(--sev-critical)]"
           >
-            Withdraw this claim
+            Withdraw
           </button>
           <span className="ml-2 text-sm text-[var(--muted)]">
             It stops applying and stays on the record.
@@ -194,8 +222,8 @@ function Revisions({ id }: { id: number }) {
   return (
     <section className="mb-6">
       <h2 className="mb-2 text-sm font-semibold">
-        How the reasoning changed
-        <span className="ml-2 font-normal text-[var(--muted)]">{items.length} versions</span>
+        Revision history
+        <span className="ml-2 font-normal text-[var(--muted)]">{items.length} revisions</span>
       </h2>
       <ul className="flex flex-col gap-2">
         {items.map((revision) => (
@@ -226,7 +254,7 @@ function Approvals({ id }: { id: number }) {
 
   return (
     <section className="mb-6">
-      <h2 className="mb-2 text-sm font-semibold">Who agreed</h2>
+      <h2 className="mb-2 text-sm font-semibold">Approvals</h2>
       <ul className="flex flex-col gap-2 text-sm">
         {items.map((approval) => (
           <li
@@ -242,11 +270,11 @@ function Approvals({ id }: { id: number }) {
                 className="text-[var(--muted)]"
                 title="How much it covered when it was agreed to. A decision reaches by matching, so it covers more as builds appear — with nobody having acted"
               >
-                {" "}· covered {approval.covered} then
+                {" "}· covered {approval.covered} records then
               </span>
             )}
             {approval.withdrawn_at && (
-              <span> · taken back on {approval.withdrawn_at.slice(0, 10)}</span>
+              <span> · withdrawn on {approval.withdrawn_at.slice(0, 10)}</span>
             )}
           </li>
         ))}
@@ -273,9 +301,7 @@ function Comments({ id }: { id: number }) {
   return (
     <section>
       <h2 className="mb-2 text-sm font-semibold">Comments</h2>
-      <p className="mb-3 text-sm text-[var(--muted)]">
-        Separate from the reasoning, and they never affect an approval.
-      </p>
+      <p className="mb-3 text-sm text-[var(--muted)]">Does not affect the approval.</p>
 
       {items.length > 0 && (
         <ul className="mb-4 flex flex-col gap-2">
@@ -298,7 +324,7 @@ function Comments({ id }: { id: number }) {
         draftKey={draftKey}
         rows={4}
         label="Comment"
-        placeholder="Add a note"
+        placeholder="A question, a note, something worth knowing later."
       />
       {comment.error != null && <Failed error={comment.error} what="That could not be added." />}
       <button

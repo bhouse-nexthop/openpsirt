@@ -1,77 +1,56 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { scopeQuery, useScope } from "../app/scope";
 import { unwrap } from "../api/queries";
 import { Failed } from "../ui/Failed";
 import { Pace, Mix, Ring } from "../ui/Charts";
+import { claimOf } from "../api/claims";
 import type { Who } from "../app/session";
 
-// One home page, assembled from what this person holds, and the only screen
-// that summarizes across products — work falling between people is exactly
-// what hides when every screen is scoped to one product.
-//
-// The risk this page has to avoid is trying to be everything. What keeps it
-// from that is that each panel is a number, three rows, and a way through to
-// the screen that actually does the work.
+// One home page, assembled from what this person holds. Four figures that
+// follow the scope (UIX-51), then the work — what is pending, what is in
+// progress, what lapsed — then the trends, then the system's own state
+// (UIX-42). Somebody opening this most days wants the size of the day before
+// its contents.
 export function Home({ who }: { who: Who }) {
-  // Whatever the picker has selected, with every level offering "all"
-  // (UIX-38). Home used to summarize across every product and only that,
-  // which once a product is chosen answers a question nobody asked.
   const at = useScope();
   const scope = scopeQuery(at);
+  const counting = at.product
+    ? [at.product, at.stream, at.variant].filter(Boolean).join(" · ")
+    : "all products";
+
   const trend = useQuery({
     queryKey: ["home", "trend", scope],
     queryFn: async () =>
       unwrap(await api.GET("/v1/trend", { params: { query: { weeks: 12, ...scope } } })),
   });
   const points = trend.data?.items ?? [];
-  // What the charts are drawn from, said rather than implied. The query above
-  // carries the scope, so a label reading "all products" while a product is
-  // picked describes the one thing the chart is not showing.
-  const counting = at.product ?? "all products";
 
   return (
     <>
       <div className="screen-head">
-        <h2>{greeting()}, {who.name.replace(/^[a-z]+:/, "")}</h2>
+        <h2>
+          {greeting()}, {who.name.replace(/^[a-z]+:/, "")}
+        </h2>
         <p>
-          {holdings(who)}
-          {/* Said rather than implied. A narrowed page that looks like an
-              unnarrowed one is how two people quote different figures for the
-              same question (REJ-10). */}
-          {at.product && (
-            <>
-              {" · counting "}
-              <span className="id">{at.product}</span>
-              {at.stream ? (
-                <>
-                  {" "}
-                  <span className="id">{at.stream}</span>
-                </>
-              ) : (
-                " across every branch"
-              )}
-              {at.variant && (
-                <>
-                  {" "}
-                  <span className="id">{at.variant}</span>
-                </>
-              )}
-            </>
-          )}
+          {holdings(who)} · counting <span className="id">{counting}</span>
         </p>
       </div>
 
+      <Figures counting={counting} points={points} />
+
       <div className="panels">
-        <Waiting />
-        <Assigned />
+        <Pending />
+        <InProgress />
         <Lapsed />
 
         <div className="panel wide">
           <header>
-            <h3>Are we keeping pace?</h3>
-            <span className="eyebrow" style={{ marginLeft: "auto" }}>12 weeks · {counting}</span>
+            <h3>Trend: open, new and resolved issues</h3>
+            <span className="eyebrow" style={{ marginLeft: "auto" }}>
+              12 weeks · {counting}
+            </span>
           </header>
           {trend.isError ? (
             <Failed error={trend.error} what="The trend could not be read." />
@@ -79,9 +58,15 @@ export function Home({ who }: { who: Who }) {
             <>
               <Pace points={points} />
               <div className="legend">
-                <span><i style={{ background: "var(--accent)" }} /> Open</span>
-                <span><i style={{ background: "var(--sev-high)" }} /> New</span>
-                <span><i style={{ background: "var(--ok)" }} /> Resolved</span>
+                <span>
+                  <i style={{ background: "var(--accent)" }} /> Open issues
+                </span>
+                <span>
+                  <i style={{ background: "var(--sev-high)" }} /> New
+                </span>
+                <span>
+                  <i style={{ background: "var(--ok)" }} /> Resolved
+                </span>
               </div>
               <p className="reading">{paceReading(points)}</p>
             </>
@@ -91,41 +76,141 @@ export function Home({ who }: { who: Who }) {
         <div className="panel wide">
           <header>
             <h3>Severity over time</h3>
-            <span className="eyebrow" style={{ marginLeft: "auto" }}>Open, by severity</span>
+            <span className="eyebrow" style={{ marginLeft: "auto" }}>
+              Open, by severity
+            </span>
           </header>
           <Mix points={points} />
-          <p className="reading">
-            A single line would hide this. A total that barely moves while its critical share
-            rises is getting worse rather than staying still.
-          </p>
+          <p className="reading">{mixReading(points)}</p>
         </div>
 
         <div className="panel">
           <header>
-            <h3>Open findings by severity</h3>
-            <span className="eyebrow" style={{ marginLeft: "auto" }}>Open now · {counting}</span>
+            <h3>Open issues by severity</h3>
+            <span className="eyebrow" style={{ marginLeft: "auto" }}>
+              Open now
+            </span>
           </header>
           <Ring point={points[points.length - 1]} />
-          <p className="reading">
-            What is open right now, split the way the ranking splits it. Exploited is counted
-            with what it is rated, because the ring is about how bad rather than how urgent.
-          </p>
+          <p className="reading">Exploited is counted with what it is rated.</p>
         </div>
 
         <div className="panel">
           <header>
-            <h3>Compared to the last release <span className="todo">not built</span></h3>
+            <h3>
+              Release readiness <span className="todo">not built</span>
+            </h3>
           </header>
-          <p className="reading">
-            The pre-release question: is what we are about to ship better or worse than what we
-            last shipped? Comparing two builds is built; comparing a branch against the last
-            release cut from it is not.
-          </p>
+          <p className="reading">Critical count now, against the last shipped release.</p>
+          {at.product && (
+            <footer>
+              <Link to={`/products/${encodeURIComponent(at.product)}/comparison`} className="linkish">
+                Release comparison →
+              </Link>
+            </footer>
+          )}
         </div>
 
-        <Operational />
+        <Status />
       </div>
     </>
+  );
+}
+
+// The four figures. Each names what it counts, because the picker narrows
+// them — a tile reading "all products" while a product is picked describes the
+// one thing it is not showing (REJ-10).
+function Figures({
+  counting,
+  points,
+}: {
+  counting: string;
+  points: { open?: number; by_severity?: Record<string, number> }[];
+}) {
+  const at = useScope();
+  const scope = scopeQuery(at);
+  const navigate = useNavigate();
+  const whole = !!(at.product && at.stream && at.variant);
+  const build = whole
+    ? `/products/${encodeURIComponent(at.product ?? "")}/streams/${encodeURIComponent(at.stream ?? "")}/variants/${encodeURIComponent(at.variant ?? "")}`
+    : "";
+
+  // One definition at every scope: the trend's latest point, which counts
+  // distinct issues. The findings list counts one row per issue and
+  // component, and a tile that switched between the two as the picker moved
+  // would quote two figures for one word (REJ-10).
+  const exploited = useQuery({
+    queryKey: ["home", "exploited", scope],
+    enabled: whole,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/products/{product}/streams/{stream}/variants/{variant}/findings", {
+          params: {
+            path: { product: at.product ?? "", stream: at.stream ?? "", variant: at.variant ?? "" },
+            query: { limit: 1, exploited: true },
+          },
+        }),
+      ),
+  });
+  const queue = useQuery({
+    queryKey: ["queue", "count"],
+    queryFn: async () =>
+      unwrap(await api.GET("/v1/review-queue", { params: { query: { limit: 1 } } })),
+  });
+  const late = useQuery({
+    queryKey: ["home", "overdue", scope],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/running-out", { params: { query: { days: 0, limit: 200, ...scope } } }),
+      ),
+  });
+
+  const latest = points[points.length - 1];
+  const openCount = latest?.open;
+  const overdue = (late.data?.items ?? []).filter((row) => (row.days_left ?? 0) < 0);
+  const overdueExploited = overdue.filter((row) => row.exploited).length;
+
+  return (
+    <div className="kpis">
+      <button
+        type="button"
+        className="kpi"
+        onClick={() => navigate(build ? `${build}/findings` : "/products")}
+      >
+        <span className="l">Open issues · {counting}</span>
+        <span className="n">{openCount === undefined ? "—" : openCount.toLocaleString()}</span>
+        <span className="d">one per vulnerability, by any identifier · findings count each issue per component</span>
+      </button>
+      {whole && (
+        <button
+          type="button"
+          className={`kpi${(exploited.data?.total ?? 0) > 0 ? " urgent" : ""}`}
+          onClick={() => navigate(`${build}/findings?only=exploited`)}
+        >
+          <span className="l">
+            <i style={{ background: "var(--sev-exploited)" }} /> Known exploited
+          </span>
+          <span className="n">{(exploited.data?.total ?? 0).toLocaleString()}</span>
+          <span className="d">sorted above everything else</span>
+        </button>
+      )}
+      <button type="button" className="kpi" onClick={() => navigate("/review-queue")}>
+        <span className="l">
+          <i style={{ background: "var(--wait)" }} /> Pending your approval
+        </span>
+        <span className="n">{(queue.data?.total ?? 0).toLocaleString()}</span>
+        <span className="d">across every product you may approve on</span>
+      </button>
+      <button type="button" className="kpi" onClick={() => navigate("/work?days=0")}>
+        <span className="l">
+          <i style={{ background: "var(--sev-critical)" }} /> Overdue
+        </span>
+        <span className="n">{overdue.length.toLocaleString()}</span>
+        <span className="d">
+          {overdueExploited > 0 ? `${overdueExploited} exploited · ` : ""}undecided, past the deadline
+        </span>
+      </button>
+    </div>
   );
 }
 
@@ -138,16 +223,16 @@ function greeting(): string {
 
 // Said in what the roles let somebody do rather than what they are called.
 function holdings(who: Who): string {
-  if (who.admin) return "You administer this deployment, so you reach everything in it.";
+  if (who.admin) return "You administer this deployment";
   const triage = who.reach.filter((each) => each.may_triage).map((each) => each.product);
   const agree = who.reach.filter((each) => each.may_agree).map((each) => each.product);
   const parts: string[] = [];
   if (triage.length) parts.push(`triage on ${triage.join(", ")}`);
   if (agree.length) parts.push(`approval on ${agree.join(", ")}`);
   if (parts.length === 0) {
-    return `You can read ${who.reach.length} product${who.reach.length === 1 ? "" : "s"}.`;
+    return `You can read ${who.reach.length} product${who.reach.length === 1 ? "" : "s"}`;
   }
-  return `You hold ${parts.join(" and ")}.`;
+  return `You hold ${parts.join(" and ")}`;
 }
 
 function paceReading(points: { open?: number; opened?: number; resolved?: number }[]): string {
@@ -157,48 +242,62 @@ function paceReading(points: { open?: number; opened?: number; resolved?: number
   const last = points[points.length - 1]?.open ?? 0;
   const moved = last - first;
   const direction = moved > 0 ? "growing" : moved < 0 ? "shrinking" : "flat";
-  return `Separately these are three numbers. Together they say the backlog is ${direction}: ` +
-    `new outran resolved in ${outran} of the last ${points.length} weeks, and open is ` +
-    `${moved >= 0 ? "up" : "down"} ${Math.abs(moved)} across the range.`;
+  return `Backlog ${direction}: new exceeded resolved in ${outran} of ${points.length} weeks; open ${
+    moved >= 0 ? "up" : "down"
+  } ${Math.abs(moved).toLocaleString()} across the range.`;
 }
 
-function Waiting() {
+function mixReading(points: { by_severity?: Record<string, number> }[]): string {
+  if (points.length < 2) return "Not enough history yet.";
+  const first = points[0]?.by_severity?.critical ?? 0;
+  const last = points[points.length - 1]?.by_severity?.critical ?? 0;
+  if (first === last) return `Critical unchanged at ${last.toLocaleString()} across the range.`;
+  return `Critical went ${first.toLocaleString()} → ${last.toLocaleString()} across the range.`;
+}
+
+function Pending() {
   const queue = useQuery({
-    queryKey: ["queue"],
-    queryFn: async () => unwrap(await api.GET("/v1/review-queue", { params: { query: { limit: 3 } } })),
+    queryKey: ["queue", "home"],
+    queryFn: async () =>
+      unwrap(await api.GET("/v1/review-queue", { params: { query: { limit: 3 } } })),
   });
   const items = queue.data?.items ?? [];
 
   return (
     <div className="panel">
       <header>
-        <h3>Waiting for you</h3>
+        <h3>Pending your approval</h3>
         <span className="tally">{queue.data?.total ?? 0}</span>
       </header>
       {queue.isError && <Failed error={queue.error} what="This could not be read." />}
-      {items.length === 0 && !queue.isError && (
-        <p className="reading">Nothing is waiting on you.</p>
-      )}
+      {items.length === 0 && !queue.isError && <p className="reading">Nothing is pending.</p>}
       <ul>
-        {items.map((row) => (
-          <li key={row.decision?.id}>
-            <span className="id">{row.place?.vulnerability}</span>
-            <span className="what">{row.place?.product} · {row.decision?.outcome}</span>
-            {typeof row.age_days === "number" && <span className="when">{row.age_days}d</span>}
-          </li>
-        ))}
+        {items.map((row) => {
+          const claim = claimOf(row);
+          return (
+            <li key={claim.key}>
+              <span className="id">{claim.title}</span>
+              <span className="what">
+                {claim.product} · {claim.outcome}
+                {claim.records > 1 ? ` · ${claim.records.toLocaleString()} records` : ""}
+              </span>
+              {typeof row.age_days === "number" && <span className="when">{row.age_days}d</span>}
+            </li>
+          );
+        })}
       </ul>
       <footer>
-        <Link to="/review-queue" className="linkish">Open the review queue →</Link>
+        <Link to="/review-queue" className="linkish">
+          Open the review queue →
+        </Link>
       </footer>
     </div>
   );
 }
 
-// The mockup's "assigned to you". There is no endpoint that lists what one
-// person holds — only how much each person holds — so the count is real and
-// the rows are not.
-function Assigned() {
+// What each person holds. Nothing lists what one person holds — only how much
+// each person holds — so this is everybody rather than you.
+function InProgress() {
   const held = useQuery({
     queryKey: ["home", "holdings"],
     queryFn: async () => unwrap(await api.GET("/v1/assignments", {})),
@@ -210,25 +309,24 @@ function Assigned() {
   return (
     <div className="panel">
       <header>
-        <h3>Being worked on <span className="todo">not yours alone</span></h3>
-        <span className={overdue > 0 ? "tally urgent" : "tally"}>{total}</span>
+        <h3>In progress</h3>
+        <span className={overdue > 0 ? "tally urgent" : "tally"}>{total.toLocaleString()}</span>
       </header>
       {held.isError && <Failed error={held.error} what="This could not be read." />}
+      {mine.length === 0 && !held.isError && <p className="reading">Nothing is assigned.</p>}
       <ul>
         {mine.slice(0, 3).map((each) => (
           <li key={each.person}>
             <span className="id">{each.person}</span>
             <span className="what">{each.open} open</span>
-            {(each.overdue ?? 0) > 0 && <span className="when">{each.overdue} late</span>}
+            {(each.overdue ?? 0) > 0 && <span className="when">{each.overdue} overdue</span>}
           </li>
         ))}
       </ul>
-      <p className="reading">
-        Nothing lists what one person holds — only how much each person holds — so this is
-        everybody rather than you.
-      </p>
       <footer>
-        <Link to="/unassigned" className="linkish">See what nobody owns →</Link>
+        <Link to="/work" className="linkish">
+          View assignments →
+        </Link>
       </footer>
     </div>
   );
@@ -255,98 +353,100 @@ function Lapsed() {
   return (
     <div className="panel">
       <header>
-        <h3>Decisions that stopped applying</h3>
+        <h3>Lapsed decisions</h3>
         <span className={lapsedTotal + expiredTotal > 0 ? "tally urgent" : "tally"}>
-          {lapsedTotal + expiredTotal}
+          {(lapsedTotal + expiredTotal).toLocaleString()}
         </span>
       </header>
       {lapsedTotal > 0 && (
         <div className="alert">
-          <strong>{lapsedTotal} {lapsedTotal === 1 ? "decision" : "decisions"} lapsed</strong>
-          <br />
+          <strong>
+            {lapsedTotal.toLocaleString()} {lapsedTotal === 1 ? "decision" : "decisions"} lapsed
+          </strong>
           <span>The versions they were claims about have moved.</span>
         </div>
       )}
       {expiredTotal > 0 && (
         <div className="alert">
-          <strong>{expiredTotal} {expiredTotal === 1 ? "deferral" : "deferrals"} ran out</strong>
-          <br />
+          <strong>
+            {expiredTotal.toLocaleString()} {expiredTotal === 1 ? "deferral" : "deferrals"} ran out
+          </strong>
           <span>The date they were put off until has passed.</span>
         </div>
       )}
-      {lapsedTotal + expiredTotal === 0 && (
-        <p className="reading">Nothing has stopped applying.</p>
-      )}
+      {lapsedTotal + expiredTotal === 0 && <p className="reading">Nothing has lapsed.</p>}
       <footer>
-        <Link to="/review-queue" className="linkish">Review them →</Link>
+        <Link to="/review-queue#lapsed" className="linkish">
+          View →
+        </Link>
       </footer>
     </div>
   );
 }
 
-// The tool's own health. An operator who has not opted into anything is
-// exactly the one who needs telling that a product stopped being scanned.
-//
-// It asks what has been scanned rather than reading one build's scans: the
-// question is which build has gone silent, and that cannot be answered by
-// looking at a build somebody named in advance. An earlier version named one —
-// the first product the reader could reach, at a branch and variant spelled
-// into the source — so on any deployment not using those two names the panel
-// was permanently empty and said "never".
-function Operational() {
+// The tool's own health. A build that stops being scanned reports no new
+// findings and fails nothing, so it looks healthier than one still being
+// scanned; the quiet ones are named, because a name is acted on.
+function Status() {
   const at = useScope();
   const scope = scopeQuery(at);
   const scanning = useQuery({
     queryKey: ["home", "scanning", scope],
-    queryFn: async () =>
-      unwrap(await api.GET("/v1/scanning", { params: { query: scope } })),
+    queryFn: async () => unwrap(await api.GET("/v1/scanning", { params: { query: scope } })),
   });
   const builds = scanning.data?.items ?? [];
   const quiet = builds.filter((b) => b.quiet);
   const last = builds.find((b) => b.last_received_at);
+  const whole = !!(at.product && at.stream && at.variant);
 
   return (
     <div className="panel">
       <header>
-        <h3>Operational</h3>
+        <h3>System status</h3>
       </header>
       {scanning.isError && (
         <Failed error={scanning.error} what="What has been scanned could not be read." />
       )}
-      {/* Named one at a time up to three. "Three builds have gone quiet" is a
-          number somebody reads past; the names are what gets acted on. */}
       {quiet.slice(0, 3).map((build) => (
-        <div className="alert" key={`${build.product}\u0000${build.stream}\u0000${build.variant}`}>
+        <div className="alert" key={`${build.product} ${build.stream} ${build.variant}`}>
           <strong>
-            {build.product} · {build.stream} · {build.variant} has not been scanned
-            {build.last_received_at ? ` for ${build.quiet_days} days` : " at all"}
+            {build.product} · {build.stream} · {build.variant}: no inventory
+            {build.last_received_at ? ` for ${build.quiet_days} days` : " ever"}
           </strong>
-          <br />
           <span>
             {build.last_received_at
               ? "Nothing has failed — nothing has arrived."
-              : `Declared ${build.quiet_days} days ago and nothing has ever been filed against it.`}
+              : `Declared ${build.quiet_days} days ago.`}
           </span>
         </div>
       ))}
-      {quiet.length > 3 && (
-        <p className="hint">and {quiet.length - 3} more, on the scans screen.</p>
-      )}
+      {quiet.length > 3 && <p className="hint">and {quiet.length - 3} more.</p>}
       <ul>
         <li>
           <span className="what">Builds being scanned</span>
-          <span className="when">{builds.length - quiet.length} of {builds.length}</span>
+          <span className="when">
+            {builds.length - quiet.length} of {builds.length}
+          </span>
         </li>
         <li>
-          <span className="what">Most recent scan</span>
+          <span className="what">Last inventory received</span>
           <span className="when">{last?.last_received_at?.slice(0, 10) ?? "never"}</span>
         </li>
+        <li>
+          <span className="what">Quiet after</span>
+          <span className="when">{scanning.data?.quiet_after_days ?? 7} days</span>
+        </li>
       </ul>
-      <p className="reading">
-        A build that stops being scanned reports no new findings and fails nothing, so it looks
-        healthier than one that is still being scanned. Quiet after{" "}
-        {scanning.data?.quiet_after_days ?? 7} days, which is a setting.
-      </p>
+      {whole && (
+        <footer>
+          <Link
+            to={`/products/${encodeURIComponent(at.product ?? "")}/streams/${encodeURIComponent(at.stream ?? "")}/variants/${encodeURIComponent(at.variant ?? "")}/scans`}
+            className="linkish"
+          >
+            View inventories →
+          </Link>
+        </footer>
+      )}
     </div>
   );
 }

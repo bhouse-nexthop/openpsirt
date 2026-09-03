@@ -1,88 +1,96 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { Drawer, Fab } from "./Drawer";
 import { Failed } from "./Failed";
+import { Icon } from "./Icons";
 
-// A form for declaring something into the catalogue.
-//
-// Products, branches and variants are declared rather than discovered, which
-// is a decision rather than a limitation: a misspelled release is
-// indistinguishable from a real one, so a scan naming something nobody
-// declared is refused instead of quietly creating it (ING-11). That only works
-// if declaring is something a person can actually do, which until now it was
-// not — the endpoints existed and no screen reached them.
+// Declaring something into the catalogue: an action, not a form above the
+// table (UIX-48). Products, branches and variants are declared rather than
+// discovered — a misspelled release is indistinguishable from a real one, so
+// a scan naming something nobody declared is refused instead of quietly
+// creating it (ING-11).
+
+// The header control that opens the drawer, and the floating action beside it.
+export function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <>
+      <span style={{ marginLeft: "auto" }}>
+        <button type="button" className="btn" onClick={onClick}>
+          <Icon name="plus" size={14} /> {label}
+        </button>
+      </span>
+      <Fab label={label} onClick={onClick} />
+    </>
+  );
+}
+
 export function Declare({
-  what,
+  title,
+  open,
+  onClose,
   hint,
   children,
   onSubmit,
   error,
   busy,
-  can,
+  ok,
 }: {
-  what: string;
+  title: string;
+  open: boolean;
+  onClose: () => void;
   hint: string;
   children: ReactNode;
   onSubmit: () => void;
   error: unknown;
   busy: boolean;
-  can: boolean;
+  ok: string;
 }) {
-  const [open, setOpen] = useState(false);
-
-  if (!can) return null;
-
   return (
-    <div className="card" style={{ marginBottom: 14 }}>
-      {!open ? (
-        <button type="button" className="linkish" onClick={() => setOpen(true)}>
-          Declare {what}
-        </button>
-      ) : (
+    <Drawer
+      open={open}
+      title={title}
+      onClose={onClose}
+      footer={
         <>
-          <h3 style={{ marginTop: 0 }}>Declare {what}</h3>
-          {error != null && <Failed error={error} what={`That ${what} could not be declared.`} />}
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              onSubmit();
-            }}
-            style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}
-          >
-            {children}
-            <button type="submit" className="btn" disabled={busy}>
-              Declare
-            </button>
-            <button type="button" className="linkish" onClick={() => setOpen(false)}>
-              Cancel
-            </button>
-          </form>
-          <p className="reading" style={{ marginTop: 10 }}>
-            {hint}
-          </p>
+          <button type="button" className="btn" disabled={busy} onClick={onSubmit}>
+            {ok}
+          </button>
+          <button type="button" className="btn quiet" onClick={onClose}>
+            Cancel
+          </button>
         </>
-      )}
-    </div>
+      }
+    >
+      {error != null && <Failed error={error} what={`That could not be declared.`} />}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!busy) onSubmit();
+        }}
+      >
+        {children}
+      </form>
+      <p className="reading">{hint}</p>
+    </Drawer>
   );
 }
 
-// One labelled input, so the three forms look like one thing.
+// One labelled input, so the forms look like one thing.
 export function Field({
   label,
   value,
   onChange,
   placeholder,
   hint,
-  wide,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   hint?: string;
-  wide?: boolean;
 }) {
   const id = `declare-${label.replace(/\s+/g, "-").toLowerCase()}`;
   return (
-    <div className="field" style={{ margin: 0, minWidth: wide ? 220 : 150 }}>
+    <div className="field">
       <label htmlFor={id}>{label}</label>
       <input
         id={id}
@@ -91,9 +99,7 @@ export function Field({
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
       />
-      {hint && (
-        <span style={{ fontSize: "var(--step--1)", color: "var(--faint)" }}>{hint}</span>
-      )}
+      {hint && <span className="hint">{hint}</span>}
     </div>
   );
 }

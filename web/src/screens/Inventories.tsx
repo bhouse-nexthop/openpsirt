@@ -1,0 +1,171 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useParams } from "react-router-dom";
+import { api } from "../api/client";
+import { unwrap } from "../api/queries";
+import { Empty } from "../ui/Empty";
+import { Failed } from "../ui/Failed";
+import { Fab } from "../ui/Drawer";
+import { Icon } from "../ui/Icons";
+import { UploadDrawer } from "../ui/Upload";
+
+// What each build uploaded, and what the scan of it found (UIX-49). A scan is
+// what the deployment does to an inventory after it arrives; what a person
+// uploads, and what this list is of, is inventories.
+//
+// A build quietly dropping out is the failure that makes everything else
+// wrong, so a build that has gone quiet is named at the top rather than being
+// invisible on the screen about it.
+export function Inventories() {
+  const { product = "", stream = "", variant = "" } = useParams();
+  const [uploading, setUploading] = useState(false);
+
+  const scans = useQuery({
+    queryKey: ["scans", product, stream, variant],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/products/{product}/streams/{stream}/variants/{variant}/scans", {
+          params: { path: { product, stream, variant } },
+        }),
+      ),
+    // Receipts move on their own while an upload is being read.
+    refetchInterval: 15_000,
+  });
+  const scanning = useQuery({
+    queryKey: ["scanning", product],
+    queryFn: async () => unwrap(await api.GET("/v1/scanning", { params: { query: { product } } })),
+  });
+  const quiet = (scanning.data?.items ?? []).filter((b) => b.quiet);
+
+  if (scans.isPending) return <p className="hint">Loading…</p>;
+  if (scans.isError) return <Failed error={scans.error} what="The inventories could not be read." />;
+
+  const items = scans.data?.items ?? [];
+  const measured = scans.data?.measured_against;
+
+  return (
+    <>
+      <div className="screen-head">
+        <h2>Inventories</h2>
+        <p>
+          {product} · {stream} · {variant} — what each build uploaded and what the scan of it found ·
+          newest first
+        </p>
+        <span style={{ marginLeft: "auto" }}>
+          <button type="button" className="btn" onClick={() => setUploading(true)}>
+            <Icon name="upload" size={14} /> Upload inventory
+          </button>
+        </span>
+      </div>
+
+      {quiet.map((build) => (
+        <div className="alert" key={`${build.stream} ${build.variant}`} style={{ marginBottom: 10 }}>
+          <strong>
+            {build.stream} · {build.variant}: no inventory
+            {build.last_received_at ? ` for ${build.quiet_days} days` : " ever"}
+          </strong>
+          <span>
+            {build.last_received_at
+              ? "Nothing has failed — nothing has arrived. A build that stops being scanned looks healthy, because no new findings appear against it."
+              : `Declared ${build.quiet_days} days ago, and nothing has ever been filed against it.`}
+          </span>
+        </div>
+      ))}
+
+      {items.length === 0 ? (
+        <Empty
+          title="Nothing has been uploaded here."
+          detail="A build pipeline uploads an inventory, or somebody does from the button above, and what became of it appears here."
+        />
+      ) : (
+        <div className="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Received</th>
+                <th>Built</th>
+                <th>State</th>
+                <th className="num">Opened</th>
+                <th className="num">Closed</th>
+                <th>Serial</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((scan) => (
+                <tr key={scan.scan_id}>
+                  <td>{scan.received_at?.replace("T", " ").slice(0, 16)}</td>
+                  <td className="hint">{scan.built_at?.replace("T", " ").slice(0, 16)}</td>
+                  <td>
+                    <State state={scan.state} />
+                    {scan.failure && <div className="hint" style={{ marginTop: 4 }}>{scan.failure}</div>}
+                  </td>
+                  <td className="num">{scan.opened || (scan.state === "scanned" ? "—" : "")}</td>
+                  <td className="num">{scan.closed || (scan.state === "scanned" ? "—" : "")}</td>
+                  <td className="id hint">{scan.serial}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {measured && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>Scanner</h3>
+          <p className="reading" style={{ margin: "0 0 10px" }}>
+            Every inventory is scanned here, on a schedule, by the same scanner against the same
+            database — so counts compare between products. Each finding records what produced it.
+          </p>
+          <div className="scores">
+            <div className="score">
+              <span className="n">{measured.scanner ?? "—"}</span>
+              <span className="l">Scanner</span>
+            </div>
+            <div className="score">
+              <span className="n">{measured.scanner_version ?? "—"}</span>
+              <span className="l">Version</span>
+            </div>
+            <div className="score">
+              <span className="n">{measured.database_version ?? "—"}</span>
+              <span className="l">Vulnerability data</span>
+            </div>
+            <div className="score">
+              <span className="n">{measured.ran_at?.slice(0, 10) ?? "—"}</span>
+              <span className="l">Last run</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Fab label="Upload inventory" onClick={() => setUploading(true)} />
+      <UploadDrawer open={uploading} onClose={() => setUploading(false)} />
+    </>
+  );
+}
+
+// The states an upload passes through, and the one it can end in.
+function State({ state }: { state?: string }) {
+  const cls: Record<string, string> = {
+    reading: "waiting",
+    scanning: "waiting",
+    scanned: "agreed",
+    failed: "lapsed",
+  };
+  const label: Record<string, string> = {
+    reading: "Queued — parsing",
+    scanning: "Scanning",
+    scanned: "Completed",
+    failed: "Failed",
+  };
+  const means: Record<string, string> = {
+    reading: "accepted, not yet parsed",
+    scanning: "parsed; the vulnerability scan is still running",
+    scanned: "complete",
+    failed: "it did not finish, and the reason is beside it",
+  };
+  return (
+    <span className={`state ${cls[state ?? ""] ?? "open"}`} title={means[state ?? ""]}>
+      {label[state ?? ""] ?? state}
+    </span>
+  );
+}

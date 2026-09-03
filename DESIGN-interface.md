@@ -3,10 +3,10 @@
 The web interface, how it is built, and how it reaches the server.
 
 Satisfies UIX-01 to UIX-05, UIX-07, UIX-08, UIX-11, UIX-12, UIX-14, UIX-16,
-UIX-18 to
-UIX-23, UIX-25 to UIX-27, UIX-30 to UIX-32, UIX-34 to UIX-42, API-17, ACC-56
-to ACC-59, and the half of ING-41 that is shown rather than collected. What is
-not built is named at the end rather than left to be found by clicking.
+UIX-18 to UIX-23, UIX-25 to UIX-27, UIX-30 to UIX-32, UIX-34 to UIX-51,
+API-17, ACC-56 to ACC-59, the half of ING-41 that is shown rather than
+collected, and the interface half of TRI-45 to TRI-47. What is not built is
+named at the end rather than left to be found by clicking.
 
 ## One artifact
 
@@ -143,6 +143,64 @@ keystroke.
 What the server keeps is the half a client cannot do: the policy at submission.
 That split, and what it moves, is set out in `DESIGN-text.md`.
 
+## The look, and the three of them
+
+The tokens, the type scale, the shell and every component come from the
+restyled mockup, taken as they were settled rather than approximated (UIX-50).
+The mockup drew the interface inside a frame; here the frame is the page, so
+its tokens sit on the root element and its grid on the application container.
+That is the whole of the translation, and it is why a screen here can be put
+beside its mockup and compared control for control.
+
+**Three looks, one markup.** A look is a token set — colours, the two
+typefaces, radii, shadows — and nothing else. The first is a dark rail over a
+light surface; the second is all light and hairline, denser; the third is dark
+throughout. The choice is made from the menu on the avatar, is kept in the
+browser, and changes nothing anybody else sees, the same rule as saved filters.
+Fonts are bundled, so nothing is fetched at run time.
+
+**Severity never borrows the accent.** Each look has its own accent and the
+same five-band severity scale beside it, with exploited above critical. A page
+that paints "critical" in the brand color has nothing left that means "act on
+this."
+
+**Labels use the conventional word** (UIX-47): Reject, Trend, Assignments,
+Unassigned, Justification, Path, EPSS, Locations, Users and roles, Lapsed
+decisions, Submit. A caption on a screen is a sentence at most; the reasoning
+behind a control lives in the decision record.
+
+## The shell
+
+A rail down the side carries the brand and the entries grouped by what they
+span; a bar across the top carries what you are looking at, a way to find
+things, a way to upload, what is waiting on you, and who you are.
+
+The rail's three groups are the point. "Across products" holds home, the review
+queue, what is unassigned and the assignments. The named build holds the
+findings, the dependency tree, the inventories and the comparison — the
+comparison belongs to the product rather than to one build, and is reached
+here because this is where somebody already is. "Manage" holds the catalogue,
+the users and the settings; branches, tags and variants have entries of their
+own, scoped to the picked product, rather than being reachable only through a
+product's row.
+
+**A build-only entry declines rather than opening on a scope that means
+nothing.** With a product, a branch or a variant unpicked, the findings, tree
+and inventories entries are disabled and say why (UIX-39); the picker itself
+already refuses "all" on those screens.
+
+**The search in the bar is the findings list's own search**, reached without
+going there first: it submits to the list's query. Without a build it says so.
+"/" focuses it, unless somebody is already typing.
+
+**Upload is in the bar on every screen** (UIX-49), because the form picks its
+own target; the inventories screen has it too, because that is where the
+result appears.
+
+**On a narrow screen the rail goes and a tab bar of three arrives** — home,
+findings, queue — which is what somebody reviews and responds from on a phone
+(UIX-17). The findings table becomes cards there (UIX-16).
+
 ## What you are looking at
 
 **The picker narrows the whole interface, and every level offers "all"**
@@ -166,6 +224,17 @@ disabled and say why. The alternative was to accept the partial scope and
 navigate somewhere it makes sense, which turns a filter into a jump nobody
 asked for: a control that declines is less surprising than one that relocates
 you.
+
+**A narrow screen keeps every entry behind a menu.** The tab bar carries the
+three places somebody reviews and responds from (UIX-17), and a menu control
+in the bar and a fourth tab open the whole rail as a panel over the page, so
+the rest of the interface is one tap further rather than absent on a phone.
+
+**The picker stays open until the last level is chosen.** Each pick applies
+at once, because a partial scope is a real answer, but the panel closes only
+on the variant, on Escape, or on a click elsewhere. Closing after every pick
+made choosing a build three openings of the same panel, and the three columns
+side by side are the point of drawing it as one panel.
 
 **Changing scope keeps you where you are.** A build-scoped screen swaps its
 build and stays the same screen, because changing what you are looking at is a
@@ -214,6 +283,23 @@ occasionally, or asked by somebody about to report upward. The charts are also
 the slowest part of the page, so the half that is wanted first is also the half
 that arrives first.
 
+**Home leads with four figures that follow the scope** (UIX-51): open at or
+above the floor — the list's own total where a build is picked, the trend's
+latest point where the scope is wider — known exploited, pending the reader's
+approval, and overdue. Each names what it counts and opens the screen behind
+it. Then the work panels, then the trends (UIX-42).
+
+**The findings list has a triage mode** (UIX-43). Off by default and one
+control away; in the URL, so a link carries it. The row under the cursor is
+marked; Enter opens the decision form inside it — the same form the finding
+screen carries, at full width, with the reasoning at a readable measure — and
+j and k move, the digits pick the outcome, r or Ctrl+Enter submits and moves to
+the next row, Escape closes. None of the keys fire while somebody is typing in
+a field, and none fire while the review sheet is open. The form needs the
+finding's places, which the list row does not carry, so they are read when the
+row opens. Recording lands on the next row rather than on the finding: the
+list is where the work is.
+
 **The findings list is one row per issue-and-component**, not per place
 (UIX-01). A real image produced 335,021 individual findings that collapse to
 7,906 rows, so the grouping is not a nicety: ungrouped, it is six thousand
@@ -230,7 +316,7 @@ use.
 
 **Severity never borrows the accent colour.** It has its own scale, and
 exploited is a band of its own above critical — a page that paints "critical"
-in the brand colour has nothing left that means "act on this". Being exploited
+in the brand color has nothing left that means "act on this". Being exploited
 outranks whatever the score says, which is the ordering everywhere else in this
 tool.
 
@@ -337,17 +423,74 @@ the one kernel all reported its total and filled the first screen — putting th
 containers out of sight again, which is the same fault arrived at from the
 other side.
 
-**The count is every open finding, answered or not.** A dismissal does not
+**The count is every open issue, answered or not.** A dismissal does not
 subtract from it. That is the behavior the screen has always had rather than a
 choice made for it, and it is written down because the two readings — "what is
 open here" and "what is still to answer here" — are both reasonable and the
 screen currently gives the first.
 
-**The finding screen is where deciding happens**, not a screen that links to
-deciding. It carries what the issue is, how bad, what upstream has done, where
-it sits in the build, the evidence, and both the Decide and the Assess cards.
-Deciding reuses the same outcome, editor and reach components the standalone
-decision screen uses, rather than a second form that drifts from the first.
+**Both numbers are distinct issues, per path.** A finding is one issue at one
+place, and a library at thirty-six places with two issues is seventy-two rows
+— which is what every parent it sat beneath used to read, where somebody who
+drilled down one path is looking at one place and expects two. A node's own
+count is now the distinct issues open against that component, which is the
+same at every place it sits, and the cumulative count is the distinct issues
+across it and everything under it, each component counted once however many
+ways it is reached. The root counts the distinct issues open in the build.
+Still one pass over the build's edges and one grouped read of what is open,
+not a query per node.
+
+**The list a tree number opens is `beneath`**: every open finding at the
+component or anywhere under it, by the same walk. `under` stays the direct
+consumer. The two do not always show the same figure and are not forced to:
+the tree counts distinct issues and the list is one row per issue and
+component, so a subtree holding one issue at two components is two rows in the
+list and one in the tree. A name the build does not hold is refused rather than
+answered with an empty list, since an empty list is also what a clean subtree
+looks like.
+
+**The finding screen is where deciding happens**, before and after (UIX-46).
+Before: what the issue is, how bad, what upstream has done, where it sits, the
+evidence, the assessment, and the decision form. After: the decision that
+stands, in its state — pending, approved, lapsed — with outcome, justification,
+scope and who agreed to which revision, the reasoning rendered, and the
+actions that fit the state: revise the reasoning or withdraw while it is
+pending or approved, reaffirm with a note or make a new decision once it has
+lapsed. Under it, one activity timeline built from the claim's proposal,
+revisions, approvals and comments with the earlier decisions at this location
+below; the revision history, marking which revision each approval named; the
+comments; and the decisions made here before — lapsed and withdrawn — with
+their reasoning offered back as "reuse this reasoning". The revisions and
+comments shown are the claim's representative decision's, which the finding
+names; a claim's records share one reasoning, so any of them answers.
+
+**Which locations a decision covers is a summary with an exception, not a
+list of checkboxes** (UIX-44). The form says "all 62 locations"; "exclude
+locations" opens the list grouped by what pulls the component in — the
+consumer, which is the axis that decides applicability — with a checkbox per
+group that reads as mixed when part of a group is out, one per location under
+it, and a filter box when there are more than a dozen. What it reads back is
+"59 of 62, three left open under X". A location left out stays open and asks
+nothing further.
+
+**Where a decision applies beyond this build is a guided review on submit**
+(UIX-45). The reach of the covered places is merged — one request per place,
+over a sample of eight, because the builds that match one place of a finding
+match the rest — and the sheet opens on a summary: this build, the builds
+covered automatically by name, the builds at other versions, and any not
+offered. Each build at another version is then walked one at a time with its
+version, how many locations it holds, and the reasoning beside it, applied or
+skipped with a or s, back with the arrow. The last step lists what will be
+written and is confirmed; only then is anything sent. The decision here is
+recorded first, with the places narrowed where any were excluded; each build
+applied is recorded after it, one at a time, as the same claim against that
+build's finding, so a refusal on one is reported for that one and does not
+decide the rest. Escape leaves the sheet from anywhere, including from a field.
+
+**An approved claim at the same component and consumer is offered to a new
+issue** (TRI-47). Where the server names one, the finding shows it with its
+reasoning and "apply decision #N", which fills the form and records the new
+claim as an extension; it still needs a second person.
 
 **It says how many of its places have been decided** (UIX-40). Once a judgment
 can cover a chosen subset of them, a finding half answered has to look
@@ -396,14 +539,44 @@ was the earlier error and is still wrong where nothing was recorded; saying
 nothing was recorded where the build itself is the answer is the same mistake
 pointing the other way.
 
-**The review queue carries three kinds, not one.** A claim waiting for
-agreement, a deferral whose date has passed, and a decision the code moved out
-from under. The first is what "review queue" names and the other two disappear
-without somewhere that shows them — home counts them and links here, so a queue
-holding only the first sends somebody to a list that cannot contain what they
-were told about. The other two do not need a second person, since two people
-already agreed; they need a fresh reason, so they link to the decision rather
-than offering the judgment inline.
+**The review queue is one card per claim** (TRI-45): one proposer's action,
+however many decisions it wrote. The card carries the reasoning as it stands,
+how many records the claim wrote, how many locations and builds it reaches,
+whether it was approved before and came back, and how long the finding has
+been put off. Approving and rejecting work on the claim, and rejecting needs a
+reason. Selecting several and naming a batch approves several claims together,
+so they can be undone together.
+
+**A bulk claim shows its outliers** (TRI-46): how many in the set are known
+exploited, critical or high, have a fix available, or do not match the
+narrowing, with the rows that stood out listed. Any of those can be set aside;
+the button then reads "approve N, reject M", the rest is approved as one, and
+the ones set aside return to the proposer as a claim of their own with the
+reason. An extension (TRI-47) says which claim it rests on.
+
+**Lapsed decisions and deferrals that ran out sit underneath.** They do not
+need a second person, since two people already agreed; they need a fresh
+reason. The row carries the decision and not the build it was made in, so
+reaffirming happens on the finding, where its locations are, and the card
+links to the decision.
+
+**Adding to the catalogue is an action, not a form above the table** (UIX-48).
+Products, branches and tags, variants and users each carry an "add" control in
+the header and a floating action, and both open a drawer with the form; the
+table is what the screen is about.
+
+**An inventory can be uploaded from the interface** (UIX-49), from the bar and
+from the inventories screen. The drawer takes the target, prefilled from the
+scope and refused by the server if undeclared, one CycloneDX inventory, and any
+number of OpenVEX suppression documents — exactly the two parts the endpoint
+takes. It posts the same multipart request a pipeline sends, then opens the
+inventories screen, where the receipt shows "queued" until the run says what
+it changed. The receipts list re-reads itself while it is open, because that is
+when something is moving.
+
+**The screen that lists receipts is called Inventories.** A scan is what the
+deployment does to an inventory after it arrives; what a person uploads, and
+what the list is of, is inventories.
 
 **The catalogue says what each entry holds.** Products carry how many branches,
 tags and variants they have, what is open against them and when they were last
@@ -414,7 +587,7 @@ whether anything is behind it, which is the question the list exists to answer.
 Every count of what is open is issues at components, the way the findings list
 counts, so a catalogue row and the list it opens agree.
 
-**The scans list says what each run changed**, not only that it finished.
+**The inventories list says what each run changed**, not only that it finished.
 Opened and closed are counted as issues at components like everything else. A
 run covers a build rather than an upload, so where several uploads are answered
 by one run the numbers sit on the newest of them and the rest are blank rather
@@ -427,9 +600,11 @@ that is not being scanned — is marked apart from an event, because
 acknowledging one hides it rather than resolving it. `DESIGN-notifications.md`
 says what is told and when.
 
-**"Who is working on what" is three tabs, and the third is somewhere else.**
-Nobody-assigned already had its own entry in the rail, so the tab links across
-rather than drawing the same list twice.
+**Assignments is two tabs: what is due soon and undecided, and who holds
+what.** Unassigned work is its own screen with its own rail entry, and a row
+nobody holds says "unassigned" in muted text rather than drawing nobody as a
+person with an avatar — a name in that column is a person to go and ask, and
+"nobody" is not.
 
 **Release comparison carries a chart across every build**, not only the two
 being compared: the comparison answers what changed between two, and the chart
@@ -441,14 +616,14 @@ through a gap where nothing happened.
 A free field invites a value the server then refuses — and for a switch it
 invites "true", "yes" and "1", none of which are what it takes.
 
-**The scans screen says what the numbers were measured against** — which
+**The inventories screen says what the numbers were measured against** — which
 scanner, at which version, reading which vulnerability database. Without it a
 build with nothing wrong and a build last measured against a months-old
 database read identically.
 
 ## Choices the decisions did not cover
 
-**Colour and the brand mark resolve through tokens in one place.** How an
+**Color and the brand mark resolve through tokens in one place.** How an
 operator overrides them is deliberately unsettled — that gets decided against
 real screens rather than in the abstract — but keeping the whole palette in one
 stylesheet means the answer will be a stylesheet, whatever it turns out to be,
@@ -655,20 +830,68 @@ out into a function beside them.
 
 ## Where this diverges from the mockup
 
-**A finding is one screen in the mockup and three here.** The finding
-carries what it is, how bad, what upstream has done, where it sits, the
-evidence, and both judgments; a claim already standing has its own screen, and
-deciding a single place has another. Deciding itself moved onto the finding, so
-what remains split is the history — how the reasoning changed, and what has
-been said about it.
+The restyled mockup is the reference, and each screen has been put beside it
+and compared control for control. What differs is listed so that it is chosen
+rather than inherited.
 
-That is one structural difference rather than a list of omissions, and it is
-written down as a difference rather than as a gap because which shape is better
-has not been decided. The mockup is where the visual design was worked out and
-is what gets cross-referenced when a screen is in question; it is not a
-contract, and diverging from it is allowed. What is not allowed is diverging
-from it without noticing, which is how a difference quietly becomes the design
-without anybody choosing it.
+**The mockup's home carries a known-exploited tile at every scope; here it
+appears only with a build picked.** Nothing counts exploited findings across
+products, and a tile that guessed would be worse than one that is absent.
+
+**The mockup's finding sample carries builds already past the fix, shown and
+not offered.** The reach endpoint does not say whether a build's version sits
+past the fixing version — there is no version ordering here (STA-18) — so
+every build at another version is offered and the "not offered" card is empty.
+
+**The mockup reaffirms a lapsed decision inline on the queue card.** The queue
+row does not carry the build, and reaffirming is a claim about one place in
+one build, so it happens on the finding.
+
+**The mockup's variants and branches screens carry a product select of their
+own.** Here the scope picker is that control, and the screens follow it.
+
+**The queue card's reach row names the builds a claim covers from the claim's
+own answer**, where the mockup drew "matching automatically" and "ticked
+deliberately" apart. The record does not keep which builds were reached by
+lookup and which by an applied decision, and the number an approval keeps is
+one (TRI-31).
+
+**Release readiness on home is still the marker the mockup carries.**
+Comparing a branch against the last release cut from it is not built.
+
+**The users table grants roles inline.** The mockup's columns are user,
+identity, last sign-in, roles and assigned; here the last two give way to a
+grant control on the row, because granting is what an administrator opens the
+screen to do, and last sign-in and assigned work are read from the person's
+own row rather than listed for everybody.
+
+**The inventories table omits the product, branch and variant columns.** The
+screen is scoped to one build, so those three are the scope bar rather than a
+column repeated on every row; what it adds is when the producer says the build
+was made, which the mockup did not have.
+
+**Two words, used the way the record uses them: an issue and a finding.** An
+issue is the vulnerability itself, one identity across its aliases (MDL-19);
+a finding is an issue at a place. Home's open figure, the trend and the
+severity ring count issues — the number people expect on a front page and
+report upward — and are labelled "issues". The findings list and the rail's
+counts are one row per issue and component, so the same issue at three
+versions of one library is three findings there, and the tile's caption says
+so. "CVE" is not used as the label, because not every issue carries one.
+
+**The trend is drawn by hand rather than by the charting library.** Open
+runs to thousands and a week's new or resolved to tens, so on the library's one
+shared scale the two lines the chart exists for flattened into the baseline
+and vanished. The mockup's form — open as an area in its own band with the
+endpoint named, new against resolved as paired bars beneath on their own
+scale, one x axis — has no expression in the library short of two charts
+pretending to be one, so it is a small SVG of its own. The severity split and
+the ring stay with the library.
+
+**Settings show the duration the server stores, with a reading beside it.**
+The mockup writes "3 days" in the field; the server takes and returns its own
+duration syntax, so what is typed is what is stored and the reading — "= 3
+days" — sits beside it rather than in it.
 
 ## Not built yet
 
@@ -678,15 +901,10 @@ clicking.
 **Editing a comment after it is written.** The endpoint exists; nothing calls
 it, so a typo stands.
 
-**Undoing a bulk approval as a batch.** Each claim can be revised on its own,
-which is the slow way to undo sixty.
-
 **A mention links nobody.** The editor offers the right candidates and writes
 `@name` into the text, but the renderer treats it as ordinary words. UIX-24
 wants a mention and a finding reference to become links, and that is resolution
 the server has to do, because it needs to know what the reader may see.
-Notifying somebody who was mentioned is a notification rather than a screen,
-and waits on there being anywhere to send one.
 
 **The carry-forward preview.** What a decision will cover when a build moves is
 a hint sentence rather than the panel the mockup draws.
@@ -696,15 +914,8 @@ component.** The mockup opens on the component with the path above it already
 expanded, which means walking upward a step at a time before anything can be
 drawn.
 
-**The settings screen is one list.** Every setting the server exposes renders,
-so what is missing is the design's four named groups rather than any of the
-function.
+**Release readiness.** Comparing a branch's current state against the last
+release cut from it (RPT-12) has no endpoint; the home panel says so.
 
-**"How the reasoning changed" and "what has been said" are only on the decision
-screen**, and are not reachable from the finding that led to them — which is
-the split described above rather than a separate omission.
-
-What is *no longer* here is worth stating, because this section claimed it for
-a while after it stopped being true: release comparison, people and access, and
-the settings screen are all built, and the catalogue screens can declare as
-well as list.
+**A claim scoped to a consumer subtree, and ownership by subtree.** Both were
+proposed in the workflow review and neither is decided (DECISIONS.md Section 4).

@@ -1,47 +1,45 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { api } from "../api/client";
-import type { Body } from "../api/client";
+import { api, type Body } from "../api/client";
 import { scopeQuery, useScope } from "../app/scope";
 import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
-import { Exploited, Severity } from "../ui/Severity";
+import { Severity, Exploited } from "../ui/Severity";
 
-// Work nobody owns, across every product somebody can see. Nobody-is-assigned
-// is a state to be asked about rather than an absence: work that falls between
+// Work nobody owns, across every product somebody can see. Unassigned is a
+// state to be asked about rather than an absence: work that falls between
 // people is invisible unless it can be listed, and it is exactly what hides
 // when every screen shows one product.
 export function Unassigned() {
   const scope = scopeQuery(useScope());
   const queries = useQueryClient();
-  const nobodys = useQuery({
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [person, setPerson] = useState("");
+  const rows = useQuery({
     queryKey: ["unassigned", scope],
     queryFn: async () =>
       unwrap(await api.GET("/v1/unassigned", { params: { query: { limit: 50, ...scope } } })),
   });
+  const people = useQuery({
+    queryKey: ["people"],
+    queryFn: async () => unwrap(await api.GET("/v1/people", {})),
+  });
 
   const assign = useMutation({
-    mutationFn: async (to: {
-      product: string;
-      stream: string;
-      variant: string;
-      vulnerability: string;
-      component: string;
-      person: string;
-    }) =>
+    mutationFn: async (to: { row: Owned; person: string }) =>
       unwrap(
         await api.PUT(
           "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/assignment",
           {
             params: {
               path: {
-                product: to.product,
-                stream: to.stream,
-                variant: to.variant,
-                vulnerability: to.vulnerability,
-                component: to.component,
+                product: to.row.product ?? "",
+                stream: to.row.stream ?? "",
+                variant: to.row.variant ?? "",
+                vulnerability: to.row.vulnerability ?? "",
+                component: to.row.component ?? "",
               },
             },
             body: { person: to.person },
@@ -50,144 +48,151 @@ export function Unassigned() {
       ),
     onSuccess: () => {
       void queries.invalidateQueries({ queryKey: ["unassigned"] });
+      void queries.invalidateQueries({ queryKey: ["holdings"] });
       void queries.invalidateQueries({ queryKey: ["home"] });
     },
   });
 
-  if (nobodys.isPending) return <p className="text-sm text-[var(--muted)]">Loading…</p>;
-  if (nobodys.isError) {
-    return <Failed error={nobodys.error} what="What nobody owns could not be read." />;
+  if (rows.isPending) return <p className="hint">Loading…</p>;
+  if (rows.isError) {
+    return <Failed error={rows.error} what="What is unassigned could not be read." />;
   }
 
-  const items = nobodys.data?.items ?? [];
+  const items = rows.data?.items ?? [];
+  const keyOf = (row: Owned) => `${row.product} ${row.stream} ${row.variant} ${row.vulnerability} ${row.component} ${row.version}`;
+
+  async function assignPicked() {
+    // The same action repeated, not a different one — each finding records
+    // who it went to and when.
+    for (const row of items.filter((r) => picked.has(keyOf(r)))) {
+      await assign.mutateAsync({ row, person: person.trim() });
+    }
+    setPicked(new Set());
+  }
 
   return (
-    <div className="max-w-4xl">
-      <header className="mb-4">
-        <h1 className="text-lg font-semibold tracking-tight">Nobody is dealing with these</h1>
-        <p className="text-sm text-[var(--muted)]">
+    <>
+      <div className="screen-head">
+        <h2>Unassigned</h2>
+        <p>
+          Undecided findings with nobody assigned,{" "}
           {scope.product
-            ? `${scope.product}${scope.stream ? ` · ${scope.stream}` : ""}${scope.variant ? ` · ${scope.variant}` : ""}. `
-            : "Across every product you can see. "}
-          {nobodys.data?.total ?? 0} in total.
+            ? [scope.product, scope.stream, scope.variant].filter(Boolean).join(" · ")
+            : "across every product you can see"}{" "}
+          · {(rows.data?.total ?? 0).toLocaleString()} in total{" "}
+          <Link to="/work" className="linkish">
+            Assignments →
+          </Link>
         </p>
-      </header>
+      </div>
 
       {assign.error != null && <Failed error={assign.error} what="That could not be assigned." />}
 
       {items.length === 0 ? (
         <Empty title="Everything open has somebody on it." />
       ) : (
-        <ul className="flex flex-col gap-2">
-          {items.map((row) => (
-            <Row
-              key={`${row.product}-${row.vulnerability}-${row.component}`}
-              row={row}
-              onAssign={(person) =>
-                assign.mutate({
-                  product: row.product ?? "",
-                  stream: row.stream ?? "",
-                  variant: row.variant ?? "",
-                  vulnerability: row.vulnerability ?? "",
-                  component: row.component ?? "",
-                  person,
-                })
-              }
-              pending={assign.isPending}
-            />
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-// The server's own shape rather than a copy of it, so a field the server grows
-// arrives here instead of being silently absent.
-type Owned = Body<"UnassignedBody">;
-
-function Row({
-  row,
-  onAssign,
-  pending,
-}: {
-  row: Owned;
-  onAssign: (person: string) => void;
-  pending: boolean;
-}) {
-  const [person, setPerson] = useState("");
-  const [asking, setAsking] = useState(false);
-
-  return (
-    <li className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <Link
-          to={
-            `/products/${encodeURIComponent(row.product ?? "")}` +
-            `/streams/${encodeURIComponent(row.stream ?? "")}` +
-            `/variants/${encodeURIComponent(row.variant ?? "")}` +
-            `/findings/${encodeURIComponent(row.vulnerability ?? "")}` +
-            `/components/${encodeURIComponent(row.component ?? "")}` +
-            // A build ships a name at more than one version often enough that
-            // a link without it cannot be resolved, and the reader gets a
-            // conflict rather than the finding they clicked.
-            (row.version ? `?version=${encodeURIComponent(row.version)}` : "")
-          }
-          className="font-medium hover:text-[var(--accent)]"
-        >
-          {row.vulnerability}
-        </Link>
-        <Severity word={row.severity} /> <Exploited when={row.exploited} />
-        <span className="text-[var(--muted)]">
-          {row.component} {row.version}
-        </span>
-        <span className="ml-auto text-[var(--muted)]">
-          {row.product} / {row.stream} / {row.variant}
-        </span>
-      </div>
-
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <span className="text-[var(--muted)]">
-          {row.places} {row.places === 1 ? "place" : "places"}
-        </span>
-        {asking ? (
-          <span className="ml-auto flex items-center gap-2">
-            {/* Assignment covers the whole group at once — one issue in one
-                component, however many places it sits at. Assigning one place
-                and not another is not something anybody means to do. */}
-            <input
+        <>
+          <div className="batchbar">
+            <span>
+              <b>{picked.size === 0 ? "Nothing selected" : `${picked.size} selected`}</b>
+            </span>
+            <span className="grow" />
+            <select
+              aria-label="Assign to"
+              style={{ width: "auto" }}
               value={person}
               onChange={(event) => setPerson(event.target.value)}
-              placeholder="their sign-in identity"
-              aria-label="Who takes this on"
-              className="rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1"
-            />
+            >
+              <option value="">Assign to…</option>
+              {(people.data?.items ?? []).map((each) => (
+                <option key={each.identity} value={each.identity}>
+                  {each.display_name || each.identity}
+                </option>
+              ))}
+            </select>
             <button
               type="button"
-              disabled={!person.trim() || pending}
-              onClick={() => {
-                onAssign(person.trim());
-                setAsking(false);
-                setPerson("");
-              }}
-              className="rounded bg-[var(--accent)] px-2 py-1 font-medium text-white disabled:opacity-50"
+              className="btn"
+              disabled={picked.size === 0 || !person || assign.isPending}
+              onClick={() => void assignPicked()}
             >
-              Assign
+              {picked.size === 0 ? "Assign" : `Assign ${picked.size}`}
             </button>
-            <button type="button" onClick={() => setAsking(false)} className="text-[var(--muted)]">
-              Cancel
-            </button>
-          </span>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setAsking(true)}
-            className="ml-auto text-[var(--accent)] hover:underline"
-          >
-            Give it to somebody
-          </button>
-        )}
-      </div>
-    </li>
+          </div>
+
+          <div className="tablewrap" style={{ marginTop: 10 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: 34 }}>
+                    <input
+                      type="checkbox"
+                      aria-label="Select every row shown"
+                      checked={picked.size > 0 && picked.size === items.length}
+                      onChange={(event) => setPicked(event.target.checked ? new Set(items.map(keyOf)) : new Set())}
+                    />
+                  </th>
+                  <th>Severity</th>
+                  <th>Issue</th>
+                  <th>Component</th>
+                  <th>Build</th>
+                  <th className="num">Locations</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((row) => (
+                  <tr key={keyOf(row)} className="row">
+                    <td>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${row.vulnerability}`}
+                        checked={picked.has(keyOf(row))}
+                        onChange={(event) => {
+                          const next = new Set(picked);
+                          if (event.target.checked) next.add(keyOf(row));
+                          else next.delete(keyOf(row));
+                          setPicked(next);
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <Severity word={row.severity} />
+                    </td>
+                    <td>
+                      <Link
+                        to={
+                          `/products/${encodeURIComponent(row.product ?? "")}` +
+                          `/streams/${encodeURIComponent(row.stream ?? "")}` +
+                          `/variants/${encodeURIComponent(row.variant ?? "")}` +
+                          `/findings/${encodeURIComponent(row.vulnerability ?? "")}` +
+                          `/components/${encodeURIComponent(row.component ?? "")}` +
+                          (row.version ? `?version=${encodeURIComponent(row.version)}` : "")
+                        }
+                        className="id"
+                      >
+                        {row.vulnerability}
+                      </Link>{" "}
+                      <Exploited when={row.exploited} />
+                    </td>
+                    <td>
+                      <span className="id">{row.component}</span>{" "}
+                      <span className="id" style={{ color: "var(--faint)" }}>
+                        {row.version}
+                      </span>
+                    </td>
+                    <td className="hint">
+                      {row.product} · {row.stream} · {row.variant}
+                    </td>
+                    <td className="num">{row.places}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </>
   );
 }
+
+type Owned = Body<"UnassignedBody">;

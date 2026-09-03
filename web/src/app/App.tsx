@@ -33,7 +33,9 @@ const Unassigned = lazy(() =>
 const Together = lazy(() =>
   import("../screens/Together").then((m) => ({ default: m.Together })),
 );
-const Scans = lazy(() => import("../screens/Scans").then((m) => ({ default: m.Scans })));
+const Inventories = lazy(() =>
+  import("../screens/Inventories").then((m) => ({ default: m.Inventories })),
+);
 const Settings = lazy(() => import("../screens/Settings").then((m) => ({ default: m.Settings })));
 
 const build = "/products/:product/streams/:stream/variants/:variant";
@@ -49,7 +51,7 @@ export function App() {
 
   return (
     <Shell who={who.data}>
-      <Suspense fallback={<p className="text-sm text-[var(--muted)]">Loading…</p>}>
+      <Suspense fallback={<p className="hint">Loading…</p>}>
       <Routes>
         <Route path="/" element={<Home who={who.data} />} />
         <Route path="/review-queue" element={<Queue />} />
@@ -58,12 +60,13 @@ export function App() {
         <Route path="/products" element={<Products who={who.data} />} />
         <Route path="/products/:product/streams" element={<Streams />} />
         <Route path="/products/:product/streams/:stream" element={<Variants />} />
+        <Route path="/products/:product/variants" element={<Variants />} />
         <Route path={`${build}/findings`} element={<Findings />} />
         <Route path={`${build}/findings/:vulnerability/components/:component`} element={<Finding />} />
         <Route path={`${build}/findings/:vulnerability/places/:place`} element={<PlaceDecision />} />
         <Route path={`${build}/components`} element={<Tree />} />
         <Route path={`${build}/components/:component/decide`} element={<Together />} />
-        <Route path={`${build}/scans`} element={<Scans />} />
+        <Route path={`${build}/scans`} element={<Inventories />} />
         <Route path="/products/:product/comparison" element={<Compare />} />
         <Route path="/people" element={<People />} />
         <Route path="/work" element={<Work />} />
@@ -81,7 +84,7 @@ export function App() {
 function Waiting() {
   return (
     <div className="flex min-h-dvh items-center justify-center">
-      <p className="text-sm text-[var(--muted)]">Loading…</p>
+      <p className="hint">Loading…</p>
     </div>
   );
 }

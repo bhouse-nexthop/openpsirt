@@ -83,9 +83,12 @@ export function Scope() {
 
   // Applied as soon as it is chosen, at whatever level. A partial selection
   // is a real answer now — every level offers "all" — so there is nothing to
-  // wait for (UIX-38).
-  function apply(chosen: Scoped) {
-    setOpen(false);
+  // wait for (UIX-38). The panel stays open through the product and the
+  // branch, so that all three can be chosen in one visit; it closes on the
+  // last level, on Escape, or on a click elsewhere. Closing after every pick
+  // made choosing a build three openings of the same panel.
+  function apply(chosen: Scoped, close = false) {
+    if (close) setOpen(false);
     // Stay where you are. A screen that names a build swaps its build and
     // keeps doing whatever it was doing; anything else simply remembers the
     // choice, because changing scope is not a reason to move somebody.
@@ -124,7 +127,7 @@ export function Scope() {
           the same panel — but a control that appears only once its parent is
           chosen hides that there is a choice to make at all. */}
       <button type="button" className="scope" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="label">Product</span>
+        <span className="label">Scope</span>
         {at.product || (whole ? "pick one" : "all")}
         <span className="caret">▾</span>
       </button>
@@ -227,7 +230,7 @@ export function Scope() {
               aria-current={!at.variant ? "true" : undefined}
               disabled={whole}
               title={whole ? "This screen is about one build, so it needs all three" : undefined}
-              onClick={() => apply({ product, stream })}
+              onClick={() => apply({ product, stream }, true)}
             >
               Every variant
             </button>
@@ -238,7 +241,7 @@ export function Scope() {
               type="button"
               className="opt"
               aria-current={each.name === at.variant ? "true" : undefined}
-              onClick={() => apply({ product, stream, variant: each.name })}
+              onClick={() => apply({ product, stream, variant: each.name }, true)}
             >
               {each.name}
             </button>

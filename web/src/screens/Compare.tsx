@@ -83,19 +83,16 @@ export function Compare() {
     <>
       <div className="screen-head">
         <h2>Release comparison</h2>
-        <p>{product} — what was fixed, what is newly present, and what is still there</p>
+        <p>{product} — what was fixed, what was introduced, and what is unchanged between any two builds</p>
       </div>
 
       {(releases.data?.items ?? []).length > 1 && (
         <div className="card">
           <header>
-            <h3>Open across every build</h3>
+            <h3>Open findings by release</h3>
           </header>
           <Across releases={releases.data?.items ?? []} />
-          <p className="hint">
-            Every open finding at each build, before any triage line — so it agrees with the
-            findings list rather than with what a product has decided is worth working on.
-          </p>
+          <p className="hint">Every open finding at each build, before any triage line.</p>
         </div>
       )}
 
@@ -145,16 +142,11 @@ export function Compare() {
             something embargoed should be a deliberate act rather than a paste
             nobody checked (RPT-06). */}
         <p className="reading" style={{ marginBottom: 12 }}>
-          Public findings only, unless you say otherwise — this ends up in a public document, so
-          including something embargoed should be a deliberate act rather than a paste nobody
-          checked.
+          Public findings only, unless you say otherwise — this ends up in a public document.
         </p>
 
         {!ready ? (
-          <Empty
-            title="Pick two builds."
-            detail="Any two compare, not only adjacent ones — a release note usually answers about the last release a customer has, which is rarely the previous one."
-          />
+          <Empty title="Pick two builds." detail="Any two compare, not only adjacent ones." />
         ) : comparison.isPending ? (
           <p className="hint">Loading…</p>
         ) : comparison.isError ? (
@@ -199,7 +191,7 @@ function Pick({
         value={stream}
         onChange={(event) => onStream(event.target.value)}
       >
-        <option value="">stream</option>
+        <option value="">branch or tag</option>
         {streams.map((name) => (
           <option key={name} value={name}>
             {name}
@@ -252,14 +244,14 @@ function Columns({
         kind="fixed"
         title="Fixed"
         rows={fixed}
-        note="Each says why it went. Superseded is the one to read carefully: the version moved and the issue came with it, so it was not fixed at all."
+        note="Each says why it went. Superseded means the version moved and the issue came with it."
       />
-      <Column kind="newly" title="Newly present" rows={newly} />
+      <Column kind="newly" title="Introduced" rows={newly} />
       <Column
         kind="still"
-        title="Still present"
+        title="Unchanged"
         rows={still}
-        note="An entry carrying a version it arrived from is the same failure from the other side: somebody moved that version and the issue came with it, so the bump did not reach the fix."
+        note="A version it arrived from means the bump did not reach the fix."
       />
     </div>
   );
@@ -317,7 +309,7 @@ function Column({
       {rows.length > SHOWN && (
         <p className="more">
           <button type="button" className="linkish" onClick={() => setAll(!all)}>
-            {all ? "Show fewer" : `Show the other ${(rows.length - SHOWN).toLocaleString()}`}
+            {all ? "Show fewer" : `Show all ${rows.length.toLocaleString()}`}
           </button>
         </p>
       )}

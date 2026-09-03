@@ -1,11 +1,14 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
+import type { Body } from "../api/client";
 import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
 import { Exploited, Severity } from "../ui/Severity";
+import { Icon } from "../ui/Icons";
+import { Decide, type Recorded } from "../ui/Decide";
 
 const PAGE = 50;
 
@@ -14,8 +17,7 @@ const PAGE = 50;
 // Not a disclosure date and not called one — REJ-11 declined to store one, and
 // the identifier's year is the year it was assigned. It is enough for the
 // question the column answers: an unfixed issue from years ago and one from
-// last month are different situations, and at that distance a few months
-// either way changes nothing.
+// last month are different situations.
 function yearsOld(identifier: string | undefined): number | null {
   const year = /^(?:CVE|GHSA-[^-]*)-(\d{4})-/.exec(identifier ?? "")?.[1];
   if (!year) return null;
@@ -24,8 +26,6 @@ function yearsOld(identifier: string | undefined): number | null {
 }
 
 // What upstream has done, said rather than left to be inferred from a blank.
-// "No fix" and "upstream declined" are different answers and only one of them
-// means somebody is still waiting.
 function upstreamSays(state: string | undefined, fixedIn: string | undefined) {
   if (fixedIn) return { text: fixedIn, kind: "id" as const };
   switch (state) {
@@ -39,10 +39,7 @@ function upstreamSays(state: string | undefined, fixedIn: string | undefined) {
 }
 const FLOORS = ["low", "medium", "high", "critical"] as const;
 
-// The package kinds a real image carries, most numerous first. Taken from a
-// switch operating-system image rather than from a registry's list of every
-// kind that exists: offering twenty when a build has eight is a menu somebody
-// reads past.
+// The package kinds a real image carries, most numerous first.
 const ECOSYSTEMS = [
   ["", "any kind"], ["generic", "generic"], ["golang", "Go"], ["deb", "Debian"],
   ["cargo", "Rust"], ["pypi", "Python"], ["oci", "container"],
@@ -52,17 +49,20 @@ const ECOSYSTEMS = [
 // How far a group has been decided. A group covers every place an issue sits
 // at in one component, so each of these is a statement about all of them.
 const STATES = [
-  ["", "any state"], ["undecided", "nobody has decided"],
-  ["waiting", "waiting for a second person"], ["agreed", "answered everywhere"],
-  ["lapsed", "stopped applying"],
+  ["", "any"], ["undecided", "undecided"],
+  ["waiting", "pending approval"], ["agreed", "decided"],
+  ["lapsed", "lapsed"],
 ] as const;
 
-// One row per issue in a component, not per place. A real image produced
-// 335,021 individual findings that collapse to 7,906 rows here, so the
-// grouping is not a nicety — ungrouped it is six thousand screens of rows
-// differing in a column nobody reads.
+type Row = Body<"FindingBody">;
+
+// One row per issue in a component, not per place. Every filter is in the
+// URL, so a link carries what somebody is looking at; every filter is the
+// server's, so the total beside the list counts the same thing the list
+// shows (REJ-10).
 //
-// Every filter is in the URL, so a link carries what somebody is looking at.
+// Triage mode (UIX-43) opens the decision form inside the row: the list keeps
+// the reader's place, the form keeps its width, and the keys do the walking.
 export function Findings() {
   const { product = "", stream = "", variant = "" } = useParams();
   const [params, setParams] = useSearchParams();
@@ -72,33 +72,25 @@ export function Findings() {
   const only = params.get("only") ?? "";
   const view = params.get("view") ?? "issues";
   const hiding = (params.get("hide") ?? "").split(",").filter(Boolean);
-  // Set by "only this" in the by-component view, which is how somebody moves
-  // from "where is the weight" to "what is actually wrong with it".
   const onlyComponent = params.get("component") ?? "";
-  // Whether to show what this product does not consider worth triaging. They
-  // are always recorded and always counted; this asks to see them here.
   const below = params.get("below") === "yes";
   const searching = params.get("q") ?? "";
   const ecosystem = params.get("ecosystem") ?? "";
   const under = params.get("under") ?? "";
+  // Everything under a node of the dependency tree, by the tree's own walk,
+  // so the tree's count and this list agree.
+  const beneath = params.get("beneath") ?? "";
   const underBuild = params.get("under_build") === "yes";
   const state = params.get("state") ?? "";
-  // How many narrowings are on beyond the chips, so the panel says so while it
-  // is shut. A filter nobody can see is how two people read one screen and
-  // quote different numbers (REJ-10).
+  const triage = params.get("mode") === "triage";
   const advanced = [ecosystem, under, state].filter(Boolean).length + (underBuild ? 1 : 0);
   const [more, setMore] = useState(advanced > 0);
   const [peeking, setPeeking] = useState<string | null>(null);
-  // What is typed, before it is asked for. Submitted rather than sent per
-  // keystroke: each one is a query over every open finding in the build, and
-  // the answer to a half-typed word is not worth asking for.
   const [typed, setTyped] = useState(searching);
+  // Triage mode's cursor and the row whose form is open.
+  const [cursor, setCursor] = useState(0);
+  const [deciding, setDeciding] = useState<number | null>(null);
 
-  // The narrowing is the server's. Filtering a page that has already been
-  // fetched answers a different question from the one it appears to —
-  // "exploited" over fifty rows means exploited among those fifty — and leaves
-  // the total beside it counting something else, which is the number people
-  // quote (REJ-10).
   const query = {
     limit: PAGE,
     offset,
@@ -108,6 +100,7 @@ export function Findings() {
     ...(searching ? { q: searching } : {}),
     ...(ecosystem ? { ecosystem } : {}),
     ...(under ? { under } : {}),
+    ...(beneath ? { beneath } : {}),
     ...(underBuild ? { under_build: true } : {}),
     ...(state ? { state: state as "undecided" | "waiting" | "agreed" | "lapsed" } : {}),
     ...(hiding.length > 0 ? { exclude: hiding } : {}),
@@ -142,41 +135,83 @@ export function Findings() {
     set("hide", hiding.filter((name) => name !== component).join(","));
   }
 
+  const rows = findings.data?.items ?? [];
+  const total = findings.data?.total ?? 0;
+
+  // The keys, in triage mode: j and k move, Enter opens, Escape closes. The
+  // form's own keys live in the form. Never while typing, and never under
+  // the review sheet.
+  useEffect(() => {
+    if (!triage || view !== "issues") return;
+    function key(event: KeyboardEvent) {
+      if (document.body.dataset.sheet) return;
+      const tag = (document.activeElement?.tagName ?? "").toUpperCase();
+      if (/INPUT|TEXTAREA|SELECT/.test(tag)) {
+        if (event.key === "Escape") (document.activeElement as HTMLElement).blur();
+        return;
+      }
+      if (event.key === "Escape") {
+        setDeciding(null);
+      } else if (event.key === "j" || event.key === "ArrowDown") {
+        event.preventDefault();
+        setCursor((c) => {
+          const next = Math.min(rows.length - 1, c + 1);
+          setDeciding((d) => (d === null ? null : next));
+          return next;
+        });
+      } else if (event.key === "k" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setCursor((c) => {
+          const next = Math.max(0, c - 1);
+          setDeciding((d) => (d === null ? null : next));
+          return next;
+        });
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        setDeciding((d) => (d === cursor ? null : cursor));
+      }
+    }
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [triage, view, rows.length, cursor]);
+
+  useEffect(() => {
+    if (!triage) return;
+    const row = document.querySelector(`#findingRows tr.row[data-i="${cursor}"]`);
+    row?.scrollIntoView({ block: "nearest" });
+  }, [cursor, triage, deciding]);
+
   const controls = (
     <>
       <div className="filters">
-        {/* Searching is the way into a list this size, so it comes first.
-            Submitted rather than sent per keystroke, and in the URL like every
-            other filter so a link carries what somebody was looking at. */}
         <form
-          style={{ display: "contents" }}
+          className="searchbox"
           onSubmit={(event) => {
             event.preventDefault();
             set("q", typed.trim());
           }}
         >
+          <Icon name="search" />
           <input
-            type="search"
+            type="text"
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
             placeholder="Find a component — openssl, linux, python…"
             aria-label="Find a component"
-            style={{ width: 260 }}
           />
-          <button type="submit" className="btn ghost">Search</button>
-          {searching && (
-            <button
-              type="button"
-              className="linkish"
-              onClick={() => {
-                setTyped("");
-                set("q", "");
-              }}
-            >
-              Clear “{searching}”
-            </button>
-          )}
         </form>
+        {searching && (
+          <button
+            type="button"
+            className="linkish"
+            onClick={() => {
+              setTyped("");
+              set("q", "");
+            }}
+          >
+            Clear “{searching}”
+          </button>
+        )}
         <span className="seg">
           {[
             ["issues", "By issue"],
@@ -208,20 +243,33 @@ export function Findings() {
           </button>
         ))}
         {/* Behind a control rather than always on screen: the chips above are
-            what somebody uses constantly, and putting six more beside them
-            makes the common case slower to reach. What is on is said on the
-            button, so a narrowed list never looks like an unnarrowed one. */}
+            what somebody uses constantly. What is on is said on the control,
+            so a narrowed list never looks like an unnarrowed one. */}
         <button
           type="button"
           className="chip"
-          aria-pressed={more}
+          aria-pressed={advanced > 0 || more}
           aria-expanded={more}
           onClick={() => setMore(!more)}
         >
-          More{advanced > 0 ? ` · ${advanced}` : ""}
+          Filters{advanced > 0 ? ` · ${advanced}` : ""}
         </button>
+        {view === "issues" && (
+          <button
+            type="button"
+            className="chip mode"
+            aria-pressed={triage}
+            onClick={() => {
+              setDeciding(null);
+              set("mode", triage ? "" : "triage");
+            }}
+          >
+            <Icon name="triage" />
+            Triage mode
+          </button>
+        )}
         <span className="floor">
-          <span style={{ color: "var(--faint)" }}>At least</span>
+          <span style={{ color: "var(--faint)" }}>Min severity</span>
           <span className="seg">
             {FLOORS.map((band) => (
               <button
@@ -230,7 +278,8 @@ export function Findings() {
                 aria-pressed={floor === band}
                 onClick={() => set("floor", band)}
               >
-                {band[0]?.toUpperCase()}{band.slice(1)}
+                {band[0]?.toUpperCase()}
+                {band.slice(1)}
               </button>
             ))}
           </span>
@@ -250,13 +299,15 @@ export function Findings() {
             <span>Package kind</span>
             <select value={ecosystem} onChange={(e) => set("ecosystem", e.target.value)}>
               {ECOSYSTEMS.map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
+                <option key={value} value={value}>
+                  {label}
+                </option>
               ))}
             </select>
           </label>
 
           <label className="field">
-            <span>Inside</span>
+            <span>Container</span>
             <input
               type="text"
               value={under}
@@ -266,23 +317,22 @@ export function Findings() {
             />
           </label>
 
-          {/* The other half of the same question. What the build holds
-              directly has no container above it to name, so it cannot be
-              asked for by typing one. */}
           <label className="field row">
             <input
               type="checkbox"
               checked={underBuild}
               onChange={(e) => set("under_build", e.target.checked ? "yes" : "")}
             />
-            <span>Held by the build itself</span>
+            <span>Top-level only</span>
           </label>
 
           <label className="field">
-            <span>How far decided</span>
+            <span>Decision state</span>
             <select value={state} onChange={(e) => set("state", e.target.value)}>
               {STATES.map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
+                <option key={value} value={value}>
+                  {label}
+                </option>
               ))}
             </select>
           </label>
@@ -303,6 +353,27 @@ export function Findings() {
               Clear these
             </button>
           )}
+          <span className="hint" style={{ alignSelf: "center" }}>
+            Active filters are counted on the <b>Filters</b> chip while this panel is closed.
+          </span>
+        </div>
+      )}
+
+      {beneath && (
+        <div className="filters" style={{ marginTop: -4 }}>
+          <span style={{ color: "var(--faint)" }}>Beneath</span>
+          <button
+            type="button"
+            className="chip"
+            aria-pressed
+            title="Show the whole build again"
+            onClick={() => set("beneath", "")}
+          >
+            {beneath} ×
+          </button>
+          <span className="hint">
+            This component and everything under it in the dependency tree.
+          </span>
         </div>
       )}
 
@@ -324,32 +395,6 @@ export function Findings() {
         </div>
       )}
 
-      {/* A list that is hiding something says so, with the count. Somebody
-          else set this line once, for everybody, so a smaller number with
-          nothing explaining it is how two people quote different figures for
-          one question (TRI-44, REJ-10). */}
-      {(findings.data?.hidden ?? 0) > 0 && (
-        <div className="filters" style={{ marginTop: -4 }}>
-          <span className="hint">
-            {(findings.data?.hidden ?? 0).toLocaleString()} more are below what this product
-            triages ({findings.data?.floor}). They are still recorded and still counted.
-          </span>
-          <button type="button" className="linkish" onClick={() => set("below", "yes")}>
-            Show them too
-          </button>
-        </div>
-      )}
-      {below && (
-        <div className="filters" style={{ marginTop: -4 }}>
-          <span className="hint">
-            Showing what is below the line as well as above it.
-          </span>
-          <button type="button" className="linkish" onClick={() => set("below", "")}>
-            Back to what is triaged
-          </button>
-        </div>
-      )}
-
       {hiding.length > 0 && (
         <div className="filters" style={{ marginTop: -4 }}>
           <span style={{ color: "var(--faint)" }}>Hiding</span>
@@ -366,8 +411,8 @@ export function Findings() {
             </button>
           ))}
           <span className="hint">
-            Hidden everywhere on this page, and counted out of the total — a filter changes what
-            <b> you</b> are looking at and never what anybody else is reported.
+            Hidden everywhere on this page and counted out of the total — a filter changes what{" "}
+            <b>you</b> are looking at, never what anybody else is reported.
           </span>
         </div>
       )}
@@ -396,6 +441,7 @@ export function Findings() {
             ...(searching ? { q: searching } : {}),
             ...(ecosystem ? { ecosystem } : {}),
             ...(under ? { under } : {}),
+    ...(beneath ? { beneath } : {}),
             ...(underBuild ? { under_build: true } : {}),
             ...(state ? { state: state as "undecided" | "waiting" | "agreed" | "lapsed" } : {}),
             ...(hiding.length > 0 ? { exclude: hiding } : {}),
@@ -425,9 +471,6 @@ export function Findings() {
     return <Failed error={findings.error} what="The findings could not be read." />;
   }
 
-  const rows = findings.data?.items ?? [];
-  const total = findings.data?.total ?? 0;
-
   // Names carried at more than one version on this page. They read as repeats
   // and are not: a build that vendors a library twice ships two of it.
   const seen = new Map<string, Set<string>>();
@@ -440,35 +483,55 @@ export function Findings() {
     [...seen.entries()].filter(([, versions]) => versions.size > 1).map(([name]) => name),
   );
 
+  function advance(from: number) {
+    // Submitting from the list moves to the next row and opens it, so a
+    // stretch of similar findings is decided without leaving the list.
+    if (from < rows.length - 1) {
+      setCursor(from + 1);
+      setDeciding(from + 1);
+    } else {
+      setDeciding(null);
+    }
+  }
+
   return (
     <>
       <div className="screen-head">
         <h2>Findings</h2>
         <p>
           {product} · {stream} · {variant} — one row per issue and component, however many
-          places it sits at.
+          locations it sits at.
         </p>
       </div>
 
       {controls}
 
-      <p className="hint" style={{ margin: "0 0 8px" }}>
-        Most urgent first: <b>known-exploited</b>, then whether the build reaches customers,
-        then <b>severity</b>, then how likely exploitation is. The score is shown beside the
-        word because it is what the order compares — two rows can tie on 10.0 while one reads
-        "high" and the other "critical", which is the two CVSS generations disagreeing about
-        vocabulary rather than the list being unsorted.
-      </p>
-      <p className="hint" style={{ margin: "0 0 8px" }}>
-        Click a row to open the finding. The arrow beside it previews what the issue is, without
-        leaving the list.
-      </p>
+      {triage ? (
+        <div className="modebar">
+          <span>
+            <b>Triage mode.</b> Decide from the list without leaving it.
+          </span>
+          <span className="keys">
+            <kbd>j</kbd>
+            <kbd>k</kbd> move <kbd>↵</kbd> open <kbd>1</kbd>–<kbd>4</kbd> outcome <kbd>r</kbd> or{" "}
+            <kbd>ctrl</kbd>+<kbd>↵</kbd> submit and advance <kbd>esc</kbd> close
+          </span>
+          <span className="hint" style={{ marginLeft: "auto" }}>
+            Same form as the finding screen, at full width
+          </span>
+        </div>
+      ) : (
+        <p className="hint" style={{ margin: "0 0 8px" }}>
+          Ordered by urgency: exploited, then customer-facing, then severity, then EPSS. Click a
+          row to open the finding; the arrow previews it in place.
+        </p>
+      )}
 
       {sameName.size > 0 && (
         <p className="hint" style={{ margin: "0 0 8px" }}>
-          {sameName.size === 1 ? "One component appears" : `${sameName.size} components appear`}{" "}
-          at more than one version on this page. Those rows are not repeats — a build that
-          vendors a library twice carries two of it, and each is its own thing to fix.
+          {sameName.size === 1 ? "One component appears" : `${sameName.size} components appear`} at
+          more than one version on this page. Those rows are not repeats — a build that vendors a
+          library twice carries two of it.
         </p>
       )}
 
@@ -478,208 +541,336 @@ export function Findings() {
           detail="Everything here is below the floor you set, or outside the filter."
         />
       ) : (
-        <div className="tablewrap">
-          <table>
-            <thead>
-              <tr>
-                <th style={{ width: 30 }} />
-                <th>Severity</th>
-                <th>Issue</th>
-                <th>Component</th>
-                {/* Both ends of the way down, middle collapsed (UIX-12).
-                    The top says which part of the product this is, the bottom
-                    says what pulls it in and is therefore what a decision is
-                    about; the steps between rarely tell two rows apart. */}
-                <th>Where it sits</th>
-                <th className="num" title="Published estimate that this will be exploited. It orders things that are equally severe">Likely</th>
-                <th>Fix</th>
-                <th className="num">Places</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const key = `${row.vulnerability}\u0000${row.component}\u0000${row.version}`;
-                const at = to(product, stream, variant, row);
-                return (
-                  <Fragment key={key}>
-                    <tr className="row" onClick={() => navigate(at)}>
-                      <td>
-                        <button
-                          type="button"
-                          className="peek"
-                          aria-expanded={peeking === key}
-                          title="Preview without leaving the list"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setPeeking(peeking === key ? null : key);
-                          }}
-                        >
-                          {peeking === key ? "▾" : "▸"}
-                        </button>
-                      </td>
-                      <td>
-                        <Severity word={row.severity} />
-                        {/* The number the order actually compares. Two rows
-                            can tie on it while their words disagree — a 2003
-                            issue scored 10.0 reads "high" under CVSS v2 and
-                            "critical" under v3 — and without it that reads as
-                            a list sorted wrongly. */}
-                        {row.score ? (
-                          <span className="hint" style={{ marginLeft: 6 }}>{row.score.toFixed(1)}</span>
-                        ) : null}
-                      </td>
-                      <td>
-                        <Link to={at} className="id" onClick={(e) => e.stopPropagation()}>
-                          {row.vulnerability}
-                        </Link>{" "}
-                        {/* Why the first rows are where they are. Without it
-                            the order reads as arbitrary: an exploited high
-                            above an unexploited critical is correct and looks
-                            like nothing at all. */}
-                        <Exploited when={row.exploited} />
-                        {/* How long it has been unanswered. Shown only where
-                            it is worth reacting to: everything is at least a
-                            few months old and saying so on every row is noise. */}
-                        {(() => {
-                          const age = yearsOld(row.vulnerability);
-                          return age !== null && age >= 2 ? (
+        <div className="findings">
+          <div className="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: 30 }} />
+                  <th>Severity</th>
+                  <th>Issue</th>
+                  <th>Component</th>
+                  {/* Both ends of the way down, middle collapsed (UIX-12). */}
+                  <th>Path</th>
+                  <th className="num" title="EPSS: published probability of exploitation. Orders findings of equal severity">
+                    EPSS
+                  </th>
+                  <th>Fixed in</th>
+                  <th className="num">Locations</th>
+                  <th>State</th>
+                </tr>
+              </thead>
+              <tbody id="findingRows">
+                {rows.map((row, i) => {
+                  const key = `${row.vulnerability} ${row.component} ${row.version}`;
+                  const at = to(product, stream, variant, row);
+                  // How far it is decided comes from the server, defined the
+                  // way the state filter defines it; a row does not guess from
+                  // what the build argued away, which is a different claim by
+                  // a different author.
+                  const pill = row.sent_back
+                    ? { cls: "lapsed", word: "Returned" }
+                    : row.state === "agreed"
+                      ? { cls: "agreed", word: "Decided" }
+                      : row.state === "waiting"
+                        ? { cls: "waiting", word: "Pending" }
+                        : row.state === "lapsed"
+                          ? { cls: "lapsed", word: "Lapsed" }
+                          : row.state === "undecided"
+                            ? { cls: "open", word: "Undecided" }
+                            : { cls: "waiting", word: "Partly" };
+                  return (
+                    <Fragment key={key}>
+                      <tr
+                        className={`row${triage && i === cursor ? " cursor" : ""}`}
+                        data-i={i}
+                        onClick={() => {
+                          if (!triage) {
+                            navigate(at);
+                            return;
+                          }
+                          setCursor(i);
+                          setDeciding(deciding === i ? null : i);
+                        }}
+                      >
+                        <td>
+                          <button
+                            type="button"
+                            className="peek"
+                            aria-expanded={peeking === key}
+                            title="Preview without leaving the list"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setPeeking(peeking === key ? null : key);
+                            }}
+                          >
+                            {peeking === key ? "▾" : "▸"}
+                          </button>
+                        </td>
+                        <td>
+                          <Severity word={row.severity} />
+                          {row.score ? (
                             <span className="hint" style={{ marginLeft: 6 }}>
-                              {age} years old
+                              {row.score.toFixed(1)}
                             </span>
-                          ) : null;
-                        })()}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="linkish id"
-                          title={`Everything open against ${row.component}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            set("component", row.component ?? "");
-                          }}
-                        >
-                          {row.component}
-                        </button>
-                        <br />
-                        <span className="id" style={{ color: "var(--faint)" }}>{row.version}</span>
-                        {/* Hiding lives here, not only on the by-component
-                            view: this is the list somebody triages, and one
-                            package drowning it is what they are getting past.
-                            On a switch image the kernel is 4,943 rows of
-                            6,822, and it is not what somebody triaging
-                            userland is looking for. */}
-                        <button
-                          type="button"
-                          className="linkish hideit"
-                          title={`Hide ${row.component} from this list`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            hide(row.component ?? "");
-                          }}
-                        >
-                          hide
-                        </button>
-                      </td>
-                      <td>
-                        <Sits row={row} />
-                      </td>
-                      <td className="num hint">
-                        {row.likelihood ? row.likelihood.toFixed(3) : "—"}
-                      </td>
-                      <td>
-                        {(() => {
-                          const said = upstreamSays(row.fix_state, row.fixed_in);
-                          return (
-                            <span
-                              className={said.kind === "id" ? "id" : "hint"}
-                              style={said.kind === "faint" ? { color: "var(--faint)" } : undefined}
-                            >
-                              {said.text}
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td className="num">
-                        {row.places}
-                        {(row.answered ?? 0) > 0 && (
-                          <span className="hint"> · {row.answered} answered</span>
-                        )}
-                      </td>
-                    </tr>
-                    {peeking === key && (
-                      <tr className="places">
-                        <td colSpan={8}>
-                          <Peek
-                            at={{ product, stream, variant }}
-                            vulnerability={row.vulnerability ?? ""}
-                            component={row.component ?? ""}
-                            version={row.version ?? ""}
-                            to={at}
-                          />
+                          ) : null}
+                        </td>
+                        <td>
+                          <Link to={at} className="id" onClick={(e) => e.stopPropagation()}>
+                            {row.vulnerability}
+                          </Link>{" "}
+                          <Exploited when={row.exploited} />
+                          {(() => {
+                            const age = yearsOld(row.vulnerability);
+                            return age !== null && age >= 2 ? (
+                              <span className="hint" style={{ marginLeft: 6 }}>
+                                {age} years old
+                              </span>
+                            ) : null;
+                          })()}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="linkish id"
+                            title={`Everything open against ${row.component}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              set("component", row.component ?? "");
+                            }}
+                          >
+                            {row.component}
+                          </button>
+                          <button
+                            type="button"
+                            className="linkish hideit"
+                            title={`Hide ${row.component} from this list`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              hide(row.component ?? "");
+                            }}
+                          >
+                            hide
+                          </button>
+                          <br />
+                          <span className="id" style={{ color: "var(--faint)" }}>
+                            {row.version}
+                          </span>
+                        </td>
+                        <td>
+                          <Sits row={row} />
+                        </td>
+                        <td className="num hint">{row.likelihood ? row.likelihood.toFixed(3) : "—"}</td>
+                        <td>
+                          {(() => {
+                            const said = upstreamSays(row.fix_state, row.fixed_in);
+                            return (
+                              <span
+                                className={said.kind === "id" ? "id" : "hint"}
+                                style={said.kind === "faint" ? { color: "var(--faint)" } : undefined}
+                              >
+                                {said.text}
+                              </span>
+                            );
+                          })()}
+                        </td>
+                        <td className="num">
+                          {row.places}
+                          {(row.answered ?? 0) > 0 && (
+                            <span className="hint" title="Argued away by the build's own VEX, which is a different claim by a different author"> · {row.answered} by the build</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`state ${pill.cls}`}>
+                            {pill.word}
+                          </span>
                         </td>
                       </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+                      {peeking === key && (
+                        <tr className="places">
+                          <td colSpan={9}>
+                            <Peek
+                              at={{ product, stream, variant }}
+                              vulnerability={row.vulnerability ?? ""}
+                              component={row.component ?? ""}
+                              version={row.version ?? ""}
+                              to={at}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                      {triage && deciding === i && (
+                        <tr className="decide">
+                          <td colSpan={9}>
+                            <Inline
+                              at={{ product, stream, variant }}
+                              row={row}
+                              position={{ row: i + 1, of: rows.length }}
+                              onDone={() => advance(i)}
+                              onClose={() => setDeciding(null)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="cards">
+            {rows.map((row) => {
+              const at = to(product, stream, variant, row);
+              return (
+                <article
+                  key={`${row.vulnerability} ${row.component} ${row.version}`}
+                  className={`fcard ${row.exploited ? "exploited" : row.severity ?? ""}`}
+                  onClick={() => navigate(at)}
+                >
+                  <header>
+                    <Severity word={row.severity} />
+                    <Exploited when={row.exploited} />
+                  </header>
+                  <div>
+                    <span className="id">{row.vulnerability}</span> in{" "}
+                    <span className="id">{row.component}</span>
+                  </div>
+                  <div className="hint">
+                    {row.places} {row.places === 1 ? "location" : "locations"} · fixed in{" "}
+                    {row.fixed_in ?? "—"}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      <p className="hint" style={{ margin: "12px 0 0" }}>
-        Showing {rows.length.toLocaleString()} of {total.toLocaleString()} · ordered by urgency:
-        exploited first, then whether it reaches customers, then likelihood, then severity
-      </p>
-
-      <Pager
-        offset={offset}
-        total={total}
-        onGo={(next) => {
-          const now = new URLSearchParams(params);
-          if (next === 0) now.delete("offset");
-          else now.set("offset", String(next));
-          setParams(now);
-        }}
-      />
+      <div className="filters" style={{ margin: "10px 0 0" }}>
+        <span className="hint">
+          Showing {rows.length.toLocaleString()} of {total.toLocaleString()}
+          {(findings.data?.hidden ?? 0) > 0 && !below && (
+            <>
+              {" "}
+              · {(findings.data?.hidden ?? 0).toLocaleString()} more are below what this product
+              triages ({findings.data?.floor}). They are still recorded and still counted.
+            </>
+          )}
+          {below && <> · showing what is below the line as well as above it.</>}
+        </span>
+        {(findings.data?.hidden ?? 0) > 0 && !below && (
+          <button type="button" className="linkish" onClick={() => set("below", "yes")}>
+            Include
+          </button>
+        )}
+        {below && (
+          <button type="button" className="linkish" onClick={() => set("below", "")}>
+            Back to what is triaged
+          </button>
+        )}
+        <Pager
+          offset={offset}
+          total={total}
+          onGo={(next) => {
+            const now = new URLSearchParams(params);
+            if (next === 0) now.delete("offset");
+            else now.set("offset", String(next));
+            setParams(now);
+          }}
+        />
+      </div>
     </>
   );
 }
 
-// Where a component sits, as the two ends that differ between sibling rows.
-//
-// Where the row covers places reached more than one way, it says so rather
-// than presenting one route as though it were the only one: the pair shown is
-// one of several, and a reader deciding about "the" parent would be deciding
-// about a parent they were not shown.
-function Sits({
+// The decision form inside a row (UIX-43). It needs the finding's places,
+// which the list row does not carry, so they are read when the row opens.
+function Inline({
+  at,
   row,
+  position,
+  onDone,
+  onClose,
 }: {
-  row: { owner?: string; parent?: string; middle?: number; chains?: number };
+  at: { product: string; stream: string; variant: string };
+  row: Row;
+  position: { row: number; of: number };
+  onDone: (recorded: Recorded) => void;
+  onClose: () => void;
 }) {
+  const detail = useQuery({
+    queryKey: ["finding", at, row.vulnerability, row.component, row.version],
+    queryFn: async () =>
+      unwrap(
+        await api.GET(
+          "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}",
+          {
+            params: {
+              path: { ...at, vulnerability: row.vulnerability ?? "", component: row.component ?? "" },
+              query: { version: row.version ?? "" },
+            },
+          },
+        ),
+      ),
+  });
+  if (detail.isPending) return <p className="hint">Loading…</p>;
+  if (detail.isError) return <Failed error={detail.error} what="This could not be read." />;
+  return (
+    <div onClick={(event) => event.stopPropagation()}>
+      {detail.data?.description && (
+        <p className="hint" style={{ margin: "0 0 10px", maxWidth: "78ch" }}>
+          {detail.data.description.slice(0, 420)}
+        </p>
+      )}
+      <Decide
+        at={{
+          ...at,
+          vulnerability: row.vulnerability ?? "",
+          component: row.component ?? "",
+          version: row.version ?? "",
+        }}
+        places={detail.data?.places ?? []}
+        inline
+        position={position}
+        onDone={onDone}
+        onClose={onClose}
+      />
+    </div>
+  );
+}
+
+// Where a component sits, as the two ends that differ between sibling rows.
+function Sits({ row }: { row: Row }) {
   if (!row.owner && !row.parent) {
     return <span className="hint">nothing records what pulls this in</span>;
   }
   const same = row.owner === row.parent;
   return (
-    <span className="hint">
-      <span className="id">{row.owner}</span>
+    <span className="chain">
+      <span className="hop id">{row.owner}</span>
       {!same && (
         <>
-          {row.middle ? ` › +${row.middle} › ` : " › "}
-          <span className="id">{row.parent}</span>
+          <span className="arrow">→</span>
+          {row.middle ? (
+            <>
+              <span className="gap" title={`${row.middle} step${row.middle > 1 ? "s" : ""} collapsed — open the finding for the full chain`}>
+                +{row.middle}
+              </span>
+              <span className="arrow">→</span>
+            </>
+          ) : null}
+          <span className="hop id">{row.parent}</span>
         </>
       )}
-      {(row.chains ?? 0) > 1 && <> · one of {row.chains}</>}
+      {(row.chains ?? 0) > 1 && <span className="hint">· one of {row.chains}</span>}
     </span>
   );
 }
 
 // Where the weight is, rather than what is wrong. Somebody opening a list of
 // several thousand rows needs to know that one package is most of it before
-// they start reading — on a real image the kernel was 4,943 rows of 6,822, and
-// ordered by urgency that looks like nothing but a long list.
+// they start reading.
 function ByComponent({
   at,
   query,
@@ -727,10 +918,8 @@ function ByComponent({
   return (
     <>
       <p className="hint" style={{ margin: "0 0 8px" }}>
-        Ordered by how many issues each carries, not by urgency — that is the findings list, and
-        repeating it here at worse resolution would answer nothing new. <b>Issues</b> is how many
-        rows this component contributes to that list; <b>places</b> is how many times they sit
-        somewhere in the build.
+        Ordered by issue count. <b>Issues</b> is rows in the by-issue view; <b>locations</b> is how
+        many places in the build those issues occupy.
       </p>
 
       <div className="tablewrap">
@@ -739,8 +928,8 @@ function ByComponent({
             <tr>
               <th>Component</th>
               <th className="num">Issues</th>
-              <th className="num">Places</th>
-              <th style={{ width: 150 }} />
+              <th className="num">Locations</th>
+              <th style={{ width: 120 }} />
             </tr>
           </thead>
           <tbody>
@@ -748,12 +937,8 @@ function ByComponent({
               const name = row.component ?? "";
               const share = most > 0 ? Math.round(((row.issues ?? 0) / most) * 100) : 0;
               return (
-                <tr key={`${name}\u0000${row.version}`}>
+                <tr key={`${name} ${row.version}`} className="row">
                   <td>
-                    {/* The name is the way in. It used to be plain text with a
-                        button beside it saying "only this", which is the same
-                        act named twice — and the thing somebody reaches for
-                        first is the name. */}
                     <button
                       type="button"
                       className="linkish id"
@@ -769,26 +954,13 @@ function ByComponent({
                       </>
                     )}
                     <br />
-                    <span className="id" style={{ color: "var(--faint)" }}>{row.version}</span>
+                    <span className="id" style={{ color: "var(--faint)" }}>
+                      {row.version}
+                    </span>
                   </td>
                   <td className="num">
                     {(row.issues ?? 0).toLocaleString()}
-                    {/* A bar rather than a percentage: the point is that one
-                        row is an order of magnitude above the rest, which a
-                        column of numbers hides and a length does not. */}
-                    <span
-                      aria-hidden
-                      style={{
-                        display: "block",
-                        height: 3,
-                        marginTop: 3,
-                        borderRadius: 2,
-                        background: "var(--accent)",
-                        opacity: 0.55,
-                        width: `${Math.max(share, 2)}%`,
-                        marginLeft: "auto",
-                      }}
-                    />
+                    <span aria-hidden className="share" style={{ width: `${Math.max(share, 2)}%` }} />
                   </td>
                   <td className="num">{(row.places ?? 0).toLocaleString()}</td>
                   <td>
@@ -809,19 +981,19 @@ function ByComponent({
         </table>
       </div>
 
-      <p className="hint" style={{ margin: "12px 0 0" }}>
-        Showing {rows.length.toLocaleString()} of {total.toLocaleString()} components that carry
-        anything open
-      </p>
-
-      <Pager offset={offset} total={total} onGo={onPage} />
+      <div className="filters" style={{ margin: "10px 0 0" }}>
+        <span className="hint">
+          Showing {rows.length.toLocaleString()} of {total.toLocaleString()} components that carry
+          anything open
+        </span>
+        <Pager offset={offset} total={total} onGo={onPage} />
+      </div>
     </>
   );
 }
 
 // Opening a row is a look, not a commitment: what the issue actually says and
-// where it sits, without leaving a list of a thousand rows and losing your
-// place. Going to the finding itself is a link inside it.
+// where it sits, without leaving a list of a thousand rows.
 function Peek({
   at,
   vulnerability,
@@ -853,40 +1025,38 @@ function Peek({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {it?.description ? (
-        <p style={{ margin: 0, fontSize: "var(--step--1)" }}>{it.description.slice(0, 420)}</p>
+        <p style={{ margin: "8px 0 0", fontSize: "var(--step--1)", maxWidth: "78ch" }}>
+          {it.description.slice(0, 420)}
+        </p>
       ) : (
-        <p className="hint" style={{ margin: 0 }}>The report says nothing beyond the identifier.</p>
+        <p className="hint" style={{ margin: 0 }}>
+          The report says nothing beyond the identifier.
+        </p>
       )}
-      <div className="legend">
+      <ul className="placelist">
         {(it?.places ?? []).slice(0, 6).map((place) => (
-          <span key={place.place}>
-            {place.consumer
-              ? `under ${place.consumer}`
-              : // No consumer means the build itself contains it, which the
-                // chain states; only an empty chain means nothing was recorded.
-                place.chain?.[0]?.component
-                ? `under ${place.chain[0].component}`
-                : "nothing records what pulls this in"}
-          </span>
+          <li key={place.place}>
+            <span className="id">
+              {place.consumer
+                ? `under ${place.consumer}`
+                : place.chain?.[0]?.component
+                  ? `under ${place.chain[0].component}`
+                  : "nothing records what pulls this in"}
+            </span>
+            {place.decision != null && <span className="note">decided</span>}
+          </li>
         ))}
-      </div>
-      <Link to={link} className="linkish">Open the finding →</Link>
+      </ul>
+      <Link to={link} className="linkish">
+        Open finding →
+      </Link>
     </div>
   );
 }
 
-// Where a row opens. Clicking the row opens the thing it names (UIX-36); the
-// arrow is the separate preview control, so neither steals the other's job.
-function to(
-  product: string,
-  stream: string,
-  variant: string,
-  row: { vulnerability?: string; component?: string; version?: string },
-): string {
-  // The version is part of the address. A component name is not unique within
-  // a build — a real image ships three vendored versions of one library — so a
-  // link carrying only the name opens whichever was interned first, which for
-  // most of those rows is a finding that does not exist.
+// Where a row opens. The version is part of the address: a component name is
+// not unique within a build.
+function to(product: string, stream: string, variant: string, row: Row): string {
   const query = row.version ? `?version=${encodeURIComponent(row.version)}` : "";
   return (
     `/products/${encodeURIComponent(product)}` +
@@ -908,31 +1078,15 @@ function Pager({
   onGo: (offset: number) => void;
 }) {
   if (total <= PAGE) return null;
-  const from = offset + 1;
   const upto = Math.min(offset + PAGE, total);
   return (
-    <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 12 }}>
-      <span className="hint">
-        {from.toLocaleString()}–{upto.toLocaleString()} of {total.toLocaleString()}
-      </span>
-      <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-        <button
-          type="button"
-          className="chip"
-          disabled={offset === 0}
-          onClick={() => onGo(Math.max(0, offset - PAGE))}
-        >
-          Previous
-        </button>
-        <button
-          type="button"
-          className="chip"
-          disabled={upto >= total}
-          onClick={() => onGo(offset + PAGE)}
-        >
-          Next
-        </button>
-      </span>
-    </div>
+    <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+      <button type="button" className="chip" disabled={offset === 0} onClick={() => onGo(Math.max(0, offset - PAGE))}>
+        Previous
+      </button>
+      <button type="button" className="chip" disabled={upto >= total} onClick={() => onGo(offset + PAGE)}>
+        Next
+      </button>
+    </span>
   );
 }

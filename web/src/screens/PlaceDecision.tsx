@@ -55,7 +55,7 @@ export function PlaceDecision() {
     },
   });
 
-  if (decided.isPending) return <p className="text-sm text-[var(--muted)]">Loading…</p>;
+  if (decided.isPending) return <p className="hint">Loading…</p>;
   if (decided.isError) {
     return <Failed error={decided.error} what="What was decided here could not be read." />;
   }
@@ -71,7 +71,7 @@ export function PlaceDecision() {
     <div className="max-w-3xl">
       <Crumbs product={product} stream={stream} variant={variant} />
       <Link to={back} className="mb-3 inline-block text-sm text-[var(--muted)] hover:text-[var(--ink)]">
-        ← All findings
+        ← Findings
       </Link>
       <h1 className="mb-4 text-xl font-semibold tracking-tight">{vulnerability}</h1>
 
@@ -79,10 +79,7 @@ export function PlaceDecision() {
         <Standing detail={standing} />
       ) : (
         <>
-          <p className="mb-4 text-sm text-[var(--muted)]">
-            Nothing is in force here. A claim waiting for a second person suppresses nothing,
-            so it does not appear as one.
-          </p>
+          <p className="mb-4 text-sm text-[var(--muted)]">Nothing is in force at this location.</p>
           <Reach at={at} />
           <Decide
             onDecide={(body) => decide.mutate(body)}
@@ -111,7 +108,7 @@ function Standing({ detail }: { detail: Detail }) {
         <State state={detail.decision?.state} />
         {detail.decision?.id && (
           <Link to={`/decisions/${detail.decision.id}`} className="text-sm text-[var(--accent)] hover:underline">
-            History and comments
+            History and comments →
           </Link>
         )}
         {detail.decision?.deferred_until && (
@@ -119,7 +116,7 @@ function Standing({ detail }: { detail: Detail }) {
         )}
       </div>
       <p className="mb-3 text-sm text-[var(--muted)]">
-        {detail.proposed_by && <>claimed by {detail.proposed_by}</>}
+        {detail.proposed_by && <>proposed by {detail.proposed_by}</>}
         {detail.proposed_at && <> on {detail.proposed_at.slice(0, 10)}</>}
       </p>
       {detail.reasoning && <Markdown source={detail.reasoning} />}
@@ -141,10 +138,9 @@ function Previously({
 }) {
   return (
     <section className="mt-8">
-      <h2 className="mb-2 text-sm font-semibold">Decided here before</h2>
+      <h2 className="mb-2 text-sm font-semibold">Previous decisions at this location</h2>
       <p className="mb-3 text-sm text-[var(--muted)]">
-        Withdrawn claims, and claims that stopped applying when a version moved. Worth reading
-        before deciding again.
+        Withdrawn and lapsed decisions, with their reasoning offered back.
       </p>
       <ul className="flex flex-col gap-2">
         {items.map((each, index) => (
@@ -301,16 +297,16 @@ function Decide({
       <h2 className="mb-2 text-sm font-semibold">Decide</h2>
       <div className="flex flex-col gap-3">
         <label className="text-sm">
-          <span className="mb-1 block text-[var(--muted)]">What is true here</span>
+          <span className="mb-1 block text-[var(--muted)]">Outcome</span>
           <select
             value={outcome}
             onChange={(event) => setOutcome(event.target.value)}
             className="w-full rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1.5"
           >
-            <option value="not-applicable">It does not apply to us</option>
-            <option value="affected">It applies and needs fixing</option>
-            <option value="deferred">It applies, but not until a date</option>
-            <option value="wont-fix">It applies and will not be fixed</option>
+            <option value="not-applicable">Not applicable</option>
+            <option value="affected">Affected</option>
+            <option value="deferred">Deferred</option>
+            <option value="wont-fix">Won't fix</option>
           </select>
         </label>
 
@@ -319,7 +315,7 @@ function Decide({
             — it is the outcome. */}
         {needsJustification && (
           <label className="text-sm">
-            <span className="mb-1 block text-[var(--muted)]">Which reason</span>
+            <span className="mb-1 block text-[var(--muted)]">Justification</span>
             <select
               value={justification}
               onChange={(event) => setJustification(event.target.value)}
@@ -397,7 +393,7 @@ function Decide({
             }
             className="rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
-            Record it
+            Submit decision
           </button>
           <span className="ml-3 text-sm text-[var(--muted)]">
             Most outcomes wait for a second person before they take effect.

@@ -6,6 +6,7 @@ import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
 import { Crumbs } from "../ui/Crumbs";
+import { Icon } from "../ui/Icons";
 
 type At = { product: string; stream: string; variant: string };
 type Node = {
@@ -34,13 +35,16 @@ const BRANCHES = 15;
 // without reading every number on the way down.
 const HOT = 500;
 
-const aroundKey = (at: At, component: string) => ["tree-around", at, component] as const;
+const aroundKey = (at: At, component: string, version = "") =>
+  ["tree-around", at, component, version] as const;
 
-const fetchAround = (at: At, component: string) => async () =>
+// A name is not always enough: a build ships some libraries at several
+// versions, and a finding arriving here says which one it meant.
+const fetchAround = (at: At, component: string, version = "") => async () =>
   unwrap(
     await api.GET(
       "/v1/products/{product}/streams/{stream}/variants/{variant}/components/{component}/around",
-      { params: { path: { ...at, component } } },
+      { params: { path: { ...at, component }, query: version ? { version } : {} } },
     ),
   );
 
@@ -89,10 +93,32 @@ export function Tree() {
   // The root starts open, because a tree whose only visible row is the thing
   // you already knew you were looking at has told you nothing. Closing it
   // afterwards sticks: this runs once per build, not once per render.
+  //
+  // Arriving from a finding brings the chain along, and every step of it is
+  // opened so the component is on screen under the parents that pull it in,
+  // rather than the reader being left at the root to find it again.
+  const path = params.get("path") ?? "";
   useEffect(() => {
     if (!rootName) return;
-    setOpened((prev) => (prev.has(rootName) ? prev : new Set(prev).add(rootName)));
-  }, [rootName]);
+    const steps = path.split("\u001f").filter(Boolean);
+    setOpened((prev) => {
+      const next = new Set(prev);
+      next.add(rootName);
+      for (const step of steps) next.add(step);
+      return next;
+    });
+    // A wide node draws a handful of its branches and says how many more
+    // there are; a step on the way to the component has to be drawn whether
+    // or not it is among that handful, so each parent on the path is widened.
+    if (steps.length > 0) {
+      setWidened((prev) => {
+        const next = new Set(prev);
+        next.add(rootName);
+        for (const step of steps) next.add(step);
+        return next;
+      });
+    }
+  }, [rootName, path]);
 
   // Children are read for each node the reader has opened. The root's own are
   // already in hand from the query above, so it is not asked for twice.
@@ -109,9 +135,10 @@ export function Tree() {
 
   // What is selected. The key matches the one above, so selecting a node that
   // is already open costs nothing.
+  const version = params.get("version") ?? "";
   const selected = useQuery({
-    queryKey: aroundKey(at, focus),
-    queryFn: fetchAround(at, focus),
+    queryKey: aroundKey(at, focus, version),
+    queryFn: fetchAround(at, focus, version),
     enabled: focus !== "",
   });
 
@@ -147,8 +174,8 @@ export function Tree() {
       <div className="screen-head">
         <h2>Dependencies</h2>
         <p>
-          {product} · {stream} · {variant} — where a component carrying a vulnerability actually
-          sits
+          {product} · {stream} · {variant} — {(top.data?.components ?? 0).toLocaleString()} components,{" "}
+          {(top.data?.edges ?? 0).toLocaleString()} edges
         </p>
       </div>
 
@@ -158,11 +185,13 @@ export function Tree() {
           anybody reaches the middle of by opening nodes. */}
       <div className="treehead">
         <form
+          className="searchbox"
           onSubmit={(event) => {
             event.preventDefault();
             search(typed);
           }}
         >
+          <Icon name="search" />
           <input
             type="text"
             value={typed}
@@ -176,16 +205,13 @@ export function Tree() {
             Back to the tree
           </button>
         )}
-        <span className="found">
-          {(top.data?.components ?? 0).toLocaleString()} components ·{" "}
-          {(top.data?.edges ?? 0).toLocaleString()} edges
-        </span>
+        <span className="found">counts are cumulative: what is open beneath a node as well as on it</span>
       </div>
 
       <div className="detail">
         <div>
           <div className="card">
-            {top.isPending && <p className="text-sm text-[var(--muted)]">Loading…</p>}
+            {top.isPending && <p className="hint">Loading…</p>}
             {top.isError && <Failed error={top.error} what="The build's contents could not be read." />}
             {!searching && !top.isPending && !top.isError && !root && (
               <Empty
@@ -215,10 +241,10 @@ export function Tree() {
                 onWiden={(name) => setWidened((prev) => new Set(prev).add(name))}
               />
             )}
-            <p className="mt-3 text-xs text-[var(--faint)]">
+            <p className="hint" style={{ margin: "12px 0 0" }}>
               {searching
                 ? "Matches anywhere in the build, most findings first. Selecting one shows what pulls it in."
-                : "Children load when a node is opened, and the count on a node is what is open in everything under it — a container holds none of its own, so counting only itself would say every container is clean."}
+                : "Children load when a node is opened. The count on a node is what is open in everything under it."}
             </p>
           </div>
         </div>
@@ -369,7 +395,7 @@ function Branches({
       rows.push(
         <div key={`${path}/…`} className="node" style={{ paddingLeft: (depth + 1) * 20 }}>
           <span className="rule">·</span>
-          <span className="text-[var(--muted)]">Loading…</span>
+          <span className="hint">Loading…</span>
         </div>,
       );
       return;
@@ -394,8 +420,7 @@ function Branches({
           style={{ marginLeft: (depth + 1) * 20 }}
           onClick={() => onWiden(name)}
         >
-          Show the other {hidden.toLocaleString()} under {name} — {shown.length} of{" "}
-          {kids.length.toLocaleString()} shown
+          Show all {kids.length.toLocaleString()} under {name} — {shown.length} shown
         </button>,
       );
     }
@@ -428,14 +453,19 @@ function Pane({
   pending: boolean;
   error: unknown;
 }) {
+  const build =
+    `/products/${encodeURIComponent(at.product)}` +
+    `/streams/${encodeURIComponent(at.stream)}` +
+    `/variants/${encodeURIComponent(at.variant)}`;
+  const list = `${build}/findings`;
   if (!focus) {
     return (
       <div>
         <div className="card">
           <h3>Nothing selected</h3>
           <p className="reading">
-            Pick a component on the left to see what pulls it in, what it pulls in, and what is
-            open against it.
+            Pick a component on the left to see its dependents, its dependencies, and what is open
+            against it.
           </p>
         </div>
       </div>
@@ -445,7 +475,7 @@ function Pane({
     return (
       <div>
         <div className="card">
-          <p className="text-sm text-[var(--muted)]">Loading…</p>
+          <p className="hint">Loading…</p>
         </div>
       </div>
     );
@@ -465,18 +495,18 @@ function Pane({
       <div className="card">
         <h3>{focus}</h3>
         {node && (
-          <p className="mb-3 text-xs text-[var(--muted)]">
+          <p className="hint" style={{ margin: "0 0 10px" }}>
             <span className="id">{node.version}</span>
           </p>
         )}
 
         <div className="upward">
-          <h5>What pulls this in</h5>
+          <h5>Dependents</h5>
           {above.length === 0 ? (
             <p className="reading" style={{ margin: 0 }}>
               {focus === rootName
                 ? "Nothing — this is the product itself."
-                : "Nothing — the build depends on it directly."}
+                : "Nothing — the build contains it directly."}
             </p>
           ) : (
             <ol>
@@ -489,43 +519,62 @@ function Pane({
           )}
           {above.length > 1 && (
             <p className="reading" style={{ marginTop: 7 }}>
-              Reached {above.length} ways. It is one component with several edges, not several
-              copies — which is why the tree marks a repeat rather than drawing it again.
+              Reached {above.length} ways: one component with several edges, not several copies.
             </p>
           )}
         </div>
 
-        <div className="block">
-          <h4>Open here</h4>
-          <p className="text-2xl font-semibold tracking-tight">
+        <div className="evblock">
+          <h4>Open issues</h4>
+          <p style={{ fontSize: "var(--step-2)", fontWeight: 700, margin: 0, letterSpacing: "-0.02em" }}>
             {node ? node.beneath.toLocaleString() : "—"}
           </p>
           {node && node.children > 0 && (
             <p className="hint">
-              in everything under it. {node.findings.toLocaleString()} against this component
-              itself.
+              in everything under it by this path. {node.findings.toLocaleString()} at this
+              component here.
+            </p>
+          )}
+          {node && node.children === 0 && (
+            <p className="hint">at this component, under the parent shown.</p>
+          )}
+          {/* The count is a way in, not a fact to admire: the list it counts
+              is one link away, narrowed on the server the way the list
+              narrows everything else. */}
+          {node && node.beneath > 0 && (
+            <p style={{ margin: "8px 0 0", display: "flex", flexWrap: "wrap", gap: "6px 14px" }}>
+              {focus === rootName ? (
+                <Link to={`${list}`} className="linkish">
+                  View all {node.beneath.toLocaleString()} findings →
+                </Link>
+              ) : (
+                <>
+                  {node.findings > 0 && (
+                    <Link to={`${list}?component=${encodeURIComponent(focus)}`} className="linkish">
+                      Findings at this component →
+                    </Link>
+                  )}
+                  {node.children > 0 && (
+                    <Link to={`${list}?beneath=${encodeURIComponent(focus)}`} className="linkish">
+                      Findings under it →
+                    </Link>
+                  )}
+                </>
+              )}
             </p>
           )}
         </div>
 
-        <div className="block">
-          <h4>What it pulls in</h4>
-          <p className="text-xs">
+        <div className="evblock">
+          <h4>Dependencies</h4>
+          <p className="hint">
             {belowCount ? `${belowCount.toLocaleString()} components` : "Nothing — it is a leaf"}
           </p>
         </div>
 
         {node && node.findings > 0 && (
-          <Link
-            to={
-              `/products/${encodeURIComponent(at.product)}` +
-              `/streams/${encodeURIComponent(at.stream)}` +
-              `/variants/${encodeURIComponent(at.variant)}` +
-              `/components/${encodeURIComponent(focus)}/decide`
-            }
-            className="linkish"
-          >
-            Decide a set of them together →
+          <Link to={`${build}/components/${encodeURIComponent(focus)}/decide`} className="linkish">
+            Bulk decision →
           </Link>
         )}
       </div>
