@@ -246,8 +246,14 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 		// Finding one issue everywhere it is present, which is what triaging
 		// one vulnerability across a portfolio asks for.
 		`CREATE INDEX "finding_vulnerability_idx" ON "finding" ("vulnerability_id", "closed_run_id")`,
-		// Carrying a decision forward to the same place elsewhere.
-		`CREATE INDEX "finding_place_idx" ON "finding" ("place_identity")`,
+		// Carrying a decision forward to the same place elsewhere, and reading
+		// the findings a decision is about: a decision names an issue at a
+		// place, and the place alone is not selective — one place in a switch
+		// image carries every one of the kernel's 4,900 issues, so a lookup by
+		// place read 4,900 rows to find the one the decision meant. With the
+		// issue beside it the lookup is exact. The prefix still serves what
+		// asks by place alone.
+		`CREATE INDEX "finding_place_idx" ON "finding" ("place_identity", "vulnerability_id")`,
 		// Both directions are asked constantly: what one person holds, and what
 		// nobody holds. The second is the one that matters and the one a plain
 		// index on the column would serve badly, since it is a null lookup.

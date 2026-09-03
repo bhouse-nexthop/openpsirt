@@ -283,24 +283,28 @@ comparison is what to read). The baseline column is the demo before its
 database was recreated for the index: the broadcom build held 240,945 open
 rows in 7,292 groups and a few claims had been made. Every later column is the
 recreated demo — 241,479 open rows in 7,329 groups for the same build, the
-mellanox build beside it, and no claims until step 4 makes some.
+mellanox build beside it, and no claims until step 3's measurement of the
+queue, which made forty deferral claims (32 landed; the rest hit a place
+already claimed) and kept them from there on — which is why "one finding"
+and the queue read slower in that column than in the one before it: they
+were reading claims for the first time.
 
-| Request | Before | 1. Index | 2. Split | 3. Graph |
-|---|---|---|---|---|
-| Findings page, warm | 2.02 s | 1.06 s | 0.34 s | 0.32 s |
-| Findings page, first request after start | 2.04 s | 1.08 s | 0.33 s | 0.48 s |
-| Page two | 2.05 s | 1.09 s | 0.34 s | 0.32 s |
-| Findings, `exploited` | 2.01 s | 1.51 s | 0.24 s | 0.22 s |
-| Findings, `search=ssl` | 2.01 s | 1.08 s | 0.34 s | 0.32 s |
-| Findings, `state=undecided` | 2.33 s | 1.60 s | 0.38 s | 0.36 s |
-| Findings, `beneath` the root | | | | 0.58 s |
-| By component | 0.81 s | 0.79 s | 0.26 s | 0.26 s |
-| The kernel's issue list | 1.08 s | 0.68 s | 0.15 s | 0.15 s |
-| One finding | 0.48 s | 0.02 s | 0.02 s | 0.01 s |
-| Unassigned | 0.18 s | 1.07 s | 0.40 s | 0.39 s |
-| Tree root | 0.53 s | 0.81 s | 0.82 s | 0.41 s |
-| Around the kernel | 0.28 s | 0.94 s | 0.95 s | 0.43 s |
-| Review queue | 0.28 s | 0.00 s | 0.00 s | 0.00 s |
+| Request | Before | 1. Index | 2. Split | 3. Graph | 4. Per page |
+|---|---|---|---|---|---|
+| Findings page, warm | 2.02 s | 1.06 s | 0.34 s | 0.32 s | **0.13 s** |
+| Findings page, first request after start | 2.04 s | 1.08 s | 0.33 s | 0.48 s | 0.14 s |
+| Page two | 2.05 s | 1.09 s | 0.34 s | 0.32 s | 0.12 s |
+| Findings, `exploited` | 2.01 s | 1.51 s | 0.24 s | 0.22 s | 0.10 s |
+| Findings, `search=ssl` | 2.01 s | 1.08 s | 0.34 s | 0.32 s | 0.13 s |
+| Findings, `state=undecided` | 2.33 s | 1.60 s | 0.38 s | 0.36 s | 0.20 s |
+| Findings, `beneath` the root | | | | 0.58 s | 0.23 s |
+| By component | 0.81 s | 0.79 s | 0.26 s | 0.26 s | 0.17 s |
+| The kernel's issue list | 1.08 s | 0.68 s | 0.15 s | 0.15 s | 0.10 s |
+| One finding, with claims standing | 0.48 s | 0.02 s | 0.02 s | 0.21 s | 0.01 s |
+| Unassigned | 0.18 s | 1.07 s | 0.40 s | 0.39 s | 0.24 s |
+| Tree root | 0.53 s | 0.81 s | 0.82 s | 0.41 s | 0.42 s |
+| Around the kernel | 0.28 s | 0.94 s | 0.95 s | 0.43 s | 0.43 s |
+| Review queue, 32 claims | 0.28 s | 0.00 s | 0.00 s | 1.27 s | **0.06 s** |
 
 *Step 1, the index.* `finding_group_idx (target_id, closed_run_id,
 visibility, vulnerability_id, component_id, urgency)` replaces
@@ -385,6 +389,76 @@ screen went from 0.82 s to 0.41 s and the neighbours of the kernel from
 0.95 s to 0.43 s; what is left of each is one 150 ms statement for the
 children and one 200 ms recursion for what is beneath them, on the loaded
 machine.
+
+*Step 4, one statement per page.* Four things, found with a query hook
+that times every statement a store call makes (the profile is not
+committed; it is a test that skips without a `PROFILE_DB`):
+
+- **The total rides on the page.** Every list counted its total as a
+  second statement making the same grouping over the same rows. It is now
+  `COUNT(*) OVER ()` on the grouping statement — the groups the filter
+  admits, counted after HAVING and before the limit, on all four engines —
+  and the count statement runs only when a page comes back empty. The
+  findings list, the by-component view, the issue list at a component and
+  the unassigned list.
+- **The decoration by two lists, not fifty pairs.** Reading the page's
+  fifty groups as `(issue = ? AND component = ?) OR ...` made SQLite walk
+  every open row in the build against the fifty: 150 ms, half the page.
+  `issue IN (...) AND component IN (...)` is fifty index seeks, 2 ms, and
+  the groups it admits beyond the page's are read and dropped.
+- **The queue's per-entry statements.** `DeferredSoFar` per entry and the
+  three statements per bulk claim's outliers are one statement for the
+  page and three for all its bulk claims. Statements per queue page of 32:
+  5 + 32 before, 8 after. That was not the queue's cost, though.
+- **The queue's cost was a join SQLite planned from the wrong end.** Every
+  statement that reads the findings a decision is about joins `decision`
+  to `finding` on the issue and the place. Planning without statistics,
+  SQLite takes "open" — `closed_run_id IS NULL` on an index — as an
+  equality matching ten rows, so it started from every open finding in the
+  deployment and probed the decisions once per row: 0.96 s to describe a
+  page of thirty-two decisions, 0.2 s to name the builds they cover, the
+  same 0.2 s on a finding with a claim standing. Two changes: the decision
+  is on the outside of those joins by construction (`CROSS JOIN ... WHERE`,
+  the same standard-SQL spelling the graph walk uses, an inner join on
+  every engine), and `finding_place_idx` carries the issue beside the
+  place, because one place in this image carries every one of the kernel's
+  4,900 issues and a lookup by place alone read all of them to find the one
+  the decision meant. Describe: 0.96 s to 35 ms; the queue's store call
+  216 ms to 22 ms; a finding's standing claims 195 ms to 1.6 ms. The
+  migration is edited in place again (DAT-29), so the demo was recreated
+  a second time.
+
+Statements per findings page, by the test's hook: 9 after step 2, 7 now
+(which product, groups with their total, what is shown about them, two
+names passes, the build's product and one climb). The findings page is
+under the 100 ms the plan set as done in raw statements — 102 ms for the
+grouping in-process on this machine, of which the SQLite driver is a
+known half: the same statement is 48 ms in C — and 0.13 s end to end
+through the proxy with another suite loading the machine.
+
+**What the profile says is left, and the shape of the fix**, none of it
+in this plan:
+
+- The tree's first screen is 0.42 s: one 150 ms statement for the
+  children (a grouped pass over 18,561 edges for the child count, and one
+  over the build's open findings for the per-child count) and one 200 ms
+  recursion for what is beneath the root's thirty children, whose
+  subtrees are together most of the build. A stored per-node subtree
+  size is not the answer (the count is over findings, which move); a
+  narrower one is to ask for what is beneath a child only when the row is
+  opened.
+- `beneath` under the root is 0.23 s because each of the page's statements
+  tests every open row against the subtree; an index led by the component
+  would let the subtree drive the scan.
+- **SQLite plans without statistics unless somebody runs `ANALYZE`**, and
+  three of the four traps found in this work were that: an equality on a
+  wide index taken for ten rows. `ANALYZE` after an ingest, on SQLite
+  only, is one statement and engine-conditional (the migrations already
+  branch on the engine for `DROP INDEX`); it was not added here because
+  DAT-02 says core carries no engine-specific SQL and that is a decision to
+  take rather than to slip in. Without it, every new join against
+  `finding` on SQLite needs to be checked with `EXPLAIN QUERY PLAN` on a
+  full-size database, which is what this work did.
 
 ## Decided on 2026-09-02, from the workflow review
 

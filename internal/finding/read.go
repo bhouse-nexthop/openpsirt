@@ -605,27 +605,9 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 	// groups on the page. The first version asked all of it in one statement,
 	// and the five correlated decision lookups per row ran against every one
 	// of a build's 240,945 open rows to produce fifty answers.
-	heads, err := s.heads(ctx, targetID, visible, limit, offset, filter)
+	heads, total, err := s.heads(ctx, targetID, visible, limit, offset, filter)
 	if err != nil {
 		return nil, 0, err
-	}
-
-	// Counted through the same filter as the page. A total that ignores the
-	// narrowing is worse than no total: it reports how much there is to decide
-	// about, which is the figure people quote, while the list beside it shows
-	// something else.
-	counted := s.db.NewSelect().
-		TableExpr("finding AS f").
-		ColumnExpr("f.vulnerability_id").
-		Where("f.target_id = ?", targetID).
-		Where("f.closed_run_id IS NULL").
-		Where("f.visibility IN (?)", bun.List(visible)).
-		GroupExpr("f.vulnerability_id, f.component_id")
-	total, err := s.db.NewSelect().
-		TableExpr("(?) AS grouped", filter.narrow(counted)).
-		Count(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count what is open: %w", err)
 	}
 
 	known, err := s.decorate(ctx, targetID, productID, visible, heads, filter)
@@ -723,6 +705,8 @@ type groupHead struct {
 	ComponentID     int64 `bun:"component_id"`
 	Places          int   `bun:"places"`
 	Urgency         int64 `bun:"urgency"`
+	// Total is how many groups the filter admits, the same on every row.
+	Total int `bun:"total"`
 }
 
 // groupKey names one group of the list.
@@ -747,9 +731,21 @@ type decorated struct {
 }
 
 // heads reads one page of the findings list's groups, most urgent first, from
-// finding's covering index and nothing else.
+// finding's covering index and nothing else, and how many groups there are.
+//
+// The total rides on the page. It is counted through the same filter as the
+// page — a total that ignores the narrowing is worse than no total: it
+// reports how much there is to decide about, which is the figure people
+// quote, while the list beside it shows something else — and it used to be
+// a second statement making the same grouping over the same rows to count
+// what the first had just grouped. `COUNT(*) OVER ()` is the number of rows
+// the grouping produced after the HAVING clauses and before the limit,
+// which is exactly that, on all four engines (window functions are in each
+// of them), for the cost of nothing. Where the page comes back empty — an
+// offset past the end — there is no row to carry it and it is counted
+// separately.
 func (s *Store) heads(ctx context.Context, targetID int64, visible []access.Visibility,
-	limit, offset int, filter Filter) ([]groupHead, error) {
+	limit, offset int, filter Filter) ([]groupHead, int, error) {
 
 	var heads []groupHead
 	page := s.db.NewSelect().
@@ -761,6 +757,7 @@ func (s *Store) heads(ctx context.Context, targetID int64, visible []access.Visi
 		// about one issue in one component, so what should decide where that
 		// decision appears is the worst of what it covers.
 		ColumnExpr("MAX(f.urgency) AS urgency").
+		ColumnExpr("COUNT(*) OVER () AS total").
 		Where("f.target_id = ?", targetID).
 		Where("f.closed_run_id IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
@@ -773,9 +770,25 @@ func (s *Store) heads(ctx context.Context, targetID int64, visible []access.Visi
 		OrderExpr("urgency DESC, places DESC, f.vulnerability_id, f.component_id").
 		Limit(limit).Offset(offset)
 	if err := filter.narrow(page).Scan(ctx, &heads); err != nil {
-		return nil, fmt.Errorf("read what is open: %w", err)
+		return nil, 0, fmt.Errorf("read what is open: %w", err)
 	}
-	return heads, nil
+	if len(heads) > 0 {
+		return heads, heads[0].Total, nil
+	}
+	counted := s.db.NewSelect().
+		TableExpr("finding AS f").
+		ColumnExpr("f.vulnerability_id").
+		Where("f.target_id = ?", targetID).
+		Where("f.closed_run_id IS NULL").
+		Where("f.visibility IN (?)", bun.List(visible)).
+		GroupExpr("f.vulnerability_id, f.component_id")
+	total, err := s.db.NewSelect().
+		TableExpr("(?) AS grouped", filter.narrow(counted)).
+		Count(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count what is open: %w", err)
+	}
+	return heads, total, nil
 }
 
 // decorate reads what the page shows about each of its groups, in one
@@ -791,6 +804,12 @@ func (s *Store) decorate(ctx context.Context, targetID, productID int64, visible
 	known := make(map[groupKey]decorated, len(heads))
 	if len(heads) == 0 {
 		return known, nil
+	}
+	issues := make([]int64, 0, len(heads))
+	components := make([]int64, 0, len(heads))
+	for _, head := range heads {
+		issues = append(issues, head.VulnerabilityID)
+		components = append(components, head.ComponentID)
 	}
 
 	// How far each group has been decided, counted the way the state filter
@@ -835,17 +854,16 @@ func (s *Store) decorate(ctx context.Context, targetID, productID int64, visible
 		Where("f.target_id = ?", targetID).
 		Where("f.closed_run_id IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
-		// The page's groups and no other, each named by both halves of its
-		// key. Two lists — these issues, these components — would admit an
-		// issue from one row in the component of another, and read every
-		// place of it.
-		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
-			for _, head := range heads {
-				q = q.WhereOr("(f.vulnerability_id = ? AND f.component_id = ?)",
-					head.VulnerabilityID, head.ComponentID)
-			}
-			return q
-		}).
+		// The page's issues and the page's components, as two lists. That
+		// admits an issue from one row in the component of another, and
+		// those groups are read and dropped; what it buys is the index. As
+		// fifty `(issue = ? AND component = ?)` pairs joined by OR, SQLite
+		// walked every open row in the build against the fifty — 150 ms,
+		// half the page — where two lists are fifty index seeks, 2 ms. A
+		// page is mostly one component's issues, so the extra groups are
+		// few, and each is one seek too.
+		Where("f.vulnerability_id IN (?)", bun.List(issues)).
+		Where("f.component_id IN (?)", bun.List(components)).
 		GroupExpr("f.vulnerability_id, f.component_id")
 	if err := filter.narrow(q).Scan(ctx, &rows); err != nil {
 		return nil, fmt.Errorf("read about what is open: %w", err)
@@ -1222,35 +1240,42 @@ func (s *Store) AtComponent(ctx context.Context, subject access.Subject, targetI
 		return q
 	}
 
-	// Grouped and counted, not COUNT DISTINCT: with no GROUP BY, Count() emits
-	// its own count(*) and the expression never reaches the statement, so the
-	// total counted places while the list counts issues.
-	total, err := s.db.NewSelect().
-		TableExpr(`(?) AS "grouped"`, narrow(s.db.NewSelect()).
-			ColumnExpr("f.vulnerability_id").GroupExpr("f.vulnerability_id")).
-		Count(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count what is open against this component: %w", err)
-	}
-
 	// The page in two statements, as the findings list is read: which issues,
 	// off the covering index, and then what is shown about each. On a real
 	// image one component holds most of the build's open rows — the kernel,
 	// 222,435 of 272,539 — and grouping them with three joins under the
-	// aggregate cost 0.35 s where the index alone answers in 0.04 s.
+	// aggregate cost 0.35 s where the index alone answers in 0.04 s. The
+	// total rides on the page, as the findings list's does.
 	var heads []struct {
 		VulnerabilityID int64 `bun:"vulnerability_id"`
 		Places          int   `bun:"places"`
+		Total           int   `bun:"total"`
 	}
 	err = narrow(s.db.NewSelect()).
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("COUNT(*) AS places").
+		ColumnExpr("COUNT(*) OVER () AS total").
 		GroupExpr("f.vulnerability_id").
 		OrderExpr("MAX(f.urgency) DESC, f.vulnerability_id").
 		Limit(limit).Offset(offset).
 		Scan(ctx, &heads)
 	if err != nil {
 		return nil, 0, fmt.Errorf("read what is open against this component: %w", err)
+	}
+	total := 0
+	if len(heads) > 0 {
+		total = heads[0].Total
+	} else {
+		// Grouped and counted, not COUNT DISTINCT: with no GROUP BY, Count()
+		// emits its own count(*) and the expression never reaches the
+		// statement, so the total counted places while the list counts
+		// issues.
+		if total, err = s.db.NewSelect().
+			TableExpr(`(?) AS "grouped"`, narrow(s.db.NewSelect()).
+				ColumnExpr("f.vulnerability_id").GroupExpr("f.vulnerability_id")).
+			Count(ctx); err != nil {
+			return nil, 0, fmt.Errorf("count what is open against this component: %w", err)
+		}
 	}
 	issues := make([]int64, 0, len(heads))
 	for _, head := range heads {
@@ -1409,6 +1434,7 @@ func (s *Store) ComponentGroups(ctx context.Context, subject access.Subject, tar
 		Issues      int   `bun:"issues"`
 		Places      int   `bun:"places"`
 		Urgency     int64 `bun:"urgency"`
+		Total       int   `bun:"total"`
 	}
 	// Everything read here is in finding's covering index, so this is one
 	// walk of it however large the build is; whether anything is exploited
@@ -1422,6 +1448,8 @@ func (s *Store) ComponentGroups(ctx context.Context, subject access.Subject, tar
 		ColumnExpr("COUNT(DISTINCT f.vulnerability_id) AS issues").
 		ColumnExpr("COUNT(*) AS places").
 		ColumnExpr("MAX(f.urgency) AS urgency").
+		// The total rides on the page, as the findings list's does.
+		ColumnExpr("COUNT(*) OVER () AS total").
 		Where("f.target_id = ?", targetID).
 		Where("f.closed_run_id IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
@@ -1435,18 +1463,22 @@ func (s *Store) ComponentGroups(ctx context.Context, subject access.Subject, tar
 		return nil, 0, fmt.Errorf("read what is open by component: %w", err)
 	}
 
-	counted := s.db.NewSelect().
-		TableExpr("finding AS f").
-		ColumnExpr("f.component_id").
-		Where("f.target_id = ?", targetID).
-		Where("f.closed_run_id IS NULL").
-		Where("f.visibility IN (?)", bun.List(visible)).
-		GroupExpr("f.component_id")
-	total, err := s.db.NewSelect().
-		TableExpr("(?) AS grouped", filter.narrow(counted)).
-		Count(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count what is open by component: %w", err)
+	total := 0
+	if len(rows) > 0 {
+		total = rows[0].Total
+	} else {
+		counted := s.db.NewSelect().
+			TableExpr("finding AS f").
+			ColumnExpr("f.component_id").
+			Where("f.target_id = ?", targetID).
+			Where("f.closed_run_id IS NULL").
+			Where("f.visibility IN (?)", bun.List(visible)).
+			GroupExpr("f.component_id")
+		if total, err = s.db.NewSelect().
+			TableExpr("(?) AS grouped", filter.narrow(counted)).
+			Count(ctx); err != nil {
+			return nil, 0, fmt.Errorf("count what is open by component: %w", err)
+		}
 	}
 
 	ids := make([]int64, 0, len(rows))

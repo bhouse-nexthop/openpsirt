@@ -183,14 +183,25 @@ func (s *Store) Queue(ctx context.Context, subject access.Subject, limit, offset
 		return nil, 0, err
 	}
 
+	deferred, err := s.deferredSoFar(ctx, representatives)
+	if err != nil {
+		return nil, 0, err
+	}
+	var bulk []Claim
+	for _, row := range page {
+		if claim := byID[row.ClaimID]; claim.Kind == TogetherClaim {
+			bulk = append(bulk, claim)
+		}
+	}
+	outliers, err := s.outliersFor(ctx, bulk)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	out := make([]Waiting, 0, len(page))
 	for _, row := range page {
 		claim := byID[row.ClaimID]
 		representative := first[row.ClaimID]
-		deferred, err := s.DeferredSoFar(ctx, representative)
-		if err != nil {
-			return nil, 0, err
-		}
 		before := false
 		for _, each := range rows {
 			if each.ClaimID == row.ClaimID && seenBefore[each.ID] {
@@ -202,18 +213,14 @@ func (s *Store) Queue(ctx context.Context, subject access.Subject, limit, offset
 			Claim: claim, Decision: representative,
 			Reasoning:          reasoning[representative.ID],
 			PreviouslyApproved: before,
-			DeferredSoFar:      deferred,
+			DeferredSoFar:      deferred[representative.ID],
 			Decisions:          count[row.ClaimID],
 			Issues:             len(issues[row.ClaimID]),
 			Places:             len(places[row.ClaimID]),
 			Builds:             builds[row.ClaimID],
 		}
 		if claim.Kind == TogetherClaim {
-			outliers, err := s.outliersOf(ctx, claim)
-			if err != nil {
-				return nil, 0, err
-			}
-			one.Outliers = outliers
+			one.Outliers = outliers[claim.ID]
 		}
 		out = append(out, one)
 	}
@@ -232,7 +239,10 @@ func (s *Store) buildsCovered(ctx context.Context, claims []int64) (map[int64][]
 	}
 	err := s.db.NewSelect().
 		TableExpr("decision AS de").
-		Join("JOIN finding AS f ON f.vulnerability_id = de.vulnerability_id AND f.place_identity = de.place_identity").
+		// The decision on the outside of the join, for the reason Describe
+		// gives: SQLite otherwise starts from every open finding.
+		Join("CROSS JOIN finding AS f").
+		Where("f.vulnerability_id = de.vulnerability_id AND f.place_identity = de.place_identity").
 		Join("JOIN component AS c ON c.id = f.component_id").
 		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
 		Join("JOIN target AS tg ON tg.id = f.target_id").
@@ -259,35 +269,46 @@ func (s *Store) buildsCovered(ctx context.Context, claims []int64) (map[int64][]
 	return builds, nil
 }
 
-// outliersOf finds what in a bulk claim does not look like the rest.
-//
-// Four signals, all already stored: whether an issue is known to be
-// exploited, whether it is rated critical or high, whether a fix is
-// available, and whether its description carries the term the set was
-// narrowed by. The last is only asked where the term is known — a set
-// narrowed some other way has nothing to compare against.
-func (s *Store) outliersOf(ctx context.Context, claim Claim) (*Outliers, error) {
+// outliersFor reads the outliers of every bulk claim on a page, in three
+// statements for the page rather than three per claim: which issues each
+// claim covers, what those issues are, and where a fix is known.
+func (s *Store) outliersFor(ctx context.Context, claims []Claim) (map[int64]*Outliers, error) {
+	out := make(map[int64]*Outliers, len(claims))
+	if len(claims) == 0 {
+		return out, nil
+	}
+	claimIDs := make([]int64, 0, len(claims))
+	for _, claim := range claims {
+		claimIDs = append(claimIDs, claim.ID)
+		out[claim.ID] = &Outliers{Rows: []Outlier{}}
+	}
+
 	var heads []struct {
+		ClaimID         int64 `bun:"claim_id"`
 		VulnerabilityID int64 `bun:"vulnerability_id"`
 		DecisionID      int64 `bun:"decision_id"`
 	}
 	if err := s.db.NewSelect().
 		TableExpr("decision AS de").
+		ColumnExpr("de.claim_id AS claim_id").
 		ColumnExpr("de.vulnerability_id AS vulnerability_id").
 		ColumnExpr("MIN(de.id) AS decision_id").
-		Where("de.claim_id = ?", claim.ID).
-		GroupExpr("de.vulnerability_id").
+		Where("de.claim_id IN (?)", bun.List(claimIDs)).
+		GroupExpr("de.claim_id, de.vulnerability_id").
 		Scan(ctx, &heads); err != nil {
 		return nil, fmt.Errorf("read what a bulk claim covers: %w", err)
 	}
 	if len(heads) == 0 {
-		return &Outliers{Rows: []Outlier{}}, nil
+		return out, nil
 	}
 	issueIDs := make([]int64, 0, len(heads))
-	decisionOf := make(map[int64]int64, len(heads))
+	covers := map[int64]map[int64]int64{}
 	for _, head := range heads {
 		issueIDs = append(issueIDs, head.VulnerabilityID)
-		decisionOf[head.VulnerabilityID] = head.DecisionID
+		if covers[head.ClaimID] == nil {
+			covers[head.ClaimID] = map[int64]int64{}
+		}
+		covers[head.ClaimID][head.VulnerabilityID] = head.DecisionID
 	}
 
 	var issues []finding.Vulnerability
@@ -295,35 +316,66 @@ func (s *Store) outliersOf(ctx context.Context, claim Claim) (*Outliers, error) 
 		Where("id IN (?)", bun.List(issueIDs)).Scan(ctx); err != nil {
 		return nil, fmt.Errorf("read the issues a bulk claim covers: %w", err)
 	}
+	byIssue := make(map[int64]finding.Vulnerability, len(issues))
+	for _, issue := range issues {
+		byIssue[issue.ID] = issue
+	}
 
 	// Where a fix is known, from the open findings the claim's rows are
 	// about. A claim covers one component, so one answer per issue is the
 	// ordinary case and the smallest stated version stands in otherwise.
 	var fixes []struct {
+		ClaimID         int64  `bun:"claim_id"`
 		VulnerabilityID int64  `bun:"vulnerability_id"`
 		FixedIn         string `bun:"fixed_in"`
 	}
 	if err := s.db.NewSelect().
 		TableExpr("finding AS f").
 		Join("JOIN decision AS de ON de.vulnerability_id = f.vulnerability_id AND de.place_identity = f.place_identity").
+		ColumnExpr("de.claim_id AS claim_id").
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("MIN(f.fixed_in) AS fixed_in").
-		Where("de.claim_id = ?", claim.ID).
+		Where("de.claim_id IN (?)", bun.List(claimIDs)).
 		Where("f.closed_run_id IS NULL").
 		Where("f.fixed_in <> ''").
-		GroupExpr("f.vulnerability_id").
+		GroupExpr("de.claim_id, f.vulnerability_id").
 		Scan(ctx, &fixes); err != nil {
 		return nil, fmt.Errorf("read which of these have a fix: %w", err)
 	}
-	fixedIn := make(map[int64]string, len(fixes))
+	fixedIn := map[int64]map[int64]string{}
 	for _, fix := range fixes {
-		fixedIn[fix.VulnerabilityID] = fix.FixedIn
+		if fixedIn[fix.ClaimID] == nil {
+			fixedIn[fix.ClaimID] = map[int64]string{}
+		}
+		fixedIn[fix.ClaimID][fix.VulnerabilityID] = fix.FixedIn
 	}
+
+	for _, claim := range claims {
+		out[claim.ID] = outliersOf(claim, covers[claim.ID], byIssue, fixedIn[claim.ID])
+	}
+	return out, nil
+}
+
+// outliersOf picks, from the issues one bulk claim covers, the rows that do
+// not look like the rest.
+func outliersOf(claim Claim, decisionOf map[int64]int64, byIssue map[int64]finding.Vulnerability,
+	fixedIn map[int64]string) *Outliers {
 
 	term := narrowingTerm(orEmpty(claim.SelectedBy))
 	out := &Outliers{Rows: []Outlier{}}
-	candidates := make([]Outlier, 0, len(issues))
-	for _, issue := range issues {
+	candidates := make([]Outlier, 0, len(decisionOf))
+	// Walked in issue order so the result is the same on every engine and
+	// every run, whatever order a map hands them out in.
+	issueIDs := make([]int64, 0, len(decisionOf))
+	for id := range decisionOf {
+		issueIDs = append(issueIDs, id)
+	}
+	sort.Slice(issueIDs, func(i, j int) bool { return issueIDs[i] < issueIDs[j] })
+	for _, id := range issueIDs {
+		issue, known := byIssue[id]
+		if !known {
+			continue
+		}
 		word := issue.Severity
 		if issue.AssessedSeverity != nil && *issue.AssessedSeverity != "" {
 			word = *issue.AssessedSeverity
@@ -372,7 +424,7 @@ func (s *Store) outliersOf(ctx context.Context, claim Claim) (*Outliers, error) 
 		candidates = candidates[:outlierRows]
 	}
 	out.Rows = candidates
-	return out, nil
+	return out
 }
 
 // narrowingTerm reads the term a bulk set was narrowed by, where the record
@@ -498,21 +550,61 @@ func (s *Store) everApproved(ctx context.Context, ids []int64) (map[int64]bool, 
 // for just under the threshold never needs agreement — and four consecutive
 // twenty-nine day deferrals are a year nobody approved.
 func (s *Store) DeferredSoFar(ctx context.Context, decision Decision) (time.Duration, error) {
+	decision.ID = -1
+	totals, err := s.deferredSoFar(ctx, []Decision{decision})
+	if err != nil {
+		return 0, err
+	}
+	return totals[decision.ID], nil
+}
+
+// deferredSoFar reads, in one statement for all of them, how long each of
+// these decisions' places has been put off for in total, keyed by the
+// decision asked about.
+//
+// One statement for the page rather than one per row: the deferrals in the
+// products on the page are read together and matched to each decision's
+// place here. The set is small — a deferral is a decision of ours, in these
+// products, and most decisions are not deferrals — where a lookup per row
+// was a statement per queue entry.
+func (s *Store) deferredSoFar(ctx context.Context, decisions []Decision) (map[int64]time.Duration, error) {
+	totals := make(map[int64]time.Duration, len(decisions))
+	if len(decisions) == 0 {
+		return totals, nil
+	}
+	products := map[int64]bool{}
+	issues := map[int64]bool{}
+	for _, decision := range decisions {
+		products[decision.ProductID] = true
+		issues[decision.VulnerabilityID] = true
+	}
+	productIDs := make([]int64, 0, len(products))
+	for id := range products {
+		productIDs = append(productIDs, id)
+	}
+	issueIDs := make([]int64, 0, len(issues))
+	for id := range issues {
+		issueIDs = append(issueIDs, id)
+	}
+
 	var deferrals []Decision
 	if err := s.db.NewSelect().Model(&deferrals).
-		Where("product_id = ?", decision.ProductID).
-		Where("vulnerability_id = ?", decision.VulnerabilityID).
-		Where("place_identity = ?", decision.PlaceIdentity).
+		Where("product_id IN (?)", bun.List(productIDs)).
+		Where("vulnerability_id IN (?)", bun.List(issueIDs)).
 		Where("outcome = ?", Deferred).
 		// What was taken back was not time the finding spent put off. Counting
 		// a withdrawn deferral would make the number shown to an approver —
 		// "how long has this been postponed" — include time it was not.
 		Where("state <> ?", Withdrawn).
 		Where("deferred_until IS NOT NULL").Scan(ctx); err != nil {
-		return 0, fmt.Errorf("read how long this has been put off: %w", err)
+		return nil, fmt.Errorf("read how long these have been put off: %w", err)
 	}
 
-	var total time.Duration
+	type place struct {
+		product, issue int64
+		at             string
+	}
+	spans := map[place]time.Duration{}
 	for _, deferral := range deferrals {
 		if deferral.DeferredUntil == nil {
 			continue
@@ -522,10 +614,13 @@ func (s *Store) DeferredSoFar(ctx context.Context, decision Decision) (time.Dura
 		// part already spent. The question is how long this has been put off
 		// for, not how long it has been put off so far.
 		if span := deferral.DeferredUntil.Sub(deferral.ProposedAt); span > 0 {
-			total += span
+			spans[place{deferral.ProductID, deferral.VulnerabilityID, deferral.PlaceIdentity}] += span
 		}
 	}
-	return total, nil
+	for _, decision := range decisions {
+		totals[decision.ID] = spans[place{decision.ProductID, decision.VulnerabilityID, decision.PlaceIdentity}]
+	}
+	return totals, nil
 }
 
 // NeedsApproval reports whether a proposal may stand on its own.

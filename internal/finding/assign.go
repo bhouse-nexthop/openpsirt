@@ -300,15 +300,6 @@ func (s *Store) Unassigned(ctx context.Context, subject access.Subject, scope Sc
 	// The derived table is named "grouped" and quoted. GROUPS is a reserved
 	// word in MySQL 8 — it names a window frame type — so the obvious alias
 	// is a syntax error on one engine and fine on the other three (DAT-33).
-	total, err := s.db.NewSelect().
-		TableExpr(`(?) AS "grouped"`, narrow(s.db.NewSelect()).
-			ColumnExpr("f.vulnerability_id").
-			GroupExpr("f.vulnerability_id, f.component_id, f.target_id")).
-		Count(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count what nobody is dealing with: %w", err)
-	}
-
 	// The page in two statements: which groups, then their names. The first
 	// groups and orders over finding and the two joins the scoping needs; the
 	// names of the issue, the component and the build come from a second
@@ -321,19 +312,36 @@ func (s *Store) Unassigned(ctx context.Context, subject access.Subject, scope Sc
 		TargetID        int64 `bun:"target_id"`
 		Urgency         int64 `bun:"urgency"`
 		Places          int   `bun:"places"`
+		Total           int   `bun:"total"`
 	}
-	err = narrow(s.db.NewSelect()).
+	err := narrow(s.db.NewSelect()).
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("f.component_id AS component_id").
 		ColumnExpr("f.target_id AS target_id").
 		ColumnExpr("MAX(f.urgency) AS urgency").
 		ColumnExpr("COUNT(*) AS places").
+		// The total rides on the page, as the findings list's does: the
+		// groups the narrowing admits, counted after the grouping and before
+		// the limit, in the statement that groups them.
+		ColumnExpr("COUNT(*) OVER () AS total").
 		GroupExpr("f.vulnerability_id, f.component_id, f.target_id").
 		OrderExpr("urgency DESC, f.vulnerability_id, f.component_id, f.target_id").
 		Limit(limit).Offset(offset).
 		Scan(ctx, &heads)
 	if err != nil {
 		return nil, 0, fmt.Errorf("read what nobody is dealing with: %w", err)
+	}
+	total := 0
+	if len(heads) > 0 {
+		total = heads[0].Total
+	} else {
+		if total, err = s.db.NewSelect().
+			TableExpr(`(?) AS "grouped"`, narrow(s.db.NewSelect()).
+				ColumnExpr("f.vulnerability_id").
+				GroupExpr("f.vulnerability_id, f.component_id, f.target_id")).
+			Count(ctx); err != nil {
+			return nil, 0, fmt.Errorf("count what nobody is dealing with: %w", err)
+		}
 	}
 
 	issues := make([]int64, 0, len(heads))
