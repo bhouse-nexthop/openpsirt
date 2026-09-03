@@ -1392,6 +1392,35 @@ So: when running `go test` by hand rather than through `make check`, export the
 engine URLs, and check the subtest names in the output actually list four
 engines before believing a result.
 
+## The live audit of the day's work (2026-09-03)
+
+The demo rebuilt from an empty database on the day's schema — eight indexes
+dropped, three columns given their code, a lease table added, a unique
+constraint on assessments — and produced **the same counts as before**: 7,329
+findings on broadcom, 7,352 on mellanox. So the migrations apply clean and
+nothing about the day's changes moved a number that should not have moved.
+
+Then the new behavior, against a real image rather than a fixture:
+
+- **A product's triage line and its end-of-life date** set and read back
+  through the API, and the release correctly reporting the product's date as
+  inherited rather than as its own.
+- **Retiring a product took the running-out list from 3 to 0**, and the two
+  builds went `retired=true, quiet=false` in coverage while the other product
+  stayed `retired=false`. Clearing the date brought the list back to 3, so the
+  reversibility is real and not just a column that accepts NULL.
+- **The approval callout, and the case that makes it honest.** Downgrading a
+  known-exploited high to low reported **0 findings coming off the working
+  list** — because exploitation is never below a line, whatever the rating
+  says. A naive version comparing severities would have told the approver 48.
+  Downgrading a non-exploited critical reported **6 off the list in 1 product**,
+  which is the number somebody is actually being asked to agree to.
+
+That second one is worth keeping. I went looking at it as a suspected bug —
+`off_the_list` came back absent where I expected 48 — and it was the rule
+working. The audit that finds a defect and the audit that confirms a rule look
+identical until you read the data.
+
 ## An approver is told which of two things they are agreeing to (2026-09-03)
 
 `DECISIONS.md` §4 asked whether a downgrade below the triage line should be
