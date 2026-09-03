@@ -717,12 +717,12 @@ func reachBody(r finding.Reach) ReachBody {
 	}
 	for _, m := range r.Automatic {
 		body.Automatic = append(body.Automatic, MatchBody{
-			Stream: m.Stream, Variant: m.Variant, Version: m.ComponentUpstream, Places: m.Places,
+			Stream: m.Stream, Variant: m.Variant, Version: m.Version, Places: m.Places,
 		})
 	}
 	for _, m := range r.Differing {
 		body.Differing = append(body.Differing, MatchBody{
-			Stream: m.Stream, Variant: m.Variant, Version: m.ComponentUpstream, Places: m.Places,
+			Stream: m.Stream, Variant: m.Variant, Version: m.Version, Places: m.Places,
 		})
 	}
 	return body
@@ -732,10 +732,11 @@ func reachBody(r finding.Reach) ReachBody {
 type MatchBody struct {
 	Stream  string `json:"stream"`
 	Variant string `json:"variant"`
-	// Version is what that build has, and why this is a separate question.
+	// Version is what that build ships, and why this is a separate question.
 	// Where it matched, the decision already reaches there and nobody is
-	// asked.
-	Version string `json:"version,omitempty" doc:"The upstream version that build has, which differs from this one"`
+	// asked. It is the version the decision route resolves a name by, so a
+	// caller applying the decision there passes it back as ?version=.
+	Version string `json:"version,omitempty" doc:"The version that build ships under this name — pass it as ?version= when applying a decision there"`
 	Places  int    `json:"places" doc:"How many places it sits at there"`
 }
 

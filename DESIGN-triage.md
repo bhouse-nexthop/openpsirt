@@ -743,7 +743,11 @@ carrying a stale copy of anything.
 
 What remains is the builds where the versions differ. The decision does not
 reach them, because it was a claim about code they are not running, so somebody
-has to say whether the same reasoning holds there.
+has to say whether the same reasoning holds there. Differing is judged by the
+same expression the decision is keyed on — the upstream version where the
+component is a patched fork, the shipped version otherwise — and each such
+build is named with the version it ships, one entry per version, which is what
+a request applying the decision there names the component by.
 
 Those are offered **one at a time rather than as one answer**. A component may
 be used in a later release and not an earlier one, and the reasoning that made

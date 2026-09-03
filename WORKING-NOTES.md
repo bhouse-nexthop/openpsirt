@@ -1219,6 +1219,18 @@ what the build claimed in its own scan file — and only `internal/sbom` ever
 writes one. A filter built on it reported the vendor's claims as our own
 triage. Before reading a column, check what writes it.
 
+**A column and the expression the code keys on are not the same thing.**
+The decision is keyed on `COALESCE(NULLIF(c.upstream_version, ''), c.version)`;
+the reach that says which builds a decision would cover read `c.upstream_version`
+raw. That column is empty for anything that is not a patched fork, so every
+other build read as "differing" — including one at the same version, which the
+lookup already covered — and the version it named for each was that empty
+column, so the interface applied the decision there with no version and a build
+shipping the name at four versions refused it. Found by the live audit's one
+console error, on the first demo with two variants. Where an expression is
+exported for one path to key on (`finding.ComponentUpstreamExpr`), every path
+comparing against it uses the export.
+
 **Two test runs against the same databases corrupt each other, and a single
 `go test` counts as a run.** This happened twice in one session, both times by
 forgetting a gate was still going in the background. `ps -eo cmd | grep '[m]ake

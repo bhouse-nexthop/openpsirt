@@ -1983,7 +1983,7 @@ components:
         variant:
           type: string
         version:
-          description: The upstream version that build has, which differs from this one
+          description: The version that build ships under this name — pass it as ?version= when applying a decision there
           type: string
       required:
         - stream

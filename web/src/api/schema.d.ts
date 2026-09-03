@@ -2660,7 +2660,7 @@ export interface components {
             places: number;
             stream: string;
             variant: string;
-            /** @description The upstream version that build has, which differs from this one */
+            /** @description The version that build ships under this name — pass it as ?version= when applying a decision there */
             version?: string;
         };
         MeasuredBody: {

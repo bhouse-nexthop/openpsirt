@@ -11,6 +11,8 @@ import { Failed } from "./Failed";
 // summary that is confirmed, and that count is what the approval records.
 
 export type Other = {
+  // One entry per build and version; the build alone is the label.
+  key: string;
   build: string;
   stream: string;
   variant: string;
@@ -74,8 +76,8 @@ export function Review({
       if (each) {
         setApplied((prev) => {
           const next = new Set(prev);
-          if (action === "apply") next.add(each.build);
-          else next.delete(each.build);
+          if (action === "apply") next.add(each.key);
+          else next.delete(each.key);
           return next;
         });
       }
@@ -83,7 +85,7 @@ export function Review({
     }
   }
 
-  const chosen = plan.offered.filter((o) => applied.has(o.build));
+  const chosen = plan.offered.filter((o) => applied.has(o.key));
 
   useEffect(() => {
     if (!open) return;
@@ -176,7 +178,7 @@ export function Review({
             ) : (
               <>
                 {plan.offered.map((o, i) => (
-                  <span key={o.build}>
+                  <span key={o.key}>
                     {i > 0 && ", "}
                     <span className="id">{o.build}</span>
                   </span>
@@ -192,7 +194,7 @@ export function Review({
             <h5>Not offered · {plan.blocked.length}</h5>
             <p>
               {plan.blocked.map((o, i) => (
-                <span key={o.build}>
+                <span key={o.key}>
                   {i > 0 && <br />}
                   <span className="id">{o.build}</span> — {o.note}
                 </span>
@@ -215,7 +217,7 @@ export function Review({
     );
   } else if (step <= n) {
     const each = plan.offered[step - 1]!;
-    const state = applied.has(each.build) ? "applied" : "";
+    const state = applied.has(each.key) ? "applied" : "";
     title = `Does the same reasoning hold here? — ${step} of ${n}`;
     body = (
       <>
@@ -265,7 +267,7 @@ export function Review({
     );
   } else {
     title = "Confirm";
-    const skipped = plan.offered.filter((o) => !applied.has(o.build));
+    const skipped = plan.offered.filter((o) => !applied.has(o.key));
     const records = plan.covered + chosen.reduce((sum, o) => sum + (o.places || 1), 0);
     body = (
       <>
@@ -282,7 +284,7 @@ export function Review({
                 <>
                   :{" "}
                   {chosen.map((o, i) => (
-                    <span key={o.build}>
+                    <span key={o.key}>
                       {i > 0 && ", "}
                       <span className="id">{o.build}</span>
                     </span>
@@ -304,7 +306,7 @@ export function Review({
             <h5>Left open</h5>
             <p>
               {skipped.map((o, i) => (
-                <span key={o.build}>
+                <span key={o.key}>
                   {i > 0 && ", "}
                   <span className="id">{o.build}</span>
                 </span>

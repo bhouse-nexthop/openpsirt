@@ -36,6 +36,11 @@ type Match struct {
 	TargetID int64
 	Stream   string
 	Variant  string
+	// Version is what that build ships under the name, which is what a route
+	// naming a component resolves. For anything that is not a patched fork it
+	// is the same as the upstream version below; for a fork it is the fork's
+	// own, and the route knows nothing else.
+	Version string
 	// ComponentUpstream and ConsumerUpstream are what that build has. They are
 	// why this is a separate question: where they are identical the decision
 	// already applies there and nobody is asked, and where they differ it is a
@@ -70,6 +75,7 @@ func (s *Store) Reaching(ctx context.Context, subject access.Subject, at Decidin
 		TargetID          int64  `bun:"target_id"`
 		Stream            string `bun:"stream"`
 		Variant           string `bun:"variant"`
+		Version           string `bun:"version"`
 		ComponentUpstream string `bun:"component_upstream"`
 		ConsumerUpstream  string `bun:"consumer_upstream"`
 		Places            int    `bun:"places"`
@@ -84,8 +90,17 @@ func (s *Store) Reaching(ctx context.Context, subject access.Subject, at Decidin
 		ColumnExpr("f.target_id AS target_id").
 		ColumnExpr("st.display_name AS stream").
 		ColumnExpr("va.display_name AS variant").
-		ColumnExpr("c.upstream_version AS component_upstream").
-		ColumnExpr("COALESCE(uc.upstream_version, '') AS consumer_upstream").
+		ColumnExpr("c.version AS version").
+		// The same expressions the decision is keyed on (place.go). Read raw,
+		// the column is empty for everything that is not a patched fork, so
+		// every other build read as "differing" from one whose key had
+		// fallen back to the shipped version — including builds at the very
+		// same version, which the decision already reached by lookup.
+		ColumnExpr(ComponentUpstreamExpr+" AS component_upstream").
+		// Exactly the grouped expression, not wrapped once more: MySQL's
+		// only_full_group_by matches a selected expression to a grouped one by
+		// text, and the expression already answers '' for no consumer.
+		ColumnExpr(ConsumerUpstreamExpr+" AS consumer_upstream").
 		ColumnExpr("COUNT(*) AS places").
 		Where("st.product_id = ?", at.ProductID).
 		Where("f.vulnerability_id = ?", at.VulnerabilityID).
@@ -93,8 +108,9 @@ func (s *Store) Reaching(ctx context.Context, subject access.Subject, at Decidin
 		Where("f.target_id <> ?", exceptTargetID).
 		Where("f.closed_run_id IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
-		GroupExpr("f.target_id, st.display_name, va.display_name, c.upstream_version, uc.upstream_version").
-		OrderExpr("st.display_name, va.display_name").
+		GroupExpr("f.target_id, st.display_name, va.display_name, c.version, "+
+			ComponentUpstreamExpr+", "+ConsumerUpstreamExpr).
+		OrderExpr("st.display_name, va.display_name, c.version").
 		Scan(ctx, &rows)
 	if err != nil {
 		return Reach{}, fmt.Errorf("look for the same issue elsewhere: %w", err)
@@ -103,7 +119,7 @@ func (s *Store) Reaching(ctx context.Context, subject access.Subject, at Decidin
 	reach := Reach{Here: at.Places}
 	for _, row := range rows {
 		match := Match{
-			TargetID: row.TargetID, Stream: row.Stream, Variant: row.Variant,
+			TargetID: row.TargetID, Stream: row.Stream, Variant: row.Variant, Version: row.Version,
 			ComponentUpstream: row.ComponentUpstream, ConsumerUpstream: row.ConsumerUpstream,
 			Places: row.Places,
 		}

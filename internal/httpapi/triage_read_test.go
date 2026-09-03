@@ -632,6 +632,104 @@ func TestOnlyAnAdministratorMovesSomebodyElsesWork(t *testing.T) {
 	})
 }
 
+// scannedAlso is a second build of the same product, holding the same issue at
+// the same place, with the library at the given version.
+func (r *reach) scannedAlso(t *testing.T, variant, version string) {
+	t.Helper()
+	ctx := t.Context()
+	names := catalog.NewStore(r.db.DB)
+	first, err := names.Locate(ctx, "mine", "master", "broadcom")
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared, err := names.DeclareVariant(ctx, first.ProductID, variant, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := names.TargetFor(ctx, first.StreamID, declared.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scan, outcome, err := ingest.NewStore(r.db.DB).Record(ctx, ingest.Arriving{
+		TargetID: target.ID, ContentHash: "also-" + variant, BuiltAt: time.Now().UTC(),
+		ParserVersion: "test",
+	})
+	if err != nil || outcome != ingest.Accept {
+		t.Fatalf("record scan: %v %v", outcome, err)
+	}
+	product := graph.Described{Purl: "pkg:deb/debian/mine@1.0", Name: "mine", Version: "1.0"}
+	library := graph.Described{
+		Purl: "pkg:deb/debian/libnl-3-200@" + version, Name: "libnl-3-200", Version: version,
+	}
+	if _, err := graph.NewStore(r.db.DB).Apply(ctx, target.ID, scan.ID, graph.Snapshot{
+		Root:         product,
+		Components:   []graph.Described{library},
+		Dependencies: []graph.Dependency{{Parent: product, Child: library}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	findings := finding.NewStore(r.db.DB)
+	run, err := findings.Begin(ctx, finding.Run{
+		TargetID: target.ID, Scanner: "grype", ScannerVersion: "0.112.0",
+		DatabaseVersion: "2026-08-28", RanHere: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := findings.Apply(ctx, target.ID, run.ID, []finding.Reported{{
+		Issue:     finding.Named{Identifier: "CVE-2026-9999", Severity: "high"},
+		Component: library,
+		FixState:  finding.FixedUpstream, FixedIn: "3.9.0",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReachSortsBuildsByTheVersionTheDecisionIsKeyedOn(t *testing.T) {
+	// The decision is keyed on the upstream version where a component is a
+	// patched fork, and on the shipped version otherwise. The reach compared
+	// the raw upstream column instead, which is empty for anything that is
+	// not a fork: every other build then read as differing, including one at
+	// the very same version, which the decision already reached by lookup.
+	// And what it named as the version was that empty column, so the
+	// interface had nothing to pass when it applied the decision there — a
+	// build shipping the name at four versions refused the request.
+	eachReach(t, func(t *testing.T, r *reach) {
+		place := r.scanned(t)
+		r.scannedAlso(t, "arista", "3.7.0")
+		r.scannedAlso(t, "mellanox", "3.8.0")
+		var reached struct {
+			Automatic []struct {
+				Variant string `json:"variant"`
+				Version string `json:"version"`
+			} `json:"automatic"`
+			Differing []struct {
+				Variant string `json:"variant"`
+				Version string `json:"version"`
+			} `json:"differing"`
+		}
+		read(t, r, "triager", fmt.Sprintf("/v1/products/mine/streams/master/variants/broadcom"+
+			"/findings/CVE-2026-9999/places/%s/reach", place), &reached)
+		if len(reached.Automatic) != 1 || reached.Automatic[0].Variant != "arista" {
+			t.Errorf("the build at the same version should be reached by lookup: %+v", reached)
+		}
+		if len(reached.Differing) != 1 || reached.Differing[0].Variant != "mellanox" ||
+			reached.Differing[0].Version != "3.8.0" {
+			t.Fatalf("the build at another version should be offered with that version: %+v", reached)
+		}
+		// What it named is what the route resolves a name by.
+		path := "/v1/products/mine/streams/master/variants/mellanox/findings/CVE-2026-9999" +
+			"/components/libnl-3-200/decision?version=" + reached.Differing[0].Version
+		got := asPerson(t, r, "triager", http.MethodPost, path,
+			`{"outcome":"not-applicable","justification":"vulnerable_code_not_in_execute_path",`+
+				`"reasoning":"The parser is never reached there either."}`)
+		if got.Code != http.StatusCreated {
+			t.Errorf("applying the decision by the version the reach named answered %d: %s",
+				got.Code, got.Body.String())
+		}
+	})
+}
+
 func TestHowFarADecisionWouldReachComesBackInThreeParts(t *testing.T) {
 	// Presenting it as one number is what turns a considered judgment into a
 	// reflex, and it is how a decision comes to reach builds the person making

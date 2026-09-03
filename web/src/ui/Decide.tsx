@@ -124,12 +124,19 @@ export function Decide({
   const { matching, offered } = useMemo(() => {
     const auto = new Map<string, true>();
     const diff = new Map<string, Other>();
+    const differing = new Set<string>();
     for (const each of reach) {
       for (const m of each.data?.automatic ?? []) auto.set(`${m.stream} · ${m.variant}`, true);
       for (const m of each.data?.differing ?? []) {
         const build = `${m.stream} · ${m.variant}`;
-        const had = diff.get(build);
-        diff.set(build, {
+        // One question per version the build ships, not one per build: a
+        // build carrying the component at two versions is two claims about
+        // different code, and each is posted with its own version.
+        const key = `${build} @ ${m.version ?? ""}`;
+        const had = diff.get(key);
+        differing.add(build);
+        diff.set(key, {
+          key,
           build,
           stream: m.stream ?? "",
           variant: m.variant ?? "",
@@ -141,8 +148,8 @@ export function Decide({
         });
       }
     }
-    for (const build of diff.keys()) auto.delete(build);
-    return { matching: [...auto.keys()].sort(), offered: [...diff.values()].sort((a, b) => a.build.localeCompare(b.build)) };
+    for (const build of differing) auto.delete(build);
+    return { matching: [...auto.keys()].sort(), offered: [...diff.values()].sort((a, b) => a.key.localeCompare(b.key)) };
   }, [reach]);
 
   const ready =
@@ -209,9 +216,13 @@ export function Decide({
               },
             ),
           );
-          results.push({ build: other.build, ok: true });
+          results.push({ build: other.version ? `${other.build} at ${other.version}` : other.build, ok: true });
         } catch (error) {
-          results.push({ build: other.build, ok: false, said: error instanceof Error ? error.message : String(error) });
+          results.push({
+            build: other.version ? `${other.build} at ${other.version}` : other.build,
+            ok: false,
+            said: error instanceof Error ? error.message : String(error),
+          });
         }
       }
       return {
