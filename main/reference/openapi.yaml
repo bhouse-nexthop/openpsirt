@@ -246,6 +246,44 @@ components:
         - stream
         - variant
       type: object
+    BuildCountsBody:
+      additionalProperties: false
+      properties:
+        critical:
+          format: int64
+          type: integer
+        high:
+          format: int64
+          type: integer
+        kind:
+          enum:
+            - branch
+            - tag
+          type: string
+        last_scanned_at:
+          type: string
+        low:
+          format: int64
+          type: integer
+        medium:
+          format: int64
+          type: integer
+        stream:
+          type: string
+        total:
+          format: int64
+          type: integer
+        variant:
+          type: string
+      required:
+        - stream
+        - variant
+        - critical
+        - high
+        - medium
+        - low
+        - total
+      type: object
     CanBody:
       additionalProperties: false
       properties:
@@ -2690,6 +2728,29 @@ components:
         - here
         - automatic
         - differing
+      type: object
+    ReadinessBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ReadinessBody.json
+          format: uri
+          readOnly: true
+          type: string
+        floor:
+          description: The least severity counted, or empty where everything is
+          type: string
+        now:
+          $ref: "#/components/schemas/BuildCountsBody"
+        shipped:
+          $ref: "#/components/schemas/BuildCountsBody"
+        why:
+          description: What is missing, where there is nothing to compare against
+          type: string
+      required:
+        - now
       type: object
     Reaffirm-decisionRequest:
       additionalProperties: false
@@ -6346,6 +6407,49 @@ paths:
       summary: Show how far a decision here would reach
       tags:
         - Triage
+  /v1/products/{product}/streams/{stream}/variants/{variant}/readiness:
+    get:
+      description: |-
+        Answers the question asked before shipping: is what we are about to ship better or worse than what we last shipped. "8 criticals now, v2.4.1 shipped with 4."
+
+        The release is the newest one cut from this branch, **built the same way**, that has been scanned here — a branch built for one chip beside a release built for another compares two different pieces of software and reads as a regression somebody then goes looking for.
+
+        Both sides come from scans already collected, so this asks nothing new of a build pipeline. Where there is nothing to compare against, `shipped` is absent and `why` says what is missing rather than reporting zeroes, because a release that shipped clean and a release nobody scanned are not the same answer.
+
+        Counted as issues at components at or above the deployment's line, which `floor` names.
+      operationId: get-readiness
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Compare a branch against the last release cut from it
+      tags:
+        - Findings
   /v1/products/{product}/streams/{stream}/variants/{variant}/scans:
     get:
       description: |-
