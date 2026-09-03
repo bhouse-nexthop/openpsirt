@@ -311,7 +311,8 @@ components:
           readOnly: true
           type: string
         batch:
-          description: Name a batch to agree to several claims under one name, so they can be undone together
+          description: Name a batch to agree to several claims under one name, so they can be undone together. At most 64 characters
+          maxLength: 64
           type: string
         because:
           description: Why the rows in except are set aside, in markdown. Required when any are
@@ -469,6 +470,9 @@ components:
       additionalProperties: false
       properties:
         component:
+          type: string
+        ecosystem:
+          description: The kind of package, as its identifier spells it. With the component and version it tells one row from another, which those two alone do not
           type: string
         exploited:
           description: Whether any of them is known-exploited
@@ -1183,6 +1187,9 @@ components:
           type: integer
         component:
           description: What carries it
+          type: string
+        ecosystem:
+          description: "The kind of package, as its identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. With the component and version it tells one row from another, which those two alone do not: one build can hold one name at one version as two components, a source repository and the package built from it"
           type: string
         exploited:
           description: Somebody is known to be exploiting this

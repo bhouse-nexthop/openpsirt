@@ -285,7 +285,15 @@ func (s *Store) approveClaim(ctx context.Context, subject access.Subject, claimI
 		if row.State != Proposed {
 			continue
 		}
+		samePerson := authors[row.ID] == subject.ID || row.ProposedBy == subject.ID
 		if aside[row.ID] {
+			// Setting rows aside is an approver's act as much as agreeing
+			// is — the rest of the claim is approved in the same action — so
+			// the proposer naming their own rows as set aside would be acting
+			// on their own claim.
+			if samePerson {
+				return nil, ErrSamePerson
+			}
 			returning = append(returning, row.ID)
 			continue
 		}
@@ -298,7 +306,7 @@ func (s *Store) approveClaim(ctx context.Context, subject access.Subject, claimI
 		if row.RevisionID == nil {
 			return nil, ErrNothingToApprove
 		}
-		if authors[row.ID] == subject.ID || row.ProposedBy == subject.ID {
+		if samePerson {
 			return nil, ErrSamePerson
 		}
 		approving = append(approving, row.ID)
@@ -472,6 +480,18 @@ func (s *Store) authorsOf(ctx context.Context, rows []Decision) (map[int64]int64
 	return authors, nil
 }
 
+// SentBack is what sending a claim back did.
+type SentBack struct {
+	// Authors is everybody whose words were sent back, each once, in the
+	// order of the rows. Usually one person; a claim revised row by row can
+	// rest on several people's words, and each of them is waiting to hear.
+	Authors []int64
+	// Sent is how many rows went back.
+	Sent int
+	// Decision is a representative of what went back: the earliest row.
+	Decision Decision
+}
+
 // SendBackClaim asks the author for more before agreeing to any of a claim.
 //
 // Every waiting row leaves the queue together and comes back together when the
@@ -479,22 +499,23 @@ func (s *Store) authorsOf(ctx context.Context, rows []Decision) (map[int64]int64
 // leaves an approver agreeing to words the author is about to change. As a
 // set: one comment inserted per row from a select, one update.
 func (s *Store) SendBackClaim(ctx context.Context, subject access.Subject, claimID int64,
-	because string) (author int64, sent int, err error) {
+	because string) (*SentBack, error) {
 
 	if strings.TrimSpace(because) == "" {
-		return 0, 0, fmt.Errorf("say what needs to change: sending something back without a " +
+		return nil, fmt.Errorf("say what needs to change: sending something back without a " +
 			"reason is a round trip nobody learns from")
 	}
 	if err := markdown.Check(because); err != nil {
-		return 0, 0, err
+		return nil, err
 	}
 	db, ok := s.db.(*bun.DB)
 	if !ok {
-		return 0, 0, fmt.Errorf("this store is already inside a transaction")
+		return nil, fmt.Errorf("this store is already inside a transaction")
 	}
-	err = database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+	var result *SentBack
+	err := database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
 		within := &Store{db: tx, now: s.now}
-		sent = 0
+		result = &SentBack{}
 		_, rows, err := within.claimRows(ctx, subject, claimID, mayApprove)
 		if err != nil {
 			return err
@@ -504,6 +525,7 @@ func (s *Store) SendBackClaim(ctx context.Context, subject access.Subject, claim
 			return err
 		}
 		var ids []int64
+		told := map[int64]bool{}
 		for _, row := range rows {
 			if row.State != Proposed || row.SentBackAt != nil {
 				continue
@@ -511,7 +533,13 @@ func (s *Store) SendBackClaim(ctx context.Context, subject access.Subject, claim
 			if authors[row.ID] == subject.ID {
 				return fmt.Errorf("that is your own claim to revise, not one to send back")
 			}
-			author = authors[row.ID]
+			if len(ids) == 0 {
+				result.Decision = row
+			}
+			if author := authors[row.ID]; author != 0 && !told[author] {
+				told[author] = true
+				result.Authors = append(result.Authors, author)
+			}
 			ids = append(ids, row.ID)
 		}
 		if len(ids) == 0 {
@@ -530,13 +558,13 @@ func (s *Store) SendBackClaim(ctx context.Context, subject access.Subject, claim
 		if n, err := marked.RowsAffected(); err == nil && n != int64(len(ids)) {
 			return fmt.Errorf("the claim changed while it was being sent back; read it again")
 		}
-		sent = len(ids)
+		result.Sent = len(ids)
 		return nil
 	})
 	if err != nil {
-		return 0, 0, err
+		return nil, err
 	}
-	return author, sent, nil
+	return result, nil
 }
 
 // claimRows reads a claim and every decision in it, under a rule about what

@@ -230,6 +230,13 @@ row — the earliest — with its place and reasoning, how many rows, issues and
 places the claim covers, and every build it currently reaches by matching.
 The count beside the queue counts claims.
 
+**The builds named are the ones the reader may see.** A build beside a claim
+says that build holds the issue, and a claim somebody may read matches
+findings they may not — undisclosed findings in a product where they read only
+disclosed ones. Everything read off the findings a claim matches is narrowed
+this way, per product: the builds, the fix versions behind the outliers, and
+the counts on a card (ACC-04, ACC-07).
+
 **An entry says what it is about** (TRI-09): the build to open, the issue and
 what the report says of it, the component and version, how bad and whether it
 is being exploited, what upstream has done, the two ends of the way down as
@@ -255,7 +262,9 @@ Approving a claim approves every waiting row in it, in one transaction, under
 the rules each row is approved under: by somebody other than whoever wrote the
 words, against the revision that stands now, with what it covered counted and
 kept. A row already approved, withdrawn or lapsed is left alone. A batch name
-still names several *claims* approved under one name, undone together.
+still names several *claims* approved under one name, undone together; it is
+at most sixty-four characters, the width of what holds it, and a longer one is
+refused at the request rather than by the database.
 
 The per-row endpoints remain, for the decision screen; nothing there changed.
 
@@ -292,13 +301,19 @@ from the original, belonging to the original proposer, marked sent back, with
 the reason recorded on each as a comment the way sending back records one. A
 reason is required. Setting aside a row that is not part of the claim is
 refused rather than ignored, because a stray identifier is more likely a
-mistake than a wish.
+mistake than a wish. And the proposer may no more set rows of their own claim
+aside than agree to it: setting aside is an approver's act — the rest of the
+claim is approved in the same action — so it is refused as the same person
+acting on their own claim.
 
 The outliers are four signals, all already stored, counted over the distinct
 issues in the claim and listed for the issues that carry any: known to be
 exploited; rated critical or high, by our assessment where one stands;
-a fix available; and, where the record of how the set was narrowed names a
-term (`contains "…"`), a description that does not carry it. Exploited first,
+a fix available, read from the open findings the claim's rows match — the
+same product, place and versions a finding matches a decision by — and only
+from those the reader may see; and, where the record of how the set was
+narrowed names a term (`contains "…"`), a description that does not carry it.
+Exploited first,
 then the worst rated, then by name, capped at twenty. The counts say how many
 there are behind the cap.
 
@@ -325,8 +340,15 @@ The finding is the working screen after a decision as well as before it, so it
 carries three lists, each narrowed to what the reader may see:
 
 - **Standing**: the live claims covering any of its places, newest first,
-  with how many of the finding's places each covers, every build it reaches,
-  and who agreed to it and when. Each carries how its rows here stand —
+  with how many of the finding's places each covers, every build it reaches
+  that the reader may see, and who agreed to it and when. Matched by key —
+  the place at the versions the finding holds there — and not by place
+  alone: the same pair of names sits in every build of the product at
+  whatever version each ships, and matched by place a claim keyed at one
+  build's version stood on a build shipping another. The finding screen
+  asks with the build's own places and the versions it ships at each, read
+  by the finding store rather than taken from the request. Each carries how
+  its rows here stand —
   waiting, sent back, approved — and its state as a whole, approved only where
   every live row is: a representative row's state stood in for the claim's,
   and one row approved beside forty-three sent back read as approved. Where
@@ -338,7 +360,8 @@ carries three lists, each narrowed to what the reader may see:
   approval's withdrawal date exists only where somebody had agreed.
 - **Similar**: approved not-applicable claims about *other* issues at the same
   places, at most five, newest first, each with its reasoning and how many
-  issues it covers. These are what an extension can carry.
+  issues it covers — counted over the rows the reader may see. These are what
+  an extension can carry.
 
 ## The queue carries what an approver needs
 
@@ -593,6 +616,15 @@ puts risk back on the table rather than taking it off. And nobody sends back a
 claim whose current words are their own: that is theirs to revise, and doing it
 would put their own work out of everybody's sight.
 
+**Everybody whose words went back is told** (NTF-05). A claim usually rests on
+one person's words, but a claim revised row by row can rest on several
+people's, and each of them is waiting to hear. The notice sends them to the
+finding the claim is about — the build, the issue and the component, at the
+version — because that is where the words are revised; the review queue lists
+what waits on an approver and leaves out what waits on its author. Where no
+open finding the sender may read describes the claim any more, the notice
+sends them to the decision itself.
+
 ## How long something may stay open
 
 A finding gets a deadline from how urgent it is, counted from when it was first
@@ -637,10 +669,22 @@ Two boundaries matter, and both are tested by breaking them:
 - **A rebuild that moved nothing marks nothing.** Rebuilds are nightly, so a
   sweep that marked too much would unpick judgments nobody had revisited, every
   night.
-- **A decision covering nothing here is not marked.** A component that is gone
-  altogether closed its findings and there is nothing to ask anybody about. A
-  component still present at a different version is exactly the question
-  somebody has to answer again.
+- **A decision covering nothing in the product is not marked.** A component
+  that is gone altogether closed its findings and there is nothing to ask
+  anybody about. A component still present at a different version is exactly
+  the question somebody has to answer again.
+
+And covering is asked of the product, not of the build that was scanned. A
+decision is a lookup shared by every build whose code matches it (REL-05,
+REL-06): one release stream moving to a new version while another still ships
+the one decided about leaves the decision covering the other, and a judgment
+about code that is still there is not one anybody needs to make again. So a
+sweep marks a decision only when this build holds the place at other versions
+**and** no open finding anywhere in the product still matches the decision's
+versions — which is found by the sweep of whichever build moved last, since a
+sweep still asks only about the places the scanned build has open. Only the
+scanned build's product is swept: a place is a pair of names, the same pair
+sits in other products, and their decisions are theirs.
 
 The version a decision is compared against is written by the same expression
 that wrote it in the first place, shared rather than spelled twice. Two
@@ -701,7 +745,9 @@ judgment they made no longer covers anything, or it simply disappears and the
 finding returns looking new with the reasoning stranded behind it.
 
 A decision lapses when **either** version moves, not when both do. A component
-bumped under an unchanged consumer is the ordinary case.
+bumped under an unchanged consumer is the ordinary case. It is marked once the
+last build in the product holding its versions has moved, not when the first
+does, as the section on the sweep says.
 
 ## A comment is not the reasoning
 

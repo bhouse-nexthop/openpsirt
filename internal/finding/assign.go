@@ -214,16 +214,26 @@ func (s *Store) HeldBy(ctx context.Context, subject access.Subject) ([]Holding, 
 	// finding (REM-26) — it used to be a pass per urgency band, each with its
 	// own cutoff, because the deadline was derived. Overdue has to mean the
 	// same thing here as on the screen that lists what is running out, and the
-	// surest way to keep two answers equal is for there to be one of them.
+	// surest way to keep two answers equal is for there to be one of them: the
+	// deadline is the stored one, and what takes a finding off the clock is
+	// the one condition both read — a decision that applies, and nothing the
+	// build argued away. Counting every late finding regardless made a
+	// dismissed finding overdue against whoever held it while the list of
+	// what is running out, rightly, left it off.
 	var counted []struct {
 		PersonID int64 `bun:"person_id"`
 		Overdue  int   `bun:"overdue"`
 	}
+	standing, args := OffTheClock("st.product_id", s.now())
 	err := mine().
+		Join("JOIN component AS c ON c.id = f.component_id").
+		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
 		ColumnExpr("f.assigned_to AS person_id").
 		ColumnExpr("COUNT(*) AS overdue").
 		Where("f.due_at IS NOT NULL").
 		Where("f.due_at < ?", s.now().UTC()).
+		Where("f.suppressed_by IS NULL").
+		Where("NOT "+standing, args...).
 		GroupExpr("f.assigned_to").
 		Scan(ctx, &counted)
 	if err != nil {

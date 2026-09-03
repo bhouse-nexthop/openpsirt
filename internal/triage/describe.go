@@ -20,14 +20,16 @@ import (
 // versions and nothing else — the build, the component and what the issue is
 // are the finding's to say.
 type Described struct {
-	TargetID  int64
-	Product   string
-	Stream    string
-	Variant   string
-	Component string
-	Version   string
-	FixState  string
-	FixedIn   string
+	TargetID int64
+	// Product, Stream and Variant are the display names, for a card; the
+	// three Name fields are what a path names the same build by.
+	Product, ProductName string
+	Stream, StreamName   string
+	Variant, VariantName string
+	Component            string
+	Version              string
+	FixState             string
+	FixedIn              string
 	// Issue is the vulnerability, with what the report says about it.
 	Issue finding.Vulnerability
 	// Owner and Parent are the two ends of the way down, as the findings list
@@ -45,8 +47,11 @@ type describedRow struct {
 	Exact       int    `bun:"exact"`
 	TargetID    int64  `bun:"target_id"`
 	Product     string `bun:"product"`
+	ProductName string `bun:"product_name"`
 	Stream      string `bun:"stream"`
+	StreamName  string `bun:"stream_name"`
 	Variant     string `bun:"variant"`
+	VariantName string `bun:"variant_name"`
 	ComponentID int64  `bun:"component_id"`
 	Component   string `bun:"component"`
 	Version     string `bun:"version"`
@@ -107,8 +112,11 @@ func (s *Store) Describe(ctx context.Context, subject access.Subject, decisions 
 			" THEN 1 ELSE 0 END AS exact").
 		ColumnExpr("f.target_id AS target_id").
 		ColumnExpr("pr.display_name AS product").
+		ColumnExpr("pr.name AS product_name").
 		ColumnExpr("st.display_name AS stream").
+		ColumnExpr("st.name AS stream_name").
 		ColumnExpr("va.display_name AS variant").
+		ColumnExpr("va.name AS variant_name").
 		ColumnExpr("f.component_id AS component_id").
 		ColumnExpr("c.name AS component").
 		ColumnExpr("c.version AS version").
@@ -191,6 +199,12 @@ func (s *Store) Describe(ctx context.Context, subject access.Subject, decisions 
 		places[triple{count.TargetID, count.Issue, count.ComponentID}] = count.Places
 	}
 
+	// Covered is what the claim's live rows actually match — the place and
+	// both versions, as a finding asks it — rather than every place the
+	// claim ever named. The place-only fallback above is for naming what a
+	// lapsed judgment was about; counted that way, a claim whose rows had
+	// lapsed, or which was keyed at another build's version, reported places
+	// it does not cover.
 	var covered []struct {
 		ClaimID     int64 `bun:"claim_id"`
 		TargetID    int64 `bun:"target_id"`
@@ -203,6 +217,8 @@ func (s *Store) Describe(ctx context.Context, subject access.Subject, decisions 
 		// The decision on the outside, as above.
 		Join("CROSS JOIN finding AS f").
 		Where("f.vulnerability_id = de.vulnerability_id AND f.place_identity = de.place_identity").
+		Join("JOIN component AS c ON c.id = f.component_id").
+		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
 		Join("JOIN target AS tg ON tg.id = f.target_id").
 		Join("JOIN stream AS st ON st.id = tg.stream_id").
 		ColumnExpr("de.claim_id AS claim_id").
@@ -211,7 +227,10 @@ func (s *Store) Describe(ctx context.Context, subject access.Subject, decisions 
 		ColumnExpr("f.component_id AS component_id").
 		ColumnExpr("COUNT(DISTINCT f.place_identity) AS decided").
 		Where("de.claim_id IN (?)", bun.List(claims)).
+		Where("de.live_key IS NOT NULL").
 		Where("st.product_id = de.product_id").
+		Where("COALESCE(de.component_upstream_version, '') = "+finding.ComponentUpstreamExpr).
+		Where("COALESCE(de.consumer_upstream_version, '') = "+finding.ConsumerUpstreamExpr).
 		Where("f.target_id IN (?)", bun.List(targets)).
 		Where("f.component_id IN (?)", bun.List(components)).
 		Where("f.closed_run_id IS NULL").
@@ -254,7 +273,10 @@ func (s *Store) Describe(ctx context.Context, subject access.Subject, decisions 
 
 	for id, row := range chosen {
 		one := Described{
-			TargetID: row.TargetID, Product: row.Product, Stream: row.Stream, Variant: row.Variant,
+			TargetID: row.TargetID,
+			Product:  row.Product, ProductName: row.ProductName,
+			Stream: row.Stream, StreamName: row.StreamName,
+			Variant: row.Variant, VariantName: row.VariantName,
 			Component: row.Component, Version: row.Version,
 			FixState: row.FixState, FixedIn: row.FixedIn,
 			Issue:   byIssue[row.Issue],

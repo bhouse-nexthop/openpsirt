@@ -178,6 +178,105 @@ func TestOverdueIsCountedAgainstWhoeverIsHoldingIt(t *testing.T) {
 	})
 }
 
+func TestOnlyADecisionThatAppliesTakesAFindingOffTheClock(t *testing.T) {
+	// What takes a finding off the clock is a decision that applies — the
+	// same condition that decides whether a decision suppresses the finding
+	// at all. What is running out of time excluded any live claim, so a
+	// proposal waiting for a second person took a finding off that list for
+	// as long as it sat in the queue, while what each person was holding
+	// excluded nothing and still counted it as overdue. Both are asked here,
+	// after every kind of decision, and have to agree with each other and
+	// with what applies.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		f.shipped(t, twoConsumers())
+		run := f.run(t)
+		f.seenAt(t, run, time.Now().UTC().Add(-100*24*time.Hour))
+		if _, err := f.store.Apply(ctx, f.target, run,
+			[]finding.Reported{found("CVE-2026-1", swss)}); err != nil {
+			t.Fatal(err)
+		}
+		open := f.open(t)
+		triager := f.holding(t, access.PublicTriage)
+		if _, err := f.store.Assign(ctx, triager, f.target,
+			open[0].VulnerabilityID, open[0].ComponentID, ptr(int64(7))); err != nil {
+			t.Fatal(err)
+		}
+		somebody, err := access.NewStore(f.db.DB).Ensure(ctx, "them@example.com", "Them", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		issueID := f.issueID(t, "CVE-2026-1")
+		place := finding.PlaceIdentity(swss.Name, "")
+
+		// One decision standing at the place at a time, written the way the
+		// triage store writes one: keyed on the version shipping here, live.
+		record := func(state string, needsApproval bool, outcome string, until *time.Time, version string) {
+			t.Helper()
+			if _, err := f.db.DB.NewDelete().Table("decision").
+				Where("vulnerability_id = ?", issueID).Exec(ctx); err != nil {
+				t.Fatal(err)
+			}
+			row := map[string]any{
+				"claim_id":   claimBy(t, f.db, somebody.ID),
+				"product_id": f.productID, "vulnerability_id": issueID,
+				"place_identity": place, "visibility": "public",
+				"outcome": outcome, "state": state,
+				"needs_approval": needsApproval, "proposed_by": somebody.ID,
+				"proposed_at":                time.Now().UTC(),
+				"component_upstream_version": version,
+				"live_key":                   "the-live-key",
+			}
+			if until != nil {
+				row["deferred_until"] = until.UTC()
+			}
+			if _, err := f.db.DB.NewInsert().Model(&row).TableExpr("decision").Exec(ctx); err != nil {
+				t.Fatalf("record a %s claim: %v", state, err)
+			}
+		}
+		// Both answers, which have to be the same answer.
+		onTheClock := func(want bool, because string) {
+			t.Helper()
+			late, err := f.store.RunningOut(ctx, triager, finding.Scope{}, 0, 50)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (len(late) == 1) != want {
+				t.Errorf("%s: %d rows are running out of time, want on the list: %v",
+					because, len(late), want)
+			}
+			held, err := f.store.HeldBy(ctx, triager)
+			if err != nil {
+				t.Fatal(err)
+			}
+			overdue := 0
+			for _, holding := range held {
+				overdue += holding.Overdue
+			}
+			if (overdue == 1) != want {
+				t.Errorf("%s: %d overdue against whoever holds it, want overdue: %v",
+					because, overdue, want)
+			}
+		}
+		yesterday := time.Now().UTC().Add(-24 * time.Hour)
+		nextMonth := time.Now().UTC().Add(30 * 24 * time.Hour)
+
+		onTheClock(true, "nothing decided")
+		record("proposed", true, "not-applicable", nil, swss.Version)
+		onTheClock(true, "a proposal waiting for a second person suppresses nothing")
+		record("proposed", false, "deferred", &nextMonth, swss.Version)
+		onTheClock(false, "a proposal needing no agreement applies")
+		record("approved", true, "not-applicable", nil, swss.Version)
+		onTheClock(false, "an approved claim applies")
+		record("approved", true, "not-applicable", nil, "0.9.0")
+		onTheClock(true, "an approved claim about another version does not apply here")
+		record("approved", true, "deferred", &nextMonth, swss.Version)
+		onTheClock(false, "a deferral applies until its date")
+		record("approved", true, "deferred", &yesterday, swss.Version)
+		onTheClock(true, "a deferral past its date is back on the clock")
+	})
+}
+
 // deadline reads the stored deadline for one issue, which is the thing a
 // policy change has to move.
 func (f *fixture) deadline(t *testing.T, identifier string) time.Time {

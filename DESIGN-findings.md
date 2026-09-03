@@ -292,7 +292,17 @@ no place has a decision of any kind, waiting when a claim stands proposed and
 nobody has agreed, agreed when every place is answered by a standing decision,
 lapsed when a decision here stopped applying and nothing replaced it. Some
 places approved and the rest never decided, with nothing waiting or lapsed, is
-none of the four and the row says nothing rather than guessing.
+none of the four: the row carries no state, and the interface labels it partly
+decided, since some of its places are agreed and the rest have never been
+decided.
+
+A live decision covers a place at the versions it was keyed on and no other,
+so these counts match a live decision by product, issue, place and both
+versions, and match a lapsed or withdrawn one — which holds no key, its
+versions by definition no longer matching — by place alone. Matched by place
+alone, a decision approved against one build's version read as agreed over the
+next build shipping another at the same place, while everything that asks
+whether a decision actually applies said it covered nothing there.
 
 It is counted by the same definition the filter uses, so the row and the
 filter that found it cannot disagree, and a page of fifty costs no query per
@@ -350,7 +360,7 @@ Four signals, in this order:
 | **Severity** | How bad it would be if it did |
 
 The number is **packed rather than weighted**: each signal owns a range of
-digits, so a signal never trades against a lower one. That is a first cut and
+digits, so a signal never trades against a lower one. That is deliberate, and
 the reason is explainability — somebody has to read a position and see why, and
 "it scored 0.4 higher on a weighted sum of four things" is not something anyone
 trusts or argues with. Packing gives a rule statable in a sentence.
@@ -482,7 +492,7 @@ name that happens to collide.
 Which scanner, which version of it, which vulnerability database, and whether
 it ran here or arrived from a producer. Counts are only comparable between
 products measured the same way, so a portfolio report that averaged two
-scanners without saying so would be a rumour rather than a report.
+scanners without saying so would be a rumor rather than a report.
 
 A run that failed is recorded as a run that failed, with the reason. A scanner
 that stopped working is otherwise indistinguishable from a product that stopped

@@ -665,6 +665,43 @@ func narrowedBy(query *bun.SelectQuery, subject access.Subject, column string,
 	})
 }
 
+// readableFindings narrows a query that joins findings to the ones a subject
+// may read, per product: undisclosed findings where they read undisclosed
+// findings on that product, disclosed ones everywhere else.
+//
+// The same rule as narrowedBy, asked of the finding's visibility and the
+// product it sits in rather than the decision's. A decision somebody may read
+// matches findings they may not, and a build name, a fix version or a count
+// read off those is the disclosure — so every read that walks from a decision
+// to its findings carries this.
+//
+// The finding's visibility is read through the given alias, and the product
+// through the expression given — the stream's product where the read has
+// joined that far, and the decision's where the match already requires the two
+// to agree.
+func readableFindings(query *bun.SelectQuery, subject access.Subject, finding, product string) *bun.SelectQuery {
+	if subject.Kind != access.Person {
+		return query.Where("1 = 0")
+	}
+	products, all := subject.Products()
+	if all {
+		return query
+	}
+	var private []int64
+	for _, id := range products {
+		if subject.Reads(access.Private, id) {
+			private = append(private, id)
+		}
+	}
+	if len(private) == 0 {
+		return query.Where(finding+".visibility = ?", access.Public)
+	}
+	return query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+		return q.WhereOr(finding+".visibility = ?", access.Public).
+			WhereOr(product+" IN (?)", bun.List(private))
+	})
+}
+
 // DefaultTogetherCap is how many findings one action may claim about when
 // nobody has set a limit.
 //

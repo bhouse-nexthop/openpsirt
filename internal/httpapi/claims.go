@@ -4,19 +4,23 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/notify"
 	"github.com/bhouse-nexthop/openpsirt/internal/triage"
 )
 
 // ClaimApprovalBody is what agreeing to a claim asks for.
 type ClaimApprovalBody struct {
-	Batch string `json:"batch,omitempty" doc:"Name a batch to agree to several claims under one name, so they can be undone together"`
+	// Bounded to what the column holds. A name is compared for equality and
+	// never read back on its own, so it shares the width of a hash.
+	Batch string `json:"batch,omitempty" maxLength:"64" doc:"Name a batch to agree to several claims under one name, so they can be undone together. At most 64 characters"`
 	// Except sets rows aside. What is left is approved as one claim; these go
 	// back to the proposer as a claim of their own, with the reason.
 	Except  []int64 `json:"except,omitempty" doc:"Decisions in this claim to set aside rather than approve. They return to the proposer as a claim of their own, carrying the reason given in because"`
@@ -102,20 +106,37 @@ func registerClaims(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
-		author, _, err := store.SendBackClaim(ctx, subject, input.ID, input.Body.Because)
+		back, err := store.SendBackClaim(ctx, subject, input.ID, input.Body.Because)
 		if err != nil {
 			if errors.Is(err, triage.ErrNotTheirs) {
 				return nil, noSuchClaim()
 			}
 			return nil, refusedDecision(err)
 		}
-		if err := notify.NewStore(in.DB.DB).Tell(ctx, notify.Telling{
-			PersonID: author, Kind: notify.SentBack,
-			Body: "A claim of yours was sent back: " + input.Body.Because,
-			Link: "/review-queue?claim=" + strconv.FormatInt(input.ID, 10),
-		}); err != nil && in.Logger != nil {
-			in.Logger.Error("could not say that a claim was sent back",
+		// Everybody whose words went back is told, and sent to the finding
+		// the claim is about: that is where the words are revised, where the
+		// review queue lists what waits on an approver and leaves out what
+		// waits on its author. The decision itself stands in where no open
+		// finding the sender may read describes it any more.
+		link := "/decisions/" + strconv.FormatInt(back.Decision.ID, 10)
+		if described, err := store.Describe(ctx, subject, []triage.Decision{back.Decision}); err == nil {
+			if d, ok := described[back.Decision.ID]; ok {
+				link = findingPath(d.ProductName, d.StreamName, d.VariantName,
+					d.Issue.Identifier, d.Component) + "?version=" + url.QueryEscape(d.Version)
+			}
+		} else if in.Logger != nil {
+			in.Logger.Error("could not say which finding a sent-back claim is about",
 				"error", err, "claim", input.ID)
+		}
+		for _, author := range back.Authors {
+			if err := notify.NewStore(in.DB.DB).Tell(ctx, notify.Telling{
+				PersonID: author, Kind: notify.SentBack,
+				Body: "A claim of yours was sent back: " + input.Body.Because,
+				Link: link,
+			}); err != nil && in.Logger != nil {
+				in.Logger.Error("could not say that a claim was sent back",
+					"error", err, "claim", input.ID, "person", author)
+			}
 		}
 		return &struct{}{}, nil
 	})
@@ -217,10 +238,20 @@ type SimilarBody struct {
 // stands, what stood before, and what was argued about other issues at the
 // same places (UIX-46, TRI-47).
 func decidedAbout(ctx context.Context, in Ingest, subject access.Subject, productID, issueID int64,
-	places []string) ([]StandingClaimBody, []EarlierBody, []SimilarBody, error) {
+	at []finding.Deciding) ([]StandingClaimBody, []EarlierBody, []SimilarBody, error) {
 
 	store := triage.NewStore(in.DB.DB)
-	standing, err := store.StandingAt(ctx, subject, productID, issueID, places)
+	// What stands is matched by key — the place and the versions this build
+	// ships there — so a decision written against another version of the
+	// same place is not reported as standing here. What stood before and
+	// what might carry are asked by place: a lapsed decision no longer
+	// matches the versions by definition, and a similar claim is one about
+	// other issues at the same place.
+	places := make([]string, 0, len(at))
+	for _, place := range at {
+		places = append(places, place.PlaceIdentity)
+	}
+	standing, err := store.StandingAt(ctx, subject, productID, issueID, at)
 	if err != nil {
 		return nil, nil, nil, err
 	}

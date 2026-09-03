@@ -178,7 +178,7 @@ func (s *Store) Queue(ctx context.Context, subject access.Subject, limit, offset
 	if err != nil {
 		return nil, 0, err
 	}
-	builds, err := s.buildsCovered(ctx, ids)
+	builds, err := s.buildsCovered(ctx, subject, ids)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -193,7 +193,7 @@ func (s *Store) Queue(ctx context.Context, subject access.Subject, limit, offset
 			bulk = append(bulk, claim)
 		}
 	}
-	outliers, err := s.outliersFor(ctx, bulk)
+	outliers, err := s.outliersFor(ctx, subject, bulk)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -231,13 +231,17 @@ func (s *Store) Queue(ctx context.Context, subject access.Subject, limit, offset
 // open finding at the row's place, at the versions the row was written
 // against — the same match a finding makes when it asks whether a decision
 // applies to it.
-func (s *Store) buildsCovered(ctx context.Context, claims []int64) (map[int64][]string, error) {
+//
+// Narrowed to the findings the reader may see. A build named here is a
+// statement that the build holds the issue, and a decision somebody may read
+// can match findings they may not.
+func (s *Store) buildsCovered(ctx context.Context, subject access.Subject, claims []int64) (map[int64][]string, error) {
 	var rows []struct {
 		ClaimID int64  `bun:"claim_id"`
 		Stream  string `bun:"stream"`
 		Variant string `bun:"variant"`
 	}
-	err := s.db.NewSelect().
+	query := s.db.NewSelect().
 		TableExpr("decision AS de").
 		// The decision on the outside of the join, for the reason Describe
 		// gives: SQLite otherwise starts from every open finding.
@@ -254,8 +258,9 @@ func (s *Store) buildsCovered(ctx context.Context, claims []int64) (map[int64][]
 		Where("de.claim_id IN (?)", bun.List(claims)).
 		Where("f.closed_run_id IS NULL").
 		Where("st.product_id = de.product_id").
-		Where("COALESCE(de.component_upstream_version, '') = "+finding.ComponentUpstreamExpr).
-		Where("COALESCE(de.consumer_upstream_version, '') = "+finding.ConsumerUpstreamExpr).
+		Where("COALESCE(de.component_upstream_version, '') = " + finding.ComponentUpstreamExpr).
+		Where("COALESCE(de.consumer_upstream_version, '') = " + finding.ConsumerUpstreamExpr)
+	err := readableFindings(query, subject, "f", "st.product_id").
 		GroupExpr("de.claim_id, st.display_name, va.display_name").
 		OrderExpr("de.claim_id, st.display_name, va.display_name").
 		Scan(ctx, &rows)
@@ -272,7 +277,7 @@ func (s *Store) buildsCovered(ctx context.Context, claims []int64) (map[int64][]
 // outliersFor reads the outliers of every bulk claim on a page, in three
 // statements for the page rather than three per claim: which issues each
 // claim covers, what those issues are, and where a fix is known.
-func (s *Store) outliersFor(ctx context.Context, claims []Claim) (map[int64]*Outliers, error) {
+func (s *Store) outliersFor(ctx context.Context, subject access.Subject, claims []Claim) (map[int64]*Outliers, error) {
 	out := make(map[int64]*Outliers, len(claims))
 	if len(claims) == 0 {
 		return out, nil
@@ -322,22 +327,35 @@ func (s *Store) outliersFor(ctx context.Context, claims []Claim) (map[int64]*Out
 	}
 
 	// Where a fix is known, from the open findings the claim's rows are
-	// about. A claim covers one component, so one answer per issue is the
+	// about: the same match a row makes when a finding asks whether it
+	// applies — the product, the place and both versions — and only the
+	// findings the reader may see, since a fix version is read off the
+	// finding. A claim covers one component, so one answer per issue is the
 	// ordinary case and the smallest stated version stands in otherwise.
 	var fixes []struct {
 		ClaimID         int64  `bun:"claim_id"`
 		VulnerabilityID int64  `bun:"vulnerability_id"`
 		FixedIn         string `bun:"fixed_in"`
 	}
-	if err := s.db.NewSelect().
-		TableExpr("finding AS f").
-		Join("JOIN decision AS de ON de.vulnerability_id = f.vulnerability_id AND de.place_identity = f.place_identity").
+	known := s.db.NewSelect().
+		TableExpr("decision AS de").
+		// The decision on the outside, as buildsCovered has it.
+		Join("CROSS JOIN finding AS f").
+		Where("f.vulnerability_id = de.vulnerability_id AND f.place_identity = de.place_identity").
+		Join("JOIN component AS c ON c.id = f.component_id").
+		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
+		Join("JOIN target AS tg ON tg.id = f.target_id").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
 		ColumnExpr("de.claim_id AS claim_id").
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("MIN(f.fixed_in) AS fixed_in").
 		Where("de.claim_id IN (?)", bun.List(claimIDs)).
 		Where("f.closed_run_id IS NULL").
-		Where("f.fixed_in <> ''").
+		Where("st.product_id = de.product_id").
+		Where("COALESCE(de.component_upstream_version, '') = " + finding.ComponentUpstreamExpr).
+		Where("COALESCE(de.consumer_upstream_version, '') = " + finding.ConsumerUpstreamExpr).
+		Where("f.fixed_in <> ''")
+	if err := readableFindings(known, subject, "f", "st.product_id").
 		GroupExpr("de.claim_id, f.vulnerability_id").
 		Scan(ctx, &fixes); err != nil {
 		return nil, fmt.Errorf("read which of these have a fix: %w", err)

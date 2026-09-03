@@ -115,6 +115,36 @@ type Late struct {
 	AssignedCount int    `bun:"assigned_count"`
 }
 
+// OffTheClock is the condition under which a decision standing at a finding
+// takes it off the clock, as SQL, with the values it binds.
+//
+// One spelling, because there were two. What is running out of time excluded
+// any live claim, so a proposal waiting for a second person took a finding off
+// that list for as long as it sat in the queue; what each person was holding
+// excluded nothing, so the same finding still counted as overdue against
+// whoever held it. Two screens answering "is this late" differently is the
+// kind of disagreement that gets one of them ignored.
+//
+// It says what the triage package says when it asks whether a decision
+// applies to a place, and nothing else: this product's decision about this
+// issue at this place, keyed on the versions the place holds now, approved or
+// proposed by somebody whose claim needs no agreement — and a deferral only
+// until its date, after which the finding is back on the clock.
+//
+// The finding is `f`, its component `c` and its consumer `uc`, all joined by
+// the caller; product is the SQL naming the finding's product, which a list
+// across products reads from the stream and a list within one binds.
+func OffTheClock(product string, now time.Time) (string, []any) {
+	return `EXISTS (SELECT 1 FROM "decision" AS de
+		WHERE de.product_id = ` + product + `
+		  AND de.vulnerability_id = f.vulnerability_id
+		  AND de.place_identity = f.place_identity
+		  AND ` + keyMatches + `
+		  AND (de.state = ? OR (de.state = ? AND de.needs_approval = ?))
+		  AND (de.deferred_until IS NULL OR de.deferred_until > ?))`,
+		[]any{"approved", "proposed", false, now.UTC()}
+}
+
 // RunningOut reports findings whose deadline is within this many days and
 // which nobody has decided about, most pressing first.
 //
@@ -150,6 +180,7 @@ func (s *Store) RunningOut(ctx context.Context, subject access.Subject, scope Sc
 		limit = 50
 	}
 
+	standing, args := OffTheClock("st.product_id", s.now())
 	query := s.db.NewSelect().
 		TableExpr("finding AS f").
 		Join("JOIN target AS tg ON tg.id = f.target_id").
@@ -158,6 +189,8 @@ func (s *Store) RunningOut(ctx context.Context, subject access.Subject, scope Sc
 		Join("JOIN product AS p ON p.id = st.product_id").
 		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
 		Join("JOIN component AS c ON c.id = f.component_id").
+		// The consumer, for the versions a decision is keyed on.
+		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
 		ColumnExpr("v.identifier AS vulnerability").
 		ColumnExpr("c.name AS component").
 		ColumnExpr("c.version AS version").
@@ -179,14 +212,13 @@ func (s *Store) RunningOut(ctx context.Context, subject access.Subject, scope Sc
 		Where("f.closed_run_id IS NULL").
 		Where("f.due_at IS NOT NULL").
 		Where("f.due_at <= ?", s.now().UTC().Add(within)).
-		// Nothing the build already argued away, and nothing a person has
-		// answered. A decision standing here means the clock is not running.
+		// Nothing the build already argued away, and nothing a decision
+		// takes off the clock. Not merely a claim: a proposal waiting for a
+		// second person suppresses nothing, and it took findings off this list
+		// for as long as it sat in the queue — a quarter, on one — while the
+		// same findings still counted as overdue against whoever held them.
 		Where("f.suppressed_by IS NULL").
-		Where(`NOT EXISTS (SELECT 1 FROM "decision" AS de
-			WHERE de.product_id = st.product_id
-			  AND de.vulnerability_id = f.vulnerability_id
-			  AND de.place_identity = f.place_identity
-			  AND de.live_key IS NOT NULL)`).
+		Where("NOT "+standing, args...).
 		GroupExpr("v.identifier, c.name, c.version, f.urgency_exploited, p.display_name, " +
 			"st.display_name, va.display_name, f.target_id, f.vulnerability_id, f.component_id").
 		OrderExpr("due, v.identifier, c.name").
@@ -298,7 +330,7 @@ func (s *Store) Recompute(ctx context.Context, windows Windows) (int, error) {
 				if n, err := result.RowsAffected(); err == nil {
 					changed += int(n)
 				}
-				// Cancellation is honoured between slices rather than only at
+				// Cancellation is honored between slices rather than only at
 				// the end, so shutting down during a rewrite stops promptly
 				// and leaves the rest for the next scan or the next edit.
 				if err := ctx.Err(); err != nil {

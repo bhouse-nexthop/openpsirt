@@ -60,6 +60,20 @@ func (f *fixture) places(names ...string) []triage.Place {
 	return out
 }
 
+// keyed is what a finding asks about: its places, with the versions it holds
+// at each — the fixture's defaults, so they match what claims wrote.
+func (f *fixture) keyed(names ...string) []finding.Deciding {
+	out := make([]finding.Deciding, 0, len(names))
+	for _, at := range f.places(names...) {
+		out = append(out, finding.Deciding{
+			ProductID: at.ProductID, VulnerabilityID: at.VulnerabilityID,
+			PlaceIdentity:     at.PlaceIdentity,
+			ComponentUpstream: at.ComponentUpstream, ConsumerUpstream: at.ConsumerUpstream,
+		})
+	}
+	return out
+}
+
 // claimsMany records one judgment across several places, which writes one
 // claim and one decision per place.
 func (f *fixture) claimsMany(t *testing.T, places []triage.Place) []*triage.Decision {
@@ -209,13 +223,16 @@ func TestSendingAClaimBackTakesEveryRowOutOfTheQueue(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		ctx := t.Context()
 		recorded := f.claimsMany(t, f.places("under-a", "under-b"))
-		author, sent, err := f.store.SendBackClaim(ctx, f.reviewer, recorded[0].ClaimID,
+		back, err := f.store.SendBackClaim(ctx, f.reviewer, recorded[0].ClaimID,
 			"Say which config file.")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if sent != 2 || author != f.proposer {
-			t.Errorf("sent %d rows back to %d; want 2 to %d", sent, author, f.proposer)
+		if back.Sent != 2 || len(back.Authors) != 1 || back.Authors[0] != f.proposer {
+			t.Errorf("sent %d rows back to %v; want 2 to %d", back.Sent, back.Authors, f.proposer)
+		}
+		if back.Decision.ID != recorded[0].ID {
+			t.Errorf("the representative row is %d; want the earliest, %d", back.Decision.ID, recorded[0].ID)
 		}
 		if _, total, _ := f.store.Queue(ctx, f.reviewer, 50, 0); total != 0 {
 			t.Errorf("a claim sent back is still waiting: %d", total)
@@ -303,13 +320,13 @@ func TestAFindingReportsWhatStandsWhatStoodAndWhatMightCarry(t *testing.T) {
 		places := []string{"under-a", "under-b"}
 
 		// Nothing yet.
-		standing, err := f.store.StandingAt(ctx, f.reviewer, f.product, f.issue, places)
+		standing, err := f.store.StandingAt(ctx, f.reviewer, f.product, f.issue, f.keyed(places...))
 		if err != nil || len(standing) != 0 {
 			t.Fatalf("an undecided finding reports %d standing claims (%v)", len(standing), err)
 		}
 
 		first := f.claimsMany(t, f.places(places...))
-		standing, err = f.store.StandingAt(ctx, f.reviewer, f.product, f.issue, places)
+		standing, err = f.store.StandingAt(ctx, f.reviewer, f.product, f.issue, f.keyed(places...))
 		if err != nil || len(standing) != 1 {
 			t.Fatalf("a proposed claim is not reported as standing: %d (%v)", len(standing), err)
 		}
@@ -319,7 +336,7 @@ func TestAFindingReportsWhatStandsWhatStoodAndWhatMightCarry(t *testing.T) {
 		if _, err := f.store.ApproveClaim(ctx, f.reviewer, first[0].ClaimID, "", nil, ""); err != nil {
 			t.Fatal(err)
 		}
-		standing, _ = f.store.StandingAt(ctx, f.reviewer, f.product, f.issue, places)
+		standing, _ = f.store.StandingAt(ctx, f.reviewer, f.product, f.issue, f.keyed(places...))
 		if len(standing) != 1 || standing[0].ApprovedBy != f.approver || standing[0].ApprovedAt == nil {
 			t.Errorf("an approved claim does not say who agreed: %+v", standing)
 		}
@@ -385,6 +402,14 @@ func TestAClaimIsShownOnlyToSomebodyWhoMayActOnAllOfIt(t *testing.T) {
 		// claim is not theirs to act on.
 		if _, total, err := f.store.Queue(ctx, f.reviewer, 50, 0); err != nil || total != 0 {
 			t.Errorf("a claim half of which is undisclosed was shown to a public reviewer: %d (%v)", total, err)
+		}
+		// Somebody who may act on both rows is shown it, and the claim is
+		// not their own to approve only because they proposed it — that is a
+		// separate refusal, made at approval rather than in the queue. Without
+		// this the assertion above would pass on a queue that shows nothing to
+		// anybody.
+		if _, total, err := f.store.Queue(ctx, insider, 50, 0); err != nil || total != 1 {
+			t.Errorf("a claim somebody may act on every row of was not shown to them: %d (%v)", total, err)
 		}
 	})
 }
@@ -461,7 +486,7 @@ func TestAStandingClaimReportsHowItsRowsStandNotOneRowsState(t *testing.T) {
 		if _, err := f.store.SendBack(ctx, f.reviewer, recorded[2].ID, "Which config file?"); err != nil {
 			t.Fatal(err)
 		}
-		standing, err := f.store.StandingAt(ctx, f.reviewer, f.product, f.issue, places)
+		standing, err := f.store.StandingAt(ctx, f.reviewer, f.product, f.issue, f.keyed(places...))
 		if err != nil || len(standing) != 1 {
 			t.Fatalf("standing reads as %+v (%v)", standing, err)
 		}
@@ -478,7 +503,7 @@ func TestAStandingClaimReportsHowItsRowsStandNotOneRowsState(t *testing.T) {
 		if _, err := f.store.ApproveClaim(ctx, f.reviewer, recorded[0].ClaimID, "", nil, ""); err != nil {
 			t.Fatal(err)
 		}
-		standing, _ = f.store.StandingAt(ctx, f.reviewer, f.product, f.issue, places)
+		standing, _ = f.store.StandingAt(ctx, f.reviewer, f.product, f.issue, f.keyed(places...))
 		if len(standing) != 1 || standing[0].State != triage.Proposed || standing[0].Rows.Approved != 2 {
 			t.Errorf("after approving the waiting rows the claim reads as %+v", standing)
 		}

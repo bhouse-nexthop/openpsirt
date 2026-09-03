@@ -283,10 +283,21 @@ func (s *Store) carryApproval(ctx context.Context, made *Decision, previous Deci
 // image holds tens of thousands of places, and a sweep costing a write per
 // place is a sweep somebody turns off.
 //
-// **A decision covering nothing here is not lapsed.** A component that is gone
-// altogether closed its findings and there is nothing to ask anybody about,
-// where a component still present at a different version is exactly the
-// question somebody has to answer again.
+// **A decision covering nothing in the product is not lapsed.** A component
+// that is gone altogether closed its findings and there is nothing to ask
+// anybody about, where a component still present at a different version is
+// exactly the question somebody has to answer again.
+//
+// And covering is asked of the product, not of this build. A decision is a
+// lookup shared by every build whose code matches it (REL-05, REL-06): one
+// release stream moving to a new version while another still ships the old
+// one leaves the decision covering the other, and a judgment about code that
+// is still there is not one anybody needs to make again. It lapses when the
+// last build holding its versions moves — which the sweep of that build finds,
+// because a sweep still asks only about the places this build has open.
+//
+// Only this build's product is swept. A place is a pair of names, and the
+// same pair sits in other products; their decisions are theirs.
 func (s *Store) Lapse(ctx context.Context, targetID int64) (int64, error) {
 	// Every open finding of this target at the decision's place, with the
 	// versions it currently has — stated the same way the decision was written
@@ -303,9 +314,27 @@ func (s *Store) Lapse(ctx context.Context, targetID int64) (int64, error) {
 			Where("f.vulnerability_id = de.vulnerability_id").
 			Where("f.place_identity = de.place_identity")
 	}
+	matching := "COALESCE(de.component_upstream_version, '') = " + finding.ComponentUpstreamExpr +
+		" AND COALESCE(de.consumer_upstream_version, '') = " + finding.ConsumerUpstreamExpr
+
+	// Any open finding in the decision's product, in any build, still at the
+	// versions it was decided about.
+	stillCovered := s.db.NewSelect().
+		ColumnExpr("1").
+		TableExpr("finding AS f").
+		Join("JOIN component AS c ON c.id = f.component_id").
+		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
+		Join("JOIN target AS tg ON tg.id = f.target_id").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		Where("st.product_id = de.product_id").
+		Where("f.closed_run_id IS NULL").
+		Where("f.vulnerability_id = de.vulnerability_id").
+		Where("f.place_identity = de.place_identity").
+		Where(matching)
 
 	// Still found here, at versions that are not the ones this was decided
-	// about. Absent and empty are the same answer on the finding's side, so a
+	// about, and no longer found at those versions anywhere in the product.
+	// Absent and empty are the same answer on the finding's side, so a
 	// decision recorded against no version matches a component stating none.
 	result, err := s.db.NewUpdate().Model((*Decision)(nil)).
 		Set("state = ?", LapsedState).
@@ -315,10 +344,13 @@ func (s *Store) Lapse(ctx context.Context, targetID int64) (int64, error) {
 		// to decide about what is there now.
 		Set("live_key = ?", nil).
 		Where("state IN (?, ?)", Proposed, Approved).
-		Where("EXISTS (?)", openHere()).
-		Where("NOT EXISTS (?)", openHere().
-			Where("COALESCE(de.component_upstream_version, '') = "+finding.ComponentUpstreamExpr).
-			Where("COALESCE(de.consumer_upstream_version, '') = "+finding.ConsumerUpstreamExpr)).
+		Where("de.product_id = (?)", s.db.NewSelect().
+			ColumnExpr("st.product_id").
+			TableExpr("target AS tg").
+			Join("JOIN stream AS st ON st.id = tg.stream_id").
+			Where("tg.id = ?", targetID)).
+		Where("EXISTS (?)", openHere().Where("NOT ("+matching+")")).
+		Where("NOT EXISTS (?)", stillCovered).
 		Exec(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("mark what the code moved out from under: %w", err)

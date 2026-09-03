@@ -8,6 +8,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 )
 
 // StandingClaim is a live claim covering some of a finding's places, as the
@@ -43,35 +44,48 @@ type RowsStanding struct {
 	Proposed, SentBack, Approved int
 }
 
-// StandingAt reads the live claims covering any of a finding's places.
+// StandingAt reads the live claims covering any of a finding's places, at the
+// versions the finding holds there.
 //
 // Grouped by claim, because that is what a person returning to a finding asks
 // about: what stands here, in what state, agreed to by whom. Live means the
 // row still holds its key — proposed or approved — so a claim waiting for a
 // second person is reported as standing and pending rather than as absent.
+//
+// Matched by key rather than by place, which is the same match a finding
+// makes when it asks whether a decision applies to it. A place is a pair of
+// names, and the same pair sits in every build of the product at whatever
+// version each ships: matched by place alone, a decision keyed at one build's
+// version stood on a build shipping another.
 func (s *Store) StandingAt(ctx context.Context, subject access.Subject, productID, issueID int64,
-	places []string) ([]StandingClaim, error) {
+	at []finding.Deciding) ([]StandingClaim, error) {
 
-	if len(places) == 0 {
+	if len(at) == 0 {
 		return nil, nil
+	}
+	keys := make([]string, 0, len(at))
+	for _, place := range at {
+		keys = append(keys, liveKeyFor(Place{
+			ProductID: productID, VulnerabilityID: issueID, PlaceIdentity: place.PlaceIdentity,
+			ComponentUpstream: place.ComponentUpstream, ConsumerUpstream: place.ConsumerUpstream,
+		}))
 	}
 	var rows []Decision
 	if err := readableBy(s.db.NewSelect().Model(&rows), subject, "de").
 		Where("product_id = ?", productID).
 		Where("vulnerability_id = ?", issueID).
-		Where("place_identity IN (?)", bun.List(places)).
-		Where("live_key IS NOT NULL").
+		Where("live_key IN (?)", bun.List(keys)).
 		Order("id ASC").Scan(ctx); err != nil {
 		return nil, fmt.Errorf("read what stands here: %w", err)
 	}
 	if len(rows) == 0 {
 		return nil, nil
 	}
-	return s.groupByClaim(ctx, rows)
+	return s.groupByClaim(ctx, subject, rows)
 }
 
 // groupByClaim folds rows into one entry per claim, newest claim first.
-func (s *Store) groupByClaim(ctx context.Context, rows []Decision) ([]StandingClaim, error) {
+func (s *Store) groupByClaim(ctx context.Context, subject access.Subject, rows []Decision) ([]StandingClaim, error) {
 	order := []int64{}
 	byClaim := map[int64]*StandingClaim{}
 	ids := make([]int64, 0, len(rows))
@@ -164,7 +178,7 @@ func (s *Store) groupByClaim(ctx context.Context, rows []Decision) ([]StandingCl
 		entry.ApprovedBy, entry.ApprovedAt = approval.ApprovedBy, &when
 	}
 
-	builds, err := s.buildsCovered(ctx, order)
+	builds, err := s.buildsCovered(ctx, subject, order)
 	if err != nil {
 		return nil, err
 	}
@@ -308,9 +322,10 @@ func (s *Store) SimilarAt(ctx context.Context, subject access.Subject, productID
 
 	// Every row of each claim, for the issue count and the standing
 	// agreement — a claim about many issues has rows this finding does not
-	// sit at.
+	// sit at. Narrowed like the rows above, so the count counts what the
+	// reader may see rather than disclosing how many rows sit beyond it.
 	var all []Decision
-	if err := s.db.NewSelect().Model(&all).
+	if err := readableBy(s.db.NewSelect().Model(&all), subject, "de").
 		Where("claim_id IN (?)", bun.List(order)).Scan(ctx); err != nil {
 		return nil, fmt.Errorf("read what those claims cover: %w", err)
 	}

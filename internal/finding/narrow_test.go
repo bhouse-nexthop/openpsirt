@@ -9,6 +9,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 )
 
 // The filters that narrow a findings list by something other than how bad an
@@ -166,19 +167,25 @@ func TestAClaimInAnotherProductDoesNotDecideThisOne(t *testing.T) {
 
 		// The place a component sitting directly under the build hashes to,
 		// which is the same string in every product — that being the point.
+		// Live, and keyed on the version shipping here, so that the product
+		// is the only thing keeping it from standing: a claim that failed to
+		// match on its versions would leave a missing product condition
+		// unexercised.
 		place := finding.PlaceIdentity(swss.Name, "")
 		if _, err := f.db.DB.NewInsert().
 			Model(&map[string]any{
-				"claim_id":         claimBy(t, f.db, somebody.ID),
-				"product_id":       elsewhere.ID,
-				"vulnerability_id": issueID,
-				"place_identity":   place,
-				"visibility":       "public",
-				"outcome":          "not-applicable",
-				"state":            "proposed",
-				"needs_approval":   true,
-				"proposed_by":      somebody.ID,
-				"proposed_at":      time.Now().UTC(),
+				"claim_id":                   claimBy(t, f.db, somebody.ID),
+				"product_id":                 elsewhere.ID,
+				"vulnerability_id":           issueID,
+				"place_identity":             place,
+				"visibility":                 "public",
+				"outcome":                    "not-applicable",
+				"state":                      "proposed",
+				"needs_approval":             true,
+				"proposed_by":                somebody.ID,
+				"proposed_at":                time.Now().UTC(),
+				"component_upstream_version": swss.Version,
+				"live_key":                   "elsewhere-live-key",
 			}).
 			TableExpr("decision").Exec(ctx); err != nil {
 			// A row this test cannot write is a reason to fail: skipping would
@@ -203,7 +210,182 @@ func TestAClaimInAnotherProductDoesNotDecideThisOne(t *testing.T) {
 			t.Errorf("%d rows read as undecided, want the 1 that nobody here has decided",
 				undecided)
 		}
+
+		// And the finding's own screen, which names the decision standing at
+		// each place, names nothing: it showed the other product's claim as
+		// standing here, an identifier the reader could not open.
+		open := f.open(t)
+		evidence, err := f.store.Detail(ctx, who, f.target, open[0].VulnerabilityID, open[0].ComponentID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, sitting := range evidence.Places {
+			if sitting.Decision != nil {
+				t.Errorf("a claim in another product reads as decision %d standing here",
+					*sitting.Decision)
+			}
+		}
 	})
+}
+
+func TestALapsedPlaceDecidedAgainReadsAsWaiting(t *testing.T) {
+	// Lapsed means a decision here stopped applying and nothing replaced it.
+	// Once somebody makes the claim again, the place is waiting — which is
+	// what the row said, while the filter still listed it under lapsed: it
+	// asked only that something had lapsed and nothing was approved. A filter
+	// has to find a row by the word the row reads.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(ctx, f.target, f.run(t), []finding.Reported{
+			found("CVE-2026-1", swss),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		who := f.holding(t, access.PublicTriage)
+		somebody, err := access.NewStore(f.db.DB).Ensure(ctx, "them@example.com", "Them", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		place := finding.PlaceIdentity(swss.Name, "")
+		f.decided(t, somebody.ID, f.issueID(t, "CVE-2026-1"), place, "lapsed", "0.9.0", "")
+		f.decided(t, somebody.ID, f.issueID(t, "CVE-2026-1"), place, "proposed", swss.Version, "again")
+
+		groups, _, err := f.store.Groups(ctx, who, f.target, 50, 0, finding.Filter{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(groups) != 1 || groups[0].State != "waiting" {
+			t.Fatalf("a lapsed place claimed again reads as %+v, want one row waiting", groups)
+		}
+		_, lapsed, err := f.store.Groups(ctx, who, f.target, 50, 0, finding.Filter{State: "lapsed"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if lapsed != 0 {
+			t.Errorf("lapsed kept %d rows that read as waiting", lapsed)
+		}
+		_, waiting, err := f.store.Groups(ctx, who, f.target, 50, 0, finding.Filter{State: "waiting"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if waiting != 1 {
+			t.Errorf("waiting kept %d, want the 1 row that reads as waiting", waiting)
+		}
+	})
+}
+
+func TestALiveDecisionCoversOnlyTheVersionsItWasKeyedOn(t *testing.T) {
+	// A decision is a claim about a place at the versions it was keyed on,
+	// and it lapses by those versions moving. Two builds of one product can
+	// ship the same place at different versions, and the one that moved is
+	// exactly the one the decision no longer covers — everything that asks
+	// whether a decision applies says so, and the list's state, its filter and
+	// the finding's screen were matching by place alone and saying "agreed".
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		directly := func(library graph.Described) graph.Snapshot {
+			return graph.Snapshot{
+				Root: root, Components: []graph.Described{library},
+				Dependencies: []graph.Dependency{{Parent: root, Child: library}},
+			}
+		}
+		f.shipped(t, directly(libnl))
+		if _, err := f.store.Apply(ctx, f.target, f.run(t), []finding.Reported{
+			found("CVE-2026-1", libnl),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		other := f.anotherBuild(t, "202411")
+		f.shippedTo(t, other, directly(libnlNew))
+		if _, err := f.store.Apply(ctx, other, f.runOn(t, other), []finding.Reported{
+			found("CVE-2026-1", libnlNew),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		who := f.holding(t, access.PublicTriage)
+		somebody, err := access.NewStore(f.db.DB).Ensure(ctx, "them@example.com", "Them", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Approved against the older version, in the build that ships it.
+		f.decided(t, somebody.ID, f.issueID(t, "CVE-2026-1"),
+			finding.PlaceIdentity(libnl.Name, ""), "approved", libnl.Version, "old")
+
+		reads := func(target int64, want string) {
+			t.Helper()
+			groups, _, err := f.store.Groups(ctx, who, target, 50, 0, finding.Filter{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(groups) != 1 || groups[0].State != want {
+				t.Errorf("build %d reads as %+v, want one row %q", target, groups, want)
+			}
+			_, agreed, err := f.store.Groups(ctx, who, target, 50, 0, finding.Filter{State: "agreed"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if kept := want == "agreed"; (agreed == 1) != kept {
+				t.Errorf("build %d: agreed kept %d rows, want %v", target, agreed, kept)
+			}
+		}
+		decided := func(target int64) int {
+			t.Helper()
+			var open []finding.Finding
+			if err := f.db.DB.NewSelect().Model(&open).
+				Where("target_id = ?", target).Where("closed_run_id IS NULL").Scan(ctx); err != nil {
+				t.Fatal(err)
+			}
+			evidence, err := f.store.Detail(ctx, who, target, open[0].VulnerabilityID, open[0].ComponentID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(evidence.Places) != 1 {
+				t.Fatalf("build %d sits at %d places, want 1", target, len(evidence.Places))
+			}
+			n := 0
+			for _, sitting := range evidence.Places {
+				if sitting.Decision != nil {
+					n++
+				}
+			}
+			return n
+		}
+
+		reads(f.target, "agreed")
+		if n := decided(f.target); n != 1 {
+			t.Errorf("the build the decision was made against shows %d of 1 places decided", n)
+		}
+		reads(other, "undecided")
+		if n := decided(other); n != 0 {
+			t.Errorf("the build that moved on shows %d of 1 places decided, want 0", n)
+		}
+	})
+}
+
+// decided writes one decision of this product at a place, keyed on a
+// component version, as the triage store would have written it. Live where
+// the state is one a live claim can hold; a lapsed or withdrawn row holds no
+// key, which is what says it no longer applies.
+func (f *fixture) decided(t *testing.T, by, issueID int64, place, state, componentVersion, key string) {
+	t.Helper()
+	row := map[string]any{
+		"claim_id":   claimBy(t, f.db, by),
+		"product_id": f.productID, "vulnerability_id": issueID,
+		"place_identity": place, "visibility": "public",
+		"outcome": "not-applicable", "state": state,
+		"needs_approval": true, "proposed_by": by,
+		"proposed_at":                time.Now().UTC(),
+		"component_upstream_version": componentVersion,
+	}
+	if key != "" {
+		// Short, and not the place: the column holds sixty-four characters,
+		// which a place identity fills on its own.
+		row["live_key"] = key
+	}
+	if _, err := f.db.DB.NewInsert().Model(&row).TableExpr("decision").Exec(t.Context()); err != nil {
+		t.Fatalf("record a %s claim: %v", state, err)
+	}
 }
 
 func TestEachDecisionStateSelectsWhatItNames(t *testing.T) {
@@ -251,8 +433,10 @@ func TestEachDecisionStateSelectsWhatItNames(t *testing.T) {
 				"proposed_at": time.Now().UTC(),
 			}
 			if live {
-				// What makes a claim the one standing here.
+				// What makes a claim the one standing here: a key, and the
+				// version the claim was made against being the one shipping.
 				row["live_key"] = state + "-live-key"
+				row["component_upstream_version"] = swss.Version
 			}
 			if _, err := f.db.DB.NewInsert().Model(&row).
 				TableExpr("decision").Exec(ctx); err != nil {

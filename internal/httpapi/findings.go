@@ -20,6 +20,7 @@ type FindingBody struct {
 	Component     string `json:"component" doc:"What carries it"`
 	Version       string `json:"version" doc:"The version that ships"`
 	Upstream      string `json:"upstream,omitempty" doc:"What a fork was made from, where it is one"`
+	Ecosystem     string `json:"ecosystem,omitempty" doc:"The kind of package, as its identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. With the component and version it tells one row from another, which those two alone do not: one build can hold one name at one version as two components, a source repository and the package built from it"`
 	FixState      string `json:"fix_state,omitempty" enum:"fixed,none,wont-fix" doc:"What upstream has done about it"`
 	FixedIn       string `json:"fixed_in,omitempty" doc:"The version that resolves it, where one exists"`
 	// Places is how many consumers pull this component in here, and Answered
@@ -76,6 +77,7 @@ type ComponentFindingBody struct {
 	Component string `json:"component"`
 	Version   string `json:"version"`
 	Upstream  string `json:"upstream,omitempty" doc:"What a fork was cut from, where one is known"`
+	Ecosystem string `json:"ecosystem,omitempty" doc:"The kind of package, as its identifier spells it. With the component and version it tells one row from another, which those two alone do not"`
 	Issues    int    `json:"issues" doc:"Distinct vulnerabilities open against it, which is how many rows it contributes to the findings list"`
 	Places    int    `json:"places" doc:"How many times those sit somewhere in the build"`
 	Exploited bool   `json:"exploited" doc:"Whether any of them is known-exploited"`
@@ -197,7 +199,8 @@ func registerFindings(api huma.API, in Ingest) {
 			out.Body.Items = append(out.Body.Items, FindingBody{
 				Vulnerability: group.Vulnerability, Severity: group.Severity,
 				Component: group.Component, Version: group.Version, Upstream: group.Upstream,
-				FixState: string(group.FixState), FixedIn: group.FixedIn,
+				Ecosystem: group.Ecosystem,
+				FixState:  string(group.FixState), FixedIn: group.FixedIn,
 				Owner: group.Owner, Parent: group.Parent,
 				Middle: group.Middle, Chains: group.Chains,
 				Places: group.Places, Answered: group.Answered,
@@ -296,7 +299,8 @@ func registerFindings(api huma.API, in Ingest) {
 		for _, group := range groups {
 			out.Body.Items = append(out.Body.Items, ComponentFindingBody{
 				Component: group.Component, Version: group.Version, Upstream: group.Upstream,
-				Issues: group.Issues, Places: group.Places, Exploited: group.Exploited,
+				Ecosystem: group.Ecosystem,
+				Issues:    group.Issues, Places: group.Places, Exploited: group.Exploited,
 			})
 		}
 		return out, nil
@@ -495,12 +499,15 @@ func registerFindingDetail(api huma.API, in Ingest) {
 		}
 		body := evidenceBody(*evidence)
 
-		places := make([]string, 0, len(evidence.Places))
-		for _, place := range evidence.Places {
-			places = append(places, place.PlaceIdentity)
+		// The build's own places, with the versions it ships at each: what
+		// stands is matched by key, and a key carries versions a place name
+		// alone does not.
+		keyed, err := finding.NewStore(in.DB.DB).PlacesFor(ctx, subject, target.ID, issue, component)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "where this sits could not be read", err)
 		}
 		body.Standing, body.Previous, body.Similar, err = decidedAbout(ctx, in, subject,
-			named.ProductID, issue, places)
+			named.ProductID, issue, keyed)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "what was decided here could not be read", err)
 		}

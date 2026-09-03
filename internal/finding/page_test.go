@@ -204,6 +204,31 @@ func TestThePageIsTheGroupsInOrder(t *testing.T) {
 			t.Errorf("paging walked\n  %v\nwanted\n  %v", walked, want)
 		}
 
+		// One step past the end. The total rides on the page's rows, and an
+		// empty page has no row to carry it, so it is counted separately —
+		// through the same filter, or a client stepping past the last page
+		// sees the count fall to nothing and the pager with it. Under a plain
+		// filter and under one that joins, because the count is the grouping
+		// the page would have made, HAVING clauses included.
+		for _, c := range []struct {
+			name   string
+			filter finding.Filter
+		}{
+			{"everything", finding.Filter{}},
+			{"undecided", finding.Filter{State: "undecided"}},
+		} {
+			got, total, err := f.store.Groups(t.Context(), who, f.target, 2, len(want), c.filter)
+			if err != nil {
+				t.Fatalf("%s past the end: %v", c.name, err)
+			}
+			if len(got) != 0 {
+				t.Errorf("%s past the end: the page holds %d rows, want none", c.name, len(got))
+			}
+			if total != len(want) {
+				t.Errorf("%s past the end: the total is %d, wanted %d", c.name, total, len(want))
+			}
+		}
+
 		// What the page shows about a row comes from the second statement,
 		// keyed on the group. The counts have to be the same group's.
 		got, _, err := f.store.Groups(t.Context(), who, f.target, 50, 0, finding.Filter{})

@@ -139,6 +139,12 @@ entirely, because the claim is that it will not be fixed; a deferral replaces
 the deadline with its own date. What is left is time passing with nothing said,
 which is the only part worth interrupting somebody about.
 
+The clock stops only for a decision that applies: approved, or proposed where
+no second person is required, at the versions this build ships, and a deferral
+only until its date. A proposal still waiting for an approver stops nothing.
+"Who is holding what" counts overdue by the same condition, spelled once in
+`finding.OffTheClock`, so the two screens cannot disagree.
+
 ### Asked band by band
 
 The list of what is running out is asked once per window, each with its own

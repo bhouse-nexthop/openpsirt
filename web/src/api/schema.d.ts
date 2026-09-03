@@ -1715,7 +1715,7 @@ export interface components {
              * @example https://example.com/schemas/ClaimApprovalBody.json
              */
             readonly $schema?: string;
-            /** @description Name a batch to agree to several claims under one name, so they can be undone together */
+            /** @description Name a batch to agree to several claims under one name, so they can be undone together. At most 64 characters */
             batch?: string;
             /** @description Why the rows in except are set aside, in markdown. Required when any are */
             because?: string;
@@ -1801,6 +1801,8 @@ export interface components {
         };
         ComponentFindingBody: {
             component: string;
+            /** @description The kind of package, as its identifier spells it. With the component and version it tells one row from another, which those two alone do not */
+            ecosystem?: string;
             /** @description Whether any of them is known-exploited */
             exploited: boolean;
             /**
@@ -2228,6 +2230,8 @@ export interface components {
             chains?: number;
             /** @description What carries it */
             component: string;
+            /** @description The kind of package, as its identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. With the component and version it tells one row from another, which those two alone do not: one build can hold one name at one version as two components, a source repository and the package built from it */
+            ecosystem?: string;
             /** @description Somebody is known to be exploiting this */
             exploited?: boolean;
             /**

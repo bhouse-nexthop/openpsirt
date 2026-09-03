@@ -124,8 +124,13 @@ type Group struct {
 	// Upstream is what a fork was made from, where it is one. A version nobody
 	// recognizes needs it to be explainable.
 	Upstream string
-	FixState FixState
-	FixedIn  string
+	// Ecosystem is the kind of package this is, as its identifier spells it.
+	// Part of what tells one row from another: a name at a version is not
+	// unique within a build, which can hold a source repository and the
+	// package built from it under one name at one version.
+	Ecosystem string
+	FixState  FixState
+	FixedIn   string
 	// Places is how many consumers pull this component in here. It is part of
 	// what is read rather than a detail: sixty-two places and one place are
 	// different situations to somebody deciding, and a group that hides its
@@ -441,6 +446,30 @@ func stateWord(places, anyClaim, waiting, approved, lapsed int) string {
 	return ""
 }
 
+// keyMatches says a decision row `de` was keyed on the versions a finding's
+// component `c` and consumer `uc` hold now, as the versions are compared
+// everywhere a decision is looked up for a finding. A decision stores no
+// version where nothing stated one; the finding's expression reads that as
+// empty, so the two absences are compared as the same absence.
+//
+// The three aliases are the caller's to join: a finding's own row carries
+// only the identifiers, and the versions are on the components.
+const keyMatches = "COALESCE(de.component_upstream_version, '') = " + ComponentUpstreamExpr +
+	" AND COALESCE(de.consumer_upstream_version, '') = " + ConsumerUpstreamExpr
+
+// coversHere says a decision row `de` is about the finding it was correlated
+// with by issue and place, for the counts behind the state a row carries and
+// the state filter that finds it.
+//
+// A live claim covers a place at the versions it was keyed on and no other:
+// matched by place alone, a claim approved against libnl 3.7.0 in one build
+// answered for libnl 3.9.0 at the same place in the next, while everything
+// that asks whether a decision actually applies said it covered nothing there.
+// A claim with no key has lapsed or been withdrawn, and by definition its
+// versions no longer match — what it says about the place is history, and it
+// is matched by place so that "lapsed" can be said at all.
+const coversHere = "(de.live_key IS NULL OR (" + keyMatches + "))"
+
 // byState keeps groups by how far they have been decided.
 //
 // Every one of these is a condition over the *group* rather than over a place,
@@ -499,10 +528,17 @@ func (f Filter) byState(q *bun.SelectQuery) *bun.SelectQuery {
 	// whether or not it still stands; "approved" counts only the claim that
 	// currently stands, because without that a judgment withdrawn eighteen
 	// months ago still answers for its place.
+	//
+	// The finding's component and consumer are joined for the versions: a
+	// live claim is about the place at the versions it was keyed on, and
+	// matching it by place alone reports a claim made about one build's
+	// version as standing over a second build shipping another.
 	decided := q.NewSelect().
 		TableExpr(`"decision" AS de`).
 		Join("JOIN finding AS f2 ON f2.vulnerability_id = de.vulnerability_id"+
 			" AND f2.place_identity = de.place_identity").
+		Join("JOIN component AS c ON c.id = f2.component_id").
+		Join("LEFT JOIN component AS uc ON uc.id = f2.consumer_id").
 		ColumnExpr("f2.id AS finding_id").
 		ColumnExpr("MAX(CASE WHEN de.state = ? THEN 1 ELSE 0 END) AS waiting", proposed).
 		ColumnExpr("MAX(CASE WHEN de.state = ? AND de.live_key IS NOT NULL THEN 1 ELSE 0 END) AS approved",
@@ -510,6 +546,7 @@ func (f Filter) byState(q *bun.SelectQuery) *bun.SelectQuery {
 		ColumnExpr("MAX(CASE WHEN de.state = ? THEN 1 ELSE 0 END) AS lapsed", lapsed).
 		Where("de.product_id = ?", f.ProductID).
 		Where("f2.closed_run_id IS NULL").
+		Where(coversHere).
 		GroupExpr("f2.id")
 	q = q.Join("LEFT JOIN (?) AS dd ON dd.finding_id = f.id", decided)
 
@@ -519,7 +556,11 @@ func (f Filter) byState(q *bun.SelectQuery) *bun.SelectQuery {
 	case "waiting":
 		return q.Having("SUM(COALESCE(dd.waiting, 0)) > 0")
 	case "lapsed":
-		return q.Having("SUM(COALESCE(dd.lapsed, 0)) > 0 AND SUM(COALESCE(dd.approved, 0)) = 0")
+		// Lapsed means nothing replaced it: a claim made again at the place
+		// after the old one lapsed is waiting, which is what the row says,
+		// and the filter has to find the row by the word it reads.
+		return q.Having("SUM(COALESCE(dd.lapsed, 0)) > 0 AND SUM(COALESCE(dd.approved, 0)) = 0" +
+			" AND SUM(COALESCE(dd.waiting, 0)) = 0")
 	case "undecided":
 		return q.Having("COUNT(dd.finding_id) = 0")
 	}
@@ -677,6 +718,7 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 		}
 		if component, held := shipped[row.ComponentID]; held {
 			group.Component, group.Version = component.Name, component.Version
+			group.Ecosystem = graph.EcosystemOf(component.Purl)
 			if component.UpstreamVersion != "" {
 				group.Upstream = component.UpstreamName + " " + component.UpstreamVersion
 			}
@@ -814,13 +856,15 @@ func (s *Store) decorate(ctx context.Context, targetID, productID int64, visible
 
 	// How far each group has been decided, counted the way the state filter
 	// counts it, so the row and the filter cannot disagree. Four correlated
-	// counts over our decisions in this product at each place, plus whether
-	// any live claim is with its author.
+	// counts over our decisions in this product at each place and at the
+	// versions the place holds, plus whether any live claim is with its
+	// author.
 	decided := func(alias, condition string) string {
 		return `SUM(CASE WHEN EXISTS (SELECT 1 FROM "decision" AS de
 			WHERE de.product_id = ?
 			  AND de.vulnerability_id = f.vulnerability_id
-			  AND de.place_identity = f.place_identity` + condition + `) THEN 1 ELSE 0 END) AS ` + alias
+			  AND de.place_identity = f.place_identity
+			  AND ` + coversHere + condition + `) THEN 1 ELSE 0 END) AS ` + alias
 	}
 	var rows []decorated
 	q := s.db.NewSelect().
@@ -829,6 +873,12 @@ func (s *Store) decorate(ctx context.Context, targetID, productID int64, visible
 		// severity, so a list that orders by it and does not show it looks
 		// unsorted.
 		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+		// And for the versions a decision is keyed on. Two primary-key
+		// lookups per place on the page, so the correlated counts can ask
+		// whether a claim is about the versions shipping here rather than
+		// about the place at whatever versions it once held.
+		Join("JOIN component AS c ON c.id = f.component_id").
+		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("f.component_id AS component_id").
 		ColumnExpr("MAX(COALESCE(v.likelihood_ppm, 0)) AS likelihood_ppm").
@@ -932,7 +982,7 @@ func componentsNamed(ctx context.Context, db *bun.DB, ids []int64) (map[int64]gr
 	}
 	var components []graph.Component
 	if err := db.NewSelect().Model(&components).
-		Column("id", "name", "version", "upstream_name", "upstream_version").
+		Column("id", "purl", "name", "version", "upstream_name", "upstream_version").
 		Where("id IN (?)", bun.List(ids)).Scan(ctx); err != nil {
 		return nil, fmt.Errorf("read what these components are: %w", err)
 	}
@@ -1064,6 +1114,7 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 	}
 	err = s.db.NewSelect().
 		TableExpr("finding AS f").
+		Join("JOIN component AS c ON c.id = f.component_id").
 		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
 		ColumnExpr("f.place_identity AS place_identity").
 		ColumnExpr("COALESCE(uc.name, '') AS consumer").
@@ -1072,10 +1123,18 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		// and waiting counts: it is answered as far as the person looking at
 		// it is concerned, and showing it as untouched invites a second claim
 		// about the same code.
+		//
+		// This product's, at the versions shipping here. A place identity
+		// carries no product, so without the first a claim in another product
+		// that ships the same component reads as standing on this screen; and
+		// a live claim is about the versions it was keyed on, so without the
+		// second a claim about last release's version answers for this one.
 		ColumnExpr(`(SELECT MIN(de.id) FROM "decision" AS de
-			WHERE de.vulnerability_id = f.vulnerability_id
+			WHERE de.product_id = ?
+			  AND de.vulnerability_id = f.vulnerability_id
 			  AND de.place_identity = f.place_identity
-			  AND de.live_key IS NOT NULL) AS decision`).
+			  AND de.live_key IS NOT NULL
+			  AND `+keyMatches+`) AS decision`, productID).
 		ColumnExpr("CASE WHEN f.suppressed_by IS NULL THEN ? ELSE ? END AS suppressed", false, true).
 		ColumnExpr("f.urgency AS urgency").
 		ColumnExpr("f.fix_state AS fix_state").
@@ -1394,6 +1453,10 @@ type ComponentGroup struct {
 	// Upstream is what a fork was cut from, carried for the same reason it is
 	// carried on a finding: a version nobody recognizes needs it.
 	Upstream string
+	// Ecosystem is the kind of package, carried for the same reason a
+	// finding's row carries it: a name at a version does not tell two rows
+	// apart on its own.
+	Ecosystem string
 	// Issues is how many distinct vulnerabilities are open against it, which
 	// is how many rows it contributes to the findings list.
 	Issues int
@@ -1500,6 +1563,7 @@ func (s *Store) ComponentGroups(ctx context.Context, subject access.Subject, tar
 			group.Component = named.Name
 			group.Version = named.Version
 			group.Upstream = named.UpstreamVersion
+			group.Ecosystem = graph.EcosystemOf(named.Purl)
 		}
 		groups = append(groups, group)
 	}
