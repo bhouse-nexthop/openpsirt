@@ -642,30 +642,29 @@ in kind: the finding stops being work rather than becoming later work, and
 REM-27 takes its deadline away entirely. The person agreeing to it should
 probably be told which of the two they are agreeing to.
 
-**A year of nightly scans has been measured once and the figures withdrawn.**
-There is a harness now — `make measure`, and `DESIGN-findings.md` holds the
-model it runs — but the first run applied twice the churn it documented: it slid
-a window and let the previous night's components revert, so fourteen identities
-changed a night where the model said seven, and a version history no build has.
-The numbers it produced were real measurements of a model nobody described, so
-they are withdrawn rather than corrected in place. The harness carries a bump
-forward now; the run has not been taken.
+**A year of nightly scans has been measured, and the figures the first run
+produced are gone rather than corrected.** That run applied twice the churn it
+documented — it slid a window and let the previous night's components revert,
+so fourteen identities changed a night where the model said seven, and a
+version history no build has. It was withdrawn rather than halved, and the
+second run says that was right: halving the churn halved MariaDB and cut
+PostgreSQL by a third, and moved MySQL by four percent. The error did not scale
+the four engines alike, so no arithmetic on the old numbers would have
+recovered these. `DESIGN-findings.md` carries the run.
 
-What that run did establish, and what a second one should confirm rather than
-discover: the reads hold up and trend is the one that grows. It also turned up
-something nobody was looking for — MySQL writes a night five times slower than
-PostgreSQL and eight times slower than MariaDB. That is a comparison between
-engines on identical work, so the churn error scales all four alike and does not
-explain it.
+What it confirmed rather than discovered: the reads hold up, and trend is the
+one that grows. The findings list grew between 1.5 and 3.5 times against a
+table that grew 16.8; trend grew about linearly with the calendar.
 
-What the measurement turned up that nobody was looking for is an engine
-difference: **MySQL writes a night five times slower than PostgreSQL and eight
-times slower than MariaDB** — 5.01 s against 1.04 s and 0.64 s, and 12.76 s at
-its worst. Thirteen seconds for a nightly scan is not an operational problem,
-so nothing here changes; it is recorded because "the same code is five times
-more expensive on one supported engine than on its sibling" is worth knowing
-before somebody picks one, and because averaging the four together would have
-hidden it.
+**Open, and new.** *MySQL's write cost barely responds to how much changed* —
+4.82 s a night against PostgreSQL's 0.67 s and MariaDB's 0.32 s, and almost
+unmoved when the churn was halved. A cost that does not scale with rows touched
+is paid per statement rather than per row, which points at how the apply is
+batched on that engine rather than at the work it does. Nothing here changes
+until somebody measures which statement: thirteen seconds for a nightly scan is
+not an operational problem, and this is recorded because "the same code is
+fifteen times more expensive on one supported engine than on its sibling" is
+worth knowing before somebody picks one.
 
 Still open in the same area, and smaller: this measured one build, where a
 deployment tracks several, and it assumed a churn rate rather than observing

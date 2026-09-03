@@ -26,7 +26,7 @@ be picked up:
 | **Done** | The fixture before that one was the 2026-09-02 16:13 build: valid CycloneDX 1.6, toolchain in `formulation`, 219 fewer findings rows measured against the same scanner and database |
 | **Done** | The in-app notification area, both lifetimes, two event producers and the sweep that derives conditions. Mail and chat are not built; see `DESIGN-notifications.md` for what is told and what is not |
 | **Done** | An adversarial review over everything since the last one, and every finding worked through — see below. One was refused, and the gate then caught a regression in one of the fixes |
-| **Next** | **Re-run `make measure`.** The published year-of-scans figures are withdrawn: the harness applied twice the churn it documented, so they measure a model nobody described. The harness is fixed and the numbers are not taken yet — `DESIGN-findings.md` says so at the top of that section rather than carrying figures nobody can defend |
+| **Done** | **`make measure` re-run**, and `DESIGN-findings.md` carries figures again. The withdrawal was right rather than merely cautious: halving the churn halved MariaDB and cut PostgreSQL by a third, and moved MySQL by four percent — the error did not scale the four engines alike, so no arithmetic on the old numbers would have recovered these. The reads hold up and trend is the one that grows, both confirmed rather than discovered. One new thing to chase, recorded in `DECISIONS.md` §4: **MySQL's write cost barely responds to how much changed**, which is a cost paid per statement rather than per row |
 | **Done** | The fixture is the 2026-09-02 21:21 build, which is the first one to have *run* the producer fixes rather than have them replayed over an old document. The image root's direct children went 5,198 → 30, unreached components 237 → 39, and 190 lockfile entries under unbuilt source trees moved to `formulation`. `packages` was the only asserted constant that moved; the upstream and CPE counts held because none of the 190 stated either, which was checked against the old fixture rather than assumed |
 
 **How `ING-41` ended up built**, since the shape is not obvious from the
@@ -1391,6 +1391,33 @@ Exporting the three URLs first made the mutant fail as it should.
 So: when running `go test` by hand rather than through `make check`, export the
 engine URLs, and check the subtest names in the output actually list four
 engines before believing a result.
+
+## The year of nightly scans, measured properly (2026-09-03)
+
+The run the previous note called "Next". Numbers are in `DESIGN-findings.md`;
+what is worth carrying here is why the withdrawal was the right call rather
+than an over-cautious one.
+
+Halving the churn to what the model documents **halved MariaDB (0.64 s to
+0.32 s a night), cut PostgreSQL by a third (1.04 s to 0.67 s), and moved MySQL
+by four percent (5.01 s to 4.82 s)**. The error did not scale the four engines
+alike, so dividing the old figures by two — which is what "corrected in place"
+would have meant — would have produced three wrong numbers and one right one,
+with nothing saying which.
+
+It also turned the engine gap into a question rather than a curiosity. A cost
+that barely responds to how many rows changed is paid **per statement**, not
+per row, so the thing to look at on MySQL is how the apply is batched rather
+than how much work it does. Recorded in `DECISIONS.md` §4; nothing changes
+until somebody measures which statement.
+
+Two figures to hold on to when reading the table: each read column is **one
+sample**, and the harness happens to take two seconds apart on identical data —
+MySQL's trend came back 1.19 s and then 259 ms, MariaDB's findings list 212 ms
+and then 24 ms. The growth is stable across both; the absolute figures are
+worth an order of magnitude and no more. The design document now says so, since
+the previous version of that table presented single readings as if they were
+precise.
 
 ## Two passes that ran on every replica now run on one (2026-09-03)
 

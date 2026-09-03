@@ -557,56 +557,67 @@ The earlier text here said a twenty-seventh, which came from dividing a real
 image's places by this model's first-night finding rows — two different
 quantities. Every ratio the model actually states is ten.
 
-**The table grew 28 times over the year**, from 8,840 rows to 251,124. The
-graph grew faster: 23,834 edges to 196,860, because a component whose version
-moves opens a new node and 34 new edges while the old ones stay as closed
-intervals. Neither is a leak — every row is an interval somebody can ask a
-question about — but a deployment sizing a disk should know the shape is
-multiplicative in consumers, not additive in components.
+**The table grew 16.8 times over the year**, from 8,840 rows to 148,614. The
+graph grew alongside it: 23,834 edges to 110,466, and 736 nodes to 3,284,
+because a component whose version moves opens a new node and 34 new edges while
+the old ones stay as closed intervals. Neither is a leak — every row is an
+interval somebody can ask a question about — but a deployment sizing a disk
+should know the shape is multiplicative in consumers, not additive in
+components. Over the year 2,548 component versions moved, which is the whole of
+what the nights cost.
 
 Where it ends up, after 365 nights, on each engine:
 
 | | findings list | running out | trend | a night, average | a night, worst |
 |---|---:|---:|---:|---:|---:|
-| PostgreSQL | 85 ms | 44 ms | 241 ms | 1.04 s | 1.77 s |
-| SQLite | 206 ms | 79 ms | 773 ms | 0.45 s | 1.02 s |
-| MySQL | 218 ms | 119 ms | 2.03 s | 5.01 s | 12.76 s |
-| MariaDB | 325 ms | 155 ms | 1.21 s | 0.64 s | 2.06 s |
+| SQLite | 27 ms | 72 ms | 419 ms | 0.31 s | 0.51 s |
+| PostgreSQL | 24 ms | 75 ms | 136 ms | 0.67 s | 1.11 s |
+| MySQL | 65 ms | 100 ms | 259 ms | 4.82 s | 12.56 s |
+| MariaDB | 24 ms | 115 ms | 215 ms | 0.32 s | 0.83 s |
+
+**Read the read columns as an order of magnitude, not as a benchmark.** Each is
+one sample, and the harness happens to take two of them seconds apart on
+identical data: MySQL's trend was 1.19 s and then 259 ms, MariaDB's findings
+list 212 ms and then 24 ms. A ninefold spread between two readings of the same
+query on the same rows is what a single figure here is worth. What the run is
+for is the *growth*, and that is stable across both samples.
 
 **The reads hold up, and that is the answer §4 wanted.** The findings list grew
-about five times while the table grew twenty-eight, because it is indexed on
+between 1.5 and 3.5 times while the table grew 16.8, because it is indexed on
 the target and whether a finding is closed — the shape the interval storage was
 chosen for. Running out behaves the same way.
 
-**Trend is the one that grows**, and it is the slowest everywhere: it reads
-every interval overlapping the window rather than a page of them, and the open
-set itself grows as issues accumulate. It is the query to watch, and the first
-one to reshape if a deployment reports a slow front page.
+**Trend is the one that grows**, and it grows about linearly: 18 ms to 394 ms on
+SQLite, 7 ms to 114 ms on PostgreSQL, 15 ms to 1.19 s on MySQL. It reads every
+interval overlapping the window rather than a page of them, and the open set
+itself grows as issues accumulate. It is the query to watch, and the first one
+to reshape if a deployment reports a slow front page.
 
-**Two engine differences are worth stating rather than averaging away.**
+**MySQL writes seven times slower than PostgreSQL and fifteen times slower than
+MariaDB** — 4.82 s a night against 0.67 s and 0.32 s, and 12.56 s at its worst
+against 1.11 s. A nightly scan taking thirteen seconds is not an operational
+problem; the same code being fifteen times more expensive on one supported
+engine than on its own sibling is a fact to have before somebody chooses one.
 
-*MySQL writes five times slower than PostgreSQL and eight times slower than
-MariaDB* — 5.01 s a night against 1.04 s and 0.64 s, and 12.76 s at its worst
-against 1.77 s. Its trend query is the slowest too. A nightly scan taking
-thirteen seconds is not an operational problem; the same code being five times
-more expensive on one supported engine than on its own sibling is a fact to
-have before somebody chooses one.
-
-*SQLite reads worse than it writes.* Its nights are the cheapest of the four
-and its trend is three times PostgreSQL's, which is the shape to expect from
-one writer and one connection. It is a development database and this measures
-why.
+**And the correction to the model says what that cost is made of.** An earlier
+run applied twice the churn it documented, and its figures were withdrawn
+rather than halved. Halving the churn halved MariaDB (0.64 s to 0.32 s) and cut
+PostgreSQL by a third (1.04 s to 0.67 s) — and moved MySQL by four percent,
+from 5.01 s to 4.82 s. A cost that barely responds to how many rows changed is
+a cost paid per statement rather than per row. That is the thing to measure
+next on that engine, and it is also why the withdrawal was right: the error did
+not scale the four engines alike, so no arithmetic on the old numbers would
+have recovered these.
 
 **What this does not measure.** It was read as an administrator, who sees every
 product — so the queries ran with no narrowing by product at all, which is the
 cheapest plan available rather than the one an ordinary reader gets. One build,
-not the several a deployment
-tracks — the table grows with builds, so a deployment following ten of them
-multiplies these rows by ten and the queries narrow by target before they read.
-It also assumes a churn rate rather than observing one: at 1% a night the year
-adds 2,548 component versions, and a deployment whose builds move more will
-grow faster in proportion. `make measure` re-runs it, and the constants at the
-top of the harness are the model.
+not the several a deployment tracks — the table grows with builds, so a
+deployment following ten of them multiplies these rows by ten and the queries
+narrow by target before they read. It also assumes a churn rate rather than
+observing one: at 1% a night the year moves 2,548 component versions, and a
+deployment whose builds move more will grow faster in proportion. `make
+measure` re-runs it, and the constants at the top of the harness are the model.
 
 ## Choices the decisions did not cover
 
