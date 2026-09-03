@@ -1,6 +1,8 @@
 package finding_test
 
 import (
+	"errors"
+	"sync"
 	"testing"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
@@ -142,8 +144,100 @@ func TestOneClaimStandsPerIssue(t *testing.T) {
 		if _, err := f.store.Assess(t.Context(), who, id, "high", "Worse."); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.store.Assess(t.Context(), who, id, "critical", "Worse again."); err == nil {
-			t.Error("a second claim stood beside the first")
+		second, err := f.store.Assess(t.Context(), who, id, "critical", "Worse again.")
+		if !errors.Is(err, finding.ErrAlreadyAssessed) {
+			t.Errorf("a second claim about one issue got %v (%+v), want ErrAlreadyAssessed", err, second)
+		}
+	})
+}
+
+func TestAWithdrawnAssessmentDoesNotStandInTheWayOfAFreshOne(t *testing.T) {
+	// The other half of one claim per issue. A withdrawn claim is history: it
+	// stays readable, and it does not stop anybody claiming again. Enforced by
+	// a key released on withdrawal rather than by a state check, so what makes
+	// room is the same thing that took it (TRI-33).
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		one := found("CVE-2026-AGAIN", swss)
+		one.Issue.Severity = "medium"
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{one}); err != nil {
+			t.Fatal(err)
+		}
+		f.recorded(t, 1, "someone")
+		who := f.holding(t, access.PublicTriage)
+		id := f.issue(t, "CVE-2026-AGAIN")
+
+		first, err := f.store.Assess(t.Context(), who, id, "high", "Worse.")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.store.Withdraw(t.Context(), who, first.ID); err != nil {
+			t.Fatal(err)
+		}
+		again, err := f.store.Assess(t.Context(), who, id, "critical", "Worse than that.")
+		if err != nil {
+			t.Fatalf("a withdrawn claim blocked a fresh one: %v", err)
+		}
+		if again.ID == first.ID {
+			t.Error("the fresh claim overwrote the withdrawn one rather than standing beside it")
+		}
+		// And the withdrawn one is still readable, which is why it was
+		// withdrawn rather than deleted.
+		if held := f.assessment(t, first.ID); held.State != finding.AssessmentWithdrawn {
+			t.Errorf("the withdrawn claim reads as %q", held.State)
+		}
+	})
+}
+
+func TestTwoAssessmentsProposedAtOnceLeaveOneStanding(t *testing.T) {
+	// The shape a read-then-write check cannot hold: both proposals read
+	// "nothing stands here" before either writes, and both then write. What
+	// refuses the second is the unique constraint over the issue a live claim
+	// is about, which no amount of checking beforehand can substitute for
+	// (TRI-33).
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		one := found("CVE-2026-RACE", swss)
+		one.Issue.Severity = "medium"
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{one}); err != nil {
+			t.Fatal(err)
+		}
+		f.recorded(t, 1, "someone")
+		who := f.holding(t, access.PublicTriage)
+		id := f.issue(t, "CVE-2026-RACE")
+
+		const proposers = 6
+		var wg sync.WaitGroup
+		results := make([]error, proposers)
+		start := make(chan struct{})
+		for i := range proposers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				_, results[i] = f.store.Assess(t.Context(), who, id, "high", "Worse.")
+			}()
+		}
+		close(start)
+		wg.Wait()
+
+		stood := 0
+		for i, err := range results {
+			switch {
+			case err == nil:
+				stood++
+			case errors.Is(err, finding.ErrAlreadyAssessed):
+			default:
+				t.Errorf("proposal %d failed with %v, want ErrAlreadyAssessed", i, err)
+			}
+		}
+		if stood != 1 {
+			t.Errorf("%d of %d proposals got through, want exactly one", stood, proposers)
+		}
+		if live := f.liveAssessments(t, id); live != 1 {
+			t.Errorf("%d claims stand about one issue", live)
 		}
 	})
 }

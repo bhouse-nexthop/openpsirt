@@ -36,6 +36,12 @@ type Assessment struct {
 	ProposedAt    time.Time  `bun:"proposed_at,notnull"`
 	DecidedBy     *int64     `bun:"decided_by"`
 	DecidedAt     *time.Time `bun:"decided_at"`
+	// LiveVulnerabilityID is the issue this is a claim about while it is still
+	// a live claim, and null once it is withdrawn. Under a unique constraint
+	// that is what enforces one live claim per issue in the database rather
+	// than in a check — nulls do not collide, so any number of withdrawn
+	// claims sit beside the live one (TRI-33).
+	LiveVulnerabilityID *int64 `bun:"live_vulnerability_id"`
 }
 
 // The states an assessment passes through. Live is the one that ranks.
@@ -90,24 +96,13 @@ func (s *Store) Assess(ctx context.Context, subject access.Subject, vulnerabilit
 			return fmt.Errorf("read what was published about this: %w", err)
 		}
 
-		standing := 0
-		standing, err = tx.NewSelect().Model((*Assessment)(nil)).
-			Where("vulnerability_id = ?", vulnerabilityID).
-			Where("state IN (?)", bun.List([]string{AssessmentProposed, AssessmentLive})).
-			Count(ctx)
-		if err != nil {
-			return fmt.Errorf("read what is already claimed about this: %w", err)
-		}
-		if standing > 0 {
-			return ErrAlreadyAssessed
-		}
-
 		// Milder than what the world says is the direction that hides things.
 		// Compared on the folded band rather than the raw word, so that
 		// disagreeing with an unrated issue is judged against the medium it
 		// is already treated as rather than against nothing.
 		milder := rank(severity) < rank(Band(issue.Published))
 		now := s.now().UTC().Truncate(time.Microsecond)
+		live := vulnerabilityID
 		recorded = &Assessment{
 			VulnerabilityID: vulnerabilityID,
 			Severity:        severity,
@@ -117,12 +112,24 @@ func (s *Store) Assess(ctx context.Context, subject access.Subject, vulnerabilit
 			NeedsApproval:   milder,
 			ProposedBy:      subject.ID,
 			ProposedAt:      now,
+			// Held from the moment it is proposed. A claim waiting for a
+			// second person is still a claim standing about this issue, so a
+			// rival one is refused while it waits rather than only once it is
+			// in force.
+			LiveVulnerabilityID: &live,
 		}
 		if !milder {
 			recorded.State = AssessmentLive
 			recorded.DecidedAt = &now
 		}
 		if _, err := tx.NewInsert().Model(recorded).Exec(ctx); err != nil {
+			if database.IsDuplicate(err) {
+				// The unique constraint over the live issue refused it, which
+				// is the only thing that could: two proposals arriving
+				// together both walk through any check made before the write
+				// (TRI-33).
+				return ErrAlreadyAssessed
+			}
 			return fmt.Errorf("record what we think of this: %w", err)
 		}
 		if recorded.State == AssessmentLive {
@@ -193,8 +200,11 @@ func (s *Store) Withdraw(ctx context.Context, subject access.Subject, id int64) 
 		claim.State = AssessmentWithdrawn
 		claim.DecidedBy = &subject.ID
 		claim.DecidedAt = &now
+		// Released, so a fresh claim may be made about the issue. A withdrawn
+		// claim is history and does not stand in the way of one.
+		claim.LiveVulnerabilityID = nil
 		if _, err := tx.NewUpdate().Model(claim).
-			Column("state", "decided_by", "decided_at").
+			Column("state", "decided_by", "decided_at", "live_vulnerability_id").
 			WherePK().Exec(ctx); err != nil {
 			return fmt.Errorf("withdraw the claim: %w", err)
 		}

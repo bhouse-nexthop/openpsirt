@@ -1524,3 +1524,25 @@ func (f *fixture) startedAt(t *testing.T, runID int64) time.Time {
 	}
 	return started
 }
+
+// assessment reads one claim back, whatever state it is in.
+func (f *fixture) assessment(t *testing.T, id int64) finding.Assessment {
+	t.Helper()
+	var held finding.Assessment
+	if err := f.db.DB.NewSelect().Model(&held).Where("id = ?", id).
+		Scan(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	return held
+}
+
+// liveAssessments counts the claims still standing about an issue.
+func (f *fixture) liveAssessments(t *testing.T, vulnerabilityID int64) int {
+	t.Helper()
+	n, err := f.db.DB.NewSelect().Model((*finding.Assessment)(nil)).
+		Where("live_vulnerability_id = ?", vulnerabilityID).Count(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
+}

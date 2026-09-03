@@ -1392,6 +1392,37 @@ So: when running `go test` by hand rather than through `make check`, export the
 engine URLs, and check the subtest names in the output actually list four
 engines before believing a result.
 
+## One assessment stands per issue, and the database says so (2026-09-03)
+
+Third of the 2026-09-03 review's open items, recorded as `TRI-49`. The rule was
+written in three comments — including above an index that was not unique and
+claimed to hold it — and enforced by a count-then-insert. That is the shape
+`TRI-33` rejects for decisions, and the measurement is blunt: with the
+constraint removed, **six proposals at once left six claims standing**.
+
+Same mechanism as decisions, and deliberately: a key naming the issue, held
+from proposal and released on withdrawal, under a unique constraint. Two
+details that were choices rather than transcription:
+
+- **Held from proposal, not from the moment a rating comes into force.** A
+  milder rating waits for a second person (`TRI-41`), so there is a window in
+  which a claim is recorded and not yet in force. A rival proposed in that
+  window would be agreed to by somebody with no sign the first existed, which
+  is the whole failure.
+- **A plain nullable copy of the issue id rather than a hash.** A decision's
+  live key hashes five fields because the combination is five fields wide; an
+  assessment's is one column, and hashing it would be indirection for its own
+  sake.
+
+**Assessments had no design section at all** — `TRI-40` to `TRI-42` existed as
+decisions, and nothing in `DESIGN-*.md` described what an assessment is, how it
+comes into force, or what it reaches. By the repository's own rule that is a
+remnant. `DESIGN-triage.md` now carries it, along with the new rule.
+
+**The triage migration was edited in place again**, so a development database
+against the four servers has to be recreated (`make engines-down && make
+engines-up`), and so does the demo's (`make demo-reset`).
+
 ## Urgency was three policies; it is one now (2026-09-03)
 
 Second of the 2026-09-03 review's open items, recorded as `RNK-07`. The three

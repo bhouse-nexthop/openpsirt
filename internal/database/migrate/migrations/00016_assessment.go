@@ -64,6 +64,21 @@ func upAssessment(ctx context.Context, tx *sql.Tx) error {
 			"proposed_at"   ` + t.timestamp + ` NOT NULL,
 			"decided_by"    ` + t.refNull + ` NULL,
 			"decided_at"    ` + t.timestamp + ` NULL,
+			-- The issue this is a claim about, while it is still a live claim:
+			-- the same value as "vulnerability_id" until the claim is
+			-- withdrawn, and null after. Under a unique constraint that is
+			-- how "one live claim per issue" is enforced by the database
+			-- rather than by a check — null values do not collide in a unique
+			-- index on any of the four engines, so any number of withdrawn
+			-- claims may sit beside the live one, and two proposals arriving
+			-- at once cannot both get through. A read-then-write check is
+			-- exactly the shape both of them walk through (TRI-33).
+			--
+			-- No foreign key of its own: "vulnerability_id" already carries
+			-- one, and this column is the mechanism that holds the rule
+			-- rather than a second reference to the issue.
+			"live_vulnerability_id" ` + t.refNull + ` NULL,
+			CONSTRAINT "assessment_live_unique" UNIQUE ("live_vulnerability_id"),
 			CONSTRAINT "assessment_vulnerability_fk" FOREIGN KEY ("vulnerability_id")
 				REFERENCES "vulnerability"("id"),
 			CONSTRAINT "assessment_proposer_fk" FOREIGN KEY ("proposed_by")
@@ -72,9 +87,9 @@ func upAssessment(ctx context.Context, tx *sql.Tx) error {
 				REFERENCES "person"("id")
 		)` + t.suffix,
 
-		// One claim standing per issue at a time. A second claim about the
-		// same issue is a revision of the first rather than a rival to it,
-		// which is the rule decisions already hold to.
+		// Reading an issue's claims, live and withdrawn alike. What holds the
+		// rule that only one of them is live is the unique constraint above,
+		// not this.
 		`CREATE INDEX "assessment_issue_idx" ON "assessment" ("vulnerability_id", "state")`,
 		`CREATE INDEX "assessment_waiting_idx" ON "assessment" ("state", "needs_approval")`,
 	}

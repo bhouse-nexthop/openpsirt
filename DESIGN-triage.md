@@ -3,8 +3,8 @@
 What people decide about findings, and when a decision stops applying.
 
 Satisfies TRI-01 to TRI-03, TRI-05 to TRI-08, TRI-10 to TRI-18, TRI-20 to
-TRI-36, TRI-45 to TRI-47, REM-25, UIX-35, UIX-46, REL-05, REL-06, REL-09,
-MDL-08, MDL-19, ACC-09. The
+TRI-36, TRI-40 to TRI-42, TRI-45 to TRI-47, TRI-49, REM-25, RNK-07, UIX-35,
+UIX-46, REL-05, REL-06, REL-09, MDL-08, MDL-19, ACC-09. The
 text rules themselves are in `DESIGN-text.md`, and the reports these numbers
 feed are in `DESIGN-reporting.md`.
 
@@ -450,6 +450,58 @@ rule that applies to only some rows portable. A read-then-write check is
 exactly the shape two proposals arriving together both walk through, and the
 test drives that case directly: two people proposing at once produce one claim,
 and removing the index lets both through.
+
+## What we think of an issue, as against what was published
+
+A published rating can be wrong for us. The score assumes a configuration we do
+not ship, or the world has not rated it at all and it is being treated as a
+medium by default.
+
+**The claim is about the issue, not about a place.** A rating being wrong is one
+statement about the vulnerability: true wherever it appears, true in products it
+has not reached yet, and it does not stop being true because somebody rebuilt.
+Keyed to a place it would have to be repeated at each one and would lapse on a
+version change that had nothing to do with it.
+
+**Rating something worse takes effect at once; rating it milder waits for a
+second person.** Nobody needs protecting from being told something is worse than
+the world says. Milder is the direction that hides things, and it hides more
+than a position in a list: severity sets the deadline, so calling a high a low
+pushes that out by months, and where a product has said what is worth triaging
+at all, a downgrade below that line takes the finding off the working list and
+off any clock entirely.
+
+**The published rating is never overwritten.** A rating of ours shown where the
+world's goes reads as the world's, and the first person to check against the
+public record finds a discrepancy nobody declared. Both are on screen; ours is
+what ranks, what the triage line compares and what sets the deadline.
+
+**A claim that is in force reaches everything it should.** It is written onto
+the issue as the rating in force, and everything that ranks, filters or clocks
+reads that one value with the published rating as its fallback — rather than
+each reader joining the claim and folding it in its own way. The findings
+already open are reordered and re-clocked when it lands, because a rating that
+did not reach them would be a note nobody acts on.
+
+### One live claim per issue
+
+A second claim about an issue is a revision of the first rather than a rival to
+it. Two contradictory ratings of one issue, both looking ordinary, is the same
+failure a decision's one-live-claim rule exists to prevent: what applies gets
+chosen by some tie-break nobody wrote down, and neither person knows the other
+exists.
+
+**Held the same way, and for the same reason.** A key naming the issue is held
+from the moment a claim is proposed — a claim waiting for a second person is
+still a claim standing — and released when it is withdrawn, under a unique
+constraint. Null values do not collide in a unique index on any of the four
+engines, which is what makes a rule that applies to only some rows portable, so
+any number of withdrawn claims sit beside the live one and stay readable.
+
+A check made before the write cannot hold this. Two proposals arriving together
+both read "nothing stands here" and both then write, and the test drives exactly
+that: six proposals at once leave one claim standing, and removing the
+constraint lets all six through.
 
 ## A judgment says how much it covers
 
