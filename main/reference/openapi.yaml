@@ -535,6 +535,9 @@ components:
           description: How long it has been, in days, measured from the last arrival or from when the build was declared
           format: int64
           type: integer
+        retired:
+          description: Whether this build's release is out of support, in which case silence is expected and it is never reported as quiet
+          type: boolean
         stream:
           type: string
         stream_kind:
@@ -990,6 +993,23 @@ components:
           type: string
       required:
         - body
+      type: object
+    EndOfLifeBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/EndOfLifeBody.json
+          format: uri
+          readOnly: true
+          type: string
+        "on":
+          description: The date support ends, as YYYY-MM-DD, or empty to clear it
+          pattern: ^(\d{4}-\d{2}-\d{2})?$
+          type: string
+      required:
+        - "on"
       type: object
     ErrorDetail:
       additionalProperties: false
@@ -2304,6 +2324,9 @@ components:
         display_name:
           description: What people see. Defaults to the name
           type: string
+        end_of_life:
+          description: The date support ends for releases that have not stated their own, as YYYY-MM-DD
+          type: string
         last_scan_at:
           description: When a scan last arrived for any of its builds
           type: string
@@ -2909,6 +2932,12 @@ components:
           format: uri
           readOnly: true
           type: string
+        end_of_life:
+          description: The date support ends, as YYYY-MM-DD
+          type: string
+        end_of_life_inherited:
+          description: The date shown is the product's, not this release's own
+          type: boolean
         kind:
           description: Whether this line moves. A branch is rebuilt; a tag never changes
           enum:
@@ -4352,6 +4381,39 @@ paths:
       summary: Compare two builds
       tags:
         - Findings
+  /v1/products/{product}/end-of-life:
+    put:
+      description: |-
+        Sets the date support ends for every release of a product that has not stated its own. Past it, nothing on the product carries a remediation deadline and a build that stops being scanned is expected rather than a fault.
+
+        Nothing is deleted or hidden: the findings and the history stay, and stay reportable. What ends is what is expected of us.
+
+        An empty date clears it, because extended support happens. Deadlines are rewritten afterwards, away from the request; the response returns before that has finished.
+      operationId: set-product-end-of-life
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EndOfLifeBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Set when a product goes out of support
+      tags:
+        - Catalog
   /v1/products/{product}/mentionable:
     get:
       description: |-
@@ -4488,6 +4550,42 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Create a branch or tag
+      tags:
+        - Catalog
+  /v1/products/{product}/streams/{stream}/end-of-life:
+    put:
+      description: |-
+        Sets the date support ends for one release, overriding what its product says. Past it, nothing on the release carries a remediation deadline and a build that stops being scanned is expected rather than a fault.
+
+        An empty date clears the override, so the release follows its product again. Clearing is not the same as stating the product's current date: a release that stated it would stop following when the product changed.
+      operationId: set-stream-end-of-life
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EndOfLifeBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Set when a branch or tag goes out of support
       tags:
         - Catalog
   /v1/products/{product}/streams/{stream}/variants:
