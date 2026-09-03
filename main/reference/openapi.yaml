@@ -2653,6 +2653,13 @@ components:
           description: The scan this upload became
           format: int64
           type: integer
+        sent:
+          description: The documents this upload was made of
+          items:
+            $ref: "#/components/schemas/SentBody"
+          type:
+            - array
+            - "null"
         serial:
           description: The identity the inventory carries for itself
           type: string
@@ -2934,6 +2941,31 @@ components:
           type: string
       required:
         - because
+      type: object
+    SentBody:
+      additionalProperties: false
+      properties:
+        hash:
+          description: SHA-256 of the bytes as they arrived
+          type: string
+        held:
+          description: Whether the contents are still kept
+          type: boolean
+        kind:
+          description: What the document is
+          enum:
+            - inventory
+            - suppressions
+          type: string
+        size_bytes:
+          description: How large it was
+          format: int64
+          type: integer
+      required:
+        - kind
+        - size_bytes
+        - hash
+        - held
       type: object
     Set-settingRequest:
       additionalProperties: false
