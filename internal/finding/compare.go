@@ -96,7 +96,7 @@ func (s *Store) Compare(ctx context.Context, subject access.Subject, fromTarget,
 		return nil, fmt.Errorf("read what the later build has: %w", err)
 	}
 
-	key := func(c Changed) string { return c.Vulnerability + "\x00" + c.Component }
+	key := func(c Changed) string { return pairKey(c.Vulnerability, c.Component) }
 	here := map[string]Changed{}
 	for _, c := range now {
 		here[key(c)] = c
@@ -112,10 +112,22 @@ func (s *Store) Compare(ctx context.Context, subject access.Subject, fromTarget,
 			comparison.Still = append(comparison.Still, c)
 			continue
 		}
-		// Why it went is read from the row that closed in the later build,
-		// because the earlier build's row is still open in its own history.
-		c.Because = s.whyGone(ctx, toTarget, c)
 		comparison.Fixed = append(comparison.Fixed, c)
+	}
+
+	// Why each of them went, read from the rows that closed in the later
+	// build — the earlier build's rows are still open in its own history.
+	//
+	// One read per batch rather than one per entry. A comparison against a
+	// release a customer has been on for a year has as many fixed entries as
+	// the release note is long, and asking about each separately made the
+	// screen's cost a count of round trips.
+	gone, err := s.whyGone(ctx, toTarget, comparison.Fixed)
+	if err != nil {
+		return nil, err
+	}
+	for i := range comparison.Fixed {
+		comparison.Fixed[i].Because = gone[key(comparison.Fixed[i])]
 	}
 
 	had := map[string]bool{}
@@ -144,31 +156,92 @@ func (s *Store) mayCompare(ctx context.Context, subject access.Subject, targetID
 	return visible, nil
 }
 
-// whyGone reads the explanation recorded when a finding closed in the later
-// build. Unexplained where the later build never had it at all, which happens
-// when a component was gone before that line was cut.
-func (s *Store) whyGone(ctx context.Context, targetID int64, c Changed) Closure {
-	var because string
-	err := s.db.NewSelect().
-		TableExpr("finding AS f").
-		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
-		Join("JOIN component AS cp ON cp.id = f.component_id").
-		ColumnExpr("COALESCE(f.closed_because, '')").
-		Where("f.target_id = ?", targetID).
-		Where("v.identifier = ?", c.Vulnerability).
-		Where("cp.name = ?", c.Component).
-		Where("f.closed_run_id IS NOT NULL").
-		OrderExpr("f.id DESC").Limit(1).
-		Scan(ctx, &because)
-	if database.IsNoRows(err) || because == "" {
-		// The later build never carried this at all, which is the ordinary
-		// case when a fix landed before that line was first scanned. Saying
-		// "removed" here publishes "we dropped the component" into a release
-		// note about a component that is still there at a newer version.
-		return Unexplained
+// whyGone reads the explanations recorded when these findings closed in the
+// later build, by issue and component.
+//
+// **Narrowed by the two lists rather than by the pairs.** No engine here
+// spells a comparison against a pair of columns the same way, and building one
+// out of concatenated strings is a portability trap of its own — so the
+// statement asks for the issues and the components separately, which is a
+// superset, and the pairing is done on the way back. The superset is the
+// entries that share an issue *and* a component with something fixed without
+// being that pair, which on a release note is a handful.
+//
+// A pair the later build never carried at all is absent from the answer, and
+// the caller reads that as unexplained. That is the ordinary case when a fix
+// landed before that line was first scanned: saying "removed" would publish
+// "we dropped the component" into a release note about a component that is
+// still there at a newer version.
+func (s *Store) whyGone(ctx context.Context, targetID int64, fixed []Changed) (map[string]Closure, error) {
+	why := make(map[string]Closure, len(fixed))
+	if len(fixed) == 0 {
+		return why, nil
 	}
-	if err != nil {
-		return Unexplained
+	wanted := make(map[string]bool, len(fixed))
+	for _, c := range fixed {
+		wanted[pairKey(c.Vulnerability, c.Component)] = true
+		why[pairKey(c.Vulnerability, c.Component)] = Unexplained
 	}
-	return Closure(because)
+
+	for start := 0; start < len(fixed); start += database.BatchSize {
+		end := min(start+database.BatchSize, len(fixed))
+		batch := fixed[start:end]
+		issues := make([]string, 0, len(batch))
+		components := make([]string, 0, len(batch))
+		seenIssue, seenComponent := map[string]bool{}, map[string]bool{}
+		for _, c := range batch {
+			if !seenIssue[c.Vulnerability] {
+				seenIssue[c.Vulnerability] = true
+				issues = append(issues, c.Vulnerability)
+			}
+			if !seenComponent[c.Component] {
+				seenComponent[c.Component] = true
+				components = append(components, c.Component)
+			}
+		}
+
+		var rows []struct {
+			Vulnerability string `bun:"vulnerability"`
+			Component     string `bun:"component"`
+			Because       string `bun:"because"`
+		}
+		err := s.db.NewSelect().
+			TableExpr("finding AS f").
+			Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+			Join("JOIN component AS cp ON cp.id = f.component_id").
+			ColumnExpr("v.identifier AS vulnerability").
+			ColumnExpr("cp.name AS component").
+			ColumnExpr("COALESCE(f.closed_because, '') AS because").
+			Where("f.target_id = ?", targetID).
+			Where("f.closed_run_id IS NOT NULL").
+			Where("v.identifier IN (?)", bun.List(issues)).
+			Where("cp.name IN (?)", bun.List(components)).
+			// Ascending, so the last row read for a pair is its highest
+			// identifier — the same row the one-at-a-time form took by
+			// ordering descending and stopping at the first.
+			OrderExpr("f.id ASC").
+			Scan(ctx, &rows)
+		if err != nil {
+			return nil, fmt.Errorf("read why these went: %w", err)
+		}
+		for _, row := range rows {
+			at := pairKey(row.Vulnerability, row.Component)
+			if !wanted[at] || row.Because == "" {
+				continue
+			}
+			why[at] = Closure(row.Because)
+		}
+	}
+	return why, nil
+}
+
+// pairKey identifies an issue at a component by name, which is what a
+// comparison is drawn in: one line per issue in a component, whatever versions
+// either side is at.
+//
+// One spelling, because the entries and the explanations for them are matched
+// against each other and two spellings of a key that agree today are two that
+// can stop agreeing.
+func pairKey(vulnerability, component string) string {
+	return vulnerability + "\x00" + component
 }

@@ -1546,3 +1546,32 @@ func (f *fixture) liveAssessments(t *testing.T, vulnerabilityID int64) int {
 	}
 	return n
 }
+
+// vulnerability names one of a run of issues, zero-padded so the order a test
+// reads them in is the order it wrote them.
+func vulnerability(i int) string { return fmt.Sprintf("CVE-2026-%04d", i) }
+
+// inAnotherProduct declares a build of a product of its own and returns its
+// target, for the checks about reaching across products.
+func (f *fixture) inAnotherProduct(t *testing.T, name string) int64 {
+	t.Helper()
+	ctx := t.Context()
+	cat := catalog.NewStore(f.db.DB)
+	product, err := cat.DeclareProduct(ctx, name, name)
+	if err != nil {
+		t.Fatalf("declare %s: %v", name, err)
+	}
+	stream, err := cat.DeclareStream(ctx, product.ID, "master", catalog.Branch, nil)
+	if err != nil {
+		t.Fatalf("declare a line of %s: %v", name, err)
+	}
+	variant, err := cat.DeclareVariant(ctx, product.ID, "broadcom", true)
+	if err != nil {
+		t.Fatalf("declare a variant of %s: %v", name, err)
+	}
+	target, err := cat.TargetFor(ctx, stream.ID, variant.ID)
+	if err != nil {
+		t.Fatalf("target for %s: %v", name, err)
+	}
+	return target.ID
+}

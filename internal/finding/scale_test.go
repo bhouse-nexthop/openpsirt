@@ -156,6 +156,7 @@ func TestMeasureAYearOfNightlyScans(t *testing.T) {
 				label, count("finding"), count("scan_run"),
 				count("graph_node"), count("graph_edge"))
 			timed(t, ctx, store, who, target.ID)
+			timedHistory(t, ctx, store, scans, who, target.ID, product.ID)
 		}
 		report("after night 1")
 
@@ -242,6 +243,52 @@ func reports(versionOf func(int) string, extra int) []finding.Reported {
 		})
 	}
 	return out
+}
+
+// timedHistory runs the two reads that grow with the calendar rather than with
+// the size of a build.
+//
+// Both were named as unbounded rather than measured: the receipts page reads
+// every finished run of a target and every scan filed against it, whatever
+// page is asked for, and then pairs them; the release comparison counts what
+// is open against every build of a product. A year of nights is what tells the
+// difference between a shape that grows and a shape that matters.
+func timedHistory(t *testing.T, ctx context.Context, store *finding.Store,
+	scans *ingest.Store, who access.Subject, target, product int64) {
+
+	t.Helper()
+	start := time.Now()
+	first, filed, err := scans.Receipts(ctx, who, target, "", 50, 0)
+	if err != nil {
+		t.Fatalf("receipts: %v", err)
+	}
+	page := time.Since(start)
+
+	// A later page as well as the first. The pairing is done over all of
+	// history rather than over the page, so the last page should cost what the
+	// first does — and if it does not, that is the answer.
+	deep := 0
+	if filed > 50 {
+		deep = filed - 50
+	}
+	start = time.Now()
+	last, _, err := scans.Receipts(ctx, who, target, "", 50, deep)
+	if err != nil {
+		t.Fatalf("receipts at %d: %v", deep, err)
+	}
+	back := time.Since(start)
+
+	start = time.Now()
+	releases, err := store.Releases(ctx, who, product)
+	if err != nil {
+		t.Fatalf("releases: %v", err)
+	}
+	compare := time.Since(start)
+
+	t.Logf("    receipts page 1 %s (%d of %d) · page at %d %s (%d) · releases %s (%d builds)",
+		page.Round(time.Millisecond), len(first), filed,
+		deep, back.Round(time.Millisecond), len(last),
+		compare.Round(time.Millisecond), len(releases))
 }
 
 // timed runs the queries somebody actually waits for.

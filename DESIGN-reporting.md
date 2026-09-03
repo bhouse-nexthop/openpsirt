@@ -110,6 +110,21 @@ recorded as an upgrade — which put one issue in both the fixed and the
 newly-present column of the same comparison, in a document written to go
 straight into release notes.
 
+**The explanations are read once for the whole list**, not once per entry. A
+comparison against the release a customer has been on for a year has as many
+fixed entries as the note is long, and asking about each separately made the
+screen's cost a count of round trips rather than a count of rows. The statement
+narrows by the issues and the components separately rather than by the pairs —
+no engine here spells a comparison against a pair of columns the same way, and
+building one out of concatenated strings is a portability trap of its own — so
+what comes back is a superset and the pairing is done on the way out.
+
+**What a comparison reads is bounded by the size of a build, not by the
+calendar.** Every open entry of both builds, which is what diffing them means:
+there is no page of a diff, because a release note is not paginated. A
+deployment that has run for years does not make this read more; a larger
+product does.
+
 ### And each still-present entry says whether somebody tried
 
 A still-present entry carries the version its place arrived from, where the

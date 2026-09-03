@@ -656,6 +656,20 @@ What it confirmed rather than discovered: the reads hold up, and trend is the
 one that grows. The findings list grew between 1.5 and 3.5 times against a
 table that grew 16.8; trend grew about linearly with the calendar.
 
+**Answered by measuring rather than by fixing.** *The receipts page reads every
+finished run of a target and every scan filed against it, whatever page is
+asked for.* Measured over a year of nights: about a millisecond at the start
+and about four at the end, with the last page costing what the first does. The
+pairing is quadratic in the number of runs, so a decade is a hundred times the
+work and still four hundred milliseconds of arithmetic in the application. It
+is recorded rather than changed, because nothing here is made faster until it
+is measured slow and this was measured fast. *The release comparison's reads
+are bounded by the size of a build, not by the calendar* — every open entry of
+both builds, which is what diffing them means; there is no page of a diff. What
+was a real defect in the same area is fixed: the explanation for each fixed
+entry was a query of its own, so a comparison against a year-old release cost a
+round trip per line of the release note.
+
 **Open, and new.** *MySQL's write cost barely responds to how much changed* —
 4.82 s a night against PostgreSQL's 0.67 s and MariaDB's 0.32 s, and almost
 unmoved when the churn was halved. A cost that does not scale with rows touched
@@ -678,9 +692,7 @@ significant ones were settled.
 
 **Found by the 2026-09-03 review and not yet decided.** *MDL-11 end-of-life has no code* — `product.eol_on` and `stream.eol_on` are
 written by nothing, and REM-16 and RPT-04 depend on them; likewise TRI-43's
-per-product floor (`product.triage_floor`) has no route. *Release comparison is
-unbounded and one query per fixed entry*, and receipts read every run of a
-target per page. *Identity and version columns are 191 wide with unbounded
+per-product floor (`product.triage_floor`) has no route. *Identity and version columns are 191 wide with unbounded
 producers.* *Drafts survive sign-out (UIX-31) and there is no in-place re-auth
 (UIX-32).*
 

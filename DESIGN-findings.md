@@ -609,6 +609,30 @@ next on that engine, and it is also why the withdrawal was right: the error did
 not scale the four engines alike, so no arithmetic on the old numbers would
 have recovered these.
 
+**Two reads that grow with the calendar rather than with a build**, measured in
+the same run because a year of nights is exactly what they need. The receipts
+page reads every finished run of a target and every scan filed against it,
+whatever page is asked for, and pairs them; the per-build open counts a release
+chart is drawn from read every open finding of a product.
+
+| after | receipts, first page | receipts, last page | release counts |
+|---|---:|---:|---:|
+| night 1 | 0–3 ms | 0–1 ms | 11–17 ms |
+| night 365 | 3–4 ms | 2–3 ms | 71–88 ms |
+
+Receipts grew from about a millisecond to about four over 365 uploads and 365
+runs, and **the last page costs what the first does** — the pairing is done over
+all of history precisely so that it does not depend on which page is being
+read, and the measurement says that costs nothing worth acting on. The pairing
+is quadratic in the number of runs, so a decade would be a hundred times this
+work; four milliseconds times a hundred is still not a screen anybody notices.
+It is written down rather than changed.
+
+The release counts grew about sixfold against a table that grew 16.8 times.
+That is one build; a product with thirty of them counts over thirty builds'
+findings, and the query already groups in the database rather than in the
+application.
+
 **What this does not measure.** It was read as an administrator, who sees every
 product — so the queries ran with no narrowing by product at all, which is the
 cheapest plan available rather than the one an ordinary reader gets. One build,

@@ -1392,6 +1392,48 @@ So: when running `go test` by hand rather than through `make check`, export the
 engine URLs, and check the subtest names in the output actually list four
 engines before believing a result.
 
+## The two "unbounded" reads: one measured fine, one really was broken (2026-09-03)
+
+Fifth of the 2026-09-03 review's open items, and the interesting part is that
+it was half wrong — which is what measuring rather than fixing is for.
+
+**Receipts.** The page reads every finished run of a target and every scan
+filed against it, whatever page is asked for, then pairs them in a nested loop.
+That is quadratic in the calendar and it looked alarming. Measured over a year
+of nights, in the same harness that measures everything else: **about a
+millisecond at night one and about four at night 365**, and the last page costs
+what the first does. A decade is a hundred times that work and still under half
+a second of arithmetic in the application. Recorded, not changed — "nothing is
+made faster until it is measured slow" cuts this way too.
+
+**The release comparison** is bounded by the size of a build rather than by the
+calendar: it reads every open entry of both builds, which is what diffing them
+means. There is no page of a diff. Saying "unbounded" flattened two different
+statements into one.
+
+**But the same line named a real defect**, and this one was worth fixing: *why*
+each fixed entry went was a query of its own, so a comparison against a
+year-old release cost a round trip per line of the release note. It is one read
+per batch now. The statement narrows by the issues and the components
+*separately* rather than by the pairs, because no engine here spells a
+comparison against a pair of columns the same way and concatenating them into
+one string is a portability trap — so it fetches a superset and pairs on the
+way out.
+
+**`Compare` had no test at all.** Not in the store, not through the handler —
+a whole reporting feature, whose own comment records an authorization fix
+("the first version authorized the later target and applied that answer to the
+earlier one as well, so a caller who could reach one product could read
+findings out of another"), with nothing guarding it. Four now, all on four
+engines, each watched failing under a mutant: the three groups and the reason
+each fixed entry carries; that the explanations cost one statement rather than
+forty; **that both builds are authorized, not one**; and that an undisclosed
+finding stays out unless somebody asked for it.
+
+That is the thing to take from this one. The N+1 was found by reading; the
+missing tests were found by trying to change the code and having nothing tell
+me whether I had broken it.
+
 ## The year of nightly scans, measured properly (2026-09-03)
 
 The run the previous note called "Next". Numbers are in `DESIGN-findings.md`;
