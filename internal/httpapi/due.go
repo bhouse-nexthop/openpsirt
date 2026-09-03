@@ -97,15 +97,3 @@ func registerDue(api huma.API, in Ingest) {
 		return out, nil
 	})
 }
-
-// dueWindows reads how long a finding may stay open, by how urgent it is.
-//
-// One reader for it, in the finding package, because ingest writes a deadline
-// with these numbers and anything reading one has to agree about what they
-// are (REM-26).
-func dueWindows(ctx context.Context, in Ingest) (finding.Windows, error) {
-	if in.DB == nil {
-		return finding.DefaultWindows(), nil
-	}
-	return finding.LoadWindows(ctx, in.DB.DB)
-}
