@@ -56,8 +56,12 @@ place to triage what it finds and track it through to a fix.
 
 ## Trying it
 
-    make demo                    # build the image, start it, seed a real switch image, print the address
+    make demo                    # build the image, start it, seed two products, print the address
     make demo DEMO_HOST=yourbox  # if you browse by something other than localhost
+
+It seeds two products: a real switch image, and OpenPSIRT itself, from the
+inventory the image carries of what it ships — so the screens that compare
+across products have something to compare.
 
 **Docker is the only thing you need installed.** The image builds the interface
 and the binary inside itself and carries the scanner, so there is nothing to

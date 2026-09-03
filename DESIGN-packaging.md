@@ -144,3 +144,18 @@ and the chart is not published to a repository. Both belong with a release
 process, which does not exist yet — so the chart's default image reference
 points at something that does not exist, and the values file says so rather
 than leaving an operator to discover it as a pod that cannot pull.
+
+## The image carries its own inventory
+
+The CycloneDX inventory of what the image ships (SCP-08) is generated in the
+build stage by reading the built binary (SCP-09) — the build information it
+carries names every module it was linked from and the main module's version,
+so no checkout is needed and the build context carries none — and copied into
+the runtime image at `/usr/share/openpsirt/openpsirt.cdx.json`. Two things want
+it there. A release's inventory should travel with the artifact it describes,
+not only sit beside it on a release page. And a deployment can then be its own
+first product: the demo declares OpenPSIRT as a product and uploads that file,
+so somebody evaluating the tool sees two products without owning a build
+pipeline, and the screens that compare across products have something to
+compare. The generator's version is pinned by the same variable the `sbom`
+target uses, so the image and the release asset are made the same way.

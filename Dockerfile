@@ -50,6 +50,17 @@ RUN go build -trimpath \
         -X 'github.com/bhouse-nexthop/openpsirt/internal/version.date=${DATE}'" \
       -o /out/openpsirt ./cmd/openpsirt
 
+# The inventory of what this image ships (SCP-08), read from the built binary
+# rather than from the source tree (SCP-09): the build information the binary
+# carries names every module it was linked from and the main module's version,
+# so no checkout is needed — the build context carries no git history. It
+# travels in the image so that a deployment can be its own first product: the
+# demo uploads it, and an operator evaluating the tool has a second product to
+# look at without owning a build pipeline.
+ARG CDXGOMOD_VERSION=v1.12.0
+RUN go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CDXGOMOD_VERSION} \
+      bin -json -output /out/openpsirt.cdx.json /out/openpsirt
+
 # Run.
 #
 # The binary is static, so this could be scratch or distroless and carry no
@@ -95,6 +106,7 @@ RUN addgroup -g 65532 -S openpsirt \
  && adduser -u 65532 -S -G openpsirt -H -s /sbin/nologin openpsirt
 
 COPY --from=build /out/openpsirt /usr/local/bin/openpsirt
+COPY --from=build /out/openpsirt.cdx.json /usr/share/openpsirt/openpsirt.cdx.json
 COPY --from=scanner /out/grype /usr/local/bin/grype
 
 # Where the scanner keeps its vulnerability data, and where this process looks

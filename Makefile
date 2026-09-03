@@ -103,6 +103,14 @@ NPM ?= npm
 DEMO_HOST ?= localhost
 DEMO_PORT ?= 8080
 DEMO_USER ?= dev
+# What the demo and the dev loop seed, one build per entry:
+#   inventory,product,display name,branch,variant
+# The inventory is an .xz of a CycloneDX file under the SBOM package's
+# testdata. Adding a variant is adding a line — a second variant of the same
+# product is what exercises decisions carrying across variants (REL-01,
+# REL-09), so the mellanox build of the switch image belongs here once it is
+# saved beside the broadcom one.
+DEMO_BUILDS ?= internal/sbom/testdata/switch-image.cdx.json.xz,sonic,SONiC,master,broadcom
 # In the tree rather than under $HOME: a command that writes to somebody's home
 # directory from a checkout is a surprise, and everything here is throwaway
 # state that should be deleted by deleting the checkout. Git-ignored.
@@ -493,7 +501,7 @@ demo-image:
 	@echo "building $(DEMO_IMAGE) — the interface and the binary build inside it"
 	@$(DOCKER) build -q -t $(DEMO_IMAGE) \
 	  --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) \
-	  --build-arg DATE=$(DATE) . >/dev/null
+	  --build-arg DATE=$(DATE) --build-arg CDXGOMOD_VERSION=$(CDXGOMOD_VERSION) . >/dev/null
 
 demo-up: demo-down
 	@mkdir -p $(DEMO_DIR)/data $(DEMO_DIR)/grype
@@ -574,12 +582,33 @@ demo-down:
 # Idempotent: declaring something that exists succeeds and changes nothing, so
 # this can be run again without tearing anything down.
 demo-seed:
-	@command -v xz >/dev/null || { echo "xz is needed to read the fixture"; exit 1; }
-	@xz -dc internal/sbom/testdata/switch-image.cdx.json.xz > $(DEMO_DIR)/image.cdx.json
+	@command -v xz >/dev/null || { echo "xz is needed to read the fixtures"; exit 1; }
+	@for entry in $(DEMO_BUILDS); do \
+	  IFS=',' read -r file product display stream variant <<< "$$entry"; \
+	  xz -dc "$$file" > "$(DEMO_DIR)/$$product-$$stream-$$variant.cdx.json"; \
+	  for spec in \
+	    "/v1/products|{\"name\":\"$$product\",\"display_name\":\"$$display\"}" \
+	    "/v1/products/$$product/streams|{\"name\":\"$$stream\",\"kind\":\"branch\"}" \
+	    "/v1/products/$$product/variants|{\"name\":\"$$variant\",\"customer_facing\":true}"; do \
+	    path=$${spec%%|*}; body=$${spec#*|}; \
+	    curl -sS --noproxy '*' -o /dev/null -w "  $$path %{http_code}\n" \
+	      -X POST -H "Origin: $(DEMO_URL)" \
+	      -H 'Content-Type: application/json' -d "$$body" \
+	      "$(DEMO_URL)$$path"; \
+	  done; \
+	  curl -sS --noproxy '*' -o /dev/null -w "  upload $$product/$$stream/$$variant %{http_code}\n" \
+	    -X POST -H "Origin: $(DEMO_URL)" \
+	    -F "inventory=@$(DEMO_DIR)/$$product-$$stream-$$variant.cdx.json" \
+	    "$(DEMO_URL)/v1/products/$$product/streams/$$stream/variants/$$variant/scans"; \
+	done
+	@# A second product: this deployment itself, from the inventory the image
+	@# carries of what it ships. Two products is what makes the cross-product
+	@# screens mean anything, and this one costs nobody a build pipeline.
+	@$(DOCKER) cp openpsirt-demo:/usr/share/openpsirt/openpsirt.cdx.json $(DEMO_DIR)/openpsirt.cdx.json
 	@for spec in \
-	  '/v1/products|{"name":"sonic","display_name":"SONiC"}' \
-	  '/v1/products/sonic/streams|{"name":"master","kind":"branch"}' \
-	  '/v1/products/sonic/variants|{"name":"broadcom","customer_facing":true}'; do \
+	  '/v1/products|{"name":"openpsirt","display_name":"OpenPSIRT"}' \
+	  '/v1/products/openpsirt/streams|{"name":"main","kind":"branch"}' \
+	  '/v1/products/openpsirt/variants|{"name":"linux-amd64","customer_facing":true}'; do \
 	  path=$${spec%%|*}; body=$${spec#*|}; \
 	  curl -sS --noproxy '*' -o /dev/null -w "  $$path %{http_code}\n" \
 	    -X POST -H "Origin: $(DEMO_URL)" \
@@ -588,18 +617,25 @@ demo-seed:
 	done
 	@curl -sS --noproxy '*' -o /dev/null -w "  upload %{http_code}\n" \
 	  -X POST -H "Origin: $(DEMO_URL)" \
-	  -F "inventory=@$(DEMO_DIR)/image.cdx.json" \
-	  "$(DEMO_URL)/v1/products/sonic/streams/master/variants/broadcom/scans"
-	@echo "  the scan runs in the background; make demo-status shows when it lands"
+	  -F "inventory=@$(DEMO_DIR)/openpsirt.cdx.json" \
+	  "$(DEMO_URL)/v1/products/openpsirt/streams/main/variants/linux-amd64/scans"
+	@echo "  the scans run in the background; make demo-status shows when they land"
 
 demo-status:
-	@printf "  scan   "; curl -sS --noproxy '*' \
-	  "$(DEMO_URL)/v1/products/sonic/streams/master/variants/broadcom/scans" \
-	  | sed -e 's/.*"state":"\([a-z]*\)".*/\1/' -e 's/^{.*/no scans yet/'
-	@printf "  open   "; curl -sS --noproxy '*' \
-	  "$(DEMO_URL)/v1/products/sonic/streams/master/variants/broadcom/findings?limit=1" \
-	  | sed -e 's/.*"total":\([0-9]*\).*/\1 findings/' -e 's/^{.*/unreadable/'
+	@builds=""; for entry in $(DEMO_BUILDS); do \
+	  IFS=',' read -r file product display stream variant <<< "$$entry"; \
+	  builds="$$builds $$product/streams/$$stream/variants/$$variant"; \
+	done; \
+	for build in $$builds openpsirt/streams/main/variants/linux-amd64; do \
+	  printf "  %-46s scan " "$$build"; curl -sS --noproxy '*' \
+	    "$(DEMO_URL)/v1/products/$$build/scans" \
+	    | sed -e 's/.*"state":"\([a-z]*\)".*/\1/' -e 's/^{.*/no scans yet/' | tr -d '\n'; \
+	  printf " · open "; curl -sS --noproxy '*' \
+	    "$(DEMO_URL)/v1/products/$$build/findings?limit=1" \
+	    | sed -e 's/.*"total":\([0-9]*\).*/\1 findings/' -e 's/^{.*/unreadable/'; \
+	done
 	@echo "  open $(DEMO_URL) — you arrive as proxy:$(DEMO_USER), no sign-in"
+
 
 # Start over, keeping the vulnerability database: it is a gigabyte, it is not
 # what anybody is resetting, and downloading it again is the slow part.
@@ -639,12 +675,31 @@ dev-down:
 	@sleep 1
 
 dev-seed:
-	@command -v xz >/dev/null || { echo "xz is needed to read the fixture"; exit 1; }
-	@xz -dc internal/sbom/testdata/switch-image.cdx.json.xz > $(DEV_DIR)/image.cdx.json
+	@command -v xz >/dev/null || { echo "xz is needed to read the fixtures"; exit 1; }
+	@for entry in $(DEMO_BUILDS); do \
+	  IFS=',' read -r file product display stream variant <<< "$$entry"; \
+	  xz -dc "$$file" > "$(DEV_DIR)/$$product-$$stream-$$variant.cdx.json"; \
+	  for spec in \
+	    "/v1/products|{\"name\":\"$$product\",\"display_name\":\"$$display\"}" \
+	    "/v1/products/$$product/streams|{\"name\":\"$$stream\",\"kind\":\"branch\"}" \
+	    "/v1/products/$$product/variants|{\"name\":\"$$variant\",\"customer_facing\":true}"; do \
+	    path=$${spec%%|*}; body=$${spec#*|}; \
+	    curl -sS --noproxy '*' -o /dev/null -w "  $$path %{http_code}\n" \
+	      -X POST -H "X-User: $(DEMO_USER)" -H "Origin: $(DEV_URL)" \
+	      -H 'Content-Type: application/json' -d "$$body" \
+	      "http://$(DEV_API)$$path"; \
+	  done; \
+	  curl -sS --noproxy '*' -o /dev/null -w "  upload $$product/$$stream/$$variant %{http_code}\n" \
+	    -X POST -H "X-User: $(DEMO_USER)" -H "Origin: $(DEV_URL)" \
+	    -F "inventory=@$(DEV_DIR)/$$product-$$stream-$$variant.cdx.json" \
+	    "http://$(DEV_API)/v1/products/$$product/streams/$$stream/variants/$$variant/scans"; \
+	done
+	@# A second product: this deployment itself, from its own inventory.
+	@$(MAKE) --no-print-directory sbom >/dev/null
 	@for spec in \
-	  '/v1/products|{"name":"sonic","display_name":"SONiC"}' \
-	  '/v1/products/sonic/streams|{"name":"master","kind":"branch"}' \
-	  '/v1/products/sonic/variants|{"name":"broadcom","customer_facing":true}'; do \
+	  '/v1/products|{"name":"openpsirt","display_name":"OpenPSIRT"}' \
+	  '/v1/products/openpsirt/streams|{"name":"main","kind":"branch"}' \
+	  '/v1/products/openpsirt/variants|{"name":"linux-amd64","customer_facing":true}'; do \
 	  path=$${spec%%|*}; body=$${spec#*|}; \
 	  curl -sS --noproxy '*' -o /dev/null -w "  $$path %{http_code}\n" \
 	    -X POST -H "X-User: $(DEMO_USER)" -H "Origin: $(DEV_URL)" \
@@ -653,18 +708,25 @@ dev-seed:
 	done
 	@curl -sS --noproxy '*' -o /dev/null -w "  upload %{http_code}\n" \
 	  -X POST -H "X-User: $(DEMO_USER)" -H "Origin: $(DEV_URL)" \
-	  -F "inventory=@$(DEV_DIR)/image.cdx.json" \
-	  "http://$(DEV_API)/v1/products/sonic/streams/master/variants/broadcom/scans"
-	@echo "  the scan runs in the background; make dev-status shows when it lands"
+	  -F "inventory=@bin/openpsirt.cdx.json" \
+	  "http://$(DEV_API)/v1/products/openpsirt/streams/main/variants/linux-amd64/scans"
+	@echo "  the scans run in the background; make dev-status shows when they land"
 
 dev-status:
-	@printf "  scan   "; curl -sS --noproxy '*' -H "X-User: $(DEMO_USER)" \
-	  "http://$(DEV_API)/v1/products/sonic/streams/master/variants/broadcom/scans" \
-	  | sed -e 's/.*"state":"\([a-z]*\)".*/\1/' -e 's/^{.*/no scans yet/'
-	@printf "  open   "; curl -sS --noproxy '*' -H "X-User: $(DEMO_USER)" \
-	  "http://$(DEV_API)/v1/products/sonic/streams/master/variants/broadcom/findings?limit=1" \
-	  | sed -e 's/.*"total":\([0-9]*\).*/\1 findings/' -e 's/^{.*/unreadable/'
+	@builds=""; for entry in $(DEMO_BUILDS); do \
+	  IFS=',' read -r file product display stream variant <<< "$$entry"; \
+	  builds="$$builds $$product/streams/$$stream/variants/$$variant"; \
+	done; \
+	for build in $$builds openpsirt/streams/main/variants/linux-amd64; do \
+	  printf "  %-46s scan " "$$build"; curl -sS --noproxy '*' -H "X-User: $(DEMO_USER)" \
+	    "http://$(DEV_API)/v1/products/$$build/scans" \
+	    | sed -e 's/.*"state":"\([a-z]*\)".*/\1/' -e 's/^{.*/no scans yet/' | tr -d '\n'; \
+	  printf " · open "; curl -sS --noproxy '*' -H "X-User: $(DEMO_USER)" \
+	    "http://$(DEV_API)/v1/products/$$build/findings?limit=1" \
+	    | sed -e 's/.*"total":\([0-9]*\).*/\1 findings/' -e 's/^{.*/unreadable/'; \
+	done
 	@echo "  open $(DEV_URL) — you arrive as proxy:$(DEMO_USER), no sign-in"
+
 
 dev-reset: dev-down
 	@rm -f $(DEV_DB)
