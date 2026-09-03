@@ -4,7 +4,9 @@ import (
 	"testing"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 )
 
 func TestTheLineKeepsThingsOutOfTheListAndSaysHowMany(t *testing.T) {
@@ -103,6 +105,108 @@ func TestNothingBelowTheLineIsOnAClock(t *testing.T) {
 		}
 		if got := f.deadlineOrZero(t, "CVE-2026-LOUD"); got.IsZero() {
 			t.Error("something above the line has no deadline")
+		}
+	})
+}
+
+func TestAProductsOwnLineIsWhatAppliesToIt(t *testing.T) {
+	// TRI-43's second half. A single number for an estate is either too strict
+	// somewhere or too loose somewhere else, so a product may say something
+	// different — and what it says has to be what the line actually is,
+	// wherever the line is read.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		products := catalog.NewStore(f.db.DB)
+		settings := setting.NewStore(f.db.DB)
+
+		// Nothing said anywhere: the line hides nothing, which is what a
+		// deployment starts with.
+		line, err := finding.FloorFor(ctx, f.db.DB, f.productID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if line.Hides() || line.FromProduct {
+			t.Errorf("with nothing stated the line is %+v, want one that hides nothing", line)
+		}
+
+		// The deployment states one, and the product inherits it.
+		if err := settings.Set(ctx, setting.TriageFloor, "medium"); err != nil {
+			t.Fatal(err)
+		}
+		line, err = finding.FloorFor(ctx, f.db.DB, f.productID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if line.Word != "medium" || line.FromProduct {
+			t.Errorf("inherited line is %+v, want medium and not the product's own", line)
+		}
+
+		// The product says something stricter, and that is what applies.
+		if err := products.SetTriageFloor(ctx, f.productID, "high"); err != nil {
+			t.Fatal(err)
+		}
+		line, err = finding.FloorFor(ctx, f.db.DB, f.productID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if line.Word != "high" || !line.FromProduct {
+			t.Errorf("the product's own line reads as %+v, want high and stated here", line)
+		}
+
+		// The deployment changes its mind and the product does not follow,
+		// because it has an opinion of its own.
+		if err := settings.Set(ctx, setting.TriageFloor, "low"); err != nil {
+			t.Fatal(err)
+		}
+		line, err = finding.FloorFor(ctx, f.db.DB, f.productID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if line.Word != "high" {
+			t.Errorf("the product followed the deployment while holding its own line: %+v", line)
+		}
+
+		// Cleared, and it follows again — including where the deployment has
+		// moved since. Storing the deployment's word instead of clearing would
+		// have frozen it at whatever it was the day somebody looked.
+		if err := products.SetTriageFloor(ctx, f.productID, ""); err != nil {
+			t.Fatal(err)
+		}
+		line, err = finding.FloorFor(ctx, f.db.DB, f.productID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if line.Word != "low" || line.FromProduct {
+			t.Errorf("after clearing, the line is %+v, want the deployment's low", line)
+		}
+	})
+}
+
+func TestOneProductsLineLeavesAnotherAlone(t *testing.T) {
+	// The reason it is per product at all: products differ in what they can
+	// afford to ignore, and a line stated on one must not quietly narrow what
+	// somebody sees on another.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		other := f.inAnotherProduct(t, "another-product")
+		products := catalog.NewStore(f.db.DB)
+		if err := products.SetTriageFloor(ctx, f.productID, "critical"); err != nil {
+			t.Fatal(err)
+		}
+
+		mine, err := finding.FloorFor(ctx, f.db.DB, f.productID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		theirs, err := finding.FloorFor(ctx, f.db.DB, f.productOf(t, other))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mine.Word != "critical" {
+			t.Errorf("the product that stated a line reads as %+v", mine)
+		}
+		if theirs.Hides() || theirs.FromProduct {
+			t.Errorf("a product that stated nothing reads as %+v", theirs)
 		}
 	})
 }

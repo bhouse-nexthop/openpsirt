@@ -1151,6 +1151,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product}/triage-floor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set what a product considers worth triaging
+         * @description Sets the least severity worth triaging for one product, overriding what the deployment says. Below the line a finding is still recorded, still counted and still reportable, and it carries no deadline — it is out of the working list, not out of the system.
+         *
+         *     An empty value clears the override, so the product follows the deployment again. Clearing is not the same as stating the deployment's current line: a product that stated it would stop following when the deployment changed.
+         *
+         *     Deadlines are rewritten afterwards, away from the request, because moving the line moves what is on a clock at all. The response returns before that has finished.
+         */
+        put: operations["set-product-triage-floor"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product}/variants": {
         parameters: {
             query?: never;
@@ -2866,6 +2890,11 @@ export interface components {
              */
             tags?: number;
             /**
+             * @description What this product considers worth triaging, where it says something other than the deployment. Absent means it follows the deployment
+             * @enum {string}
+             */
+            triage_floor?: "everything" | "low" | "medium" | "high" | "critical";
+            /**
              * Format: int64
              * @description How many variants are declared
              */
@@ -3244,6 +3273,19 @@ export interface components {
             revoked?: boolean;
             /** @description Shown once, at creation. It is stored hashed and cannot be shown again */
             secret?: string;
+        };
+        TriageFloorBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/TriageFloorBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description The least severity worth triaging here, "everything" to hide nothing, or empty to follow the deployment
+             * @enum {string}
+             */
+            floor: "everything" | "low" | "medium" | "high" | "critical" | "";
         };
         UnassignedBody: {
             component: string;
@@ -5338,6 +5380,39 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["UploadResult"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-product-triage-floor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TriageFloorBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

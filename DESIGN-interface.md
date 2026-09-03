@@ -593,6 +593,14 @@ whether anything is behind it, which is the question the list exists to answer.
 Every count of what is open is issues at components, the way the findings list
 counts, so a catalog row and the list it opens agree.
 
+**A product row also says what it triages from**, and an administrator changes
+it there. Everybody sees it because it explains a number — a product whose open
+count is smaller than somebody expects is usually a product with a line — and
+"deployment's" is shown rather than the deployment's current word, because
+following it and stating it are different things (`DESIGN-triage.md`). Only an
+administrator gets the control, since hiding findings is what every other part
+of this gates.
+
 **The inventories list says what each run changed**, not only that it finished.
 Opened and closed are counted as issues at components like everything else. A
 run covers a build rather than an upload, so where several uploads are answered

@@ -140,6 +140,30 @@ func (s *Store) DeclareProduct(ctx context.Context, name, displayName string) (*
 }
 
 // ProductByName finds a product, or reports that it was never declared.
+// SetTriageFloor records what a product considers worth triaging, or clears it
+// so the product follows the deployment again.
+//
+// **Cleared rather than set to the deployment's current value.** A product that
+// copied the line the day somebody looked at it would stop following the
+// deployment the next time the deployment changed its mind, and nobody would
+// see that happen (TRI-43).
+func (s *Store) SetTriageFloor(ctx context.Context, productID int64, word string) error {
+	q := s.db.NewUpdate().Model((*Product)(nil)).Where("id = ?", productID)
+	if word == "" {
+		q = q.Set("triage_floor = NULL")
+	} else {
+		q = q.Set("triage_floor = ?", word)
+	}
+	res, err := q.Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("record what this product triages: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("product %d: %w", productID, ErrNotFound)
+	}
+	return nil
+}
+
 func (s *Store) ProductByName(ctx context.Context, name string) (*Product, error) {
 	p := new(Product)
 	err := s.db.NewSelect().Model(p).Where("name = ?", matching(name)).Scan(ctx)

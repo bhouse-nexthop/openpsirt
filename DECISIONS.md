@@ -691,9 +691,8 @@ significant ones were settled.
 ---
 
 **Found by the 2026-09-03 review and not yet decided.** *MDL-11 end-of-life has no code* — `product.eol_on` and `stream.eol_on` are
-written by nothing, and REM-16 and RPT-04 depend on them; likewise TRI-43's
-per-product floor (`product.triage_floor`) has no route. *Identity and version columns are 191 wide with unbounded
-producers.* *Drafts survive sign-out (UIX-31) and there is no in-place re-auth
+written by nothing, and REM-16 and RPT-04 depend on them. *Identity and version
+columns are 191 wide with unbounded producers.* *Drafts survive sign-out (UIX-31) and there is no in-place re-auth
 (UIX-32).*
 
 ## 5. What we ingest

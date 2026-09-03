@@ -35,6 +35,17 @@ export function Products({ who }: { who: Who }) {
     },
   });
 
+  const setFloor = useMutation({
+    mutationFn: async ({ product, floor }: { product: string; floor: Line }) =>
+      unwrap(
+        await api.PUT("/v1/products/{product}/triage-floor", {
+          params: { path: { product } },
+          body: { floor },
+        }),
+      ),
+    onSuccess: () => void queries.invalidateQueries({ queryKey: ["products"] }),
+  });
+
   if (products.isPending) return <p className="hint">Loading…</p>;
   if (products.isError) {
     return <Failed error={products.error} what="The products could not be read." />;
@@ -72,6 +83,7 @@ export function Products({ who }: { who: Who }) {
                 <th className="num">Tags</th>
                 <th className="num">Variants</th>
                 <th className="num">Open</th>
+                <th>Triage from</th>
                 <th>Last inventory</th>
                 <th />
               </tr>
@@ -99,6 +111,14 @@ export function Products({ who }: { who: Who }) {
                     <td className="num">{product.branches ?? 0}</td>
                     <td className="num">{product.tags ?? 0}</td>
                     <td className="num">{product.variants ?? 0}</td>
+                    <td>
+                      <Floor
+                        product={product.name ?? ""}
+                        stated={product.triage_floor ?? ""}
+                        admin={who.admin}
+                        onSet={(floor) => setFloor.mutate({ product: product.name ?? "", floor })}
+                      />
+                    </td>
                     <td className="num">{(product.open ?? 0).toLocaleString()}</td>
                     <td className={stale ? "" : "hint"} style={stale ? { color: "var(--sev-high)", fontWeight: 600 } : undefined}>
                       {product.last_scan_at ? product.last_scan_at.slice(0, 10) : "never"}
@@ -136,5 +156,53 @@ export function Products({ who }: { who: Who }) {
         <Field label="Display name" value={displayName} onChange={setDisplayName} placeholder="SONiC" hint="Optional. Defaults to the name" />
       </Declare>
     </>
+  );
+}
+
+// The words a line may be, plus the one that is not a word at all: following
+// the deployment. Following is not the same as stating the deployment's
+// current line — a product that stated it would stop following the next time
+// the deployment changed its mind, and nobody would see that happen (TRI-43).
+type Line = "" | "everything" | "low" | "medium" | "high" | "critical";
+
+const lines: Line[] = ["", "everything", "low", "medium", "high", "critical"];
+
+// What a product considers worth triaging, and a way to say something else.
+//
+// Below the line a finding is still recorded, still counted and still
+// reportable; it is out of the working list, not out of the system. Shown to
+// everybody because it explains a number, and editable by an administrator
+// because hiding findings is what every other part of this gates.
+function Floor({
+  product,
+  stated,
+  admin,
+  onSet,
+}: {
+  product: string;
+  stated: Line;
+  admin: boolean;
+  onSet: (floor: Line) => void;
+}) {
+  if (!admin) {
+    return stated ? (
+      <span>{stated}</span>
+    ) : (
+      <span className="hint">deployment&rsquo;s</span>
+    );
+  }
+  return (
+    <select
+      value={stated}
+      aria-label={`What ${product} considers worth triaging`}
+      onChange={(event) => onSet(event.target.value as Line)}
+      title="Below this line a finding is still recorded and counted, and is out of the working list"
+    >
+      {lines.map((word) => (
+        <option key={word || "inherit"} value={word}>
+          {word || "deployment\u2019s"}
+        </option>
+      ))}
+    </select>
   );
 }

@@ -2320,6 +2320,15 @@ components:
           description: How many tags are declared
           format: int64
           type: integer
+        triage_floor:
+          description: What this product considers worth triaging, where it says something other than the deployment. Absent means it follows the deployment
+          enum:
+            - everything
+            - low
+            - medium
+            - high
+            - critical
+          type: string
         variants:
           description: How many variants are declared
           format: int64
@@ -2963,6 +2972,29 @@ components:
           type: string
       required:
         - name
+      type: object
+    TriageFloorBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/TriageFloorBody.json
+          format: uri
+          readOnly: true
+          type: string
+        floor:
+          description: The least severity worth triaging here, "everything" to hide nothing, or empty to follow the deployment
+          enum:
+            - everything
+            - low
+            - medium
+            - high
+            - critical
+            - ""
+          type: string
+      required:
+        - floor
       type: object
     UnassignedBody:
       additionalProperties: false
@@ -5671,6 +5703,39 @@ paths:
       summary: Upload an SBOM and its VEX documents
       tags:
         - Ingest
+  /v1/products/{product}/triage-floor:
+    put:
+      description: |-
+        Sets the least severity worth triaging for one product, overriding what the deployment says. Below the line a finding is still recorded, still counted and still reportable, and it carries no deadline — it is out of the working list, not out of the system.
+
+        An empty value clears the override, so the product follows the deployment again. Clearing is not the same as stating the deployment's current line: a product that stated it would stop following when the deployment changed.
+
+        Deadlines are rewritten afterwards, away from the request, because moving the line moves what is on a clock at all. The response returns before that has finished.
+      operationId: set-product-triage-floor
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriageFloorBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Set what a product considers worth triaging
+      tags:
+        - Catalog
   /v1/products/{product}/variants:
     get:
       operationId: list-variants

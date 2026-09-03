@@ -1575,3 +1575,18 @@ func (f *fixture) inAnotherProduct(t *testing.T, name string) int64 {
 	}
 	return target.ID
 }
+
+// productOf is which product a build belongs to.
+func (f *fixture) productOf(t *testing.T, target int64) int64 {
+	t.Helper()
+	var productID int64
+	if err := f.db.DB.NewSelect().
+		TableExpr("target AS tg").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		ColumnExpr("st.product_id").
+		Where("tg.id = ?", target).
+		Scan(t.Context(), &productID); err != nil {
+		t.Fatal(err)
+	}
+	return productID
+}

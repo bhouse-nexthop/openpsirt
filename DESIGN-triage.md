@@ -3,7 +3,7 @@
 What people decide about findings, and when a decision stops applying.
 
 Satisfies TRI-01 to TRI-03, TRI-05 to TRI-08, TRI-10 to TRI-18, TRI-20 to
-TRI-36, TRI-40 to TRI-42, TRI-45 to TRI-47, TRI-49, REM-25, RNK-07, UIX-35,
+TRI-36, TRI-40 to TRI-43, TRI-45 to TRI-47, TRI-49, REM-25, REM-27, RNK-07, UIX-35,
 UIX-46, REL-05, REL-06, REL-09, MDL-08, MDL-19, ACC-09. The
 text rules themselves are in `DESIGN-text.md`, and the reports these numbers
 feed are in `DESIGN-reporting.md`.
@@ -450,6 +450,62 @@ rule that applies to only some rows portable. A read-then-write check is
 exactly the shape two proposals arriving together both walk through, and the
 test drives that case directly: two people proposing at once produce one claim,
 and removing the index lets both through.
+
+## What is worth triaging here
+
+Five thousand findings is a list nobody reads, and the ones that drown it are
+the ones nobody was ever going to act on. So a deployment says what it
+considers worth triaging, and **below that line a finding is still recorded,
+still counted and still reportable** — it is out of the working list, not out
+of the system. Deleting would be the other answer and it is the wrong one:
+these are evidence, and an auditor asking "what did you know about this" is
+entitled to an answer whether or not it was worth anybody's afternoon.
+
+**Nothing is hidden until somebody decides to hide it.** A tool that quietly
+kept findings out of the list on the day it was installed would be deciding
+something nobody asked it to.
+
+**The line is compared against our rating where we have made one.** Being able
+to say a published rating is wrong is pointless if everything that ranks and
+filters then ignores us. An unrated issue is judged as a medium, because
+unknown is not harmless — the same folding the deadline uses, spelled once, and
+the reason it is spelled once is that the two were briefly two rules reading
+one fact and disagreed: on a real image 91,040 findings rated "unknown" dropped
+out of the working list *and* off any clock, which is the opposite of what an
+unknown rating should cause.
+
+**Being known to be exploited is never below the line**, whatever it is rated.
+A line is a claim about how bad something has to be before it is worth an
+afternoon; being exploited is a fact about the world rather than a claim about
+severity, and hiding one because it was rated low is the failure this whole
+line exists to prevent, arrived at from the other side.
+
+**Below the line nothing is on a clock.** A line says "this is not work" and a
+deadline says "this is work, and it is late"; holding both means one of them is
+lying, and within a year the overdue figure would be thousands of things nobody
+ever intended to look at.
+
+### A product may say something different
+
+Products differ in what they can afford to ignore, and a single number for an
+estate is either too strict somewhere or too loose somewhere else. So a product
+may state its own line, and it is that line rather than the deployment's that
+applies to everything the product holds.
+
+**A product with no opinion inherits rather than copies.** Stating the
+deployment's current line and following it are different things: a product that
+stated it would stop following the next time the deployment changed its mind,
+and nobody would see that happen. Clearing a product's line is therefore its own
+act rather than setting it to whatever the deployment currently says.
+
+**Stating one is administration**, the same authority that sets the
+deployment's. It hides findings, which is the act every other part of this
+gates, and no role granted per product carries it.
+
+**Moving either line rewrites what is stored**, for the same reason changing a
+deadline window does and from the other direction: it moves what has a deadline
+at all. That happens away from the request and one replica at a time — see
+`DESIGN-queue.md`.
 
 ## What we think of an issue, as against what was published
 

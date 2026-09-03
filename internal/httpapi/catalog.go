@@ -3,7 +3,10 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 
 	"log/slog"
 
@@ -29,6 +32,13 @@ type Declaring struct {
 	// question the list exists to answer.
 	Findings func() *finding.Store
 	Scans    func() *ingest.Store
+	// RewriteDeadlines applies a changed line to what is already open, away
+	// from the request. Moving what a product triages moves what is on a clock
+	// at all (REM-27), so it invalidates stored deadlines for the same reason
+	// changing a window does — and it goes through the same one-replica-at-a-
+	// time path, because two rewrites racing is the same problem whichever
+	// setting started them.
+	RewriteDeadlines func(ctx context.Context, what, value string)
 }
 
 // reading is who a handler is answering, where the answer is something to
@@ -79,6 +89,18 @@ type ProductBody struct {
 	// LastScanAt is absent where nothing has ever been filed against any of
 	// this product's builds.
 	LastScanAt string `json:"last_scan_at,omitempty" doc:"When a scan last arrived for any of its builds"`
+	// TriageFloor is what this product considers worth triaging where it has
+	// said something of its own. Absent means it follows the deployment, which
+	// is a different statement from stating the same word — a product that
+	// stated it would stop following when the deployment changed its mind.
+	TriageFloor string `json:"triage_floor,omitempty" enum:"everything,low,medium,high,critical" doc:"What this product considers worth triaging, where it says something other than the deployment. Absent means it follows the deployment"`
+}
+
+// TriageFloorBody is what a product considers worth triaging.
+type TriageFloorBody struct {
+	// Floor is the least severity worth triaging here, "everything" for a
+	// product that hides nothing, or empty to follow the deployment.
+	Floor string `json:"floor" enum:"everything,low,medium,high,critical," doc:"The least severity worth triaging here, \"everything\" to hide nothing, or empty to follow the deployment"`
 }
 
 // StreamBody is a branch or a tag.
@@ -275,11 +297,60 @@ func registerCatalog(api huma.API, d Declaring) {
 			out.Body.Items = append(out.Body.Items, ProductBody{
 				Name: row.Name, DisplayName: row.DisplayName,
 				Branches: shape.Branches, Tags: shape.Tags, Variants: shape.Variants,
-				Open:       open[row.ID],
-				LastScanAt: seen[row.Name],
+				Open:        open[row.ID],
+				LastScanAt:  seen[row.Name],
+				TriageFloor: stated(row.TriageFloor),
 			})
 		}
 		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "set-product-triage-floor", Method: http.MethodPut,
+		Path:    "/v1/products/{product}/triage-floor",
+		Summary: "Set what a product considers worth triaging",
+		Description: "Sets the least severity worth triaging for one product, overriding what " +
+			"the deployment says. Below the line a finding is still recorded, still counted and " +
+			"still reportable, and it carries no deadline — it is out of the working list, not " +
+			"out of the system.\n\n" +
+			"An empty value clears the override, so the product follows the deployment again. " +
+			"Clearing is not the same as stating the deployment's current line: a product that " +
+			"stated it would stop following when the deployment changed.\n\n" +
+			"Deadlines are rewritten afterwards, away from the request, because moving the line " +
+			"moves what is on a clock at all. The response returns before that has finished.",
+		Tags: []string{"Catalog"}, DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		Product string `path:"product"`
+		Body    TriageFloorBody
+	}) (*struct{}, error) {
+		if err := administrating(ctx); err != nil {
+			return nil, err
+		}
+		// The same words the deployment's line takes, checked the same way. A
+		// product that could be set to something the deployment could not
+		// would be a second vocabulary for one idea.
+		word := strings.TrimSpace(strings.ToLower(in.Body.Floor))
+		if word != "" && !slices.Contains(theFloor, word) {
+			return nil, huma.Error422UnprocessableEntity(
+				fmt.Sprintf("%q is not a line to triage from — write one of %s, "+
+					"or nothing at all to follow the deployment",
+					in.Body.Floor, strings.Join(theFloor, ", ")))
+		}
+		store, err := storeFor(d)
+		if err != nil {
+			return nil, err
+		}
+		product, err := store.ProductByName(ctx, in.Product)
+		if err != nil {
+			return nil, huma.Error404NotFound(err.Error())
+		}
+		if err := store.SetTriageFloor(ctx, product.ID, word); err != nil {
+			return nil, wentWrong(d.Logger, "that line could not be recorded", err)
+		}
+		if d.RewriteDeadlines != nil {
+			d.RewriteDeadlines(ctx, "triage floor of product "+product.Name, word)
+		}
+		return &struct{}{}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -515,4 +586,13 @@ func lastScansIn(ctx context.Context, scans *ingest.Store, subject access.Subjec
 		}
 	}
 	return seen, nil
+}
+
+// stated reads an override that may be absent as the word it states, or as
+// nothing where the product has no opinion of its own.
+func stated(word *string) string {
+	if word == nil {
+		return ""
+	}
+	return *word
 }

@@ -1392,6 +1392,36 @@ So: when running `go test` by hand rather than through `make check`, export the
 engine URLs, and check the subtest names in the output actually list four
 engines before believing a result.
 
+## A product can now say what it triages (2026-09-03)
+
+Sixth of the 2026-09-03 review's open items. `TRI-43` says a deployment states
+a line and a product may state something different. The column holding a
+product's own has been **read** by `FloorFor` since it existed and written by
+nothing — and the settings screen said "A product may state its own instead",
+which was a claim about software that could not do it.
+
+Built: a store method, a route (`PUT /v1/products/{product}/triage-floor`), the
+line on the product row in the catalog list, and a control there for
+administrators. No new decision — `TRI-43` already says all of this; what was
+missing was the code.
+
+Three things worth not rediscovering:
+
+- **Clearing is its own act, not "set it to what the deployment says".** A
+  product that stated the deployment's current line would stop following it the
+  next time the deployment changed its mind, and nobody would see that happen.
+  The mutant that copies instead of clearing fails two tests, which is how it
+  should be.
+- **Moving a product's line rewrites deadlines**, for the same reason changing
+  a window does and from the other direction: below the line nothing is on a
+  clock (`REM-27`). It goes through the same leased, off-request path, so the
+  three settings that invalidate stored deadlines now have one spelling of
+  "and then rewrite them" rather than three.
+- **The line was untested end to end.** The existing floor tests build a
+  `Floor` value directly, so `FloorFor` reading the product column had no test
+  at all; the authorization went into the existing role × endpoint matrix
+  rather than into a test of its own, which is where it belongs.
+
 ## The two "unbounded" reads: one measured fine, one really was broken (2026-09-03)
 
 Fifth of the 2026-09-03 review's open items, and the interesting part is that

@@ -191,17 +191,32 @@ func registerSettings(api huma.API, in Ingest) {
 			// costs is some findings keeping the old deadline until the next
 			// scan or the next edit, which is the state they were already in
 			// a moment ago.
-			logger, name, value := in.Logger, input.Name, input.Body.Value
-			db, replica := in.DB, in.Replica
-			go func() {
-				at := context.WithoutCancel(ctx)
-				at, stop := context.WithTimeout(at, recomputeLimit)
-				defer stop()
-				rewriteDeadlines(at, db, replica, logger, name, value)
-			}()
+			deadlinesRewritten(in)(ctx, input.Name, input.Body.Value)
 		}
 		return &struct{}{}, nil
 	})
+}
+
+// deadlinesRewritten returns the way a handler asks for stored deadlines to be
+// brought in line with a policy that just changed.
+//
+// One of these rather than each caller starting its own goroutine: the
+// deployment's windows, the deployment's line and a product's line all
+// invalidate the same stored answer, and three spellings of "and then rewrite
+// them" is three places for one of them to be forgotten.
+func deadlinesRewritten(in Ingest) func(context.Context, string, string) {
+	return func(ctx context.Context, what, value string) {
+		logger, db, replica := in.Logger, in.DB, in.Replica
+		if db == nil {
+			return
+		}
+		go func() {
+			at := context.WithoutCancel(ctx)
+			at, stop := context.WithTimeout(at, recomputeLimit)
+			defer stop()
+			rewriteDeadlines(at, db, replica, logger, what, value)
+		}()
+	}
 }
 
 // rewriteDeadlines applies a changed policy to every open finding, one replica

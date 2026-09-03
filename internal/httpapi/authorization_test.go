@@ -22,6 +22,9 @@ import (
 // request. A refusal that arrives because the body was wrong proves nothing
 // about who may do what.
 func declaredBody(method, path, name string) io.Reader {
+	if method == http.MethodPut && strings.HasSuffix(path, "/triage-floor") {
+		return strings.NewReader(`{"floor": "high"}`)
+	}
 	if method != http.MethodPost {
 		return nil
 	}
@@ -101,7 +104,7 @@ func (r *reach) as(t *testing.T, who, method, path string) int {
 	// A well-formed body, so that what is being measured is the decision about
 	// the asker rather than a complaint about the request.
 	req := httptest.NewRequest(method, path, declaredBody(method, path, "declared-by-the-test"))
-	if method == http.MethodPost {
+	if method == http.MethodPost || method == http.MethodPut {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if who != "" {
@@ -297,6 +300,7 @@ func TestWhoMayReachWhat(t *testing.T) {
 			version    = "/v1/version"
 
 			mineFound  = "/v1/products/mine/streams/master/variants/broadcom/findings"
+			mineFloor  = "/v1/products/mine/triage-floor"
 			mineScans  = "/v1/products/mine/streams/master/variants/broadcom/scans"
 			theirFound = "/v1/products/theirs/streams/master/variants/broadcom/findings"
 			people     = "/v1/people"
@@ -360,6 +364,17 @@ func TestWhoMayReachWhat(t *testing.T) {
 			{"reporter", http.MethodPost, products, http.StatusForbidden},
 			{"reader", http.MethodPost, mine, http.StatusForbidden},
 			{"reader", http.MethodPost, mineVars, http.StatusForbidden},
+
+			// What a product considers worth triaging hides findings, which
+			// is the act every other part of this gates. No role granted per
+			// product carries it, so it is the same authority that sets the
+			// deployment's line.
+			{"reader", http.MethodPut, mineFloor, http.StatusForbidden},
+			{"triager", http.MethodPut, mineFloor, http.StatusForbidden},
+			{"approver", http.MethodPut, mineFloor, http.StatusForbidden},
+			{"", http.MethodPut, mineFloor, http.StatusUnauthorized},
+			{"nothing", http.MethodPut, mineFloor, http.StatusUnauthorized},
+			{"admin", http.MethodPut, mineFloor, http.StatusNoContent},
 
 			// An administrator reaches everything, including what nobody
 			// else can see.

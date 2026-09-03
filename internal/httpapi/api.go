@@ -245,6 +245,7 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 			}
 			return ingest.NewStore(in.DB.DB)
 		},
+		RewriteDeadlines: deadlinesRewritten(in),
 	})
 	registerAdministration(api, Administering{
 		Access: in.rights, Catalog: in.catalog, Logger: logger, Mode: in.Mode,

@@ -43,6 +43,20 @@ func (d *declaring) postAs(t *testing.T, who, path, body string) (int, map[strin
 	return d.do(t, req)
 }
 
+func (d *declaring) put(t *testing.T, path, body string) (int, map[string]any) {
+	t.Helper()
+	return d.putAs(t, d.admin, path, body)
+}
+
+func (d *declaring) putAs(t *testing.T, who, path, body string) (int, map[string]any) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPut, path, bytes.NewBufferString(body))
+	fromOurOwnPage(req)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(testHeader, who)
+	return d.do(t, req)
+}
+
 func (d *declaring) get(t *testing.T, path string) (int, map[string]any) {
 	t.Helper()
 	return d.getAs(t, d.admin, path)
@@ -253,6 +267,92 @@ func TestADeclaredTargetCanBeUploadedAgainst(t *testing.T) {
 		d.handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusAccepted {
 			t.Errorf("an upload against a freshly declared target returned %d: %s", rec.Code, rec.Body)
+		}
+	})
+}
+
+// floorOf reads back what the catalog says a product triages from.
+func (d *declaring) floorOf(t *testing.T, name string) (string, bool) {
+	t.Helper()
+	_, body := d.get(t, "/v1/products")
+	items, _ := body["items"].([]any)
+	for _, each := range items {
+		row, _ := each.(map[string]any)
+		if row["name"] != name {
+			continue
+		}
+		word, stated := row["triage_floor"].(string)
+		return word, stated
+	}
+	t.Fatalf("product %q is not in the catalog: %v", name, body)
+	return "", false
+}
+
+func TestAProductStatesWhatItTriagesAndCanStopSayingSo(t *testing.T) {
+	// TRI-43 says a deployment states a line and a product may state something
+	// different. The column that holds a product's own has been read since it
+	// existed and written by nothing, so the settings screen's "a product may
+	// state its own instead" was a claim about software that could not do it.
+	//
+	// Clearing rather than storing the deployment's word is the part worth
+	// pinning: a product that stated the deployment's current line would stop
+	// following it the next time the deployment changed, and nobody would see
+	// that happen.
+	eachCatalog(t, func(t *testing.T, d *declaring) {
+		d.post(t, "/v1/products", `{"name": "sonic"}`)
+		d.post(t, "/v1/products", `{"name": "onie"}`)
+
+		if word, stated := d.floorOf(t, "sonic"); stated {
+			t.Errorf("a product nobody has set a line on reports %q", word)
+		}
+
+		code, body := d.put(t, "/v1/products/sonic/triage-floor", `{"floor": "high"}`)
+		if code != http.StatusNoContent {
+			t.Fatalf("stating a line returned %d, want 204: %v", code, body)
+		}
+		if word, stated := d.floorOf(t, "sonic"); !stated || word != "high" {
+			t.Errorf("the product reports %q (stated=%v), want high", word, stated)
+		}
+		// And only that product.
+		if word, stated := d.floorOf(t, "onie"); stated {
+			t.Errorf("another product picked up the line as %q", word)
+		}
+
+		code, body = d.put(t, "/v1/products/sonic/triage-floor", `{"floor": ""}`)
+		if code != http.StatusNoContent {
+			t.Fatalf("clearing a line returned %d, want 204: %v", code, body)
+		}
+		if word, stated := d.floorOf(t, "sonic"); stated {
+			t.Errorf("after clearing, the product still states %q", word)
+		}
+	})
+}
+
+func TestALineAProductCannotHoldIsRefused(t *testing.T) {
+	// The same words the deployment's line takes, checked the same way. A
+	// product that could be set to something the deployment could not would be
+	// a second vocabulary for one idea, and a value nothing reads is a policy
+	// that silently reverted.
+	twoCatalog(t, func(t *testing.T, d *declaring) {
+		d.post(t, "/v1/products", `{"name": "sonic"}`)
+		code, body := d.put(t, "/v1/products/sonic/triage-floor", `{"floor": "catastrophic"}`)
+		if code != http.StatusUnprocessableEntity {
+			t.Fatalf("a line nobody recognizes returned %d, want 422: %v", code, body)
+		}
+		if detail, _ := body["detail"].(string); detail == "" {
+			t.Errorf("the refusal says nothing: %v", body)
+		}
+		if word, stated := d.floorOf(t, "sonic"); stated {
+			t.Errorf("a refused line was stored as %q", word)
+		}
+	})
+}
+
+func TestStatingALineOnAProductNobodyDeclaredSaysSo(t *testing.T) {
+	twoCatalog(t, func(t *testing.T, d *declaring) {
+		code, body := d.put(t, "/v1/products/nowhere/triage-floor", `{"floor": "high"}`)
+		if code != http.StatusNotFound {
+			t.Fatalf("a line on an undeclared product returned %d, want 404: %v", code, body)
 		}
 	})
 }
