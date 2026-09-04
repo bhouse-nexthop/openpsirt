@@ -506,6 +506,14 @@ func (f *fixture) issue(t *testing.T, identifier string) int64 {
 // An assessment names whoever made it, and that is a real reference rather
 // than a number in a column — the subjects these tests hold are made up, so
 // the row has to be put there for them.
+// recorded puts a person row in place at a known identifier, which the
+// subjects these tests build are matched on.
+//
+// Written column by column rather than through the access store because the
+// identifier has to be the one the subject carries, and a store assigns its
+// own. The cost is that a column added to the table with no default has to be
+// added here too — which is what the four-engine run reports, in the same
+// words on every engine.
 func (f *fixture) recorded(t *testing.T, id int64, identity string) {
 	t.Helper()
 	n, err := f.db.DB.NewSelect().Table("person").Where("id = ?", id).Count(t.Context())
@@ -519,7 +527,8 @@ func (f *fixture) recorded(t *testing.T, id int64, identity string) {
 		Model(&map[string]interface{}{
 			"id": id, "identity": identity, "display_name": identity,
 			"is_admin": false, "is_bootstrap": false, "admin_derived": false,
-			"created_at": time.Now().UTC().Truncate(time.Microsecond),
+			"email_derived": false,
+			"created_at":    time.Now().UTC().Truncate(time.Microsecond),
 		}).
 		TableExpr("person").
 		Exec(t.Context())
