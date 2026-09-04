@@ -107,11 +107,17 @@ export function Findings() {
   const outcome = params.get("outcome") ?? "";
   const assigned = params.get("assigned") ?? "";
   const reassessed = params.get("reassessed") === "1";
+  // Reached only by comparing a published identifier against an upstream
+  // version range, never against an advisory for the package in its own
+  // ecosystem. A distribution backports fixes without moving the upstream
+  // version, so these are neither confirmed nor refuted.
+  const unconfirmed = params.get("unconfirmed") === "1";
   const triage = params.get("mode") === "triage";
   const advanced =
     [ecosystem, under, state, outcome, assigned].filter(Boolean).length +
     (underBuild ? 1 : 0) +
-    (reassessed ? 1 : 0);
+    (reassessed ? 1 : 0) +
+    (unconfirmed ? 1 : 0);
   const [more, setMore] = useState(advanced > 0);
   const [peeking, setPeeking] = useState<string | null>(null);
   const [typed, setTyped] = useState(searching);
@@ -143,6 +149,7 @@ export function Findings() {
       : {}),
     ...(assigned ? { assigned: assigned as "me" | "somebody" | "nobody" } : {}),
     ...(reassessed ? { reassessed: true } : {}),
+    ...(unconfirmed ? { unconfirmed: true } : {}),
     ...(hiding.length > 0 ? { exclude: hiding } : {}),
     ...(onlyComponent ? { component: onlyComponent } : {}),
     ...(below ? { below_floor: true } : {}),
@@ -424,6 +431,15 @@ export function Findings() {
             <span>Rated differently by us</span>
           </label>
 
+          <label className="check" title="A distribution backports fixes without moving the upstream version, so these matched an upstream range and may already be fixed here. Nobody has confirmed either way.">
+            <input
+              type="checkbox"
+              checked={unconfirmed}
+              onChange={(e) => set("unconfirmed", e.target.checked ? "1" : "")}
+            />
+            <span>Not confirmed by a packager</span>
+          </label>
+
           {advanced > 0 && (
             <button
               type="button"
@@ -438,6 +454,7 @@ export function Findings() {
                   "outcome",
                   "assigned",
                   "reassessed",
+                  "unconfirmed",
                 ]) {
                   next.delete(key);
                 }
@@ -803,12 +820,22 @@ export function Findings() {
                           {(() => {
                             const said = upstreamSays(row.fix_state, row.fixed_in);
                             return (
-                              <span
-                                className={said.kind === "id" ? "id" : "hint"}
-                                style={said.kind === "faint" ? { color: "var(--faint)" } : undefined}
-                              >
-                                {said.text}
-                              </span>
+                              <>
+                                <span
+                                  className={said.kind === "id" ? "id" : "hint"}
+                                  style={said.kind === "faint" ? { color: "var(--faint)" } : undefined}
+                                >
+                                  {said.text}
+                                </span>
+                                {row.matched === "identifier" && (
+                                  <div
+                                    className="hint"
+                                    title="Matched by comparing a published identifier against an upstream version range. A distribution backports fixes without moving that version, so this may already be fixed here — nobody has confirmed either way."
+                                  >
+                                    not confirmed
+                                  </div>
+                                )}
+                              </>
                             );
                           })()}
                         </td>

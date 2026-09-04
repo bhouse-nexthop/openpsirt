@@ -8,8 +8,66 @@ here.
 
 ## Where to pick up
 
-**Everything decided so far is built.** The state of it, in the order it would
-be picked up:
+*Written 2026-09-04, for somebody arriving with no memory of the session that
+produced it. Everything below this heading and above "Performance and the
+development loop" is current; the rest of the document is a chronological
+record and should be read only when it is cited.*
+
+### The state, in one paragraph
+
+Phase 1 is essentially built. **Phase 2 is the current thrust**, at the user's
+direction and for a good reason: the reports and channels still to build would
+grow hooks into private findings, and retrofitting disclosure into them
+afterwards is the expensive order. Of Phase 2, **manual entry, disclosure
+dates, extension of a date, and the alert when one arrives are built**;
+publication and attachments are not.
+
+### Do this first on a fresh checkout
+
+**`make demo-reset` before `make demo`.** Migrations `00003` and `00009` were
+edited in place — which is what the pre-release rule says to do (DAT-29) — so
+an existing `.demo` database is missing columns and the application will not
+start against it. The same applies to a development database against the four
+engines: `make engines-down && make engines-up`.
+
+### What was built in the stretch ending 2026-09-04
+
+Each has its own section further down with the reasoning and what was found.
+
+| | |
+|---|---|
+| **The decisions gate** | `make check` now fails on a decision in force that no design document names. It found **71 of 423**, five of them cited by running code. All closed. This is the most valuable thing in the stretch: it makes "not built" statements in the design documents trustworthy, which the rest of this section relies on |
+| **Two latent data-loss defects** | A scan closed every open finding it did not report, without asking what produced it — so a hand-recorded flaw would have been closed the same night. And "when did this open" was reached by an *inner* join to the run, so a finding with no run would have been absent from the trend, the deadline sweep and the urgency recount |
+| **Phase 2, first half** | Recording a flaw in what a build ships (MDL-22 to MDL-25), disclosure dates and the list of what is approaching one (ACC-46, ACC-49), extension with a reason and a second person past a cumulative threshold (ACC-48), and the condition that tells administrators and whoever holds it when a date arrives (ACC-47) |
+| **Two inventories of ourselves** | The image carried an inventory of the *binary*; it now also carries one of the *image* (SCP-16), composed from parts by `internal/tools/compose`. Measured on ourselves: the binary variant has 41 components and no findings, the container variant 345 and 79. The inventory we shipped said we were clean |
+| **How a match was made** | A finding records whether a scanner reached it through an advisory for the package in its own ecosystem or by comparing a published identifier against an upstream version range (MDL-26). That is the question to ask about a distribution's packages — a backported fix does not move the upstream version — and it was being discarded |
+| **Reported by use** | The dependency tree ordered by what is inside a node rather than alphabetically, levels drawn whole, a shared build stamp said once; a receipt says how much of an inventory was placed; a comment can be edited, and doing so closed an enumeration oracle |
+
+### What is left
+
+**Phase 2**: a screen for recording a flaw (the endpoint exists and nothing
+calls it), advisory publication (REM-17 to REM-24), attachments (ATT-01 to
+ATT-12, and `DESIGN-attachments.md` says what is settled).
+
+**Phase 1 leftovers**: remediation metrics (RPT-03), mail and the digest
+(NTF-03, NTF-14), mentions that link (UIX-24, which blocks NTF-12), the
+absent-person prompt (ACC-45), trends release-over-release (half of RPT-09),
+comparison as release-note prose (half of RPT-06), repeat deferrals reported
+(TRI-19), the carry-forward preview (REL-07).
+
+**Before release, mandatory**: collapse the migrations into one and start
+keeping schema and API compatibility (DAT-29).
+
+**One known gap with a recorded shape**: the composed image inventory is
+correct now, but `DESIGN-packaging.md` should be re-read before touching it —
+the composition rules are subtle and the tool has tests that were written by
+breaking it.
+
+### The older record
+
+Everything below was current at the time it was written and is kept for the
+reasoning rather than the status. The table immediately following was accurate
+in early September and its "Done" entries remain done.
 
 | | |
 |---|---|

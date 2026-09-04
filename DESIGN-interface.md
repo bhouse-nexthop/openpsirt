@@ -289,6 +289,13 @@ latest point where the scope is wider — known exploited, pending the reader's
 approval, and overdue. Each names what it counts and opens the screen behind
 it. Then the work panels, then the trends (UIX-42).
 
+**A finding says whether anybody who packages it confirmed it** (MDL-26). A row
+reached by comparing a published identifier against an upstream version range
+is marked "not confirmed", and the filters can narrow to those — a distribution
+backports fixes without moving the upstream version, so these are neither
+confirmed nor refuted and finding them one at a time is not a thing anybody
+does.
+
 **The findings list has a triage mode** (UIX-43). Off by default and one
 control away; in the URL, so a link carries it. The row under the cursor is
 marked; Enter opens the decision form inside it — the same form the finding
@@ -1072,6 +1079,10 @@ the line by eye.
 
 Named so that what is missing is a plan rather than something rediscovered by
 clicking.
+
+**No screen records a flaw in our own product.** The endpoint exists and
+nothing calls it, so a private finding can be entered through the API and not
+through the interface — which is where the person who knows about it is.
 
 **A mention links nobody.** The editor offers the right candidates and writes
 `@name` into the text, but the renderer treats it as ordinary words. UIX-24
