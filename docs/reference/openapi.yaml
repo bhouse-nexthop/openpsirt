@@ -1347,6 +1347,71 @@ components:
         - previous
         - similar
       type: object
+    Extend-disclosureRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Extend-disclosureRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        reason:
+          description: Why it is being extended
+          minLength: 1
+          type: string
+        until:
+          description: Where the embargo should end, as a date
+          type: string
+      required:
+        - until
+        - reason
+      type: object
+    ExtensionBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ExtensionBody.json
+          format: uri
+          readOnly: true
+          type: string
+        approved_at:
+          type: string
+        approved_by:
+          type: string
+        asked_at:
+          type: string
+        asked_by:
+          type: string
+        id:
+          format: int64
+          type: integer
+        in_force:
+          type: boolean
+        needs_approval:
+          description: Whether a second person had to agree
+          type: boolean
+        reason:
+          type: string
+        until:
+          description: Where it was asked to end
+          type: string
+        was:
+          description: Where the embargo ended before
+          type: string
+      required:
+        - id
+        - was
+        - until
+        - reason
+        - asked_by
+        - asked_at
+        - needs_approval
+        - in_force
+      type: object
     FindingBody:
       additionalProperties: false
       properties:
@@ -2120,6 +2185,25 @@ components:
         items:
           items:
             $ref: "#/components/schemas/EmbargoedBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyExtensionBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyExtensionBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/ExtensionBody"
           type:
             - array
             - "null"
@@ -4573,6 +4657,32 @@ paths:
       summary: List what is approaching disclosure
       tags:
         - Findings
+  /v1/disclosure-extensions/{id}/approval:
+    post:
+      description: |-
+        Records a second person agreeing, and moves the date.
+
+        The person who asked may not be the one who agrees. That is the control the threshold exists to reach, and an extension somebody approved for themselves is the same as one nobody approved.
+      operationId: agree-to-extension
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Agree to moving a disclosure date
+      tags:
+        - Findings
   /v1/issues/{vulnerability}/assessment:
     post:
       description: |-
@@ -5196,6 +5306,85 @@ paths:
       summary: Set when a product goes out of support
       tags:
         - Catalog
+  /v1/products/{product}/issues/{vulnerability}/disclosure:
+    get:
+      description: |-
+        Every time this embargo was moved, oldest first, with why and by whom.
+
+        Kept in full and never overwritten. One extension is a judgment and six is a policy nobody wrote down, and the difference is invisible if each replaces the last. A request still waiting for agreement is here too: what was asked for is part of how long this stayed hidden, whether or not it was granted.
+      operationId: list-disclosure-extensions
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: vulnerability
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyExtensionBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List how an embargo has been moved
+      tags:
+        - Findings
+    post:
+      description: |-
+        Moves the end of an embargo, across every undisclosed finding of this issue in this product.
+
+        **A reason is required, always**, however short the extension. One with no reason is a record saying somebody moved it and nothing else.
+
+        **Past a threshold it needs a second person**, and the threshold is measured against everything this embargo has already been moved by rather than against this request alone — measured per request, the exception swallows the rule three weeks at a time. It is the same act a deferral is, and the same shape.
+
+        **An extension that needs agreement moves nothing until it has it.** The request is on record either way; `in_force` says whether the date follows it.
+
+        A date only ever moves later. Bringing one forward is disclosing sooner, which is a different act.
+      operationId: extend-disclosure
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: vulnerability
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Extend-disclosureRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtensionBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Ask to move a disclosure date later
+      tags:
+        - Findings
   /v1/products/{product}/mentionable:
     get:
       description: |-
