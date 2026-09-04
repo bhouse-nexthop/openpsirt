@@ -58,6 +58,7 @@ RUN go build -trimpath \
 # demo uploads it, and an operator evaluating the tool has a second product to
 # look at without owning a build pipeline.
 ARG CDXGOMOD_VERSION=v1.12.0
+RUN CGO_ENABLED=0 go build -trimpath -o /out/compose ./internal/tools/compose
 RUN go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CDXGOMOD_VERSION} \
       bin -json -output /out/openpsirt.cdx.json /out/openpsirt
 
@@ -75,12 +76,12 @@ RUN go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CDXGOMOD_V
 # finding means — counts are only comparable between products measured the same
 # way — so "whatever was latest at build time" is not good enough.
 FROM alpine:3.21 AS scanner
-ARG GRYPE_VERSION=0.112.0
+ARG GRYPE_VERSION=0.118.0
 ARG TARGETARCH=amd64
 RUN apk add --no-cache curl ca-certificates \
  && case "${TARGETARCH}" in \
-      amd64) expected=acb14a030010fe9bdb9594b4ae108d9d14ef2f926d936aa0916dc62c89c058ea ;; \
-      arm64) expected=7fdeccf065965cc59386c656e5fcc1eb1bdf820e2433000bca7f010b8e6da155 ;; \
+      amd64) expected=1d444c5e7360471815f7158f71935fcecc68a3c417d85c7344f770854300bba2 ;; \
+      arm64) expected=32aceeb8ee837244775fcb522372c8b3a47914986385f3148f4ee2c930482a84 ;; \
       *) echo "no pinned checksum for ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
  && curl -fsSL -o /tmp/grype.tar.gz \
@@ -97,12 +98,12 @@ RUN apk add --no-cache curl ca-certificates \
 # same project — a build that fetches an unpinned tool over the network is a
 # build whose output depends on a day.
 FROM alpine:3.21 AS inventory-tool
-ARG SYFT_VERSION=1.29.0
+ARG SYFT_VERSION=1.51.1
 ARG TARGETARCH=amd64
 RUN apk add --no-cache curl ca-certificates \
  && case "${TARGETARCH}" in \
-      amd64) expected=5b01c831cb5d712899d9179cabd80f55b6708dbd36af981ce27e59b6569e6690 ;; \
-      arm64) expected=1d93db2bf6f366683e7aef46d3d6a9c6ab5d72caaae1c3be1a35823c18b6f970 ;; \
+      amd64) expected=8fcb33017a0dc1058298c923c436d19dfa68ae93968e0b423248542e3afb9fc3 ;; \
+      arm64) expected=a7fd2b784e6664acd44719270574f6cd8c6864fc2b1700bf9099bd1cccda7d7f ;; \
       *) echo "no pinned checksum for ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
  && curl -fsSL -o /tmp/syft.tar.gz \
@@ -160,6 +161,8 @@ RUN mkdir -p /var/cache/openpsirt/grype \
 FROM inventory-tool AS image-inventory
 ARG VERSION=0.0.0
 COPY --from=runtime / /rootfs
+COPY --from=build /out/compose /out/compose
+RUN mkdir -p /parts
 # Packages, not files. The file catalogers add a component per path with no
 # version and no package identifier — eight hundred of them here — and nothing
 # downstream can do anything with those: a scanner matches packages, so they
@@ -167,10 +170,29 @@ COPY --from=runtime / /rootfs
 # hang off. They also carry the scan path, which is a build-time detail that
 # has no business in a shipped inventory.
 ENV SYFT_FILE_METADATA_SELECTION=none
+
+# Cataloged as parts, because neither way of asking answers the whole question.
+#
+# Cataloging the directory finds every package and loses the structure inside a
+# compiled binary: the modules arrive flat, with nothing above them, not even
+# the module that *is* the binary. Cataloging one binary produces the opposite —
+# a proper graph, and no knowledge of the image around it.
+#
+# So each is asked what it can answer, and the parts are composed. The
+# directory scan is told to leave the binaries alone, since the file scans
+# below cover them properly.
 RUN /out/syft scan dir:/rootfs \
-      --select-catalogers "-file" \
+      --select-catalogers "-file,-go-module-binary-cataloger" \
       --source-name openpsirt-image --source-version "${VERSION}" \
-      -o cyclonedx-json=/image.cdx.json \
+      -o cyclonedx-json=/parts/filesystem.cdx.json \
+ && for binary in openpsirt grype; do \
+      /out/syft scan "file:/rootfs/usr/local/bin/$binary" \
+        --select-catalogers "-file" \
+        -o "cyclonedx-json=/parts/$binary.cdx.json"; \
+    done \
+ && /out/compose -name openpsirt-image -version "${VERSION}" \
+      -out /image.cdx.json \
+      parts/filesystem.cdx.json parts/openpsirt.cdx.json parts/grype.cdx.json \
  && test -s /image.cdx.json
 
 FROM runtime

@@ -2722,3 +2722,36 @@ composer, not a flag. `DESIGN-packaging.md` says so.
 
 The tool itself is fine on a well-formed inventory: the switch image places
 5,621 findings under its root.
+
+## The composer, and what the image inventory now says (2026-09-04)
+
+Cataloging a directory finds every package and loses the structure inside a
+compiled binary — modules flat, nothing above them, not even the module that
+*is* the binary. Cataloging one binary gives the opposite: a proper graph and no
+knowledge of the image around it.
+
+So the image is cataloged as parts and `internal/tools/compose` joins them.
+Nothing inferred: each input says what it found and how it was arranged, and
+the only edge added is from the image to each component nothing else placed,
+which is what "this image contains that" already means.
+
+Measured: the root had **0 children** and 345 components floated; it now has 10,
+and every module sits under the binary it came from.
+
+Two rules, both tested by breaking them. A component is identified by its
+package identifier with the producer's qualifiers cut — a module two binaries
+both link gets a different reference in each catalog, and one component with
+two parents is the truth where two components is a count saying the image ships
+it twice. And everything else a producer recorded is carried through untouched;
+composing rewrites references and adds one edge, and dropping the rest would
+make this lossy in the middle of an audit trail.
+
+The bug that cost the most: the first version rewrote a component's reference
+*before* recording what the old one mapped to, so every edge in every input
+pointed at nothing — which produces exactly the symptom the command exists to
+repair, and the tests caught it on the first run.
+
+**Also updated: grype 0.112.0 to 0.118.0, syft 1.29.0 to 1.51.1.** Both were
+behind, and the pinned checksums were verified against upstream's published
+list. Nothing watches these for us, which is worth noticing given what this
+tool is for.

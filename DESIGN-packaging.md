@@ -207,23 +207,33 @@ The generator is pinned by version and checksum, the same way the scanner is
 and from the same project. A build that fetches an unpinned tool over the
 network is a build whose output depends on the day it ran.
 
-**It is a list rather than a graph, and that is a known gap.** Scanning a
-directory catalogs the packages and emits almost no edges: seventeen apk
-packages carry the apk dependencies between them, and the three hundred and
-thirty-nine Go modules arrive with nothing above them, including the module
-that is the binary they came out of. Nothing links any of it to the image
-itself. The result is an inventory whose findings are each correct and cannot
-say where they live — a vulnerability in `containerd` is real and is inside the
-bundled scanner, and the document does not say so.
+**It is cataloged as parts and composed**, because neither way of asking
+answers the whole question. Cataloging a directory finds every package and
+loses the structure inside a compiled binary: the modules arrive flat, with
+nothing above them, not even the module that *is* the binary. Cataloging one
+binary produces the opposite — a proper graph, and no knowledge of the image
+around it.
 
-The information exists. Scanning one binary rather than a directory produces a
-proper graph, with the main module above everything it was linked from, and the
-directory scan records the file each module came from as a property. Composing
-those — the distribution's packages, and each shipped binary with its own
-modules beneath it, all under the image — is the fix, and it is a document
-composer rather than a flag. Until it exists the receipt says how much of the
-inventory was placed, so this is visible rather than something somebody works
-out from an empty dependency tree.
+So the filesystem is cataloged with the binaries left out, each binary is
+cataloged on its own, and `internal/tools/compose` joins them. Nothing is
+inferred: each input says what it found and how it was arranged, and what is
+added is one edge from the image to each component nothing else placed — which
+is what "this image contains that" already means.
+
+Measured: before, the root had **no children** and 345 components floated. After,
+the root has ten and every module sits under the binary it came out of. That is
+the difference between a finding that says a vulnerability is in `containerd`
+and one that says it is in the scanner this image bundles.
+
+Two rules the composer holds to. **A component is identified by its package
+identifier with the producer's qualifiers cut**, because a module two binaries
+both link gets a different reference in each catalog — one component with two
+parents is the truth, and two components is a count saying the image ships it
+twice and a decision that has to be made twice. And **everything else a
+producer recorded is carried through untouched**: licences, hashes, the
+properties saying where something was found. Composing rewrites references and
+adds one edge; dropping the rest would make this a lossy step in the middle of
+an audit trail.
 
 **Two things want an inventory in the image.** A release's inventory should
 travel with the artifact it describes rather than only sitting beside it on a
