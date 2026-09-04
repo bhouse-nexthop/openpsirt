@@ -71,6 +71,29 @@ three different situations to whoever is triaging. "Upstream will not fix this"
 is a permanent condition that changes the outcome somebody should reach, and it
 is invisible if the only thing recorded is that a fix is absent.
 
+## A scan governs what a scan found, and nothing else
+
+A run is the authority on what it reported. It opens what it found and
+**closes everything open that it no longer reports** — that is how a component
+leaving a build stops being a finding without anybody saying so, and it is the
+whole reason the record can be trusted to describe the build as it is now.
+
+So the sweep has to be bounded by what a scan can have an opinion about. A
+finding carries a kind saying what produced it, and the sweep covers only the
+kind a scan produces.
+
+Without that bound, a finding somebody recorded by hand — a flaw in what this
+deployment ships, which no scanner knows about — is closed by the first run
+after it is written. Silently, and with a closure reason that reads like the
+issue went away: the row is indistinguishable from a component that stopped
+shipping. Nothing reports it, because from the sweep's point of view nothing
+went wrong.
+
+The kind exists ahead of the second thing to put in it for exactly this reason.
+A model that assumed every finding came from a scan could not take one that did
+not without changing how closure works, and closure is the part that is easy to
+get subtly wrong and hard to notice.
+
 ## Findings are held over intervals, like the graph
 
 Open until closed, never deleted. Re-scanning happens nightly against a

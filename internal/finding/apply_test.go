@@ -235,3 +235,72 @@ func TestANewFindingIsClockedByTheRatingInForce(t *testing.T) {
 		}
 	})
 }
+
+func TestAScanDoesNotCloseWhatAPersonRecorded(t *testing.T) {
+	// A run is the authority on what it found: it opens what it reports and
+	// closes everything open that it no longer reports. That sweep covered
+	// every finding against the build, including ones no scanner has an
+	// opinion about — so the first nightly scan after somebody recorded a
+	// flaw in what we ship would close it, the same night, with a reason
+	// that reads like the issue went away.
+	//
+	// Nothing would have reported that. The row looks exactly like a
+	// component that stopped shipping.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+		scanned := f.open(t)
+		if len(scanned) == 0 {
+			t.Fatal("the scan found nothing to build on")
+		}
+
+		// Somebody records a flaw in what this build ships. It hangs off a
+		// component that is in the build, because that is where it is.
+		entered := scanned[0]
+		entered.ID = 0
+		entered.Kind = finding.Entered
+		entered.VulnerabilityID = f.interned(t, "SONIC-2026-0001")
+		if _, err := f.db.DB.NewInsert().Model(&entered).Exec(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+
+		// The next scan reports the same component and nothing else. Under the
+		// old sweep this closed the entered row.
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+
+		var still int
+		err := f.db.DB.NewSelect().Model((*finding.Finding)(nil)).
+			Where("kind = ?", finding.Entered).
+			Where("closed_run_id IS NULL").
+			ColumnExpr("COUNT(*)").Scan(t.Context(), &still)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if still != 1 {
+			t.Errorf("%d recorded findings survived a scan that said nothing about them, want 1", still)
+		}
+
+		// And the scan still governs its own: a component it stops reporting
+		// closes, which is the behaviour the narrowing must not have broken.
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t), nil); err != nil {
+			t.Fatal(err)
+		}
+		var scannedOpen int
+		err = f.db.DB.NewSelect().Model((*finding.Finding)(nil)).
+			Where("kind = ?", finding.Vulnerable).
+			Where("closed_run_id IS NULL").
+			ColumnExpr("COUNT(*)").Scan(t.Context(), &scannedOpen)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if scannedOpen != 0 {
+			t.Errorf("%d scanned findings stayed open after a scan reported none", scannedOpen)
+		}
+	})
+}

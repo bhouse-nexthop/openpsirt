@@ -2462,3 +2462,30 @@ withdrawn, since asking for a description of something that was taken back is
 asking for a description of nothing.
 
 Verified by removing `DESIGN-attachments.md`: thirteen come back.
+
+## Phase 2, and the first thing it needs (2026-09-04)
+
+Decision from the user, and it is the right one: private findings come before
+the remaining reports and channels, because those grow hooks into them. Building
+metrics and mail first and retrofitting disclosure is the expensive order.
+
+The first thing found by looking is a data-loss defect that has been latent
+since the scan applier was written. **`Apply` closes every open finding the run
+did not report**, without asking what produced it. That is correct for what a
+scan governs and destroys anything else: the first nightly scan after somebody
+records a flaw by hand closes it, that night, with a closure reason that reads
+like the issue went away. Nothing reports it, because the row is
+indistinguishable from a component that stopped shipping.
+
+The finding model already carried a `kind` for exactly this class of problem —
+"a model that assumes both cannot take it later without a rewrite" — and there
+was only ever one value in it, so nothing had exercised the assumption. There
+are two now, and the sweep is bounded by the kind a scan produces.
+
+Verified by removing the narrowing: the recorded finding is gone after one scan.
+
+**Next, in order.** A finding has no opened-at of its own — "when it opened" is
+read by joining the run that opened it, and three hot queries do that as an
+inner join, which would silently drop every entered finding rather than
+mis-report it. That is the next change and it is a schema one. Then entering a
+finding at all, then disclosure dates and the escalation around them.

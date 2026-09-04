@@ -845,6 +845,19 @@ func TestAnAbsurdlyLongValueDoesNotFailTheScanThatCarriedIt(t *testing.T) {
 	})
 }
 
+// interned records one vulnerability by name and returns its identifier, for
+// the findings a test writes directly rather than through a scan. Unlike
+// issue, which looks up what a scan already stored, this puts it there.
+func (f *fixture) interned(t *testing.T, name string) int64 {
+	t.Helper()
+	ids, err := finding.NewVulnerabilities(f.db.DB).Intern(t.Context(),
+		[]finding.Named{{Identifier: name, Severity: "high"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ids[name]
+}
+
 // holding returns a subject holding one role on the product this fixture's
 // target belongs to.
 func (f *fixture) holding(t *testing.T, roles ...access.Role) access.Subject {
