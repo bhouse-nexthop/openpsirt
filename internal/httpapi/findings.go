@@ -100,7 +100,7 @@ type ComponentFindingsOutput struct {
 }
 
 func registerFindings(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-findings", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings",
 		Summary: "List vulnerability findings",
@@ -121,7 +121,7 @@ func registerFindings(api huma.API, in Ingest) {
 			"and component, so a subtree holding one issue at two components is two rows here " +
 			"and one there.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product     string   `path:"product"`
 		Stream      string   `path:"stream"`
 		Variant     string   `path:"variant"`
@@ -230,7 +230,7 @@ func registerFindings(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-finding-components", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/components",
 		Summary: "List what is open, gathered by component",
@@ -246,7 +246,7 @@ func registerFindings(api huma.API, in Ingest) {
 			"being counted. Ordered by how many issues, not by urgency: ordering by urgency " +
 			"would reproduce the findings list at worse resolution.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product    string   `path:"product"`
 		Stream     string   `path:"stream"`
 		Variant    string   `path:"variant"`
@@ -463,7 +463,7 @@ type EvidenceBody struct {
 }
 
 func registerFindingDetail(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "get-finding", Method: http.MethodGet,
 		Path: "/v1/products/{product}/streams/{stream}/variants/{variant}" +
 			"/findings/{vulnerability}/components/{component}",
@@ -480,7 +480,7 @@ func registerFindingDetail(api huma.API, in Ingest) {
 			"versions, `version` says which — without it, a name that matches more than one is " +
 			"refused rather than guessed at.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
 		Stream        string `path:"stream"`
 		Variant       string `path:"variant"`

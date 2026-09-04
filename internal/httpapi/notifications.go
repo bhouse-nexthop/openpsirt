@@ -35,7 +35,7 @@ type notificationsOutput struct {
 }
 
 func registerNotifications(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-notifications", Method: http.MethodGet,
 		Path:    "/v1/notifications",
 		Summary: "List what is waiting on you",
@@ -49,7 +49,7 @@ func registerNotifications(api huma.API, in Ingest) {
 			"true and clears itself when that stops, so a build that resumes being scanned " +
 			"leaves this list without anybody dismissing it.",
 		Tags: []string{"Notifications"},
-	}, func(ctx context.Context, input *struct {
+	}, ownSubject, ""), func(ctx context.Context, input *struct {
 		Limit  int `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"How many to return"`
 		Offset int `query:"offset" minimum:"0" doc:"How many to skip"`
 	}) (*notificationsOutput, error) {
@@ -78,7 +78,7 @@ func registerNotifications(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "acknowledge-notification", Method: http.MethodDelete,
 		Path:    "/v1/notifications/{id}",
 		Summary: "Acknowledge one notification",
@@ -88,7 +88,7 @@ func registerNotifications(api huma.API, in Ingest) {
 			"Acknowledging a condition hides it rather than resolving it: what it is about is " +
 			"still true, and the pass that derives it will not raise it again while it holds.",
 		Tags: []string{"Notifications"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, input *struct {
+	}, ownSubject, ""), func(ctx context.Context, input *struct {
 		ID int64 `path:"id"`
 	}) (*struct{}, error) {
 		subject, err := reading(ctx)
@@ -107,14 +107,14 @@ func registerNotifications(api huma.API, in Ingest) {
 		return nil, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "acknowledge-all-notifications", Method: http.MethodDelete,
 		Path:    "/v1/notifications",
 		Summary: "Acknowledge everything waiting on you",
 		Description: "Takes everything off your list at once, and says how many that was. " +
 			"Conditions that are still true will not come back while they hold.",
 		Tags: []string{"Notifications"},
-	}, func(ctx context.Context, _ *struct{}) (*struct {
+	}, ownSubject, ""), func(ctx context.Context, _ *struct{}) (*struct {
 		Body struct {
 			Acknowledged int `json:"acknowledged" doc:"How many were waiting"`
 		}

@@ -31,7 +31,7 @@ type ChangedBody struct {
 }
 
 func registerReports(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "get-trend", Method: http.MethodGet, Path: "/v1/trend",
 		Summary: "Show new, resolved and open over time",
 		Description: "Returns the three counts per step, with open split by severity, across " +
@@ -44,7 +44,7 @@ func registerReports(api huma.API, in Ingest) {
 			"Worked out when it is asked for. Nothing is precomputed or refreshed on a schedule " +
 			"until a measurement says it has to be.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		ScopeQuery
 		Weeks int `query:"weeks" default:"12" minimum:"1" maximum:"104"`
 	}) (*listOutput[PointBody], error) {
@@ -74,7 +74,7 @@ func registerReports(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-releases", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/releases",
 		Summary: "How much is open against each build of a product",
@@ -88,7 +88,7 @@ func registerReports(api huma.API, in Ingest) {
 			"the one expression the working list and the deadline also read, so a chart cannot " +
 			"disagree with a list about what counts as high.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product string `path:"product"`
 	}) (*listOutput[ReleaseBody], error) {
 		subject, err := reading(ctx)
@@ -120,7 +120,7 @@ func registerReports(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "compare-releases", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/comparison",
 		Summary: "Compare two builds",
@@ -139,7 +139,7 @@ func registerReports(api huma.API, in Ingest) {
 			"public document, so including something undisclosed should be deliberate rather " +
 			"than something pasted in without noticing.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product        string `path:"product"`
 		From           string `query:"from" required:"true" doc:"The earlier build's stream — a branch or a tag"`
 		FromVariant    string `query:"from_variant" required:"true" doc:"The earlier build's variant"`
@@ -239,7 +239,7 @@ type CarriedBody struct {
 }
 
 func registerCarry(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "preview-carried-decisions", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/carried",
 		Summary: "Show what triage a new line would inherit",
@@ -260,7 +260,7 @@ func registerCarry(api huma.API, in Ingest) {
 			"what carrying it again agrees to.\n\n" +
 			"`absent` cover nothing here and are left behind.",
 		Tags: []string{"Triage"},
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		Product     string `path:"product"`
 		Stream      string `path:"stream"`
 		Variant     string `path:"variant"`

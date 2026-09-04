@@ -18,7 +18,7 @@ type MentionableBody struct {
 }
 
 func registerMentions(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-mentionable", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/mentionable",
 		Summary: "List who may be mentioned here",
@@ -31,7 +31,7 @@ func registerMentions(api huma.API, in Ingest) {
 			"`visibility` says which kind of finding the text is about. Asking about " +
 			"undisclosed findings requires being able to read them.",
 		Tags: []string{"Triage"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product    string `path:"product"`
 		Visibility string `query:"visibility" default:"public" enum:"public,private" doc:"Which kind of finding the text is about"`
 		Limit      int    `query:"limit" default:"25" minimum:"1" maximum:"100"`

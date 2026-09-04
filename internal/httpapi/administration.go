@@ -162,7 +162,7 @@ type KeyBody struct {
 }
 
 func registerAdministration(api huma.API, a Administering) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-people", Method: http.MethodGet, Path: "/v1/people",
 		Summary: "List users",
 		Description: "Lists everybody who may sign in, with the roles each of them holds and " +
@@ -170,7 +170,7 @@ func registerAdministration(api huma.API, a Administering) {
 			"Nobody appears here by having authenticated. Access is granted in advance, so this " +
 			"list is what an administrator has decided rather than who has turned up.",
 		Tags: []string{"Administration"},
-	}, func(ctx context.Context, _ *struct{}) (*listOutput[PersonBody], error) {
+	}, deploymentWide, ""), func(ctx context.Context, _ *struct{}) (*listOutput[PersonBody], error) {
 		store, _, err := administerable(ctx, a)
 		if err != nil {
 			return nil, err
@@ -211,13 +211,13 @@ func registerAdministration(api huma.API, a Administering) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "record-person", Method: http.MethodPost, Path: "/v1/people",
 		Summary: "Create a user and grant roles",
 		Description: "Records somebody so that they may sign in, and optionally what they hold. " +
 			"Recording the same person again confirms them and adds any roles named.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, in *struct {
+	}, deploymentWide, ""), func(ctx context.Context, in *struct {
 		Body RecordBody
 	}) (*declaredOutput[PersonBody], error) {
 		store, names, err := administerable(ctx, a)
@@ -295,7 +295,7 @@ func registerAdministration(api huma.API, a Administering) {
 		return answer(created, *body), nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "withdraw-role", Method: http.MethodDelete,
 		Path:    "/v1/people/{identity}/roles/{product}/{role}",
 		Summary: "Revoke a user's role on a product",
@@ -309,7 +309,7 @@ func registerAdministration(api huma.API, a Administering) {
 			"answered by the record of what they did, so this list only ever says what is true " +
 			"today.",
 		Tags: []string{"Administration"},
-	}, func(ctx context.Context, in *struct {
+	}, deploymentWide, ""), func(ctx context.Context, in *struct {
 		Identity string `path:"identity"`
 		Product  string `path:"product"`
 		Role     string `path:"role"`
@@ -365,13 +365,13 @@ func registerAdministration(api huma.API, a Administering) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-keys", Method: http.MethodGet, Path: "/v1/keys",
 		Summary: "List API keys",
 		Description: "Which credentials exist, what each may send, when it was last used and " +
 			"whether it still works. The secrets are not here and cannot be: what is stored is a digest.",
 		Tags: []string{"Administration"},
-	}, func(ctx context.Context, _ *struct{}) (*listOutput[KeyBody], error) {
+	}, deploymentWide, ""), func(ctx context.Context, _ *struct{}) (*listOutput[KeyBody], error) {
 		store, names, err := administerable(ctx, a)
 		if err != nil {
 			return nil, err
@@ -410,14 +410,14 @@ func registerAdministration(api huma.API, a Administering) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "create-key", Method: http.MethodPost, Path: "/v1/keys",
 		Summary: "Create an API key",
 		Description: "Creates a credential a build may send scans with, and returns its secret. " +
 			"The secret is shown once and stored hashed: a credential store that can hand back " +
 			"what it holds gives up every pipeline's key with a copy of the database.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, in *struct {
+	}, deploymentWide, ""), func(ctx context.Context, in *struct {
 		Body KeyBody
 	}) (*declaredOutput[KeyBody], error) {
 		store, names, err := administerable(ctx, a)
@@ -456,13 +456,13 @@ func registerAdministration(api huma.API, a Administering) {
 		}), nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "revoke-key", Method: http.MethodDelete, Path: "/v1/keys/{name}",
 		Summary: "Revoke an API key",
 		Description: "Stops it working, without removing the record of what it sent. Revoking one " +
 			"credential leaves every other pipeline running.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, in *struct {
+	}, deploymentWide, ""), func(ctx context.Context, in *struct {
 		Name string `path:"name"`
 	}) (*struct{}, error) {
 		store, _, err := administerable(ctx, a)

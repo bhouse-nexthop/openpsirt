@@ -3,7 +3,7 @@
 The one surface. Everything a person or a pipeline can do here goes through it,
 and the interface, when it exists, will be a client of it like anything else.
 
-Satisfies API-01 to API-03, API-05 to API-07, API-14, API-16 to API-20, ACC-09,
+Satisfies API-01 to API-03, API-05 to API-07, API-14, API-16 to API-22, ACC-09,
 SEC-01, SEC-02.
 
 ## One API, no private half
@@ -155,3 +155,32 @@ version standing beside the first.
 - **Where a place appears in a path**, it is the identity the findings list
   gave out, not something a caller composes. A caller free to name a place
   would be choosing which decisions apply where.
+
+## Every operation says what it asks of a caller
+
+The rights an endpoint needs lived only in its handler, so answering "who may
+call this" meant reading code — and an integrator could not answer it at all
+(API-22).
+
+Each operation now carries a structured statement: the **scope** it is held
+against — the deployment, a product, yourself, or any credential this
+deployment recognizes — the **roles** that satisfy it, any one of which is
+enough, and a short **note** where a rule is not a role.
+
+**The line in the description is rendered from that same value**, not written
+beside it. Two hand-written copies disagree within a month, and a wrong
+permission is worse than the silence it replaced: a missing answer is known to
+be missing, and a wrong one is trusted.
+
+**A gate refuses an operation that says neither.** The failure is silent
+otherwise — an endpoint added without one is not broken, it is undocumented,
+and nobody finds out until they need the answer.
+
+**The privileges page is generated from the same registrations.** It groups the
+operations by scope and lists the roles for each, above a table of what every
+role allows. Nothing in the chain is maintained by hand between the code that
+enforces a right and the page somebody reads before asking for one.
+
+Two rules in it are not roles and cannot be granted: visibility narrows every
+answer, so an endpoint somebody may call still shows only what they may see;
+and the proposer of a claim may never approve it.

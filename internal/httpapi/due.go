@@ -29,7 +29,7 @@ type LateBody struct {
 }
 
 func registerDue(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-running-out", Method: http.MethodGet, Path: "/v1/running-out",
 		Summary: "List findings running out of time that nobody has decided about",
 		Description: "Returns open findings whose deadline falls within `days`, where nobody has " +
@@ -44,7 +44,7 @@ func registerDue(api huma.API, in Ingest) {
 			"One row per issue at a component, however many places it sits at. `days_left` is " +
 			"negative once something is overdue.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		ScopeQuery
 		Days  int `query:"days" default:"14" minimum:"0" maximum:"365" doc:"How far ahead to look"`
 		Limit int `query:"limit" default:"50" minimum:"1" maximum:"200"`

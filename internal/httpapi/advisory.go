@@ -12,7 +12,7 @@ import (
 )
 
 func registerAdvisory(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "get-advisory", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/issues/{vulnerability}/advisory",
 		Summary: "Generate a CSAF advisory for an issue",
@@ -32,7 +32,7 @@ func registerAdvisory(api huma.API, in Ingest) {
 			"Requires a publisher configured for this deployment: a document naming none is " +
 			"not a valid CSAF document.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
 		Vulnerability string `path:"vulnerability" doc:"The identifier the issue is filed under"`
 	}) (*struct{ Body *advisory.Document }, error) {

@@ -43,7 +43,7 @@ type WhoBody struct {
 }
 
 func registerWhoAmI(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "get-current-subject", Method: http.MethodGet, Path: "/v1/session/me",
 		Summary: "Describe whoever is asking",
 		Description: "Returns the caller, the products they can reach, and what they may do in " +
@@ -55,7 +55,7 @@ func registerWhoAmI(api huma.API, in Ingest) {
 			"Capabilities, not roles, for that reason. Which roles produce which capability is " +
 			"the server's rule and stays there.",
 		Tags: []string{"Access"},
-	}, func(ctx context.Context, _ *struct{}) (*struct{ Body WhoBody }, error) {
+	}, ownSubject, ""), func(ctx context.Context, _ *struct{}) (*struct{ Body WhoBody }, error) {
 		subject, err := reading(ctx)
 		if err != nil {
 			return nil, err

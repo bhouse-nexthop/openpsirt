@@ -25,7 +25,7 @@ type AtComponentBody struct {
 }
 
 func registerBulk(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-issues-at-component", Method: http.MethodGet,
 		Path: "/v1/products/{product}/streams/{stream}/variants/{variant}" +
 			"/components/{component}/issues",
@@ -36,7 +36,7 @@ func registerBulk(api huma.API, in Ingest) {
 			"`contains` matches the text of a report. It narrows a list; it is not part of any " +
 			"claim made afterwards.",
 		Tags: []string{"Triage"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product   string `path:"product"`
 		Stream    string `path:"stream"`
 		Variant   string `path:"variant"`
@@ -104,7 +104,7 @@ func registerBulk(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "decide-together", Method: http.MethodPost,
 		Path: "/v1/products/{product}/streams/{stream}/variants/{variant}" +
 			"/components/{component}/decisions",
@@ -122,7 +122,7 @@ func registerBulk(api huma.API, in Ingest) {
 			"action may write, set under `triage.together-cap`. The limit is checked against " +
 			"the findings this resolves to, which is more than the number of names.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		Product   string `path:"product"`
 		Stream    string `path:"stream"`
 		Variant   string `path:"variant"`

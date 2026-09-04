@@ -15,7 +15,7 @@ type ProviderBody struct {
 }
 
 func registerProviders(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-sign-in-providers", Method: http.MethodGet, Path: "/v1/sign-in",
 		Summary: "List the ways in",
 		Description: "Returns the sign-in providers this deployment has configured, so a " +
@@ -25,7 +25,7 @@ func registerProviders(api huma.API, in Ingest) {
 			"operator configured and nothing else — no account exists or does not exist as far " +
 			"as this is concerned, which is the disclosure that would matter.",
 		Tags: []string{"Access"},
-	}, func(_ context.Context, _ *struct{}) (*listOutput[ProviderBody], error) {
+	}, anySubject, "Answered without a credential."), func(_ context.Context, _ *struct{}) (*listOutput[ProviderBody], error) {
 		out := &listOutput[ProviderBody]{}
 		out.Body.Items = make([]ProviderBody, 0, len(in.Providers))
 		for name := range in.Providers {

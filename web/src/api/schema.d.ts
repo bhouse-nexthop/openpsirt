@@ -19,6 +19,8 @@ export interface paths {
          * @description Withdraws every approval recorded under this batch name, returning those decisions to the review queue. The decisions themselves stand — only the approvals are undone. Returns how many were affected.
          *
          *     Only decisions on products you may triage are touched.
+         *
+         *     **Requires:** public-triage or private-triage on the product
          */
         delete: operations["undo-batch"];
         options?: never;
@@ -36,6 +38,8 @@ export interface paths {
         /**
          * List what we have said about issues
          * @description Every claim, or those in one state. The ones waiting are milder ratings somebody has proposed and nobody has agreed to yet, which are the ones not yet affecting anything.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-assessments"];
         put?: never;
@@ -59,6 +63,8 @@ export interface paths {
         /**
          * Withdraw an assessment, and take the published rating back
          * @description The rating in force returns to the published one, and everything that reads it — where a finding sits in the list, how long it has, whether it is above the line a product triages — follows it back.
+         *
+         *     **Requires:** public-triage or private-triage on the product
          */
         delete: operations["withdraw-assessment"];
         options?: never;
@@ -78,6 +84,8 @@ export interface paths {
         /**
          * Agree to a milder rating so it takes effect
          * @description Only a milder rating waits for this. Somebody other than whoever proposed it, for the same reason every other second person here is somebody else: a control one person can complete alone is not a control.
+         *
+         *     **Requires:** approver or public-triage or private-triage on the product. The proposer may not approve their own.
          */
         post: operations["agree-assessment"];
         delete?: never;
@@ -100,6 +108,8 @@ export interface paths {
          *     Counted in pieces of work — an issue in a component in a product — which is the unit the list behind each person is in. `places` says how many findings those cover: one flaw in a kernel is one thing to answer and can be dozens of rows to write.
          *
          *     The number worth watching is not how many findings exist but how many are waiting behind somebody: an idle account holding nothing is harmless, and work stuck behind a person who has gone is the problem — nothing tells this software that somebody has left.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-holdings"];
         put?: never;
@@ -124,6 +134,8 @@ export interface paths {
          *     The period is the date a judgment was **proposed**, not approved: a judgment belongs to when it was argued, and dating it by its agreement would move it out of that period whenever an approval came late, which is the ordinary case.
          *
          *     Narrowed by what you may see, like every other list here. Nothing about this view is exempt from the visibility rules — a report showing more than the screens it summarizes would be a way around them.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-audit"];
         put?: never;
@@ -152,6 +164,8 @@ export interface paths {
          *     Pass `batch` to approve several claims under one name, undone together with `DELETE /v1/approval-batches/{batch}`.
          *
          *     Returns 404 for a claim you may not act on every row of, and 409 if you proposed it.
+         *
+         *     **Requires:** approver or public-triage or private-triage on the product. The proposer may not approve their own.
          */
         post: operations["approve-claim"];
         delete?: never;
@@ -174,6 +188,8 @@ export interface paths {
          * @description Asks the author for more before agreeing to any of a claim. Every waiting decision in it leaves the review queue together and comes back when the author revises.
          *
          *     `because` is required and is recorded as a comment on each decision. Needs no approval of its own. You cannot send back a claim whose words are your own.
+         *
+         *     **Requires:** approver or public-triage or private-triage on the product. The proposer may not approve their own.
          */
         post: operations["send-claim-back"];
         delete?: never;
@@ -195,6 +211,8 @@ export interface paths {
          * @description Replaces the text of a comment. Only its author may do this, and the new text overwrites the old rather than being kept as a revision — a comment is a remark, not a justification.
          *
          *     The text is markdown and is validated before it is stored; a 422 names the line and the offending text.
+         *
+         *     **Requires:** public-triage or private-triage on the product. Only the author may edit a comment.
          */
         put: operations["edit-comment"];
         post?: never;
@@ -218,6 +236,8 @@ export interface paths {
          *     Filter by `outcome` to list dismissals (`not-applicable`, `wont-fix`) or postponements (`deferred`), by `state` to separate what is approved from what is still waiting or has been withdrawn, and by `product` to limit to one product.
          *
          *     Set `expired=true` to list deferrals whose date has passed — the findings that have come back and need judging again.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-decisions"];
         put?: never;
@@ -240,6 +260,8 @@ export interface paths {
          * @description Returns one decision with the justification as it currently stands, where it applies, who proposed it and how long it has stood.
          *
          *     For the earlier justifications see `GET /v1/decisions/{id}/revisions`, and for who agreed to which of them see `GET /v1/decisions/{id}/approvals`.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["get-decision"];
         put?: never;
@@ -247,6 +269,8 @@ export interface paths {
         /**
          * Withdraw a triage decision
          * @description Withdraws the decision so it no longer applies to any finding. The record is kept — a withdrawn decision reads as proposed, approved, then withdrawn. Requires no approval.
+         *
+         *     **Requires:** public-triage or private-triage on the product
          */
         delete: operations["withdraw-decision"];
         options?: never;
@@ -270,6 +294,8 @@ export interface paths {
          *     An approval is recorded against the specific revision of the justification that exists now. Editing the justification afterwards withdraws the approval and returns the decision to this queue.
          *
          *     Pass `batch` to approve many decisions under one name, so they can be undone together with `DELETE /v1/approval-batches/{batch}`.
+         *
+         *     **Requires:** approver or public-triage or private-triage on the product. The proposer may not approve their own.
          */
         post: operations["approve-decision"];
         delete?: never;
@@ -292,6 +318,8 @@ export interface paths {
          *     A withdrawn approval is kept rather than deleted: who agreed to what, and when it stopped counting, is part of the record.
          *
          *     `covered` is how many findings the claim covered **when it was agreed to**. A decision applies to every build running the same versions, so it covers more as builds appear — with nobody acting, and nobody having agreed to the larger number. Comparing this against what it covers now is the point of keeping it.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-decision-approvals"];
         put?: never;
@@ -314,6 +342,8 @@ export interface paths {
          * @description Returns the comments on a decision, oldest first, with who wrote each and when. A comment that has been edited also carries when it was last changed.
          *
          *     Comments are separate from the justification and never affect an approval.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-decision-comments"];
         put?: never;
@@ -322,6 +352,8 @@ export interface paths {
          * @description Adds a markdown comment to a decision. Comments are separate from the justification and never affect an approval, so an approved decision can be annotated at any time.
          *
          *     A comment may later be edited by its author only, and editing overwrites it rather than keeping revisions.
+         *
+         *     **Requires:** public-triage or private-triage on the product
          */
         post: operations["comment-on-decision"];
         delete?: never;
@@ -345,6 +377,8 @@ export interface paths {
          *     **This withdraws any existing approval** and returns the decision to the review queue, marked as previously approved. Requires no approval of its own.
          *
          *     The text is markdown and is validated before it is stored; a 422 names the line and the offending text.
+         *
+         *     **Requires:** public-triage or private-triage on the product
          */
         put: operations["revise-decision"];
         post?: never;
@@ -366,6 +400,8 @@ export interface paths {
          * @description Returns every revision of the justification, oldest first, with who wrote each and when.
          *
          *     An approval names the specific revision that was agreed to, so this is how to read what an approver actually saw rather than what the text says now.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-decision-revisions"];
         put?: never;
@@ -392,6 +428,8 @@ export interface paths {
          *     `because` is required and is recorded as a comment, because that is what it is — the author needs the words, and a reason kept anywhere else is one nobody reads. Sending something back without saying what is missing is a round trip nobody learns from.
          *
          *     Needs no approval of its own: it puts risk back on the table rather than taking it off. You cannot send back a claim whose current words are your own — that is yours to revise.
+         *
+         *     **Requires:** approver or public-triage or private-triage on the product. The proposer may not approve their own.
          */
         post: operations["send-decision-back"];
         delete?: never;
@@ -416,6 +454,8 @@ export interface paths {
          *     **Nothing here discloses anything.** Reaching the date escalates: the row appears and the people who can act on it are told. Publishing embargoed detail because a timer expired is the wrong default — if the fix is not ready, disclosing anyway is a decision a person makes.
          *
          *     Every row is undisclosed by definition, so this list is a disclosure in its own right: a product you may not read undisclosed work in contributes nothing to it, not even a count.
+         *
+         *     **Requires:** private-read or private-triage on the product. Only where you may read undisclosed work.
          */
         get: operations["list-approaching-disclosure"];
         put?: never;
@@ -440,6 +480,8 @@ export interface paths {
          * @description Records a second person agreeing, and moves the date.
          *
          *     The person who asked may not be the one who agrees. That is the control the threshold exists to reach, and an extension somebody approved for themselves is the same as one nobody approved.
+         *
+         *     **Requires:** private-triage on the product. Not the person who asked for it.
          */
         post: operations["agree-to-extension"];
         delete?: never;
@@ -464,6 +506,8 @@ export interface paths {
          *     It changes the order, which is what makes it worth having rather than a note nobody acts on. Rating something **worse** than published takes effect at once: nobody needs protecting from being told something is worse than the world says. Rating it **milder** waits for a second person, because that is the direction that hides things — and it hides more than a position in a list. Severity sets the deadline, so calling a high a low pushes its deadline out by months, and where a product has said what is worth triaging at all, a downgrade below that line takes the finding off the working list and off any clock entirely.
          *
          *     The published rating is never overwritten. Ours is what ranks; the world's stays beside it, because a rating of ours shown where the world's goes reads as the world's.
+         *
+         *     **Requires:** public-triage or private-triage on the product
          */
         post: operations["assess-issue"];
         delete?: never;
@@ -482,12 +526,16 @@ export interface paths {
         /**
          * List API keys
          * @description Which credentials exist, what each may send, when it was last used and whether it still works. The secrets are not here and cannot be: what is stored is a digest.
+         *
+         *     **Requires:** administrator
          */
         get: operations["list-keys"];
         put?: never;
         /**
          * Create an API key
          * @description Creates a credential a build may send scans with, and returns its secret. The secret is shown once and stored hashed: a credential store that can hand back what it holds gives up every pipeline's key with a copy of the database.
+         *
+         *     **Requires:** administrator
          */
         post: operations["create-key"];
         delete?: never;
@@ -509,6 +557,8 @@ export interface paths {
         /**
          * Revoke an API key
          * @description Stops it working, without removing the record of what it sent. Revoking one credential leaves every other pipeline running.
+         *
+         *     **Requires:** administrator
          */
         delete: operations["revoke-key"];
         options?: never;
@@ -530,6 +580,8 @@ export interface paths {
          *     Everyone has one of these, and what appears in it differs by what you hold: work arriving, a dismissal sent back, an approval an edit withdrew, or — for an administrator — that the tool itself is unwell.
          *
          *     Two lifetimes, and the difference matters to a caller. An **event** happened once and goes away when you acknowledge it. A **condition** is true while something is true and clears itself when that stops, so a build that resumes being scanned leaves this list without anybody dismissing it.
+         *
+         *     **Requires:** your own credential
          */
         get: operations["list-notifications"];
         put?: never;
@@ -537,6 +589,8 @@ export interface paths {
         /**
          * Acknowledge everything waiting on you
          * @description Takes everything off your list at once, and says how many that was. Conditions that are still true will not come back while they hold.
+         *
+         *     **Requires:** your own credential
          */
         delete: operations["acknowledge-all-notifications"];
         options?: never;
@@ -561,6 +615,8 @@ export interface paths {
          *     Yours only. A notification identifier is a number a caller supplies, and one belonging to somebody else answers the same way as one that does not exist.
          *
          *     Acknowledging a condition hides it rather than resolving it: what it is about is still true, and the pass that derives it will not raise it again while it holds.
+         *
+         *     **Requires:** your own credential
          */
         delete: operations["acknowledge-notification"];
         options?: never;
@@ -580,12 +636,16 @@ export interface paths {
          * @description Lists everybody who may sign in, with the roles each of them holds and the products those apply to.
          *
          *     Nobody appears here by having authenticated. Access is granted in advance, so this list is what an administrator has decided rather than who has turned up.
+         *
+         *     **Requires:** administrator
          */
         get: operations["list-people"];
         put?: never;
         /**
          * Create a user and grant roles
          * @description Records somebody so that they may sign in, and optionally what they hold. Recording the same person again confirms them and adds any roles named.
+         *
+         *     **Requires:** administrator
          */
         post: operations["record-person"];
         delete?: never;
@@ -606,6 +666,8 @@ export interface paths {
          * @description Lists every personal token in the deployment, whose it is, what it may send and when it was last used.
          *
          *     Without it a stale token is found only when somebody leaves and nobody knows what breaks if it is turned off.
+         *
+         *     **Requires:** administrator
          */
         get: operations["list-all-tokens"];
         put?: never;
@@ -628,6 +690,8 @@ export interface paths {
          * @description The open findings assigned to somebody, most urgent first, in the same units as what nobody is dealing with: **one item per issue in a component in a product**, not one per build. The same code built several ways is one piece of work, and it was taken on as one.
          *
          *     Send `me` as the identity for your own.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-assigned"];
         put?: never;
@@ -654,6 +718,8 @@ export interface paths {
          *     Nothing tells this software that somebody has gone — membership is read at sign-in, and a person who has left never signs in again. So this is an action an administrator takes rather than something that happens on its own, and until it is taken their work is in no list at all: not in the shared one because it is assigned, and not in anybody's own because they are not here.
          *
          *     Send `to` instead to hand it to a named person rather than to nobody.
+         *
+         *     **Requires:** administrator
          */
         post: operations["release-assignments"];
         delete?: never;
@@ -679,6 +745,8 @@ export interface paths {
          *     If it was their last role on that product, everything they were dealing with there goes back to the unassigned list. Otherwise that work is in no list at all: not in the shared one because it is assigned, and not in theirs because they can no longer open it. `released` says how much moved.
          *
          *     The grant is removed rather than marked as ended. What somebody used to hold is answered by the record of what they did, so this list only ever says what is true today.
+         *
+         *     **Requires:** administrator
          */
         delete: operations["withdraw-role"];
         options?: never;
@@ -699,6 +767,8 @@ export interface paths {
         /**
          * End all of a user's sessions
          * @description Takes effect at once, whichever copy of the application answers next. Roles and group mappings are re-read at sign-in, so withdrawing one takes effect then; this is what makes somebody leaving immediate instead.
+         *
+         *     **Requires:** administrator
          */
         delete: operations["end-sessions"];
         options?: never;
@@ -721,6 +791,8 @@ export interface paths {
          * @description Revokes one person's token on their behalf. It stops working immediately; the record of what it sent stays.
          *
          *     An owner withdraws their own through their own token paths. This is for the ones whose owner is no longer here to do it.
+         *
+         *     **Requires:** administrator
          */
         delete: operations["revoke-anyones-token"];
         options?: never;
@@ -740,12 +812,16 @@ export interface paths {
          * @description Lists the products declared here, with what each one holds.
          *
          *     A scan may only be filed against something declared, so this is the first question to ask after an upload is refused for naming something unknown.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-products"];
         put?: never;
         /**
          * Create a product
          * @description Records a product so scans may be filed against it. Declaring one that already exists succeeds without changing anything, so this can run on every build.
+         *
+         *     **Requires:** administrator
          */
         post: operations["declare-product"];
         delete?: never;
@@ -772,6 +848,8 @@ export interface paths {
          *     A still-present entry carrying `arrived_from` is the same failure seen from the other side: somebody moved that version since the earlier build and the issue came with it, so the bump did not reach the fix.
          *
          *     **Public findings only unless you ask otherwise.** Its destination is usually a public document, so including something undisclosed should be deliberate rather than something pasted in without noticing.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["compare-releases"];
         put?: never;
@@ -797,6 +875,8 @@ export interface paths {
          *     Nothing is deleted or hidden: the findings and the history stay, and stay reportable. What ends is what is expected of us.
          *
          *     An empty date clears it, because extended support happens. Deadlines are rewritten afterwards, away from the request; the response returns before that has finished.
+         *
+         *     **Requires:** administrator
          */
         put: operations["set-product-end-of-life"];
         post?: never;
@@ -824,6 +904,8 @@ export interface paths {
          *     **A document about an undisclosed flaw is a draft**, and says so in `tracking.status`. Reaching a disclosure date discloses nothing, so nothing here does either.
          *
          *     Requires a publisher configured for this deployment: a document naming none is not a valid CSAF document.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["get-advisory"];
         put?: never;
@@ -846,6 +928,8 @@ export interface paths {
          * @description Every time this embargo was moved, oldest first, with why and by whom.
          *
          *     Kept in full and never overwritten. One extension is a judgment and six is a policy nobody wrote down, and the difference is invisible if each replaces the last. A request still waiting for agreement is here too: what was asked for is part of how long this stayed hidden, whether or not it was granted.
+         *
+         *     **Requires:** private-read or private-triage on the product. Only where you may read undisclosed work.
          */
         get: operations["list-disclosure-extensions"];
         put?: never;
@@ -860,6 +944,8 @@ export interface paths {
          *     **An extension that needs agreement moves nothing until it has it.** The request is on record either way; `in_force` says whether the date follows it.
          *
          *     A date only ever moves later. Bringing one forward is disclosing sooner, which is a different act.
+         *
+         *     **Requires:** private-triage on the product. A second person agrees past the threshold.
          */
         post: operations["extend-disclosure"];
         delete?: never;
@@ -882,6 +968,8 @@ export interface paths {
          *     Only people who can already see the thing. An autocomplete listing everybody teaches somebody to name a colleague who then cannot open what they were called to — and on an undisclosed finding, the mention itself says a finding exists, which is the disclosure the visibility rule prevents.
          *
          *     `visibility` says which kind of finding the text is about. Asking about undisclosed findings requires being able to read them.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-mentionable"];
         put?: never;
@@ -906,6 +994,8 @@ export interface paths {
          *     Counted before any triage line is applied, so it agrees with the findings list rather than with whatever a product has decided is worth working on — a line is about what to spend an afternoon on, not about what exists.
          *
          *     Severities are folded the same four ways everything else here ranks by, through the one expression the working list and the deadline also read, so a chart cannot disagree with a list about what counts as high.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-releases"];
         put?: never;
@@ -923,12 +1013,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List a product's branches and tags */
+        /**
+         * List a product's branches and tags
+         * @description **Requires:** any recognized credential. Answers only what you may see.
+         */
         get: operations["list-streams"];
         put?: never;
         /**
          * Create a branch or tag
          * @description Records a line of a product. A branch moves and is rebuilt; a tag never changes and is what somebody received.
+         *
+         *     **Requires:** administrator
          */
         post: operations["declare-stream"];
         delete?: never;
@@ -950,6 +1045,8 @@ export interface paths {
          * @description Sets the date support ends for one release, overriding what its product says. Past it, nothing on the release carries a remediation deadline and a build that stops being scanned is expected rather than a fault.
          *
          *     An empty date clears the override, so the release follows its product again. Clearing is not the same as stating the product's current date: a release that stated it would stop following when the product changed.
+         *
+         *     **Requires:** administrator
          */
         put: operations["set-stream-end-of-life"];
         post?: never;
@@ -971,6 +1068,8 @@ export interface paths {
          * @description Lists the variants one release was actually built as — a subset of what the product declares.
          *
          *     A release predating a variant has never been filed against it and does not list it, which is what keeps something introduced later from appearing to have shipped years ago.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-release-variants"];
         put?: never;
@@ -1001,6 +1100,8 @@ export interface paths {
          *     `postponed` were deferrals. "Not this sprint" was about that sprint, so carrying one silently gives a new line expiry dates nobody chose. Each says how long it has already been put off across every line it has come through, because that total is what carrying it again agrees to.
          *
          *     `absent` cover nothing here and are left behind.
+         *
+         *     **Requires:** public-triage or private-triage on the product
          */
         get: operations["preview-carried-decisions"];
         put?: never;
@@ -1027,6 +1128,8 @@ export interface paths {
          *     Every entry carries how many findings are open against it and how many components it pulls in, so descending follows something rather than being exploration.
          *
          *     With `q` it searches instead: components anywhere in the build whose name contains that text, most findings first and no root. Nobody finds anything in a graph this size by opening nodes — a real image holds eight thousand components under a root with five thousand children — so searching is the way in, and browsing is for answering "what else is under this" once you are already somewhere.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-top-level-components"];
         put?: never;
@@ -1053,6 +1156,8 @@ export interface paths {
          *     A component reached several ways appears once with several parents. It is a graph rather than a tree, so anything drawing it has to expect the same component under many places.
          *
          *     **A component name is not unique within a build.** Where one ships at several versions, `version` says which — without it, a name that matches more than one is refused with 409, naming the choices, rather than guessed at.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["get-component-neighbours"];
         put?: never;
@@ -1081,6 +1186,8 @@ export interface paths {
          *     Always needs a second person to agree, whatever the outcome.
          *
          *     Bounded. At most 2000 names per request, and a limit on how many findings one action may write, set under `triage.together-cap`. The limit is checked against the findings this resolves to, which is more than the number of names.
+         *
+         *     **Requires:** public-triage or private-triage on the product
          */
         post: operations["decide-together"];
         delete?: never;
@@ -1101,6 +1208,8 @@ export interface paths {
          * @description Returns the distinct issues open against this component in this build, most urgent first, with how many places each sits at and the version that fixes it where the report names one.
          *
          *     `contains` matches the text of a report. It narrows a list; it is not part of any claim made afterwards.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-issues-at-component"];
         put?: never;
@@ -1129,6 +1238,8 @@ export interface paths {
          *     Narrowing happens here rather than in the client, and `total` counts what the filter admits. A filter applied to a page already fetched answers a different question from the one it appears to: `exploited` over fifty rows means exploited among those fifty.
          *
          *     `under` keeps what one container holds directly; `beneath` keeps what sits at a component or anywhere under it, which is what the dependency tree's cumulative count counts. The tree counts distinct issues and this list is one row per issue and component, so a subtree holding one issue at two components is two rows here and one there.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-findings"];
         put?: never;
@@ -1143,6 +1254,8 @@ export interface paths {
          *     `component` names what in the build carries it, as the build calls it. Leave it out for the build itself, which is the honest answer where the flaw is in how the pieces fit together rather than in one of them. A name the build holds at more than one version is refused with the choices rather than resolved to one of them; send `version`, and `ecosystem` where two share a version.
          *
          *     From here it behaves like any other finding: triaged, assigned, decided, on the same clock and in the same reports. No scan will close it — a run is the authority on what it found, and it found none of this.
+         *
+         *     **Requires:** public-triage or private-triage on the product. private-triage where the finding is undisclosed.
          */
         post: operations["record-finding"];
         delete?: never;
@@ -1165,6 +1278,8 @@ export interface paths {
          *     It is also how a person finds the one package worth hiding. On a switch operating-system image the kernel carried 4,943 of 6,822 findings rows and the next largest contributor carried 58 — a fact no list of issues makes visible, because ordered by urgency it just looks like a long list.
          *
          *     Takes the same filters as the findings list, so the two agree about what is being counted. Ordered by how many issues, not by urgency: ordering by urgency would reproduce the findings list at worse resolution.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-finding-components"];
         put?: never;
@@ -1189,6 +1304,8 @@ export interface paths {
          *     This is what a triage decision is made from, so it is gathered into one request. Each entry in `places` carries the `place` identity to name when recording a decision about it.
          *
          *     **A component name is not unique within a build.** Where one ships at several versions, `version` says which — without it, a name that matches more than one is refused rather than guessed at.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["get-finding"];
         put?: never;
@@ -1218,6 +1335,8 @@ export interface paths {
          *     Send `person` as an empty string to hand it back to nobody. Handing back is the same operation as giving out, so there is one path rather than two that drift.
          *
          *     Findings arriving later under the same component start unassigned.
+         *
+         *     **Requires:** assigner on the product. Taking unowned work, or handing back your own, needs only triage.
          */
         put: operations["assign-finding"];
         post?: never;
@@ -1247,6 +1366,8 @@ export interface paths {
          *     The ordinary approval rules apply however many places this reaches. Always needing a second person is about a claim covering **several issues** nobody read one by one; this is one claim about one issue (TRI-38).
          *
          *     Pass `extends` to carry an approved claim to this issue: the source must be approved, sit at the same component under the same consumer, and the outcome and justification must match it. The new claim is recorded as an extension of it and still waits for a second person. `similar` on `GET .../findings/{vulnerability}/components/{component}` lists the claims that qualify.
+         *
+         *     **Requires:** public-triage or private-triage on the product
          */
         post: operations["decide-finding"];
         delete?: never;
@@ -1269,6 +1390,8 @@ export interface paths {
          *     **Nothing here is declared done.** A build is clear when it stops holding the issue, which the scans already say; a chosen build that still holds it after a scan has run is a missed target, and the scan is independent evidence against the claim. A build nobody chose reads as `undecided` rather than as outstanding work: nobody is made to answer the same question for six releases, but silence has to read as silence.
          *
          *     A release out of support is `retired` and carries no target — nothing on it will be fixed, so counting it as outstanding would fill this permanently.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-fix-targets"];
         /**
@@ -1280,6 +1403,8 @@ export interface paths {
          *     **It covers the product, not the build in the path**, like assignment: the path says which finding is being looked at, and the plan belongs to the work it is part of.
          *
          *     A release out of support cannot be chosen, and naming one is refused rather than quietly dropped — dropping it leaves somebody believing a release is covered.
+         *
+         *     **Requires:** public-triage or private-triage on the product
          */
         put: operations["set-fix-targets"];
         post?: never;
@@ -1303,6 +1428,8 @@ export interface paths {
          *     `standing` is absent when nothing has been decided, or when a claim is still waiting for approval: a claim nobody has agreed to suppresses nothing.
          *
          *     Read `previously` before deciding again. A claim that lapsed on a version bump is usually still the right answer, and re-affirming it is a different request from making a new one.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["get-finding-decision"];
         put?: never;
@@ -1317,6 +1444,8 @@ export interface paths {
          *     The response says whether a second person must approve it. Most outcomes require approval; a deferral shorter than the configured threshold does not.
          *
          *     It also says how many findings this one judgment covers, and how many distinct versions of the component sit at this place — more than one means a single decision cannot honestly cover all of them.
+         *
+         *     **Requires:** public-triage or private-triage on the product
          */
         post: operations["decide"];
         delete?: never;
@@ -1343,6 +1472,8 @@ export interface paths {
          *     It does need approval again if the justification differs from the original, or if the vulnerability's severity has risen since — both mean this is not the claim that was agreed to. The response says which happened.
          *
          *     `reasoning` is required. "Still true" with nothing behind it is what a re-affirmation becomes when it is made too easy.
+         *
+         *     **Requires:** public-triage or private-triage on the product
          */
         post: operations["reaffirm-decision"];
         delete?: never;
@@ -1365,6 +1496,8 @@ export interface paths {
          *     `here` is how many places in this build. `automatic` are other builds it reaches without anybody doing anything, because their upstream versions and chains already match — a decision is a claim about a combination of code, not about a release. `differing` hold the same issue at the same place at another version, so each is a separate judgment.
          *
          *     Only `differing` is a choice. The first two follow from the matching rules and are there to be told, not agreed to — and showing them as one number is how a decision comes to reach builds the person making it never knew about.
+         *
+         *     **Requires:** public-triage or private-triage on the product
          */
         get: operations["get-decision-reach"];
         put?: never;
@@ -1393,6 +1526,8 @@ export interface paths {
          *     **A reason is required.** A closure with no reason is a record saying somebody closed it and nothing else.
          *
          *     **Nothing reopens one.** Closing is a considered act, and this is the way it is undone: it is not.
+         *
+         *     **Requires:** public-triage or private-triage on the product
          */
         post: operations["resolve-finding"];
         delete?: never;
@@ -1417,6 +1552,8 @@ export interface paths {
          *     Both sides come from scans already collected, so this asks nothing new of a build pipeline. Where there is nothing to compare against, `shipped` is absent and `why` says what is missing rather than reporting zeroes, because a release that shipped clean and a release nobody scanned are not the same answer.
          *
          *     Counted as issues at components at or above the deployment's line, which `floor` names.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["get-readiness"];
         put?: never;
@@ -1439,6 +1576,8 @@ export interface paths {
          * @description Returns uploads newest first, each with its state: `reading` (accepted, not yet parsed), `scanning` (parsed, vulnerability scan pending), `scanned` (complete), or `failed` with the reason.
          *
          *     Because uploads return 202 before parsing, this is how a build pipeline finds out whether its SBOM was usable. An API key sees only the uploads it sent itself.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-scans"];
         put?: never;
@@ -1449,6 +1588,8 @@ export interface paths {
          *     The product, branch and variant must already exist; an upload naming something undeclared is rejected and the error says which part is missing.
          *
          *     **Returns 202 before the documents are parsed.** A success here means they were accepted for processing, not that they were valid. Poll `GET .../scans` to find out whether they parsed and what the scan found.
+         *
+         *     **Requires:** public-triage or private-triage on the product
          */
         post: operations["upload-scan"];
         delete?: never;
@@ -1472,6 +1613,8 @@ export interface paths {
          *     An empty value clears the override, so the product follows the deployment again. Clearing is not the same as stating the deployment's current line: a product that stated it would stop following when the deployment changed.
          *
          *     Deadlines are rewritten afterwards, away from the request, because moving the line moves what is on a clock at all. The response returns before that has finished.
+         *
+         *     **Requires:** administrator
          */
         put: operations["set-product-triage-floor"];
         post?: never;
@@ -1488,12 +1631,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List a product's build variants */
+        /**
+         * List a product's build variants
+         * @description **Requires:** any recognized credential. Answers only what you may see.
+         */
         get: operations["list-variants"];
         put?: never;
         /**
          * Create a build variant
          * @description Records one of the parallel builds of a product — a chip variant, an architecture, an operating system. Declared once for the product, not once per release: a release is filed against it the first time a scan arrives, so nobody restates the list and no release ends up with the name spelled differently.
+         *
+         *     **Requires:** administrator
          */
         post: operations["declare-variant"];
         delete?: never;
@@ -1518,6 +1666,8 @@ export interface paths {
          *     Approve, send back or set rows aside with `POST /v1/claims/{id}/approval` and `POST /v1/claims/{id}/send-back`.
          *
          *     **Your own claims are not here.** Approving your own is refused, so a queue containing them is a list of work you cannot do. Ask for `mine=true` to see what you proposed and nobody has agreed to yet, which is a different question.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-review-queue"];
         put?: never;
@@ -1540,6 +1690,8 @@ export interface paths {
          * @description Lists every group-to-role mapping, and the groups that administer.
          *
          *     In group-bound mode a mapping is the advance authorization: somebody arriving for the first time in a mapped group is admitted, and somebody in none is refused.
+         *
+         *     **Requires:** administrator
          */
         get: operations["list-bindings"];
         put?: never;
@@ -1548,6 +1700,8 @@ export interface paths {
          * @description Maps one identity-provider group to one role, so that everybody in that group holds it from their next sign-in.
          *
          *     Every role but administration names the product it applies to. Administration is bound without one, because it is global rather than held against a product.
+         *
+         *     **Requires:** administrator
          */
         post: operations["bind-group"];
         /**
@@ -1555,6 +1709,8 @@ export interface paths {
          * @description Removes one group-to-role mapping.
          *
          *     It takes effect at each member's next sign-in, because group membership is read at sign-in and never again. To cut somebody off now, end their sessions.
+         *
+         *     **Requires:** administrator
          */
         delete: operations["unbind-group"];
         options?: never;
@@ -1574,11 +1730,15 @@ export interface paths {
          * @description Says where roles come from here: assigned by an administrator, or derived from the groups an identity provider reports.
          *
          *     One mode for the whole deployment, never both. A hybrid would need a precedence rule for somebody holding one role from a team and another directly, which is how a stale assignment outlives somebody's removal from the team it was shadowing.
+         *
+         *     **Requires:** administrator
          */
         get: operations["get-role-mode"];
         /**
          * Set the role assignment mode
          * @description Turning group binding on sets assignments aside rather than deleting them, and turning it off restores them — so trying it is not a one-way door. Refused if it would leave nobody able to administer this deployment.
+         *
+         *     **Requires:** administrator
          */
         put: operations["set-role-mode"];
         post?: never;
@@ -1604,6 +1764,8 @@ export interface paths {
          *     The window comes from how urgent a finding is. Being known-exploited has its own and it is the shortest, whatever the severity says. Anything the reports did not rate takes the medium window.
          *
          *     One row per issue at a component, however many places it sits at. `days_left` is negative once something is overdue.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-running-out"];
         put?: never;
@@ -1628,6 +1790,8 @@ export interface paths {
          *     A build that stops being scanned reports no new findings and fails nothing, so it looks healthier than one that is still being scanned. A build nothing has ever been filed against is measured from when it was declared.
          *
          *     How long counts as quiet is the `scanning.quiet-after` setting.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-scanning"];
         put?: never;
@@ -1651,6 +1815,8 @@ export interface paths {
         /**
          * Sign out
          * @description Ends the session the request arrived on, everywhere rather than in this browser alone — the session is stored, so it stops working whichever copy of the application answers next.
+         *
+         *     **Requires:** your own credential
          */
         delete: operations["sign-out"];
         options?: never;
@@ -1672,6 +1838,8 @@ export interface paths {
          *     It answers what a screen has to know before it draws: whether to offer an action at all. Without it a client either hides nothing and lets people find the refusal, or re-implements the mapping from roles to capabilities and drifts from the one the server enforces.
          *
          *     Capabilities, not roles, for that reason. Which roles produce which capability is the server's rule and stays there.
+         *
+         *     **Requires:** your own credential
          */
         get: operations["get-current-subject"];
         put?: never;
@@ -1694,6 +1862,8 @@ export interface paths {
          * @description Returns every setting an operator may change, its value, and what it decides. `default` means nobody has set it and the shipped value is in use.
          *
          *     The shipped numbers are a starting point rather than a recommendation. What a deployment can hold to is a question about that deployment, and a deadline nobody agreed to produces an estate that is permanently late and a signal everybody ignores.
+         *
+         *     **Requires:** administrator
          */
         get: operations["list-settings"];
         put?: never;
@@ -1717,6 +1887,8 @@ export interface paths {
          * @description Sets one value for everybody here. Durations are written the way Go writes them — `72h`, `30m` — and a value that cannot be read is refused rather than stored, since a setting nothing can parse is a policy silently reverting to the shipped one.
          *
          *     Only the settings this deployment recognizes may be set. A name it does not know is refused, because storing it would create something nothing ever reads.
+         *
+         *     **Requires:** administrator
          */
         put: operations["set-setting"];
         post?: never;
@@ -1738,6 +1910,8 @@ export interface paths {
          * @description Returns the sign-in providers this deployment has configured, so a sign-in page can offer them.
          *
          *     **Answered without a credential**, because it is what somebody sees before they have one. It is the only reading endpoint that is, and it reports names an operator configured and nothing else — no account exists or does not exist as far as this is concerned, which is the disclosure that would matter.
+         *
+         *     **Requires:** any recognized credential. Answered without a credential.
          */
         get: operations["list-sign-in-providers"];
         put?: never;
@@ -1760,6 +1934,8 @@ export interface paths {
          * @description Lists your own personal tokens: what each is called, when it expires and when it was last used. Never anybody else's, and never the secrets.
          *
          *     A token is a live reference to you rather than a copy of what you could do when it was made, so what one reaches shrinks the moment your roles do.
+         *
+         *     **Requires:** your own credential
          */
         get: operations["list-my-tokens"];
         put?: never;
@@ -1768,6 +1944,8 @@ export interface paths {
          * @description Creates a personal token and returns its secret. The secret is shown once and never again — what is stored is a digest.
          *
          *     Expiry is not optional, and `lifetime` may not exceed the ceiling an administrator has set. A credential that never runs out is one nobody ever revokes, and those are found when somebody leaves and nobody knows what breaks if it is turned off.
+         *
+         *     **Requires:** your own credential
          */
         post: operations["mint-token"];
         delete?: never;
@@ -1791,6 +1969,8 @@ export interface paths {
          * @description Revokes one of your own tokens by name. It stops working immediately.
          *
          *     Yours alone. An administrator withdraws anybody else's through the administration paths.
+         *
+         *     **Requires:** your own credential
          */
         delete: operations["revoke-my-token"];
         options?: never;
@@ -1814,6 +1994,8 @@ export interface paths {
          *     Split by severity because a total that barely moves while its critical share rises is getting worse, and a single line hides exactly that.
          *
          *     Worked out when it is asked for. Nothing is precomputed or refreshed on a schedule until a measurement says it has to be.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["get-trend"];
         put?: never;
@@ -1838,6 +2020,8 @@ export interface paths {
          *     Deliberately not scoped to one product: work falling between people is exactly what hides when every screen shows one product and nobody looks at the others.
          *
          *     **One item per issue in a component in a product, not one per build.** The same code built as several variants is one piece of work — a judgment is keyed on the product and the code rather than on the build, so answering it once answers every build holding the same versions. `builds` says how many that is. Where two builds ship different versions of the component they are different work and appear separately.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-unassigned"];
         put?: never;
@@ -1858,6 +2042,8 @@ export interface paths {
         /**
          * Get the server version
          * @description Identifies the build that is answering, so an operator can tell which version they are looking at.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["get-version"];
         put?: never;

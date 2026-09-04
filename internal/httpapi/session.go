@@ -24,7 +24,7 @@ type SignOutOutput struct {
 }
 
 func registerSession(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "sign-out", Method: http.MethodDelete, Path: "/v1/session",
 		Summary: "Sign out",
 		Description: "Ends the session the request arrived on, everywhere rather than in this " +
@@ -32,7 +32,7 @@ func registerSession(api huma.API, in Ingest) {
 			"application answers next.",
 		Tags:          []string{"Access"},
 		DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, _ *struct{}) (*SignOutOutput, error) {
+	}, ownSubject, ""), func(ctx context.Context, _ *struct{}) (*SignOutOutput, error) {
 		// Signing out is not something a pipeline's key can do: there is no
 		// session behind it to end, and answering as though there were would
 		// suggest one existed.

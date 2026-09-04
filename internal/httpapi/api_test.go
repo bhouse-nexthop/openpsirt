@@ -6,7 +6,11 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sort"
+	"strings"
 	"testing"
+
+	"github.com/danielgtaylor/huma/v2"
 )
 
 func newTestHandler(t *testing.T) http.Handler {
@@ -115,3 +119,46 @@ var errUnavailable = errStub("database is unreachable")
 type errStub string
 
 func (e errStub) Error() string { return string(e) }
+
+func TestEveryOperationSaysWhatItAsksFor(t *testing.T) {
+	// The rights an endpoint needs were written nowhere and lived only in the
+	// handlers, so the only way to answer "who may call this" was to read the
+	// code. Now every operation carries it — structured for a client generator
+	// or an access review, and rendered into the description for somebody
+	// reading the reference.
+	//
+	// Checked rather than trusted, because the failure is silent: an endpoint
+	// added without one is not broken, it is undocumented, and nobody notices
+	// until they need the answer.
+	_, api := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, Ingest{})
+	spec := api.OpenAPI()
+
+	var missing []string
+	var operations int
+	for path, item := range spec.Paths {
+		for method, op := range map[string]*huma.Operation{
+			"GET": item.Get, "PUT": item.Put, "POST": item.Post,
+			"DELETE": item.Delete, "PATCH": item.Patch,
+		} {
+			if op == nil || op.OperationID == "" {
+				continue
+			}
+			operations++
+			if _, ok := op.Extensions["x-openpsirt-requires"]; !ok {
+				missing = append(missing, method+" "+path+" ("+op.OperationID+")")
+				continue
+			}
+			if !strings.Contains(op.Description, "**Requires:**") {
+				missing = append(missing, op.OperationID+" states it in the document and not in the reference")
+			}
+		}
+	}
+	if operations == 0 {
+		t.Fatal("no operations were registered, so this checked nothing")
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		t.Errorf("%d of %d operations do not say what they ask for:\n  %s",
+			len(missing), operations, strings.Join(missing, "\n  "))
+	}
+}

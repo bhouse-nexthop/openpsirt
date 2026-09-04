@@ -75,7 +75,7 @@ func aSeverity(name string) bool { return name == setting.TriageFloor }
 func aCount(name string) bool { return name == setting.TogetherCap }
 
 func registerSettings(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-settings", Method: http.MethodGet, Path: "/v1/settings",
 		Summary: "List what this deployment has decided",
 		Description: "Returns every setting an operator may change, its value, and what it " +
@@ -85,7 +85,7 @@ func registerSettings(api huma.API, in Ingest) {
 			"agreed to produces an estate that is permanently late and a signal everybody " +
 			"ignores.",
 		Tags: []string{"Administration"},
-	}, func(ctx context.Context, _ *struct{}) (*listOutput[SettingBody], error) {
+	}, deploymentWide, ""), func(ctx context.Context, _ *struct{}) (*listOutput[SettingBody], error) {
 		if err := administrating(ctx); err != nil {
 			return nil, err
 		}
@@ -107,7 +107,7 @@ func registerSettings(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "set-setting", Method: http.MethodPut, Path: "/v1/settings/{name}",
 		Summary: "Change something for this deployment",
 		Description: "Sets one value for everybody here. Durations are written the way Go writes " +
@@ -117,7 +117,7 @@ func registerSettings(api huma.API, in Ingest) {
 			"Only the settings this deployment recognizes may be set. A name it does not know is " +
 			"refused, because storing it would create something nothing ever reads.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, input *struct {
+	}, deploymentWide, ""), func(ctx context.Context, input *struct {
 		Name string `path:"name"`
 		Body struct {
 			Value string `json:"value" minLength:"1"`

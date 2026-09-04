@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -44,6 +45,7 @@ func run(args []string, stdout, stderr *os.File) error {
 	fs.SetOutput(stderr)
 	showVersion := fs.Bool("version", false, "print the build and exit")
 	dumpSpec := fs.Bool("openapi", false, "write the OpenAPI document to stdout and exit")
+	dumpRights := fs.Bool("privileges", false, "write the privileges page to stdout and exit")
 	if err := fs.Parse(args); err != nil {
 		// Asking for help is not a failure.
 		if errors.Is(err, flag.ErrHelp) {
@@ -73,6 +75,15 @@ func run(args []string, stdout, stderr *os.File) error {
 			return fmt.Errorf("render OpenAPI document: %w", err)
 		}
 		_, err = stdout.Write(doc)
+		return err
+	}
+
+	// The same registrations, rendered as the page that says who may call
+	// what. Written from the server rather than from the document so that a
+	// deployment cannot be handed a page describing rules it does not run.
+	if *dumpRights {
+		_, api := httpapi.New(logger, nil, httpapi.Ingest{})
+		_, err := io.WriteString(stdout, httpapi.Privileges(api))
 		return err
 	}
 

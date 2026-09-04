@@ -34,7 +34,7 @@ type ClaimApprovedBody struct {
 }
 
 func registerClaims(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "approve-claim", Method: http.MethodPost, Path: "/v1/claims/{id}/approval",
 		Summary: "Approve a claim",
 		Description: "Approves every waiting decision in a claim as one action, under the same " +
@@ -48,7 +48,7 @@ func registerClaims(api huma.API, in Ingest) {
 			"`DELETE /v1/approval-batches/{batch}`.\n\n" +
 			"Returns 404 for a claim you may not act on every row of, and 409 if you proposed it.",
 		Tags: []string{"Triage"},
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "The proposer may not approve their own.", approveRights()...), func(ctx context.Context, input *struct {
 		ID   int64 `path:"id"`
 		Body ClaimApprovalBody
 	}) (*struct{ Body ClaimApprovedBody }, error) {
@@ -94,7 +94,7 @@ func registerClaims(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "send-claim-back", Method: http.MethodPost, Path: "/v1/claims/{id}/send-back",
 		Summary: "Send a claim back for more",
 		Description: "Asks the author for more before agreeing to any of a claim. Every waiting " +
@@ -103,7 +103,7 @@ func registerClaims(api huma.API, in Ingest) {
 			"`because` is required and is recorded as a comment on each decision. Needs no " +
 			"approval of its own. You cannot send back a claim whose words are your own.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "The proposer may not approve their own.", approveRights()...), func(ctx context.Context, input *struct {
 		ID   int64 `path:"id"`
 		Body struct {
 			Because string `json:"because" minLength:"1" doc:"What needs to change, in markdown"`

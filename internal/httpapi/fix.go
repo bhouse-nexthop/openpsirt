@@ -53,7 +53,7 @@ func registerFixTargets(api huma.API, in Ingest) {
 	const path = "/v1/products/{product}/streams/{stream}/variants/{variant}" +
 		"/findings/{vulnerability}/components/{component}/fix-targets"
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-fix-targets", Method: http.MethodGet, Path: path,
 		Summary: "List which builds this is to be fixed in",
 		Description: "Returns every build of the product that holds this issue, plus every " +
@@ -70,7 +70,7 @@ func registerFixTargets(api huma.API, in Ingest) {
 			"A release out of support is `retired` and carries no target — nothing on it will " +
 			"be fixed, so counting it as outstanding would fill this permanently.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
 		Stream        string `path:"stream"`
 		Variant       string `path:"variant"`
@@ -131,7 +131,7 @@ func registerFixTargets(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "set-fix-targets", Method: http.MethodPut, Path: path,
 		Summary: "Say which builds this will be fixed in",
 		Description: "Replaces the set of builds this issue is to be fixed in. Declared " +
@@ -147,7 +147,7 @@ func registerFixTargets(api huma.API, in Ingest) {
 			"A release out of support cannot be chosen, and naming one is refused rather than " +
 			"quietly dropped — dropping it leaves somebody believing a release is covered.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
 		Stream        string `path:"stream"`
 		Variant       string `path:"variant"`

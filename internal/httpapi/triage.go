@@ -169,7 +169,7 @@ type QueueOutput struct {
 }
 
 func registerTriage(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-review-queue", Method: http.MethodGet, Path: "/v1/review-queue",
 		Summary: "List claims awaiting approval",
 		Description: "Returns the claims waiting for a second person, newest first, limited to " +
@@ -186,7 +186,7 @@ func registerTriage(api huma.API, in Ingest) {
 			"containing them is a list of work you cannot do. Ask for `mine=true` to see what " +
 			"you proposed and nobody has agreed to yet, which is a different question.",
 		Tags: []string{"Triage"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Mine   bool `query:"mine" doc:"Return what you proposed and nobody has agreed to, instead of what is waiting on you"`
 		Limit  int  `query:"limit" default:"50" minimum:"1" maximum:"200"`
 		Offset int  `query:"offset" minimum:"0"`
@@ -244,7 +244,7 @@ func registerTriage(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "approve-decision", Method: http.MethodPost, Path: "/v1/decisions/{id}/approval",
 		Summary: "Approve a triage decision",
 		Description: "Approves a proposed decision. Returns 409 if you proposed it yourself — the " +
@@ -255,7 +255,7 @@ func registerTriage(api huma.API, in Ingest) {
 			"Pass `batch` to approve many decisions under one name, so they can be undone " +
 			"together with `DELETE /v1/approval-batches/{batch}`.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "The proposer may not approve their own.", approveRights()...), func(ctx context.Context, input *struct {
 		ID   int64 `path:"id"`
 		Body struct {
 			Batch string `json:"batch,omitempty" doc:"Name a batch to agree to many at once, so it can be undone as one"`
@@ -277,7 +277,7 @@ func registerTriage(api huma.API, in Ingest) {
 		return &struct{}{}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "revise-decision", Method: http.MethodPut, Path: "/v1/decisions/{id}/reasoning",
 		Summary: "Update a decision's justification",
 		Description: "Replaces the justification text with a new revision. Earlier revisions are " +
@@ -287,7 +287,7 @@ func registerTriage(api huma.API, in Ingest) {
 			"The text is markdown and is validated before it is stored; a 422 names the line and " +
 			"the offending text.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		ID   int64 `path:"id"`
 		Body struct {
 			Reasoning string `json:"reasoning" minLength:"1"`
@@ -303,7 +303,7 @@ func registerTriage(api huma.API, in Ingest) {
 		return &struct{}{}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "withdraw-decision", Method: http.MethodDelete, Path: "/v1/decisions/{id}",
 		Summary: "Withdraw a triage decision",
 		Description: "Withdraws the decision so it no longer applies to any finding. The record " +
@@ -311,7 +311,7 @@ func registerTriage(api huma.API, in Ingest) {
 			"Requires no approval.",
 		Tags:          []string{"Triage"},
 		DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		ID int64 `path:"id"`
 	}) (*struct{}, error) {
 		subject, store, err := triaging(ctx, in)
@@ -324,7 +324,7 @@ func registerTriage(api huma.API, in Ingest) {
 		return &struct{}{}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "undo-batch", Method: http.MethodDelete, Path: "/v1/approval-batches/{batch}",
 		Summary: "Undo a bulk approval",
 		Description: "Withdraws every approval recorded under this batch name, returning those " +
@@ -332,7 +332,7 @@ func registerTriage(api huma.API, in Ingest) {
 			"are undone. Returns how many were affected.\n\n" +
 			"Only decisions on products you may triage are touched.",
 		Tags: []string{"Triage"},
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		Batch string `path:"batch"`
 	}) (*struct {
 		Body struct {
@@ -356,7 +356,7 @@ func registerTriage(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "comment-on-decision", Method: http.MethodPost, Path: "/v1/decisions/{id}/comments",
 		Summary: "Add a comment to a decision",
 		Description: "Adds a markdown comment to a decision. Comments are separate from the " +
@@ -365,7 +365,7 @@ func registerTriage(api huma.API, in Ingest) {
 			"A comment may later be edited by its author only, and editing overwrites it rather " +
 			"than keeping revisions.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		ID   int64 `path:"id"`
 		Body struct {
 			Body string `json:"body" minLength:"1"`
@@ -394,7 +394,7 @@ func registerTriage(api huma.API, in Ingest) {
 }
 
 func registerProposing(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "decide", Method: http.MethodPost,
 		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision",
 		Summary: "Record a triage decision for a finding",
@@ -413,7 +413,7 @@ func registerProposing(api huma.API, in Ingest) {
 			"versions of the component sit at this place — more than one means a single " +
 			"decision cannot honestly cover all of them.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
 		Stream        string `path:"stream"`
 		Variant       string `path:"variant"`
@@ -520,7 +520,7 @@ type DecidedBody struct {
 }
 
 func registerFindingDecision(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "decide-finding", Method: http.MethodPost,
 		Path: "/v1/products/{product}/streams/{stream}/variants/{variant}" +
 			"/findings/{vulnerability}/components/{component}/decision",
@@ -547,7 +547,7 @@ func registerFindingDecision(api huma.API, in Ingest) {
 			"still waits for a second person. `similar` on `GET .../findings/{vulnerability}/" +
 			"components/{component}` lists the claims that qualify.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
 		Stream        string `path:"stream"`
 		Variant       string `path:"variant"`
@@ -795,7 +795,7 @@ type MatchBody struct {
 }
 
 func registerElsewhere(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "get-decision-reach", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/reach",
 		Summary: "Show how far a decision here would reach",
@@ -809,7 +809,7 @@ func registerElsewhere(api huma.API, in Ingest) {
 			"there to be told, not agreed to — and showing them as one number is how a decision " +
 			"comes to reach builds the person making it never knew about.",
 		Tags: []string{"Triage"},
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
 		Stream        string `path:"stream"`
 		Variant       string `path:"variant"`
@@ -941,7 +941,7 @@ func deferralThreshold(ctx context.Context, in Ingest) (time.Duration, error) {
 }
 
 func registerSendBack(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "send-decision-back", Method: http.MethodPost,
 		Path:    "/v1/decisions/{id}/send-back",
 		Summary: "Send a decision back for more",
@@ -955,7 +955,7 @@ func registerSendBack(api huma.API, in Ingest) {
 			"off. You cannot send back a claim whose current words are your own — that is yours " +
 			"to revise.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "The proposer may not approve their own.", approveRights()...), func(ctx context.Context, input *struct {
 		ID   int64 `path:"id"`
 		Body struct {
 			Because string `json:"because" minLength:"1" doc:"What needs to change, in markdown"`

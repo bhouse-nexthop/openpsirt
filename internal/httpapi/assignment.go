@@ -42,7 +42,7 @@ type HoldingBody struct {
 }
 
 func registerAssignment(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "assign-finding", Method: http.MethodPut,
 		Path: "/v1/products/{product}/streams/{stream}/variants/{variant}" +
 			"/findings/{vulnerability}/components/{component}/assignment",
@@ -60,7 +60,7 @@ func registerAssignment(api huma.API, in Ingest) {
 			"same operation as giving out, so there is one path rather than two that drift.\n\n" +
 			"Findings arriving later under the same component start unassigned.",
 		Tags: []string{"Findings"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "Taking unowned work, or handing back your own, needs only triage.", []access.Role{access.Assigner}...), func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
 		Stream        string `path:"stream"`
 		Variant       string `path:"variant"`
@@ -150,7 +150,7 @@ func registerAssignment(api huma.API, in Ingest) {
 		return &struct{}{}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-unassigned", Method: http.MethodGet, Path: "/v1/unassigned",
 		Summary: "List findings nobody is dealing with",
 		Description: "Returns open findings with no assignee, across every product you can see, " +
@@ -163,7 +163,7 @@ func registerAssignment(api huma.API, in Ingest) {
 			"holding the same versions. `builds` says how many that is. Where two builds ship " +
 			"different versions of the component they are different work and appear separately.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		ScopeQuery
 		Limit  int `query:"limit" default:"50" minimum:"1" maximum:"200"`
 		Offset int `query:"offset" minimum:"0"`
@@ -205,7 +205,7 @@ func registerAssignment(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-assigned", Method: http.MethodGet,
 		Path:    "/v1/people/{identity}/assignments",
 		Summary: "List what one person is dealing with",
@@ -215,7 +215,7 @@ func registerAssignment(api huma.API, in Ingest) {
 			"work, and it was taken on as one.\n\n" +
 			"Send `me` as the identity for your own.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Identity string `path:"identity" doc:"Their sign-in identity, or 'me' for your own"`
 		ScopeQuery
 		Limit  int `query:"limit" default:"50" minimum:"1" maximum:"200"`
@@ -269,7 +269,7 @@ func registerAssignment(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-holdings", Method: http.MethodGet, Path: "/v1/assignments",
 		Summary: "List how much each person is dealing with",
 		Description: "Returns everyone holding open work you can see, with how much.\n\n" +
@@ -282,7 +282,7 @@ func registerAssignment(api huma.API, in Ingest) {
 			"a person who has gone is the problem — nothing tells this software that somebody " +
 			"has left.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, _ *struct{}) (*listOutput[HoldingBody], error) {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, _ *struct{}) (*listOutput[HoldingBody], error) {
 		subject, err := reading(ctx)
 		if err != nil {
 			return nil, err
@@ -309,7 +309,7 @@ func registerAssignment(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "release-assignments", Method: http.MethodPost,
 		Path:    "/v1/people/{identity}/assignments/release",
 		Summary: "Hand back everything one person is dealing with",
@@ -322,7 +322,7 @@ func registerAssignment(api huma.API, in Ingest) {
 			"and not in anybody's own because they are not here.\n\n" +
 			"Send `to` instead to hand it to a named person rather than to nobody.",
 		Tags: []string{"Administration"},
-	}, func(ctx context.Context, input *struct {
+	}, deploymentWide, ""), func(ctx context.Context, input *struct {
 		Identity string `path:"identity"`
 		Body     struct {
 			To string `json:"to,omitempty" doc:"Who takes it on. Omit to return it to nobody"`

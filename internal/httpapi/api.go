@@ -352,14 +352,14 @@ type VersionOutput struct {
 }
 
 func registerVersion(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "get-version",
 		Method:      http.MethodGet,
 		Path:        "/v1/version",
 		Summary:     "Get the server version",
 		Description: "Identifies the build that is answering, so an operator can tell which version they are looking at.",
 		Tags:        []string{"Meta"},
-	}, func(ctx context.Context, _ *struct{}) (*VersionOutput, error) {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, _ *struct{}) (*VersionOutput, error) {
 		// A person, not a pipeline. A build server has no business asking
 		// what is deployed, and "nothing else" has to mean this too or it
 		// means whatever each new endpoint remembers.

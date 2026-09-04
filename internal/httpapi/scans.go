@@ -141,7 +141,7 @@ func registerScans(api huma.API, in Ingest) {
 	// document is generated from these registrations by a process that never
 	// opens one, and an operation missing from the document because of how it
 	// was generated is exactly the drift generating it is meant to prevent.
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "upload-scan",
 		Method:      http.MethodPost,
 		Path:        "/v1/products/{product}/streams/{stream}/variants/{variant}/scans",
@@ -159,7 +159,7 @@ func registerScans(api huma.API, in Ingest) {
 		MaxBodyBytes:  maxUpload(in.Limits),
 		Middlewares:   huma.Middlewares{boundedForm(api, maxUpload(in.Limits))},
 		DefaultStatus: http.StatusAccepted,
-	}, func(ctx context.Context, input *UploadInput) (*UploadOutput, error) {
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *UploadInput) (*UploadOutput, error) {
 		return upload(ctx, in, input)
 	})
 }
@@ -480,7 +480,7 @@ type ReceiptsOutput struct {
 }
 
 func registerReceipts(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-scans", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/scans",
 		Summary: "List uploaded scans and their status",
@@ -490,7 +490,7 @@ func registerReceipts(api huma.API, in Ingest) {
 			"Because uploads return 202 before parsing, this is how a build pipeline finds out " +
 			"whether its SBOM was usable. An API key sees only the uploads it sent itself.",
 		Tags: []string{"Ingest"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product string `path:"product"`
 		Stream  string `path:"stream"`
 		Variant string `path:"variant"`
@@ -661,7 +661,7 @@ type CoverageBody struct {
 }
 
 func registerCoverage(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-scanning", Method: http.MethodGet, Path: "/v1/scanning",
 		Summary: "List when each build was last scanned",
 		Description: "Returns every build you can see, longest-silent first, with when a scan " +
@@ -671,7 +671,7 @@ func registerCoverage(api huma.API, in Ingest) {
 			"been filed against is measured from when it was declared.\n\n" +
 			"How long counts as quiet is the `scanning.quiet-after` setting.",
 		Tags: []string{"Scans"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		ScopeQuery
 		Limit  int `query:"limit" default:"200" minimum:"1" maximum:"500" doc:"How many to return. Quietest first, so the default is the answer for any estate somebody reads by hand"`
 		Offset int `query:"offset" minimum:"0" doc:"How many to skip"`

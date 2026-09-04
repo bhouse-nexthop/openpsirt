@@ -35,7 +35,7 @@ type AssessmentBody struct {
 }
 
 func registerAssessment(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "assess-issue", Method: http.MethodPost,
 		Path:    "/v1/issues/{vulnerability}/assessment",
 		Summary: "Record what we think of an issue, as against what was published",
@@ -57,7 +57,7 @@ func registerAssessment(api huma.API, in Ingest) {
 			"stays beside it, because a rating of ours shown where the world's goes reads " +
 			"as the world's.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		Vulnerability string `path:"vulnerability" doc:"The issue, by any name it is known under"`
 		Body          AssessmentBody
 	}) (*struct{ Body AssessmentBody }, error) {
@@ -82,7 +82,7 @@ func registerAssessment(api huma.API, in Ingest) {
 		return &struct{ Body AssessmentBody }{Body: assessmentBody(*claim, input.Vulnerability)}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "agree-assessment", Method: http.MethodPost,
 		Path:    "/v1/assessments/{id}/agreement",
 		Summary: "Agree to a milder rating so it takes effect",
@@ -90,7 +90,7 @@ func registerAssessment(api huma.API, in Ingest) {
 			"proposed it, for the same reason every other second person here is somebody " +
 			"else: a control one person can complete alone is not a control.",
 		Tags: []string{"Triage"},
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "The proposer may not approve their own.", approveRights()...), func(ctx context.Context, input *struct {
 		ID int64 `path:"id"`
 	}) (*struct{ Body AssessmentBody }, error) {
 		subject, _, err := triaging(ctx, in)
@@ -104,7 +104,7 @@ func registerAssessment(api huma.API, in Ingest) {
 		return &struct{ Body AssessmentBody }{Body: assessmentBody(*claim, "")}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "withdraw-assessment", Method: http.MethodDelete,
 		Path:    "/v1/assessments/{id}",
 		Summary: "Withdraw an assessment, and take the published rating back",
@@ -112,7 +112,7 @@ func registerAssessment(api huma.API, in Ingest) {
 			"reads it — where a finding sits in the list, how long it has, whether it is " +
 			"above the line a product triages — follows it back.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		ID int64 `path:"id"`
 	}) (*struct{}, error) {
 		subject, _, err := triaging(ctx, in)
@@ -125,7 +125,7 @@ func registerAssessment(api huma.API, in Ingest) {
 		return &struct{}{}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-assessments", Method: http.MethodGet,
 		Path:    "/v1/assessments",
 		Summary: "List what we have said about issues",
@@ -133,7 +133,7 @@ func registerAssessment(api huma.API, in Ingest) {
 			"ratings somebody has proposed and nobody has agreed to yet, which are the " +
 			"ones not yet affecting anything.",
 		Tags: []string{"Triage"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		State string `query:"state" enum:"proposed,live,withdrawn" doc:"Limit to one state"`
 		Limit int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 	}) (*listOutput[AssessmentBody], error) {

@@ -44,7 +44,7 @@ type ReadinessBody struct {
 }
 
 func registerReadiness(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "get-readiness", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/readiness",
 		Summary: "Compare a branch against the last release cut from it",
@@ -62,7 +62,7 @@ func registerReadiness(api huma.API, in Ingest) {
 			"Counted as issues at components at or above the deployment's line, which `floor` " +
 			"names.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product string `path:"product"`
 		Stream  string `path:"stream"`
 		Variant string `path:"variant"`

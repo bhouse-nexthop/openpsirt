@@ -55,7 +55,7 @@ type JudgedBody struct {
 }
 
 func registerAudit(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-audit", Method: http.MethodGet, Path: "/v1/audit",
 		Summary: "List judgments with who made them and who agreed",
 		Description: "Every judgment recorded in a period, newest first, with what it was " +
@@ -68,7 +68,7 @@ func registerAudit(api huma.API, in Ingest) {
 			"is exempt from the visibility rules — a report showing more than the screens it " +
 			"summarizes would be a way around them.",
 		Tags: []string{"Reports"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product string `query:"product" doc:"Limit to one product, by name"`
 		Outcome string `query:"outcome" enum:"affected,not-applicable,deferred,wont-fix,already-fixed" doc:"Limit to one kind of judgment"`
 		State   string `query:"state" enum:"proposed,approved,withdrawn,lapsed" doc:"Limit to one state"`

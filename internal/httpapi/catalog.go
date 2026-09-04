@@ -169,13 +169,13 @@ type listBody[T any] struct {
 }
 
 func registerCatalog(api huma.API, d Declaring) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "declare-product", Method: http.MethodPost, Path: "/v1/products",
 		Summary: "Create a product",
 		Description: "Records a product so scans may be filed against it. Declaring one that " +
 			"already exists succeeds without changing anything, so this can run on every build.",
 		Tags: []string{"Catalog"}, DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, in *struct {
+	}, deploymentWide, ""), func(ctx context.Context, in *struct {
 		Body ProductBody
 	}) (*declaredOutput[ProductBody], error) {
 		if err := administrating(ctx); err != nil {
@@ -192,13 +192,13 @@ func registerCatalog(api huma.API, d Declaring) {
 		return answer(created, ProductBody{Name: product.Name, DisplayName: product.DisplayName}), nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "declare-stream", Method: http.MethodPost, Path: "/v1/products/{product}/streams",
 		Summary: "Create a branch or tag",
 		Description: "Records a line of a product. A branch moves and is rebuilt; a tag never " +
 			"changes and is what somebody received.",
 		Tags: []string{"Catalog"}, DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, in *struct {
+	}, deploymentWide, ""), func(ctx context.Context, in *struct {
 		Product string `path:"product"`
 		Body    StreamBody
 	}) (*declaredOutput[StreamBody], error) {
@@ -233,7 +233,7 @@ func registerCatalog(api huma.API, d Declaring) {
 		}), nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "declare-variant", Method: http.MethodPost,
 		Path:    "/v1/products/{product}/variants",
 		Summary: "Create a build variant",
@@ -242,7 +242,7 @@ func registerCatalog(api huma.API, d Declaring) {
 			"release: a release is filed against it the first time a scan arrives, so nobody " +
 			"restates the list and no release ends up with the name spelled differently.",
 		Tags: []string{"Catalog"}, DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, in *struct {
+	}, deploymentWide, ""), func(ctx context.Context, in *struct {
 		Product string `path:"product"`
 		Body    VariantBody
 	}) (*declaredOutput[VariantBody], error) {
@@ -269,14 +269,14 @@ func registerCatalog(api huma.API, d Declaring) {
 		return answer(created, VariantBody{Name: variant.DisplayName, CustomerFacing: &variant.CustomerFacing}), nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-products", Method: http.MethodGet, Path: "/v1/products",
 		Summary: "List products",
 		Description: "Lists the products declared here, with what each one holds.\n\n" +
 			"A scan may only be filed against something declared, so this is the first question " +
 			"to ask after an upload is refused for naming something unknown.",
 		Tags: []string{"Catalog"},
-	}, func(ctx context.Context, _ *struct{}) (*listOutput[ProductBody], error) {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, _ *struct{}) (*listOutput[ProductBody], error) {
 		subject, err := reading(ctx)
 		if err != nil {
 			return nil, err
@@ -326,7 +326,7 @@ func registerCatalog(api huma.API, d Declaring) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "set-product-triage-floor", Method: http.MethodPut,
 		Path:    "/v1/products/{product}/triage-floor",
 		Summary: "Set what a product considers worth triaging",
@@ -340,7 +340,7 @@ func registerCatalog(api huma.API, d Declaring) {
 			"Deadlines are rewritten afterwards, away from the request, because moving the line " +
 			"moves what is on a clock at all. The response returns before that has finished.",
 		Tags: []string{"Catalog"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, in *struct {
+	}, deploymentWide, ""), func(ctx context.Context, in *struct {
 		Product string `path:"product"`
 		Body    TriageFloorBody
 	}) (*struct{}, error) {
@@ -374,7 +374,7 @@ func registerCatalog(api huma.API, d Declaring) {
 		return &struct{}{}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "set-product-end-of-life", Method: http.MethodPut,
 		Path:    "/v1/products/{product}/end-of-life",
 		Summary: "Set when a product goes out of support",
@@ -386,7 +386,7 @@ func registerCatalog(api huma.API, d Declaring) {
 			"An empty date clears it, because extended support happens. Deadlines are rewritten " +
 			"afterwards, away from the request; the response returns before that has finished.",
 		Tags: []string{"Catalog"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, in *struct {
+	}, deploymentWide, ""), func(ctx context.Context, in *struct {
 		Product string `path:"product"`
 		Body    EndOfLifeBody
 	}) (*struct{}, error) {
@@ -414,7 +414,7 @@ func registerCatalog(api huma.API, d Declaring) {
 		return &struct{}{}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "set-stream-end-of-life", Method: http.MethodPut,
 		Path:    "/v1/products/{product}/streams/{stream}/end-of-life",
 		Summary: "Set when a branch or tag goes out of support",
@@ -425,7 +425,7 @@ func registerCatalog(api huma.API, d Declaring) {
 			"Clearing is not the same as stating the product's current date: a release that " +
 			"stated it would stop following when the product changed.",
 		Tags: []string{"Catalog"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, in *struct {
+	}, deploymentWide, ""), func(ctx context.Context, in *struct {
 		Product string `path:"product"`
 		Stream  string `path:"stream"`
 		Body    EndOfLifeBody
@@ -458,10 +458,10 @@ func registerCatalog(api huma.API, d Declaring) {
 		return &struct{}{}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-streams", Method: http.MethodGet, Path: "/v1/products/{product}/streams",
 		Summary: "List a product's branches and tags", Tags: []string{"Catalog"},
-	}, func(ctx context.Context, in *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, in *struct {
 		Product string `path:"product"`
 	}) (*listOutput[StreamBody], error) {
 		subject, err := reading(ctx)
@@ -512,11 +512,11 @@ func registerCatalog(api huma.API, d Declaring) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-variants", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/variants",
 		Summary: "List a product's build variants", Tags: []string{"Catalog"},
-	}, func(ctx context.Context, in *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, in *struct {
 		Product string `path:"product"`
 	}) (*listOutput[VariantBody], error) {
 		subject, err := reading(ctx)
@@ -546,7 +546,7 @@ func registerCatalog(api huma.API, d Declaring) {
 		return list, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-release-variants", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/streams/{stream}/variants",
 		Summary: "List the variants a release was built as",
@@ -556,7 +556,7 @@ func registerCatalog(api huma.API, d Declaring) {
 			"it, which is what keeps something introduced later from appearing to have shipped " +
 			"years ago.",
 		Tags: []string{"Catalog"},
-	}, func(ctx context.Context, in *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, in *struct {
 		Product string `path:"product"`
 		Stream  string `path:"stream"`
 	}) (*listOutput[VariantBody], error) {

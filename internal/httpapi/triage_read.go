@@ -61,7 +61,7 @@ type CommentBody struct {
 }
 
 func registerTriageReading(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-decisions", Method: http.MethodGet, Path: "/v1/decisions",
 		Summary: "List triage decisions",
 		Description: "Returns triage decisions on products you may triage, newest first, with " +
@@ -72,7 +72,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 			"Set `expired=true` to list deferrals whose date has passed — the findings that have " +
 			"come back and need judging again.",
 		Tags: []string{"Triage"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product string `query:"product" doc:"Limit to one product, by name"`
 		Outcome string `query:"outcome" enum:"affected,not-applicable,deferred,wont-fix,already-fixed" doc:"Limit to one outcome"`
 		State   string `query:"state" enum:"proposed,approved,withdrawn,lapsed" doc:"Limit to one state"`
@@ -112,7 +112,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "get-decision", Method: http.MethodGet, Path: "/v1/decisions/{id}",
 		Summary: "Get a triage decision",
 		Description: "Returns one decision with the justification as it currently stands, where " +
@@ -120,7 +120,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 			"For the earlier justifications see `GET /v1/decisions/{id}/revisions`, and for who " +
 			"agreed to which of them see `GET /v1/decisions/{id}/approvals`.",
 		Tags: []string{"Triage"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		ID int64 `path:"id"`
 	}) (*struct{ Body DecisionDetail }, error) {
 		subject, store, err := triaging(ctx, in)
@@ -139,7 +139,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 		return &struct{ Body DecisionDetail }{Body: details[0]}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-decision-revisions", Method: http.MethodGet,
 		Path:    "/v1/decisions/{id}/revisions",
 		Summary: "List a decision's justification history",
@@ -148,7 +148,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 			"An approval names the specific revision that was agreed to, so this is how to read " +
 			"what an approver actually saw rather than what the text says now.",
 		Tags: []string{"Triage"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		ID int64 `path:"id"`
 	}) (*listOutput[RevisionBody], error) {
 		subject, store, err := triaging(ctx, in)
@@ -181,7 +181,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-decision-approvals", Method: http.MethodGet,
 		Path:    "/v1/decisions/{id}/approvals",
 		Summary: "List who approved a decision",
@@ -194,7 +194,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 			"builds appear — with nobody acting, and nobody having agreed to the larger number. " +
 			"Comparing this against what it covers now is the point of keeping it.",
 		Tags: []string{"Triage"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		ID int64 `path:"id"`
 	}) (*listOutput[ApprovalBody], error) {
 		subject, store, err := triaging(ctx, in)
@@ -237,7 +237,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-decision-comments", Method: http.MethodGet,
 		Path:    "/v1/decisions/{id}/comments",
 		Summary: "List comments on a decision",
@@ -245,7 +245,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 			"when. A comment that has been edited also carries when it was last changed.\n\n" +
 			"Comments are separate from the justification and never affect an approval.",
 		Tags: []string{"Triage"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		ID int64 `path:"id"`
 	}) (*listOutput[CommentBody], error) {
 		subject, store, err := triaging(ctx, in)
@@ -282,7 +282,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "edit-comment", Method: http.MethodPut, Path: "/v1/comments/{id}",
 		Summary: "Edit a comment",
 		Description: "Replaces the text of a comment. Only its author may do this, and the new " +
@@ -291,7 +291,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 			"The text is markdown and is validated before it is stored; a 422 names the line and " +
 			"the offending text.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "Only the author may edit a comment.", triageRights()...), func(ctx context.Context, input *struct {
 		ID   int64 `path:"id"`
 		Body struct {
 			Body string `json:"body" minLength:"1"`
@@ -424,7 +424,7 @@ func registerPlaceDecisions(api huma.API, in Ingest) {
 	const at = "/v1/products/{product}/streams/{stream}/variants/{variant}" +
 		"/findings/{vulnerability}/places/{place}/decision"
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "get-finding-decision", Method: http.MethodGet, Path: at,
 		Summary: "Get what has been decided about a finding",
 		Description: "Returns the decision currently suppressing this finding, if any, together " +
@@ -436,7 +436,7 @@ func registerPlaceDecisions(api huma.API, in Ingest) {
 			"usually still the right answer, and re-affirming it is a different request from " +
 			"making a new one.",
 		Tags: []string{"Triage"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
 		Stream        string `path:"stream"`
 		Variant       string `path:"variant"`
@@ -489,7 +489,7 @@ func registerPlaceDecisions(api huma.API, in Ingest) {
 		return &struct{ Body StandingBody }{Body: body}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "reaffirm-decision", Method: http.MethodPost, Path: at + "/reaffirmation",
 		Summary: "Re-affirm a decision after an upstream version changed",
 		Description: "Re-makes a decision that stopped applying because an upstream version " +
@@ -504,7 +504,7 @@ func registerPlaceDecisions(api huma.API, in Ingest) {
 			"`reasoning` is required. \"Still true\" with nothing behind it is what a " +
 			"re-affirmation becomes when it is made too easy.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
 		Stream        string `path:"stream"`
 		Variant       string `path:"variant"`

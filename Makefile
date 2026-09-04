@@ -204,6 +204,8 @@ openapi:
 	@mkdir -p docs/reference
 	$(GO) run ./cmd/openpsirt -openapi > docs/reference/openapi.yaml
 	@echo "wrote docs/reference/openapi.yaml"
+	$(GO) run ./cmd/openpsirt -privileges > docs/reference/privileges.md
+	@echo "wrote docs/reference/privileges.md"
 
 # Everything CI runs, reachable from one command. Container and chart checks
 # are included because CI runs them; omitting them meant four of nine jobs
@@ -266,7 +268,7 @@ unclaimed:
 
 # CI fails when the committed document has drifted, so check the same thing.
 openapi-current: openapi
-	@git diff --exit-code -- docs/reference/openapi.yaml \
+	@git diff --exit-code -- docs/reference/openapi.yaml docs/reference/privileges.md \
 	  || { echo "docs/reference/openapi.yaml is stale: commit the regenerated file"; exit 1; }
 
 # Everything CI's test job asserts beyond the suite passing.

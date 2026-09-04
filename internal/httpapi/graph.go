@@ -47,7 +47,7 @@ type AroundBody struct {
 }
 
 func registerGraph(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-top-level-components", Method: http.MethodGet,
 		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/components",
 		Summary: "List what a build pulls in directly",
@@ -65,7 +65,7 @@ func registerGraph(api huma.API, in Ingest) {
 			"with five thousand children — so searching is the way in, and browsing is for " +
 			"answering \"what else is under this\" once you are already somewhere.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product string `path:"product"`
 		Stream  string `path:"stream"`
 		Variant string `path:"variant"`
@@ -111,7 +111,7 @@ func registerGraph(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "get-component-neighbours", Method: http.MethodGet,
 		Path: "/v1/products/{product}/streams/{stream}/variants/{variant}" +
 			"/components/{component}/around",
@@ -127,7 +127,7 @@ func registerGraph(api huma.API, in Ingest) {
 			"versions, `version` says which — without it, a name that matches more than one is " +
 			"refused with 409, naming the choices, rather than guessed at.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product   string `path:"product"`
 		Stream    string `path:"stream"`
 		Variant   string `path:"variant"`

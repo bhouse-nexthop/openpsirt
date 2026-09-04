@@ -42,7 +42,7 @@ type EnteredBody struct {
 }
 
 func registerEntry(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "record-finding", Method: http.MethodPost,
 		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings",
 		Summary: "Record a flaw in what this build ships",
@@ -65,7 +65,7 @@ func registerEntry(api huma.API, in Ingest) {
 			"same clock and in the same reports. No scan will close it — a run is the " +
 			"authority on what it found, and it found none of this.",
 		Tags: []string{"Findings"}, DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "private-triage where the finding is undisclosed.", triageRights()...), func(ctx context.Context, input *struct {
 		Product string `path:"product"`
 		Stream  string `path:"stream"`
 		Variant string `path:"variant"`
@@ -149,7 +149,7 @@ type ResolvedBody struct {
 }
 
 func registerResolution(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "resolve-finding", Method: http.MethodPost,
 		Path: "/v1/products/{product}/streams/{stream}/variants/{variant}" +
 			"/findings/{vulnerability}/resolve",
@@ -166,7 +166,7 @@ func registerResolution(api huma.API, in Ingest) {
 			"**Nothing reopens one.** Closing is a considered act, and this is the way it is " +
 			"undone: it is not.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
 		Stream        string `path:"stream"`
 		Variant       string `path:"variant"`
@@ -218,7 +218,7 @@ func registerResolution(api huma.API, in Ingest) {
 }
 
 func registerDisclosure(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-approaching-disclosure", Method: http.MethodGet,
 		Path:    "/v1/disclosing",
 		Summary: "List what is approaching disclosure",
@@ -236,7 +236,7 @@ func registerDisclosure(api huma.API, in Ingest) {
 			"right: a product you may not read undisclosed work in contributes nothing to it, " +
 			"not even a count.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "Only where you may read undisclosed work.", privateRights()...), func(ctx context.Context, input *struct {
 		ScopeQuery
 		Within int `query:"within" default:"30" minimum:"1" maximum:"365" doc:"How many days ahead to look"`
 		Limit  int `query:"limit" default:"100" minimum:"1" maximum:"500"`
@@ -295,7 +295,7 @@ type ExtensionBody struct {
 func registerExtensions(api huma.API, in Ingest) {
 	const path = "/v1/products/{product}/issues/{vulnerability}/disclosure"
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "extend-disclosure", Method: http.MethodPost, Path: path,
 		Summary: "Ask to move a disclosure date later",
 		Description: "Moves the end of an embargo, across every undisclosed finding of this " +
@@ -311,7 +311,7 @@ func registerExtensions(api huma.API, in Ingest) {
 			"A date only ever moves later. Bringing one forward is disclosing sooner, which is " +
 			"a different act.",
 		Tags: []string{"Findings"}, DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "A second person agrees past the threshold.", []access.Role{access.PrivateTriage}...), func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
 		Vulnerability string `path:"vulnerability"`
 		Body          struct {
@@ -349,7 +349,7 @@ func registerExtensions(api huma.API, in Ingest) {
 		}{Status: http.StatusCreated, Body: body[0]}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-disclosure-extensions", Method: http.MethodGet, Path: path,
 		Summary: "List how an embargo has been moved",
 		Description: "Every time this embargo was moved, oldest first, with why and by whom.\n\n" +
@@ -358,7 +358,7 @@ func registerExtensions(api huma.API, in Ingest) {
 			"last. A request still waiting for agreement is here too: what was asked for is " +
 			"part of how long this stayed hidden, whether or not it was granted.",
 		Tags: []string{"Findings"},
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "Only where you may read undisclosed work.", privateRights()...), func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
 		Vulnerability string `path:"vulnerability"`
 	}) (*listOutput[ExtensionBody], error) {
@@ -379,7 +379,7 @@ func registerExtensions(api huma.API, in Ingest) {
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "agree-to-extension", Method: http.MethodPost,
 		Path:    "/v1/disclosure-extensions/{id}/approval",
 		Summary: "Agree to moving a disclosure date",
@@ -388,7 +388,7 @@ func registerExtensions(api huma.API, in Ingest) {
 			"threshold exists to reach, and an extension somebody approved for themselves is " +
 			"the same as one nobody approved.",
 		Tags: []string{"Findings"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, input *struct {
+	}, perProduct, "Not the person who asked for it.", []access.Role{access.PrivateTriage}...), func(ctx context.Context, input *struct {
 		ID int64 `path:"id"`
 	}) (*struct{}, error) {
 		subject, err := reading(ctx)

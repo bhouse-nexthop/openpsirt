@@ -25,7 +25,7 @@ type BindingBody struct {
 }
 
 func registerBindings(api huma.API, a Administering, settings func() *setting.Store) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "get-role-mode", Method: http.MethodGet, Path: "/v1/roles/mode",
 		Summary: "Get the role assignment mode",
 		Description: "Says where roles come from here: assigned by an administrator, or derived " +
@@ -34,7 +34,7 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 			"rule for somebody holding one role from a team and another directly, which is how a " +
 			"stale assignment outlives somebody's removal from the team it was shadowing.",
 		Tags: []string{"Administration"},
-	}, func(ctx context.Context, _ *struct{}) (*struct{ Body ModeBody }, error) {
+	}, deploymentWide, ""), func(ctx context.Context, _ *struct{}) (*struct{ Body ModeBody }, error) {
 		if _, _, err := administerable(ctx, a); err != nil {
 			return nil, err
 		}
@@ -49,14 +49,14 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 		return &struct{ Body ModeBody }{Body: ModeBody{Mode: string(access.AsMode(stored))}}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "set-role-mode", Method: http.MethodPut, Path: "/v1/roles/mode",
 		Summary: "Set the role assignment mode",
 		Description: "Turning group binding on sets assignments aside rather than deleting them, " +
 			"and turning it off restores them — so trying it is not a one-way door. Refused if it " +
 			"would leave nobody able to administer this deployment.",
 		Tags: []string{"Administration"},
-	}, func(ctx context.Context, in *struct{ Body ModeBody }) (*struct{ Body ModeBody }, error) {
+	}, deploymentWide, ""), func(ctx context.Context, in *struct{ Body ModeBody }) (*struct{ Body ModeBody }, error) {
 		rights, _, err := administerable(ctx, a)
 		if err != nil {
 			return nil, err
@@ -94,14 +94,14 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 		return &struct{ Body ModeBody }{Body: ModeBody{Mode: string(wanted)}}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-bindings", Method: http.MethodGet, Path: "/v1/roles/bindings",
 		Summary: "List group-to-role bindings",
 		Description: "Lists every group-to-role mapping, and the groups that administer.\n\n" +
 			"In group-bound mode a mapping is the advance authorization: somebody arriving for " +
 			"the first time in a mapped group is admitted, and somebody in none is refused.",
 		Tags: []string{"Administration"},
-	}, func(ctx context.Context, _ *struct{}) (*listOutput[BindingBody], error) {
+	}, deploymentWide, ""), func(ctx context.Context, _ *struct{}) (*listOutput[BindingBody], error) {
 		rights, _, err := administerable(ctx, a)
 		if err != nil {
 			return nil, err
@@ -134,7 +134,7 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 		return out, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "bind-group", Method: http.MethodPost, Path: "/v1/roles/bindings",
 		Summary: "Bind an identity-provider group to a role",
 		Description: "Maps one identity-provider group to one role, so that everybody in that " +
@@ -142,7 +142,7 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 			"Every role but administration names the product it applies to. Administration is " +
 			"bound without one, because it is global rather than held against a product.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, in *struct{ Body BindingBody }) (*struct{ Body BindingBody }, error) {
+	}, deploymentWide, ""), func(ctx context.Context, in *struct{ Body BindingBody }) (*struct{ Body BindingBody }, error) {
 		rights, names, err := administerable(ctx, a)
 		if err != nil {
 			return nil, err
@@ -173,14 +173,14 @@ func registerBindings(api huma.API, a Administering, settings func() *setting.St
 		return &struct{ Body BindingBody }{Body: in.Body}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "unbind-group", Method: http.MethodDelete, Path: "/v1/roles/bindings",
 		Summary: "Remove a group-to-role binding",
 		Description: "Removes one group-to-role mapping.\n\n" +
 			"It takes effect at each member's next sign-in, because group membership is read at " +
 			"sign-in and never again. To cut somebody off now, end their sessions.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, in *struct {
+	}, deploymentWide, ""), func(ctx context.Context, in *struct {
 		Group   string `query:"group" required:"true"`
 		Product string `query:"product"`
 		Role    string `query:"role" required:"true"`
@@ -272,7 +272,7 @@ func productNames(ctx context.Context, a Administering) (map[int64]string, error
 // mechanism for drift and the wrong one for somebody leaving. Ending their
 // sessions is what makes the deliberate case immediate.
 func registerRevocation(api huma.API, a Administering) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-all-tokens", Method: http.MethodGet, Path: "/v1/people/tokens",
 		Summary: "List all users' API tokens",
 		Description: "Lists every personal token in the deployment, whose it is, what it may " +
@@ -280,7 +280,7 @@ func registerRevocation(api huma.API, a Administering) {
 			"Without it a stale token is found only when somebody leaves and nobody knows what " +
 			"breaks if it is turned off.",
 		Tags: []string{"Administration"},
-	}, func(ctx context.Context, _ *struct{}) (*listOutput[TokenBody], error) {
+	}, deploymentWide, ""), func(ctx context.Context, _ *struct{}) (*listOutput[TokenBody], error) {
 		rights, names, err := administerable(ctx, a)
 		if err != nil {
 			return nil, err
@@ -300,7 +300,7 @@ func registerRevocation(api huma.API, a Administering) {
 		return tokenList(ctx, names, tokens, owners)
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "revoke-anyones-token", Method: http.MethodDelete,
 		Path:    "/v1/people/{identity}/tokens/{name}",
 		Summary: "Revoke another user's API token",
@@ -309,7 +309,7 @@ func registerRevocation(api huma.API, a Administering) {
 			"An owner withdraws their own through their own token paths. This is for the ones " +
 			"whose owner is no longer here to do it.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, in *struct {
+	}, deploymentWide, ""), func(ctx context.Context, in *struct {
 		Identity string `path:"identity"`
 		Name     string `path:"name"`
 	}) (*struct{}, error) {
@@ -331,14 +331,14 @@ func registerRevocation(api huma.API, a Administering) {
 		return &struct{}{}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "end-sessions", Method: http.MethodDelete, Path: "/v1/people/{identity}/sessions",
 		Summary: "End all of a user's sessions",
 		Description: "Takes effect at once, whichever copy of the application answers next. Roles " +
 			"and group mappings are re-read at sign-in, so withdrawing one takes effect then; this " +
 			"is what makes somebody leaving immediate instead.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, in *struct {
+	}, deploymentWide, ""), func(ctx context.Context, in *struct {
 		Identity string `path:"identity"`
 	}) (*struct{}, error) {
 		rights, _, err := administerable(ctx, a)

@@ -30,7 +30,7 @@ type TokenBody struct {
 }
 
 func registerTokens(api huma.API, in Ingest) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-my-tokens", Method: http.MethodGet, Path: "/v1/tokens",
 		Summary: "List your API tokens",
 		Description: "Lists your own personal tokens: what each is called, when it expires and " +
@@ -38,7 +38,7 @@ func registerTokens(api huma.API, in Ingest) {
 			"A token is a live reference to you rather than a copy of what you could do when it " +
 			"was made, so what one reaches shrinks the moment your roles do.",
 		Tags: []string{"Access"},
-	}, func(ctx context.Context, _ *struct{}) (*listOutput[TokenBody], error) {
+	}, ownSubject, ""), func(ctx context.Context, _ *struct{}) (*listOutput[TokenBody], error) {
 		subject, rights, names, err := mine(ctx, in)
 		if err != nil {
 			return nil, err
@@ -50,7 +50,7 @@ func registerTokens(api huma.API, in Ingest) {
 		return tokenList(ctx, names, tokens, nil)
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "mint-token", Method: http.MethodPost, Path: "/v1/tokens",
 		Summary: "Create an API token",
 		Description: "Creates a personal token and returns its secret. The secret is shown once " +
@@ -59,7 +59,7 @@ func registerTokens(api huma.API, in Ingest) {
 			"has set. A credential that never runs out is one nobody ever revokes, and those are " +
 			"found when somebody leaves and nobody knows what breaks if it is turned off.",
 		Tags: []string{"Access"}, DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, input *struct{ Body TokenBody }) (*struct{ Body TokenBody }, error) {
+	}, ownSubject, ""), func(ctx context.Context, input *struct{ Body TokenBody }) (*struct{ Body TokenBody }, error) {
 		subject, rights, names, err := mine(ctx, in)
 		if err != nil {
 			return nil, err
@@ -116,7 +116,7 @@ func registerTokens(api huma.API, in Ingest) {
 		}}, nil
 	})
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, requiring(huma.Operation{
 		OperationID: "revoke-my-token", Method: http.MethodDelete, Path: "/v1/tokens/{name}",
 		Summary: "Revoke one of your API tokens",
 		Description: "Revokes one of your own tokens by name. It stops working immediately.\n\n" +
@@ -124,7 +124,7 @@ func registerTokens(api huma.API, in Ingest) {
 			"paths.",
 		Tags:          []string{"Access"},
 		DefaultStatus: http.StatusNoContent,
-	}, func(ctx context.Context, input *struct {
+	}, ownSubject, ""), func(ctx context.Context, input *struct {
 		Name string `path:"name"`
 	}) (*struct{}, error) {
 		subject, rights, _, err := mine(ctx, in)
