@@ -55,6 +55,7 @@ not the same.
 | Somebody named you | event | Not built: the editor writes `@name` and nothing resolves it to a person yet (UIX-24). There is no word for it either — a name nothing can produce, advertised in an API description and drawn by a screen, is a promise the tool does not keep |
 | An approval an edit withdrew | event | Not built. NTF-13 wants the people who granted it told, so it does not quietly stop counting |
 | A build that stopped being scanned | condition | Built. A sweep derives every declared build with when it was last scanned, compares it against how long this deployment allows, and reconciles — so a build that resumes leaves the list on its own |
+| An embargo whose date arrived | condition | Built. Reaching the date discloses nothing (ACC-47), so this is a question still waiting for an answer rather than a thing that happened — and it clears when the date is moved or the finding is disclosed, because both of those are somebody answering it |
 
 **A mention notifies the person mentioned, immediately** (NTF-12), and is the
 row above that is not built: nothing resolves `@name` to a person yet.
@@ -88,6 +89,22 @@ rather than the whole thing — a channel people read on a phone is not a channe
 to paste a justification into. Neither is built, and the server-side renderer
 that the HTML part of a mail would need is kept for that reason rather than
 deleted.
+
+**Who hears about an embargo is narrower than who hears about the tool's
+health.** Administrators, and whoever holds it (ACC-47) — and the second only
+where they may still read undisclosed work in that product. Every one of these
+alerts says an undisclosed finding exists, so the alert is a disclosure in its
+own right; an assignment can outlive the role that allowed it, and delivering
+one then would hand over exactly what withdrawing the role was meant to stop.
+
+**A sweep reconciles everybody it has told, not only everybody it should tell.**
+Reconcile makes one person's open set exactly what it is handed, so somebody
+who is never handed a list is never reconciled — and their alert stands after
+the thing it was about has been answered. That does not arise for a condition
+that only ever goes to administrators, because that set does not move. It
+arises the moment who hears about something depends on who holds it, and work
+is handed around: the person who held it yesterday would keep an alert about a
+date that has since been moved, with nothing left to clear it.
 
 **Nobody is told they were unassigned.** A name being removed is not an action
 directed at the person who held it, and a queue that gets shorter says so

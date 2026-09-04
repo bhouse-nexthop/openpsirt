@@ -54,6 +54,14 @@ const (
 	// BuildQuiet is a build nothing has been filed against for longer than
 	// this deployment allows. A condition: it clears when a scan arrives.
 	BuildQuiet Kind = "build-quiet"
+	// DisclosureDue is an embargo whose date has arrived with nothing decided.
+	//
+	// A condition rather than an event, and the distinction carries weight
+	// here: reaching the date discloses nothing (ACC-47), so this is a
+	// question still waiting for an answer rather than a thing that happened.
+	// It clears when the date is moved or the finding is disclosed — which is
+	// exactly right, because both of those are somebody answering it.
+	DisclosureDue Kind = "disclosure-due"
 )
 
 // Notification is one thing somebody was told.

@@ -223,7 +223,8 @@ that release, and raises an alert rather than sitting in a report.
   is approaching one is a list, before the date rather than on it.
   **Extending a date is built** — with a reason always, a second person past
   a cumulative threshold, and nothing moving until that person agrees.
-  **Telling somebody the date arrived is not**
+  **Telling somebody the date arrived is built** — administrators and whoever
+  holds it, as a condition that clears when somebody answers it
 - Advisory publication: CSAF, and GitHub Security Advisories where they apply
 - Attachments: object store, authorized fetch, redaction (`ATT`)
 

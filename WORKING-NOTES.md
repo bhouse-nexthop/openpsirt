@@ -2614,3 +2614,35 @@ cumulative" mutant left a variable unused, so the package failed to build and
 the run reported exit 1 — which looks exactly like the test catching it. A
 mutant that does not compile has tested nothing. Re-run so it compiled, and it
 does fail honestly, on both assertions.
+
+## The date arriving now tells somebody, and the test that was too weak (2026-09-04)
+
+The other half of ACC-47. A disclosure date arriving is a **condition**, not an
+event: reaching it discloses nothing, so it is a question still waiting for an
+answer, and it clears when somebody moves the date or discloses — because both
+of those are answering it.
+
+The first version of the test passed against three mutants in a row, which is
+what a weak test looks like from the inside. Each one was my fault in a
+different way:
+
+- The owner in the test held private triage, so removing the "may they read
+  undisclosed work here" check changed nothing. Fixed by adding a second
+  embargo held by somebody with only the public right.
+- One mutant only initialized empty lists rather than filling them, so it was a
+  no-op dressed as a change.
+- One targeted an early return that turned out to be **redundant** — the
+  fall-through produced the same answer at the cost of one query. Its comment
+  claimed it was load-bearing for correctness. Removed.
+
+Strengthening it then found a real defect. `Reconcile` makes one person's open
+set exactly what it is handed, so somebody never handed a list is never
+reconciled. Only administrators were guaranteed one, and who hears about an
+embargo includes **whoever holds it** — so the person who held it yesterday
+kept an alert about a date that has since been moved, with nothing left to
+clear it. The sweep now reconciles everybody it has told, not only everybody it
+should tell.
+
+That failure cannot arise for a condition that only ever goes to
+administrators, which is why the quiet-build sweep beside it has never shown
+it. It arrives the moment the audience depends on who holds something.
