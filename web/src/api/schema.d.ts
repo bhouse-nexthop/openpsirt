@@ -3988,6 +3988,8 @@ export interface components {
              * @description A representative row of the claim at this finding
              */
             decision_id: number;
+            /** @description The package version the claim says the fix arrived in, where it claims one has */
+            fixed_version?: string;
             justification?: string;
             /** @enum {string} */
             kind: "finding" | "together" | "extension" | "returned";

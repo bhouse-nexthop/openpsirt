@@ -459,6 +459,7 @@ function stateOf(claims: Detail[], decided: number, total: number, overall: stri
 }
 
 const OUTCOME: Record<string, string> = {
+  "already-fixed": "Already fixed",
   affected: "Affected",
   "not-applicable": "Not applicable",
   deferred: "Deferred",
@@ -544,6 +545,16 @@ function Standing({
             <span className="l">Justification</span>
             <span className="v mono">{claim.decision.justification}</span>
             {claim.decision.mitigation && <span className="hint">stopped by: {claim.decision.mitigation}</span>}
+          </div>
+        )}
+        {/* The evidence for a claim that the fix is already here, on the
+            screen the claim is read from. It is the one outcome whose claim
+            is a fact somebody can check, and it is checked from here. */}
+        {claim.decision?.fixed_version && (
+          <div>
+            <span className="l">Fixed in</span>
+            <span className="v mono">{claim.decision.fixed_version}</span>
+            <span className="hint">as the packager states it; not compared against what ships</span>
           </div>
         )}
         <div>

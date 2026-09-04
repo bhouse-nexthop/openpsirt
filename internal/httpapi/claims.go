@@ -186,17 +186,22 @@ type StandingClaimBody struct {
 	State string           `json:"state" enum:"proposed,approved" doc:"The claim's state as a whole: approved only when every live row here is approved, otherwise proposed"`
 	Rows  RowsStandingBody `json:"rows" doc:"How the claim's rows here stand"`
 	// What an approver asked for, where rows were sent back.
-	SentBackAt      string   `json:"sent_back_at,omitempty" doc:"When rows were last sent back to the author"`
-	SentBackBecause string   `json:"sent_back_because,omitempty" doc:"The reason given when they were, in markdown"`
-	Outcome         string   `json:"outcome"`
-	Justification   string   `json:"justification,omitempty"`
-	NeedsApproval   bool     `json:"needs_approval,omitempty"`
-	ProposedBy      string   `json:"proposed_by"`
-	ProposedAt      string   `json:"proposed_at"`
-	Places          int      `json:"places" doc:"How many of this finding's places the claim covers"`
-	Builds          []string `json:"builds" doc:"Every build the claim currently covers, as stream and variant"`
-	ApprovedBy      string   `json:"approved_by,omitempty"`
-	ApprovedAt      string   `json:"approved_at,omitempty"`
+	SentBackAt      string `json:"sent_back_at,omitempty" doc:"When rows were last sent back to the author"`
+	SentBackBecause string `json:"sent_back_because,omitempty" doc:"The reason given when they were, in markdown"`
+	Outcome         string `json:"outcome"`
+	Justification   string `json:"justification,omitempty"`
+	// FixedVersion is the evidence for a claim that the fix is already here,
+	// on the screen the claim is read from. The audit trail carried it and
+	// this did not, which puts the checkable part of the claim everywhere
+	// except where somebody looks at the claim (TRI-51).
+	FixedVersion  string   `json:"fixed_version,omitempty" doc:"The package version the claim says the fix arrived in, where it claims one has"`
+	NeedsApproval bool     `json:"needs_approval,omitempty"`
+	ProposedBy    string   `json:"proposed_by"`
+	ProposedAt    string   `json:"proposed_at"`
+	Places        int      `json:"places" doc:"How many of this finding's places the claim covers"`
+	Builds        []string `json:"builds" doc:"Every build the claim currently covers, as stream and variant"`
+	ApprovedBy    string   `json:"approved_by,omitempty"`
+	ApprovedAt    string   `json:"approved_at,omitempty"`
 }
 
 // RowsStandingBody counts a claim's live rows by where they stand.
@@ -293,6 +298,7 @@ func decidedAbout(ctx context.Context, in Ingest, subject access.Subject, produc
 			},
 			SentBackBecause: one.SentBackBecause,
 			Justification:   orBlank(one.Decision.Justification),
+			FixedVersion:    orBlank(one.Decision.FixedVersion),
 			NeedsApproval:   one.Decision.NeedsApproval,
 			ProposedBy:      names[one.Claim.ProposedBy],
 			ProposedAt:      one.Claim.ProposedAt.Format(time.RFC3339),
