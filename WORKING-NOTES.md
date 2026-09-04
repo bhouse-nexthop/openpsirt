@@ -2939,3 +2939,51 @@ session a figure looked unchanged when it had in fact moved.
 is still worth restating: `openapi-current` and `web-api` diff a regenerated
 file against the last commit. A change that does not touch the API surface
 passes them on a dirty tree, which makes the failure look intermittent.
+
+## Where to read about a finding is now worked out, not only relayed (2026-09-04)
+
+Found by a question nobody had asked of the screen: for busybox
+`CVE-2025-60876` on the Alpine-based container variant, is there any way to
+tell whether the `-r` series already carries a backported fix? Three separate
+answers, and the first two were already held and thrown away by the interface.
+
+**The finding screen never showed how the match was made.** `matched` and
+`matched_from` are returned by the API for that exact URL and `grep matched
+web/src/screens/Finding.tsx` found nothing. The findings *list* has both a
+filter and a per-row marker (MDL-26); the screen somebody actually decides on
+had neither, which is the wrong way round. It says both answers now — an
+advisory match names the release carrying the fix, an identifier match cannot
+see a backport at all — and nothing where the scanner said nothing.
+
+**The official record for the identifier on the screen was nowhere on it.**
+References are only ever what the scanner handed over: for this finding a
+Siemens bulletin, two gists and two mailing-list attachments. The issue's
+`advisory` was **Debian's tracker for an Alpine package**, which is the exact
+artifact MDL-26's justification predicts, and `matched_from` — the NVD record
+— reached the browser and was dropped. UIX-52 now derives addresses from the
+two identifiers already held: the issue's record and each alias's, the
+distribution's answer about the issue, and the package's own page. Derived at
+read time, stored nowhere, kept apart from what the scanner supplied.
+
+**The distribution's tracker is the one that answers the original question.**
+`security.alpinelinux.org/vuln/<CVE>` states the release that carries a fix,
+which is precisely what an upstream version range cannot express.
+
+**The tests found three real defects before the gate did.** A percent-encoded
+`..%2F..%2F` in a component name decodes to a path that climbs, and escaping
+alone does not stop it: `.` and `..` are resolved by the *browser* before the
+request is sent. Names that are nothing but dots are refused outright now, and
+the control was verified by removing the refusal and watching five cases fail.
+The third was mine in the fixtures rather than the code — `CVE-2025-1` is not a
+well-formed identifier and the anchored pattern correctly resolved it to
+nothing.
+
+**Still open from the same question**, and worth doing next: the scanner
+reports considerably more than is kept. `matchDetails[].found.versionConstraint`
+is the range the finding actually fired on — for this one, `<= 1.37.0
+(unknown)`, which shows at a glance that the `-r` was never considered — and
+`vulnerability.namespace` (`nvd:cpe` here) names the data provider that
+answered. Both would need a column and an API field each. Measured against a real
+document produced by the demo's own scanner (grype 0.118.0) over the container
+inventory: 25 matches, of which 22 were reached through Go module advisories
+and 3 by comparing identifiers.

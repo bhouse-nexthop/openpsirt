@@ -335,3 +335,80 @@ func (d *Described) FillFrom(other Described) {
 		d.UpstreamVersion = other.UpstreamVersion
 	}
 }
+
+// Parts is what a package identifier says about a package, split into the
+// pieces a reader needs to find it again: which kind of package it is, who
+// publishes it, what it is called, at which version, and — for a distribution
+// package — which release of that distribution it was built for.
+//
+// Separate from the identity reductions above, which exist to make one package
+// compare equal to itself. This keeps what those deliberately throw away: a
+// distribution qualifier says nothing about what a package *is*, and is
+// exactly what somebody needs to look the package up.
+type Parts struct {
+	Type      string
+	Namespace string
+	Name      string
+	Version   string
+	// Distro is the distribution release the package was built for, as the
+	// identifier spells it — "alpine-3.24.1", "debian-12". Absent for
+	// everything that is not a distribution's package, and absent from plenty
+	// that is: it is a qualifier, and a producer need not state it.
+	Distro string
+}
+
+// PartsOfPurl splits a package identifier into what it says.
+//
+// Everything is returned decoded and the type lowercased, which is what the
+// specification says the type is. A malformed identifier yields whatever could
+// be read rather than an error: this feeds somewhere to look a package up, and
+// half an answer there costs a reader nothing.
+func PartsOfPurl(purl string) Parts {
+	purl = strings.TrimSpace(purl)
+	if purl == "" {
+		return Parts{}
+	}
+	// The subpath follows the qualifiers and is neither.
+	purl, _, _ = strings.Cut(purl, "#")
+	body, qualifiers, _ := strings.Cut(purl, "?")
+
+	var parts Parts
+	for _, pair := range strings.Split(qualifiers, "&") {
+		key, value, found := strings.Cut(pair, "=")
+		if found && strings.EqualFold(key, "distro") {
+			parts.Distro = decoded(value)
+			break
+		}
+	}
+
+	// The scheme is fixed by the specification. Anything else is not an
+	// identifier we can read, and guessing at one produces a link to a page
+	// about something else.
+	rest, found := strings.CutPrefix(body, "pkg:")
+	if !found {
+		if rest, found = strings.CutPrefix(body, "PKG:"); !found {
+			return Parts{}
+		}
+	}
+	// Cut the version from the right: a name contains no "@" and a version
+	// can.
+	path := rest
+	if at := strings.LastIndex(rest, "@"); at > 0 {
+		path, parts.Version = rest[:at], decoded(rest[at+1:])
+	}
+
+	segments := strings.Split(strings.Trim(path, "/"), "/")
+	if len(segments) < 2 {
+		return Parts{}
+	}
+	parts.Type = strings.ToLower(decoded(segments[0]))
+	parts.Name = decoded(segments[len(segments)-1])
+	if len(segments) > 2 {
+		namespace := make([]string, 0, len(segments)-2)
+		for _, segment := range segments[1 : len(segments)-1] {
+			namespace = append(namespace, decoded(segment))
+		}
+		parts.Namespace = strings.Join(namespace, "/")
+	}
+	return parts
+}

@@ -2646,6 +2646,7 @@ export interface components {
              * @description Published probability of exploitation, 0 to 1
              */
             likelihood?: number;
+            links?: components["schemas"]["LinkBody"][] | null;
             /** @enum {string} */
             matched?: "advisory" | "identifier";
             /** @description Where this match came from */
@@ -3076,6 +3077,11 @@ export interface components {
             /** @description Which version, so a link to the finding can name it — a build ships a name at more than one version often enough that a link without it cannot be resolved */
             version?: string;
             vulnerability: string;
+        };
+        LinkBody: {
+            /** @description What is at the other end — the issue's record, a distribution's answer about it, or the package's own page */
+            name: string;
+            url: string;
         };
         "List-assignedResponse": {
             /**

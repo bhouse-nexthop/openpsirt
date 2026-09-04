@@ -1092,6 +1092,11 @@ type Evidence struct {
 	// change itself, and hunting for it by hand is the step that does not
 	// happen when a thousand findings are waiting.
 	References []Reference
+	// Links are worked out from the names held here rather than supplied by a
+	// scanner, which is why they are kept apart from References. What a report
+	// points at is whatever its data carried; these resolve because an
+	// identifier names a record and a package identifier names a package.
+	Links []Link
 
 	// Assessed is what we say instead of the published rating, where somebody
 	// has said something. Both are carried, because showing only ours would
@@ -1324,6 +1329,10 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 			evidence.Aliases = append(evidence.Aliases, alias.Identifier)
 		}
 	}
+	// Worked out here rather than stored: an address derived from two names
+	// cannot go stale while the names are right, and storing it would be a
+	// second copy of the templates to keep in step.
+	evidence.Links = links(issue.Identifier, evidence.Aliases, component.Purl)
 	// The way down to each place, read in one pass. A place whose consumer is
 	// the build itself is asked about by the component, which lands on the
 	// same answer with one step in it.

@@ -437,6 +437,29 @@ None of it is recoverable later. A report is not kept once it has been read,
 so anything dropped at ingest is dropped for good, and the cost of keeping it
 is one pass over output already being parsed.
 
+### What the scanner pointed at is not all there is
+
+Reading a finding also offers addresses nobody supplied (UIX-52), worked out
+from the two identifiers already held: the issue's name and the package's. The
+issue's own record and the record under each other name it goes by; where a
+distribution packages the component, that distribution's answer about the
+issue; and the package's page in its own ecosystem.
+
+They are derived at read time and stored nowhere. An address worked out from
+two names cannot go stale while the names are right, and storing it would put a
+second copy of the templates somewhere to fall behind the first.
+
+Kept apart from the references a report carried, because the provenance is a
+different claim and the difference is the reason this exists at all: what a
+scanner points at is whatever its data happened to carry. On our own image the
+references for a package matched by identifier were a vendor bulletin, two
+gists and two mailing-list attachments, the issue's write-up was another
+distribution's tracker — the artifact MDL-26 anticipates — and the record for
+the identifier on the screen appeared nowhere.
+
+Nothing here fetches any of them. They are addresses handed to a person, so
+the restriction on what this reaches over the network is untouched (SEC-07).
+
 ### Telling a patch from a write-up
 
 A report gives a flat list of references and does not say what any of them is.
@@ -904,3 +927,6 @@ measure` re-runs it, and the constants at the top of the harness are the model.
 | Two rows that turn out to be one issue are refused rather than merged | Merging changes findings and decisions already made. Reading a scan is the wrong moment to do that silently |
 | Severity is stored on the issue, fix state on the finding | Severity is a property of the vulnerability; whether a fix exists is a property of the version in front of you |
 | A place under the product records no consumer at all | Rather than recording the root and excluding it later. The root's name differs per variant, and a key that has to be remembered to ignore is one somebody will forget to |
+| A derived address refuses a name that is nothing but dots, rather than escaping it | A name and a version become path segments, and "." and ".." are resolved by the browser before the request leaves it — so escaping is not enough on its own and a component named that would quietly reach a different page on the same site. Nothing that is really a package is called "..", so the whole link is dropped. Everything else, separators included, is escaped into the segment it belongs to (SEC-04) |
+| An identifier is matched against an anchored scheme before it resolves to anything | A link is offered on the strength of the name looking like a CVE or a GitHub advisory. A flaw this deployment recorded is filed under a name it minted (MDL-24), and a loose match would send somebody to a public page about something else — or to a page about nothing, which reads as the record being missing rather than the flaw being ours |
+| A package kind nothing here knows produces no link | There is no general answer, only a place per ecosystem. A link that lands on the wrong thing costs more than no link, because it is followed before it is disbelieved |

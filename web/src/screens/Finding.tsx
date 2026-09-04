@@ -273,6 +273,10 @@ export function Finding() {
 
         <References advisory={it.advisory} refs={it.references ?? []} />
 
+        <HowMatched matched={it.matched} from={it.matched_from} version={it.version} />
+
+        <LookItUp links={it.links ?? []} />
+
         <div className="evblock">
           <h4>Upstream</h4>
           <p>
@@ -1268,6 +1272,77 @@ function References({ advisory, refs }: { advisory?: string; refs: { url?: strin
         ))}
       </ul>
       <p className="hint">Patches first.</p>
+    </div>
+  );
+}
+
+// How the scanner reached this, which is the first question anybody asks about
+// a distribution's package (MDL-26).
+//
+// An advisory for the package's own ecosystem counts the release number and
+// names the release that carries the fix. An identifier compared against an
+// upstream version range cannot see a backported fix at all — the patch does
+// not move the upstream version — so it fires whether or not whoever packages
+// this has already dealt with it.
+//
+// The findings list marks these and the screen somebody decides on did not,
+// which is the wrong way round: the list is where they are noticed and this is
+// where the judgment is made. Nothing is said where the scanner said nothing,
+// because unknown is not unconfirmed.
+function HowMatched({ matched, from, version }: { matched?: string; from?: string; version?: string }) {
+  if (matched !== "identifier" && matched !== "advisory") return null;
+  return (
+    <div className="evblock">
+      <h4>How this was matched</h4>
+      {matched === "identifier" ? (
+        <p>
+          <b>Not confirmed by a packager.</b> Matched by comparing a published identifier against an
+          upstream version range. A distribution backports fixes without moving that version, so this may
+          already be fixed in <span className="id">{version}</span> — nobody has confirmed either way.
+        </p>
+      ) : (
+        <p>
+          <b>Confirmed by a packager.</b> Matched through an advisory for this package's own ecosystem,
+          which counts the release number and names the release that carries the fix.
+        </p>
+      )}
+      {from && (
+        <p className="hint">
+          The data behind it came from{" "}
+          <a href={from} target="_blank" rel="noreferrer noopener">
+            {from.replace(/^https?:\/\//, "")}
+          </a>
+          , which is not always where the issue is written up: one issue reached through two ecosystems
+          has two answers and the issue itself can hold one.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Where to read about this, worked out from the names held here rather than
+// handed over by a scanner (UIX-52).
+//
+// A scanner points at whatever its data carried, which for a package matched by
+// identifier is often another distribution's write-up and need not include the
+// issue's own record at all. These resolve because an identifier names a record
+// and a package identifier names a package.
+function LookItUp({ links }: { links: { url?: string; name?: string }[] }) {
+  if (links.length === 0) return null;
+  return (
+    <div className="evblock">
+      <h4>Look it up</h4>
+      <ul className="refs">
+        {links.map((link) => (
+          <li key={link.url}>
+            <span className="kind">{link.name}</span>{" "}
+            <a href={link.url} target="_blank" rel="noreferrer noopener">
+              {(link.url ?? "").replace(/^https?:\/\//, "")}
+            </a>
+          </li>
+        ))}
+      </ul>
+      <p className="hint">Worked out from the identifiers, not supplied by the scanner.</p>
     </div>
   );
 }

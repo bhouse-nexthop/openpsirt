@@ -2,7 +2,7 @@
 
 The web interface, how it is built, and how it reaches the server.
 
-Satisfies UIX-01 to UIX-27, UIX-30 to UIX-51, SCP-05, API-17, ACC-56 to
+Satisfies UIX-01 to UIX-27, UIX-30 to UIX-52, SCP-05, API-17, ACC-56 to
 ACC-59, the half of ING-41 that is shown rather than collected, and the
 interface half of TRI-45 to TRI-47. UIX-28 is in `DESIGN-text.md` with the rest
 of the rendering, and UIX-29 was withdrawn. What is not built is named at the
@@ -295,6 +295,27 @@ is marked "not confirmed", and the filters can narrow to those — a distributio
 backports fixes without moving the upstream version, so these are neither
 confirmed nor refuted and finding them one at a time is not a thing anybody
 does.
+
+**The finding screen states it too, and says where the match came from.** The
+list marks these and the screen somebody decides on did not, which is the wrong
+way round: the list is where they are noticed and the finding is where the
+judgment is made. Both answers are stated rather than only the weaker one — an
+advisory for the package's own ecosystem counts the release number and names
+the release carrying the fix — and nothing is said where the scanner said
+nothing, because unknown is not unconfirmed. Beside it is where the data behind
+the match came from, which is per finding and differs from where the issue is
+written up whenever one issue is reached through two ecosystems.
+
+**Where to read about it is worked out from the identifiers, not only relayed**
+(UIX-52). A block offers the issue's own record, the record under each other
+name it goes by, the answer from the distribution that packages the component,
+and the package's own page — derived from the issue identifier and the package
+identifier at read time, kept apart from what the scanner supplied, and empty
+rather than approximate where a name resolves to no scheme this knows. The
+distribution's tracker is the one that answers what an identifier match cannot:
+whether the release being shipped already carries a backported fix. The server
+derives them, so a machine client gets the same list (API-03); nothing is
+fetched, so these are links rather than lookups.
 
 **The findings list has a triage mode** (UIX-43). Off by default and one
 control away; in the URL, so a link carries it. The row under the cursor is

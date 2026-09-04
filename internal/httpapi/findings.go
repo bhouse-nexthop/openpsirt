@@ -352,6 +352,13 @@ type ReferenceBody struct {
 	Kind string `json:"kind" enum:"patch,advisory,report,other" doc:"What it appears to be. A patch is the change itself"`
 }
 
+// LinkBody is somewhere to read about this issue or this package, worked out
+// from the identifiers held here.
+type LinkBody struct {
+	URL  string `json:"url"`
+	Name string `json:"name" doc:"What is at the other end — the issue's record, a distribution's answer about it, or the package's own page"`
+}
+
 // StepBody is one component on the way down to another.
 type StepBody struct {
 	Component string `json:"component"`
@@ -390,6 +397,11 @@ type EvidenceBody struct {
 	// References carries patches first, because for somebody deciding whether
 	// to backport rather than upgrade, the change itself is the answer.
 	References []ReferenceBody `json:"references,omitempty"`
+	// Links are derived here rather than relayed. A scanner points at whatever
+	// its data carried, which for a package matched by identifier is often
+	// another distribution's write-up and need not include the issue's own
+	// record at all.
+	Links []LinkBody `json:"links,omitempty"`
 
 	Component string `json:"component"`
 	Version   string `json:"version"`
@@ -579,6 +591,9 @@ func evidenceBody(e finding.Evidence) EvidenceBody {
 		body.References = append(body.References, ReferenceBody{
 			URL: reference.URL, Kind: string(reference.Kind),
 		})
+	}
+	for _, link := range e.Links {
+		body.Links = append(body.Links, LinkBody{URL: link.URL, Name: link.Name})
 	}
 	for _, place := range e.Places {
 		sitting := SittingBody{
