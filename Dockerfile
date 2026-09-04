@@ -131,9 +131,26 @@ RUN apk add --no-cache curl ca-certificates \
 
 FROM alpine:${ALPINE_VERSION} AS runtime
 
+# The packages this inherits from the base are upgraded before anything is
+# added to them (SCP-17).
+#
+# A base tag's package set is frozen at the moment that image was published,
+# and the distribution goes on publishing fixes for it — so pinning the base
+# and stopping there ships whatever was known-vulnerable on that date, forever.
+# Measured on ourselves the day the base moved to 3.24: twenty-two findings
+# against the distribution's own packages, twenty of them OpenSSL at 3.5.7-r0
+# with the fix published as 3.5.8-r0, two of those critical, every one matched
+# through Alpine's own advisories rather than guessed at.
+#
+# What it costs is that two builds of one commit can differ. That is accepted
+# rather than overlooked: the image carries an inventory of itself, so what
+# actually shipped is recorded rather than assumed, and the drift is a thing
+# somebody can read instead of a thing nobody can see.
+#
 # Outbound TLS needs root certificates: the ranking feeds are fetched over
 # HTTPS, and without these every fetch fails with an unhelpful error.
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk upgrade --no-cache \
+ && apk add --no-cache ca-certificates tzdata
 
 # Runs as a normal user. Nothing here needs root, and a container that does not
 # need it should not have it.

@@ -43,6 +43,25 @@ That is the shape of the failure rather than a one-off: the same week found the
 scanner and the inventory tool two releases behind each, and nothing watches
 any of the three.
 
+**The packages inside that release are upgraded at build time** (SCP-17), which
+is a different thing from moving the pin and does not weaken it. A base tag's
+package set is frozen at the moment that image was published and the
+distribution goes on publishing fixes for it, so pinning the base and stopping
+there ships what was known-vulnerable on that date and keeps shipping it.
+
+Measured on ourselves the day the base moved: **22 findings against the
+distribution's own packages, 20 of them OpenSSL at `3.5.7-r0` with the fix
+published as `3.5.8-r0`**, two of them critical, every one matched through
+Alpine's own advisories rather than by comparing an identifier against an
+upstream range. Upgrading cleared them. They were not caused by the newer base;
+the older one had the same shape and was less legible about it.
+
+What this costs is that two builds of one commit can differ, and that is
+accepted rather than overlooked. It is acceptable here for a reason particular
+to this image: it carries an inventory of itself, so what actually shipped is
+recorded rather than assumed, and the drift is something somebody can read
+instead of something nobody can see.
+
 | | |
 |---|---|
 | Size | ~40 MB |
