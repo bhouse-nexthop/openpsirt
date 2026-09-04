@@ -39,11 +39,11 @@ var ErrSamePerson = errors.New("that would hand their work to themselves")
 // every call site saying what it is looking at and leaves one place that knows
 // the grain.
 func (s *Store) Assign(ctx context.Context, subject access.Subject, targetID, vulnerabilityID,
-	componentID int64, to *int64) (int64, error) {
+	componentID int64, to *int64) (moved int64, undisclosed bool, err error) {
 
 	productID, err := productOf(ctx, s.db, targetID)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	// Deciding who deals with something is a write, so it asks for the right
 	// that names it. Being able to *see* a finding is not being able to hand
@@ -52,11 +52,11 @@ func (s *Store) Assign(ctx context.Context, subject access.Subject, targetID, vu
 	// assigning.
 	if !subject.Holds(access.PublicTriage, productID) &&
 		!subject.Holds(access.PrivateTriage, productID) {
-		return 0, access.Denied(fmt.Sprintf("decide who deals with findings in product %d", productID))
+		return 0, false, access.Denied(fmt.Sprintf("decide who deals with findings in product %d", productID))
 	}
 	visible := access.Visible(subject, productID)
 	if len(visible) == 0 {
-		return 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
+		return 0, false, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
 
 	now := s.now().UTC().Truncate(time.Microsecond)
@@ -85,13 +85,38 @@ func (s *Store) Assign(ctx context.Context, subject access.Subject, targetID, vu
 
 	result, err := update.Exec(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("record who is dealing with this: %w", err)
+		return 0, false, fmt.Errorf("record who is dealing with this: %w", err)
 	}
-	moved, err := result.RowsAffected()
+	moved, err = result.RowsAffected()
 	if err != nil {
-		return 0, fmt.Errorf("record who is dealing with this: %w", err)
+		return 0, false, fmt.Errorf("record who is dealing with this: %w", err)
 	}
-	return moved, nil
+	if moved == 0 {
+		return 0, false, nil
+	}
+
+	// Whether what was just handed over is a finding nobody has announced.
+	//
+	// Answered here because the caller has to know it to decide what may be
+	// said about it outside the application (NTF-15) and cannot see the rows
+	// from where it stands. Asked after the write and narrowed the same way,
+	// so it describes what actually moved. Any one row answers: they are one
+	// issue at one component in one build, and visibility belongs to the
+	// finding rather than to the place.
+	private, err := s.db.NewSelect().Model((*Finding)(nil)).
+		Column("id").
+		Where(`target_id IN (SELECT tg.id FROM "target" AS tg
+			WHERE tg.stream_id IN (SELECT st.id FROM "stream" AS st
+				WHERE st.product_id = ?))`, productID).
+		Where("vulnerability_id = ?", vulnerabilityID).
+		Where("component_id = ?", componentID).
+		Where("closed_at IS NULL").
+		Where("visibility = ?", access.Private).
+		Exists(ctx)
+	if err != nil {
+		return moved, false, fmt.Errorf("read whether that finding is disclosed: %w", err)
+	}
+	return moved, private, nil
 }
 
 // Release hands everything one person holds back to nobody.

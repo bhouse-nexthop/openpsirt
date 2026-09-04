@@ -49,6 +49,19 @@ type Config struct {
 	// without it there is nothing to triage, because the vulnerability data is
 	// produced here rather than sent to us.
 	ScannerPath string
+	// Mail is where messages that leave the application go. Absent is
+	// ordinary: the notification area needs nothing configured, and a
+	// deployment that sets none of this simply tells nobody anything outside
+	// the application (NTF-08).
+	//
+	// MailFrom and MailServer are both required for mail to happen at all —
+	// a server with nobody to send as is not a configuration, it is half of
+	// one. Credentials are optional and are refused over a connection the
+	// server would not secure.
+	MailFrom     string
+	MailServer   string
+	MailUsername string
+	MailPassword string
 	// BootstrapAdmins are granted administrator at every startup, not only the
 	// first. Applying it every time makes it the way back in for an operator
 	// who has locked themselves out: add yourself, restart. For software
@@ -130,6 +143,10 @@ func Load() (Config, error) {
 	c := Config{
 		Addr:                   env("ADDR", ":8080"),
 		BaseURL:                env("BASE_URL", ""),
+		MailFrom:               env("MAIL_FROM", ""),
+		MailServer:             env("MAIL_SERVER", ""),
+		MailUsername:           env("MAIL_USERNAME", ""),
+		MailPassword:           env("MAIL_PASSWORD", ""),
 		PublisherName:          env("PUBLISHER_NAME", ""),
 		PublisherNamespace:     env("PUBLISHER_NAMESPACE", ""),
 		PublisherCategory:      env("PUBLISHER_CATEGORY", "vendor"),

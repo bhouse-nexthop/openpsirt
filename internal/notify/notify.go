@@ -82,8 +82,18 @@ type Notification struct {
 	// read because the finding a line names may since have been decided,
 	// closed or reopened, and re-deriving would describe the world now instead
 	// of the world somebody was told about.
-	Body      string     `bun:"body,notnull"`
-	Link      string     `bun:"link,notnull"`
+	Body string `bun:"body,notnull"`
+	Link string `bun:"link,notnull"`
+	// Private says what this is about has not been disclosed. A channel that
+	// leaves this deployment carries a link and nothing else for one of these
+	// (NTF-15); the area inside it is unaffected.
+	Private bool `bun:"private,notnull"`
+	// SentAt says this has been carried outside the application, and Attempts
+	// how many times that has been tried. Unsent is the whole of the work
+	// list, so a failure needs no state of its own — it is simply still
+	// unsent — and the count is what keeps that from being forever.
+	SentAt    *time.Time `bun:"sent_at"`
+	Attempts  int        `bun:"attempts,notnull"`
 	CreatedAt time.Time  `bun:"created_at,notnull"`
 	ReadAt    *time.Time `bun:"read_at"`
 	ClearedAt *time.Time `bun:"cleared_at"`
@@ -111,6 +121,11 @@ type Telling struct {
 	About string
 	Body  string
 	Link  string
+	// Private says what this is about is a finding nobody has announced. It
+	// travels with the telling rather than being worked out later: what is
+	// said outside this deployment depends on what was true when there was
+	// something to say (NTF-15).
+	Private bool
 }
 
 // Tell records something that happened, for one person.
@@ -128,7 +143,7 @@ func (s *Store) Tell(ctx context.Context, t Telling) error {
 	}
 	row := &Notification{
 		PersonID: t.PersonID, Kind: t.Kind, Lifetime: Event,
-		Body: t.Body, Link: t.Link, CreatedAt: s.now(),
+		Body: t.Body, Link: t.Link, Private: t.Private, CreatedAt: s.now(),
 	}
 	if _, err := s.db.NewInsert().Model(row).Exec(ctx); err != nil {
 		return fmt.Errorf("record what happened: %w", err)
@@ -143,6 +158,10 @@ type Holds struct {
 	About string
 	Body  string
 	Link  string
+	// Private says the condition is about a finding nobody has announced.
+	// Every embargo alert is one; a build that stopped being scanned is not
+	// about a finding at all.
+	Private bool
 }
 
 // Reconcile makes the open conditions of one kind, for one person, exactly
@@ -208,7 +227,7 @@ func (s *Store) Reconcile(ctx context.Context, personID int64, kind Kind,
 			row := &Notification{
 				PersonID: personID, Kind: kind, Lifetime: Condition,
 				About: about, AboutOpen: &key,
-				Body: h.Body, Link: h.Link, CreatedAt: now,
+				Body: h.Body, Link: h.Link, Private: h.Private, CreatedAt: now,
 			}
 			// Each insert stands on its own savepoint, because carrying on
 			// after a failed write is not something every engine allows.

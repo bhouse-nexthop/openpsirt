@@ -1,6 +1,8 @@
 package notify_test
 
 import (
+	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -14,6 +16,17 @@ import (
 
 // each gives every engine a migrated database and two people to tell things to.
 func each(t *testing.T, fn func(t *testing.T, s *notify.Store, me, them access.Subject)) {
+	t.Helper()
+	eachWithDB(t, func(t *testing.T, _ *database.DB, s *notify.Store, me, them access.Subject) {
+		fn(t, s, me, them)
+	})
+}
+
+// eachWithDB is the same, for a test that needs to reach past the store — the
+// sweep that carries messages out reads people as well as notifications.
+func eachWithDB(t *testing.T,
+	fn func(t *testing.T, db *database.DB, s *notify.Store, me, them access.Subject),
+) {
 	t.Helper()
 	dbtest.Each(t, func(t *testing.T, db *database.DB) {
 		ctx := t.Context()
@@ -32,7 +45,7 @@ func each(t *testing.T, fn func(t *testing.T, s *notify.Store, me, them access.S
 		if err != nil {
 			t.Fatal(err)
 		}
-		fn(t, notify.NewStore(db.DB),
+		fn(t, db, notify.NewStore(db.DB),
 			access.NewPerson(mine.ID, "me@example.com", false, nil),
 			access.NewPerson(theirs.ID, "them@example.com", false, nil))
 	})
@@ -267,4 +280,97 @@ func TestTwoSweepsAtOnceStillSayOneThing(t *testing.T) {
 			t.Errorf("%d rows say the same true thing (err %v), want 1", total, err)
 		}
 	})
+}
+
+func TestOnlySomebodyWithAnAddressIsSentAnything(t *testing.T) {
+	// Somebody without an address is told nothing outside the application and
+	// keeps the area inside it (ACC-60). Narrowed in the query rather than
+	// skipped after reading, so a deployment where nobody has one does no work
+	// at all rather than reading every unsent row every minute.
+	eachWithDB(t, func(t *testing.T, db *database.DB, s *notify.Store, me, _ access.Subject) {
+		ctx := t.Context()
+		if err := s.Tell(ctx, notify.Telling{
+			PersonID: me.ID, Kind: notify.Assigned,
+			Body: "CVE-2026-1 in libfoo", Link: "/findings/1",
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		sender := &recorder{}
+		post := notify.NewPost(db.DB, sender, "https://psirt.example", discard())
+		if sent, failed, err := post.Once(ctx); err != nil || sent != 0 || failed != 0 {
+			t.Fatalf("with no address: sent=%d failed=%d err=%v", sent, failed, err)
+		}
+		if len(sender.sent) != 0 {
+			t.Fatalf("a message was sent to somebody with nowhere to send it: %+v", sender.sent)
+		}
+
+		if err := access.NewStore(db.DB).SetEmail(ctx, me.ID, "ana@example", false); err != nil {
+			t.Fatal(err)
+		}
+		sent, failed, err := post.Once(ctx)
+		if err != nil || sent != 1 || failed != 0 {
+			t.Fatalf("with an address: sent=%d failed=%d err=%v", sent, failed, err)
+		}
+		if len(sender.sent) != 1 || sender.sent[0].to != "ana@example" {
+			t.Fatalf("what was sent, and where: %+v", sender.sent)
+		}
+
+		// And once only. A row that has been carried out is not carried again
+		// the next minute, which is what the sent mark is for.
+		if sent, _, err := post.Once(ctx); err != nil || sent != 0 {
+			t.Fatalf("the same notification was sent twice: sent=%d err=%v", sent, err)
+		}
+	})
+}
+
+func TestAMessageThatCannotBeSentIsLeftAloneEventually(t *testing.T) {
+	// A mailbox that refuses every time has gone, and a sweep that keeps
+	// trying it is one that eventually does nothing else. The row stays unsent
+	// and stays readable: the area still has it, and nobody is told a message
+	// arrived that did not.
+	eachWithDB(t, func(t *testing.T, db *database.DB, s *notify.Store, me, _ access.Subject) {
+		ctx := t.Context()
+		if err := access.NewStore(db.DB).SetEmail(ctx, me.ID, "ana@example", false); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Tell(ctx, notify.Telling{
+			PersonID: me.ID, Kind: notify.Assigned, Body: "CVE-2026-1 in libfoo",
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		sender := &recorder{fail: errors.New("no such mailbox")}
+		post := notify.NewPost(db.DB, sender, "https://psirt.example", discard())
+		for i := 0; i < 8; i++ {
+			if _, _, err := post.Once(ctx); err != nil {
+				t.Fatalf("sweep %d: %v", i, err)
+			}
+		}
+		if len(sender.sent) != 5 {
+			t.Errorf("tried %d times, want it to stop at 5", len(sender.sent))
+		}
+	})
+}
+
+func discard() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+
+// recorder stands in for a channel, so what the sweep does with an answer is
+// testable without a mail server.
+type recorder struct {
+	fail error
+	sent []struct {
+		to      string
+		message notify.Message
+	}
+}
+
+func (r *recorder) Name() string { return "recorder" }
+
+func (r *recorder) Send(_ context.Context, to string, m notify.Message) error {
+	r.sent = append(r.sent, struct {
+		to      string
+		message notify.Message
+	}{to, m})
+	return r.fail
 }

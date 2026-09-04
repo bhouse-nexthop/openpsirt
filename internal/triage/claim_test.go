@@ -488,7 +488,7 @@ func TestAStandingClaimReportsHowItsRowsStandNotOneRowsState(t *testing.T) {
 
 		// Send one row back on its own, so one claim mixes waiting and
 		// returned rows.
-		if _, err := f.store.SendBack(ctx, f.reviewer, recorded[2].ID, "Which config file?"); err != nil {
+		if _, _, err := f.store.SendBack(ctx, f.reviewer, recorded[2].ID, "Which config file?"); err != nil {
 			t.Fatal(err)
 		}
 		standing, err := f.store.StandingAt(ctx, f.reviewer, f.product, f.issue, f.keyed(places...))

@@ -98,7 +98,8 @@ func registerAssignment(api huma.API, in Ingest) {
 			to = &person.ID
 		}
 
-		if _, err := finding.NewStore(in.DB.DB).Assign(ctx, subject, target, issue, component, to); err != nil {
+		_, undisclosed, err := finding.NewStore(in.DB.DB).Assign(ctx, subject, target, issue, component, to)
+		if err != nil {
 			return nil, refusedFinding(in, err)
 		}
 
@@ -135,6 +136,12 @@ func registerAssignment(api huma.API, in Ingest) {
 					", in " + input.Product + " " + input.Stream + " " + input.Variant,
 				Link: findingPath(input.Product, input.Stream, input.Variant,
 					input.Vulnerability, input.Component),
+				// The body above names the product, the build and the issue.
+				// Inside the application that is right — reaching it is
+				// already the visibility check — and outside it is the
+				// announcement an embargo exists to prevent, so a channel
+				// that leaves here carries the link alone (NTF-15).
+				Private: undisclosed,
 			}); err != nil && in.Logger != nil {
 				in.Logger.Error("could not say that work was assigned",
 					"error", err, "person", *to)

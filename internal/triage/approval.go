@@ -344,64 +344,67 @@ func (s *Store) authorOf(ctx context.Context, decision Decision) (int64, error) 
 // queue, so silence leaves it sitting while they wait to hear (NTF-05). The
 // caller is what tells them; this is what says whom.
 func (s *Store) SendBack(ctx context.Context, subject access.Subject, decisionID int64,
-	because string) (author int64, err error) {
+	because string) (author int64, visibility access.Visibility, err error) {
 
 	if strings.TrimSpace(because) == "" {
-		return 0, fmt.Errorf("say what needs to change: sending something back without a reason " +
+		return 0, "", fmt.Errorf("say what needs to change: sending something back without a reason " +
 			"is a round trip nobody learns from")
 	}
 	if err := markdown.Check(because); err != nil {
-		return 0, err
+		return 0, "", err
 	}
 
 	db, ok := s.db.(*bun.DB)
 	if !ok {
-		return 0, fmt.Errorf("this store is already inside a transaction")
+		return 0, "", fmt.Errorf("this store is already inside a transaction")
 	}
 	err = database.InTransaction(ctx, db, func(ctx context.Context, tx bun.Tx) error {
 		var err error
-		author, err = (&Store{db: tx, now: s.now}).sendBack(ctx, subject, decisionID, because)
+		author, visibility, err = (&Store{db: tx, now: s.now}).sendBack(ctx, subject, decisionID, because)
 		return err
 	})
 	if err != nil {
 		// Nothing was written, so there is nobody to tell.
-		return 0, err
+		return 0, "", err
 	}
-	return author, nil
+	return author, visibility, nil
 }
 
 // sendBack is the whole of sending one decision back, inside a transaction.
 func (s *Store) sendBack(ctx context.Context, subject access.Subject, decisionID int64,
-	because string) (int64, error) {
+	because string) (int64, access.Visibility, error) {
 
 	decision, err := s.reaching(ctx, subject, decisionID, mayApprove)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	if decision.State != Proposed {
-		return 0, fmt.Errorf("that decision is %s, so there is nothing waiting on anybody",
+		return 0, "", fmt.Errorf("that decision is %s, so there is nothing waiting on anybody",
 			decision.State)
 	}
 	wrote, err := s.authorOf(ctx, *decision)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	if wrote == subject.ID {
-		return 0, fmt.Errorf("that is your own claim to revise, not one to send back")
+		return 0, "", fmt.Errorf("that is your own claim to revise, not one to send back")
 	}
 
 	// The reason travels as a comment, because that is what it is: the
 	// author needs the words, and a reason recorded anywhere else is one
 	// nobody reads.
 	if _, err := s.Say(ctx, subject, decisionID, because); err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	if _, err := s.db.NewUpdate().Model((*Decision)(nil)).
 		Set("sent_back_at = ?", s.now().Truncate(time.Microsecond)).
 		Where("id = ?", decisionID).Exec(ctx); err != nil {
-		return 0, fmt.Errorf("record that this was sent back: %w", err)
+		return 0, "", fmt.Errorf("record that this was sent back: %w", err)
 	}
-	return wrote, nil
+	// The finding's own visibility travels back with the author, because what
+	// may be said about this outside the application depends on it (NTF-15)
+	// and the caller cannot see the decision from where it stands.
+	return wrote, decision.Visibility, nil
 }
 
 // covering counts the open findings a claim covers right now.

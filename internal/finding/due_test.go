@@ -156,7 +156,7 @@ func TestOverdueIsCountedAgainstWhoeverIsHoldingIt(t *testing.T) {
 		}
 		open := f.open(t)
 		triager := f.holding(t, access.PublicTriage)
-		if _, err := f.store.Assign(t.Context(), triager, f.target,
+		if _, _, err := f.store.Assign(t.Context(), triager, f.target,
 			open[0].VulnerabilityID, open[0].ComponentID, ptr(int64(7))); err != nil {
 			t.Fatal(err)
 		}
@@ -221,7 +221,7 @@ func TestOnlyADecisionThatAppliesTakesAFindingOffTheClock(t *testing.T) {
 		}
 		open := f.open(t)
 		triager := f.holding(t, access.PublicTriage)
-		if _, err := f.store.Assign(ctx, triager, f.target,
+		if _, _, err := f.store.Assign(ctx, triager, f.target,
 			open[0].VulnerabilityID, open[0].ComponentID, ptr(int64(7))); err != nil {
 			t.Fatal(err)
 		}

@@ -2,10 +2,9 @@
 
 What somebody is told, and through what.
 
-Satisfies NTF-01 to NTF-15. The channels that carry things outside the
-application — mail, and chat behind the same interface — are not built; what is
-here is the one that needs nothing configured, and what is missing is named
-below rather than left to be discovered.
+Satisfies NTF-01 to NTF-15. Mail is built, behind the one interface a chat
+adapter will use; what is missing is named at the foot rather than left to be
+discovered.
 
 ## The area that works with nothing set up
 
@@ -79,16 +78,50 @@ not the same thing to the person waiting — which is what the queue's own
 ## What is not built, and what it will be
 
 **A daily digest** carrying everything that is not urgent, opt-in and off by
-default (NTF-03). Off by default because a digest nobody asked for is mail
+default (NTF-03). Not built. Off by default because a digest nobody asked for is mail
 somebody filters, and a filtered channel is worse than no channel: it looks
 like it is working.
 
-**Mail carries the markdown as its text part** (NTF-14). A chat adapter
-translates rather than forwarding it, and mostly sends a summary and a link
-rather than the whole thing — a channel people read on a phone is not a channel
-to paste a justification into. Neither is built, and the server-side renderer
-that the HTML part of a mail would need is kept for that reason rather than
-deleted.
+**Mail carries the markdown as its text part** (NTF-14), which it does. A chat
+adapter translates rather than forwarding it, and mostly sends a summary and a
+link rather than the whole thing — a channel people read on a phone is not a
+channel to paste a justification into. That adapter is not built, and neither
+is the HTML part of a mail, which is the only remaining reader for the
+server-side renderer and why it is kept rather than deleted.
+
+## Carrying something out of the application
+
+**Mail is a channel behind one interface** (NTF-01), and a chat adapter is a
+second implementation of how to carry rather than of what to say. What may be
+said is decided once, in one place, for every channel there will be — a second
+place for that is the one that gets it wrong.
+
+**What is unsent is the work list.** A sweep reads notifications nobody has
+carried out yet, sends them, and marks them. A message that failed needs no
+state of its own to say it should be tried again: it is simply still unsent.
+That also means a deployment that configures mail after running for a week
+finds the week waiting rather than lost.
+
+**A message is tried five times and then left alone.** A mailbox that refuses
+every time has gone, and a sweep that keeps trying it is one that eventually
+does nothing else. The row stays unsent and stays readable: the area inside the
+application still has it, and nobody is told a message arrived that did not.
+
+**Somebody with no address is sent nothing**, and the query says so rather than
+the loop, so a deployment where nobody has one does no work at all.
+
+**The password is not protected from being logged, because nothing logs it.**
+A formatter that redacts the configuration was written and then removed: the
+gate that refuses exported code nothing reaches was right to refuse it, and
+the reasoning it rejected — "nothing logs it today, the point is that it stays
+safe when something does" — is the reasoning that gate exists to catch. If
+anything ever formats the configuration, the redaction goes in with it, where
+it can be seen to work.
+
+**Credentials are refused over a connection the server would not secure.** The
+sweep offers STARTTLS and will not send a password without it: a password sent
+in the clear to whatever answered on that port is a password given away, and an
+operator who configured one is entitled to assume it is not.
 
 ## What leaves the building says less than what stays in it
 
@@ -121,6 +154,14 @@ That is a different question from who is told, which ACC-47 already answers.
 Narrowing the recipients and emptying the body are both needed: the first stops
 it reaching somebody who should not know, the second stops it being disclosed
 by the delivery itself.
+
+**The address is part of what must say nothing.** The decision says a message
+carries a link, and writing one showed that a link to the finding defeats the
+rule it belongs to: a path carrying the identifier and the component announces
+both to every server the message crosses, however careful the body was. So what
+a private message carries is the way in — the deployment's own front door — and
+the notification area behind it, reached with a credential and a visibility
+check, says which thing and where.
 
 What it costs is a click, which is the click the message was asking for anyway.
 

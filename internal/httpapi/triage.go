@@ -965,7 +965,7 @@ func registerSendBack(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
-		author, err := store.SendBack(ctx, subject, input.ID, input.Body.Because)
+		author, visibility, err := store.SendBack(ctx, subject, input.ID, input.Body.Because)
 		if err != nil {
 			return nil, refusedDecision(err)
 		}
@@ -978,6 +978,9 @@ func registerSendBack(api huma.API, in Ingest) {
 			PersonID: author, Kind: notify.SentBack,
 			Body: "A claim of yours was sent back: " + input.Body.Because,
 			Link: "/decisions/" + strconv.FormatInt(input.ID, 10),
+			// The words an approver wrote are about the finding, so they are
+			// as private as it is (NTF-15).
+			Private: visibility == access.Private,
 		}); err != nil && in.Logger != nil {
 			in.Logger.Error("could not say that a claim was sent back",
 				"error", err, "decision", input.ID)

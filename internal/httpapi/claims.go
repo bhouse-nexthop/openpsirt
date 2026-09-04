@@ -79,6 +79,13 @@ func registerClaims(api huma.API, in Ingest) {
 				PersonID: done.Returned.ProposedBy, Kind: notify.SentBack,
 				Body: "Part of a claim of yours was set aside: " + input.Body.Because,
 				Link: "/review-queue",
+				// A claim covers many findings and this path holds the claim
+				// rather than any of them, so whether one of them is
+				// undisclosed cannot be answered from here. Treated as though
+				// one is: the direction to be wrong in is a link somebody has
+				// to follow, not an approver's words about an embargo landing
+				// in a mail server (NTF-15).
+				Private: true,
 			}); err != nil && in.Logger != nil {
 				in.Logger.Error("could not say that rows were set aside",
 					"error", err, "claim", input.ID)
@@ -133,6 +140,9 @@ func registerClaims(api huma.API, in Ingest) {
 				PersonID: author, Kind: notify.SentBack,
 				Body: "A claim of yours was sent back: " + input.Body.Because,
 				Link: link,
+				// The words an approver wrote are about the finding, so they
+				// are as private as it is (NTF-15).
+				Private: back.Decision.Visibility == access.Private,
 			}); err != nil && in.Logger != nil {
 				in.Logger.Error("could not say that a claim was sent back",
 					"error", err, "claim", input.ID, "person", author)

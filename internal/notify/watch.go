@@ -234,6 +234,10 @@ func (w *Watch) pastDisclosure(ctx context.Context, admins []int64) (map[int64][
 				"/variants/" + url.PathEscape(row.Variant) +
 				"/findings/" + url.PathEscape(row.Vulnerability) +
 				"/components/" + url.PathEscape(row.Component),
+			// Every one of these is about a finding nobody has announced —
+			// that is what an embargo is — so what leaves this deployment
+			// about it is a link and nothing else (NTF-15).
+			Private: true,
 		}
 		for _, admin := range admins {
 			out[admin] = append(out[admin], holds)

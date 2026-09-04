@@ -195,7 +195,11 @@ func run(args []string, stdout, stderr *os.File) error {
 	// two scans of one build on the queue and the second would find nothing to
 	// do.
 	schedule := scanner.NewSchedule(db, work, logger, name)
-	return serve(cfg, logger, handler, reader, runner, schedule, upstream, watch)
+	// What leaves the application, where an operator configured somewhere for
+	// it to go. Nil when they did not, which is ordinary rather than broken:
+	// the notification area is the channel that always exists.
+	post := notify.NewPost(db.DB, mailChannel(cfg), cfg.BaseURL, logger)
+	return serve(cfg, logger, handler, reader, runner, schedule, upstream, watch, post)
 }
 
 // readInterval is how long an idle reader waits before asking for work again.
@@ -306,7 +310,7 @@ func newLogger(cfg config.Config, w *os.File) *slog.Logger {
 
 func serve(cfg config.Config, logger *slog.Logger, handler http.Handler,
 	reader *ingest.Reader, runner *scanner.Runner, schedule *scanner.Schedule,
-	upstream *currency.Refresher, watch *notify.Watch) error {
+	upstream *currency.Refresher, watch *notify.Watch, post *notify.Post) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -323,6 +327,13 @@ func serve(cfg config.Config, logger *slog.Logger, handler http.Handler,
 		go func() {
 			defer workers.Done()
 			reader.Run(ctx, readInterval)
+		}()
+	}
+	if post != nil {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			post.Run(ctx, 0)
 		}()
 	}
 	if runner != nil {
@@ -475,4 +486,17 @@ func roleMode(settings *setting.Store) func(context.Context) access.Mode {
 		}
 		return access.AsMode(stored)
 	}
+}
+
+// mailChannel is the channel an operator configured, or nothing.
+//
+// Returned as the interface rather than the concrete type, and deliberately
+// through a function that can answer nil: a typed nil pointer handed to an
+// interface is not nil, and the sweep asks whether it has a channel.
+func mailChannel(cfg config.Config) notify.Channel {
+	mail := notify.NewMail(cfg.MailServer, cfg.MailFrom, cfg.MailUsername, cfg.MailPassword)
+	if mail == nil {
+		return nil
+	}
+	return mail
 }

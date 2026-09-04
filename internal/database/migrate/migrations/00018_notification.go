@@ -73,6 +73,28 @@ func upNotification(ctx context.Context, tx *sql.Tx) error {
 			-- rather than the world somebody was told about.
 			"body"      ` + t.text + ` NOT NULL,
 			"link"      ` + t.free + ` NOT NULL,
+			-- Whether what this is about is a finding nobody has announced.
+			--
+			-- Recorded here rather than worked out when something is sent,
+			-- because the answer belongs to the moment the row was written:
+			-- a finding disclosed since would otherwise make an old message
+			-- about an embargo readable, and one made private since would
+			-- not make an old message about a public issue secret again. The
+			-- channel that leaves the building reads this and says nothing
+			-- but a link (NTF-15); the area inside it is unaffected, because
+			-- reaching that is already the visibility check.
+			"private"   ` + t.boolean + ` NOT NULL,
+			-- When this was carried outside the application, and how many
+			-- times that has been tried.
+			--
+			-- A row nobody has sent is one to send, which makes retrying the
+			-- ordinary path rather than a mechanism of its own: a message
+			-- that failed is simply still unsent. The count is what stops
+			-- that being forever — an address that refuses every time is a
+			-- mailbox that has gone, and a sweep that keeps trying it is one
+			-- that eventually does nothing else.
+			"sent_at"   ` + t.timestamp + ` NULL,
+			"attempts"  ` + t.ref + ` NOT NULL,
 			"created_at" ` + t.timestamp + ` NOT NULL,
 			-- When they acknowledged it. Unread is the ordinary state, so it
 			-- is the null one.

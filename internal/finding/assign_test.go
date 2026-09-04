@@ -35,7 +35,7 @@ func TestAssigningCoversEveryPlaceOfOneIssue(t *testing.T) {
 			t.Fatalf("expected one issue at two places, got %d", len(open))
 		}
 
-		moved, err := f.store.Assign(t.Context(), f.holding(t, access.PublicTriage),
+		moved, _, err := f.store.Assign(t.Context(), f.holding(t, access.PublicTriage),
 			f.target, open[0].VulnerabilityID, open[0].ComponentID, ptr(int64(7)))
 		if err != nil {
 			t.Fatal(err)
@@ -63,11 +63,11 @@ func TestHandingSomethingBackIsTheSameActionAsGivingItOut(t *testing.T) {
 		open := f.open(t)
 		who := f.holding(t, access.PublicTriage)
 
-		if _, err := f.store.Assign(t.Context(), who, f.target,
+		if _, _, err := f.store.Assign(t.Context(), who, f.target,
 			open[0].VulnerabilityID, open[0].ComponentID, ptr(int64(7))); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.store.Assign(t.Context(), who, f.target,
+		if _, _, err := f.store.Assign(t.Context(), who, f.target,
 			open[0].VulnerabilityID, open[0].ComponentID, nil); err != nil {
 			t.Fatal(err)
 		}
@@ -89,7 +89,7 @@ func TestWhenSomebodyGoesTheirWorkComesBack(t *testing.T) {
 		}
 		triager := f.holding(t, access.PublicTriage)
 		for _, row := range f.open(t) {
-			if _, err := f.store.Assign(t.Context(), triager, f.target,
+			if _, _, err := f.store.Assign(t.Context(), triager, f.target,
 				row.VulnerabilityID, row.ComponentID, ptr(int64(7))); err != nil {
 				t.Fatal(err)
 			}
@@ -127,7 +127,7 @@ func TestWorkCanBeHandedToSomebodyElse(t *testing.T) {
 			t.Fatal(err)
 		}
 		open := f.open(t)
-		if _, err := f.store.Assign(t.Context(), f.holding(t, access.PublicTriage), f.target,
+		if _, _, err := f.store.Assign(t.Context(), f.holding(t, access.PublicTriage), f.target,
 			open[0].VulnerabilityID, open[0].ComponentID, ptr(int64(7))); err != nil {
 			t.Fatal(err)
 		}
@@ -159,7 +159,7 @@ func TestSomebodyWhoMayNotSeeAFindingCannotAssignIt(t *testing.T) {
 		open := f.open(t)
 
 		outsider := access.NewPerson(5, "outsider", false, nil)
-		if _, err := f.store.Assign(t.Context(), outsider, f.target,
+		if _, _, err := f.store.Assign(t.Context(), outsider, f.target,
 			open[0].VulnerabilityID, open[0].ComponentID, ptr(int64(7))); err == nil {
 			t.Error("somebody holding nothing assigned a finding")
 		}
@@ -180,7 +180,7 @@ func TestWorkComesBackWhenTheirLastRoleOnAProductGoes(t *testing.T) {
 		}
 		open := f.open(t)
 		triager := f.holding(t, access.PublicTriage)
-		if _, err := f.store.Assign(t.Context(), triager, f.target,
+		if _, _, err := f.store.Assign(t.Context(), triager, f.target,
 			open[0].VulnerabilityID, open[0].ComponentID, ptr(int64(7))); err != nil {
 			t.Fatal(err)
 		}
@@ -437,7 +437,7 @@ func TestAssigningCoversEveryBuildOfTheProductHoldingIt(t *testing.T) {
 
 		// Named by the build being looked at; what is assigned is the work it
 		// belongs to.
-		moved, err := f.store.Assign(ctx, who, f.target, issue, component, &person)
+		moved, _, err := f.store.Assign(ctx, who, f.target, issue, component, &person)
 		if err != nil {
 			t.Fatal(err)
 		}
