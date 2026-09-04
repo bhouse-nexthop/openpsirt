@@ -73,13 +73,22 @@ worth reading once in a test and not a size worth keeping in every checkout.
 ## A second variant of the same image
 
 `switch-image-mellanox.cdx.json.xz` is the mellanox build of the same switch
-image, from the same producer on the same day, compressed the same way: 6727
-components and 16754 edges against the broadcom build's 6,845 and 18,561. It is
-the fixture that exercises a decision carrying across variants: where the
-chain and the upstream versions match it reaches the other variant by lookup
-(REL-01, REL-09), and where a version differs it is the build the guided
-review walks (UIX-45). The demo and the dev loop seed both, as two variants
-of one branch, from `DEMO_BUILDS` in the Makefile.
+image, compressed the same way: 6,740 components and 16,767 edges. It is the
+fixture that exercises a decision carrying across variants: where the chain and
+the upstream versions match it reaches the other variant by lookup (REL-01,
+REL-09), and where a version differs it is the build the guided review walks
+(UIX-45). The demo and the dev loop seed both, as two variants of one branch,
+from `DEMO_BUILDS` in the Makefile.
+
+**It is a build later than the broadcom one beside it**, and deliberately so
+until that is rebuilt: it is the first from a producer that attributes code
+compiled into a program to the program rather than to the filesystem. Thirteen
+of its components are programs — `/usr/bin/containerd`, `/usr/bin/dockerd`,
+`/usr/sbin/rest_server` — synthesized so that the Go modules linked into each
+hang off the thing they were built into. Four different Go runtimes appear in
+this image, and before that change all four were children of the host
+filesystem or of a container, with nothing saying which program each belonged
+to.
 
 It is not yet read by any test. The full-size test reads the broadcom build,
 and a second full-size read would add its cost to every run; what this one
