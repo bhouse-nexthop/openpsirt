@@ -2904,6 +2904,12 @@ components:
         display_name:
           description: What to show instead of the identity
           type: string
+        email:
+          description: Where they are reached outside the application
+          type: string
+        email_derived:
+          description: A sign-in provider supplied this address rather than somebody here, so a later sign-in may refresh it
+          type: boolean
         holds:
           items:
             $ref: "#/components/schemas/HeldBody"
@@ -3293,6 +3299,10 @@ components:
           type: boolean
         display_name:
           description: What to show instead of the identity
+          type: string
+        email:
+          description: Where to reach them outside the application. Optional. A sign-in provider that verifies an address fills this in when it is empty, and never overwrites one recorded here
+          format: email
           type: string
         holds:
           items:
