@@ -2512,3 +2512,40 @@ question is about a run.
 
 Verified by putting both joins back: the deadline stays on the old policy and
 the trend counts one issue where there are two.
+
+## A flaw in our own product can be recorded (2026-09-04)
+
+The first half of Stage 8. Somebody with private triage on a product records a
+vulnerability in what a build ships: what it is, how bad, and what carries it.
+From there it is an ordinary finding — listed, assignable, decidable, on the
+same clock, in the same reports — with the one difference that nobody outside
+has been told.
+
+Four things had to be decided, and each is recorded (MDL-22 to MDL-25):
+
+**What it is called.** A flaw nobody has published has no CVE, and waiting for
+one means the record of what we knew starts after the work does. So the
+deployment mints one: the product's name, the year, a number. No setting for
+the prefix — the product already has a name people type, and a second place to
+keep in step is a second place to drift. A CVE arriving later is another name
+for the same issue, and because identity is the issue rather than its name,
+nothing moves.
+
+**Who may.** Private triage, not public. Somebody who may argue about known
+issues in shipped components has not been handed the ones nobody has announced,
+and this is the act that creates one.
+
+**Undisclosed by default**, because the case this exists for is knowing before
+anybody outside does, and the other default makes the dangerous mistake the
+quiet one.
+
+**A severity is checked, not folded.** A report's is folded — unrecognized
+becomes medium, because a scanner that rated nothing is silent and silence is
+not a claim of mildness. A person typing "urgent" is not silent; they are
+wrong, and folding it substitutes a judgment nobody made.
+
+The decisions gate caught all four the moment they were written, which is the
+first time it has earned its keep on new work rather than on old.
+
+**Next:** disclosure dates, the escalation when one arrives, and extension
+needing a reason and a second person past a threshold (ACC-46 to ACC-49).

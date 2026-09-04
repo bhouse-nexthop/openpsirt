@@ -2,7 +2,8 @@
 
 What a scan run found, and where.
 
-Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, ING-02, ING-21,
+Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, MDL-22 to MDL-25,
+ING-02, ING-21,
 ING-29, ING-30, ING-39, ING-40, STA-03, STA-04, STA-05, STA-08, STA-17,
 RNK-01 to RNK-07, MDL-09, STA-01, STA-02, STA-06, STA-07, STA-09, STA-10,
 STA-13 to STA-16, STA-18, REL-01.
@@ -70,6 +71,48 @@ No fix available, upstream declined to fix, and a fixed version exists are
 three different situations to whoever is triaging. "Upstream will not fix this"
 is a permanent condition that changes the outcome somebody should reach, and it
 is invisible if the only thing recorded is that a fix is absent.
+
+## A flaw in our own product, recorded by hand
+
+Not everything is something a scanner found. A vulnerability in what this
+deployment ships is usually known here before it is known anywhere, and it has
+to be triaged, assigned, decided, clocked and reported like everything else —
+so it is a finding, of a different kind (MDL-22).
+
+**It is filed under an identifier this deployment mints** (MDL-24): the
+product's name, the year, and a number — `SONIC-2026-0001` — which is the shape
+a vendor advisory already takes. There is nothing else to file it under. A flaw
+nobody has published has no CVE, and waiting for one would mean the record of
+what we knew starts after the work does.
+
+Nothing is configured for that prefix. The product has a name people type, and
+a setting for it would be a second thing to keep in step. When a CVE is
+assigned later it is recorded as another name for the same issue and the issue
+is then filed under the CVE — and because identity is the issue rather than
+what it is called, nothing moves: not the finding, not the decisions, not the
+approvals.
+
+The number is read and used inside one transaction, so two people recording at
+the same moment cannot be handed the same one; the second waits, reads the
+first's row, and takes the number after it.
+
+**It starts undisclosed, and recording one asks for the private triage right**
+(MDL-25). That is the case this exists for, and defaulting the other way makes
+the dangerous mistake the quiet one. The two triage rights are separate
+precisely here: somebody who may argue about known issues in shipped components
+has not been handed the ones nobody has announced. A finding that is already
+public is a flag on the request and asks for the ordinary right.
+
+**A severity is checked against the words rather than folded.** A report's is
+folded — anything unrecognized becomes medium, because a scanner that rated
+nothing is silent and silence is not a claim that something is mild. A person
+typing "urgent" is not silent. They are wrong, and folding it would replace
+their judgment with one nobody made.
+
+**What carries it is a component of the build, or the build itself.** Naming
+nothing puts it on the root, which is the honest answer where the flaw is in
+how the pieces fit together rather than in one of them. Naming something the
+build does not hold is refused: that is a claim about somebody else's software.
 
 ## A scan governs what a scan found, and nothing else
 

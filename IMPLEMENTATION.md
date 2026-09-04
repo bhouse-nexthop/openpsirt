@@ -216,7 +216,10 @@ that release, and raises an alert rather than sitting in a report.
 
 ## Stage 8 — Private findings and attachments (product Phase 2)
 
-- Manual entry, visibility handling, disclosure dates and escalation
+- **Manual entry is built** — a flaw in what a build ships, recorded by hand,
+  filed under an identifier this deployment mints, starting undisclosed and
+  behaving like any other finding from there. Visibility handling shipped in
+  Phase 1. **Disclosure dates and escalation are not built**
 - Advisory publication: CSAF, and GitHub Security Advisories where they apply
 - Attachments: object store, authorized fetch, redaction (`ATT`)
 
