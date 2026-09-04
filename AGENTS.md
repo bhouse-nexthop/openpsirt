@@ -317,9 +317,10 @@ rewriting what somebody else may already have pulled.
 **Where it goes.** Early development commits and pushes to `main`. Once
 branch protection is on, the same rule applies to a pull-request branch: the
 work is pushed as it lands, and the pull request is where it is reviewed. The
-gate (`make check && make check-engines`) runs before the push either way;
-a push that skips it on the grounds that nothing blocks it is the failure the
-gate exists to prevent.
+gate (`make check && make check-engines`) runs before the push either way —
+or, for a commit that touches only documents, the shorter one named under
+"Building"; a push that skips whichever applies, on the grounds that nothing
+blocks it, is the failure the gate exists to prevent.
 
 **Two steps of the gate pass only on a commit.** `openapi-current` and
 `web-api` diff a regenerated file against the last commit, so on an
@@ -357,6 +358,25 @@ runs `unreachable`, the OpenAPI drift check and the frontend, and because the
 quick loop drops the race detector and the three server engines. `check` runs
 `make test-all` for the tests: every configured engine, race detector on,
 nothing cached.
+
+### A change to documents alone is checked as documents
+
+**Where a commit touches only `.md` files, run `go test ./internal/docs/ &&
+make unclaimed` instead.** Seconds rather than minutes, and it covers both
+things a document can actually break: a link pointing at a heading that has
+been renamed, and a decision in force that no design document names.
+
+Nothing else in the gate can fail for a prose edit. `check-engines` proves four
+database engines ran, which a document cannot affect — it can only pass, and a
+check that can only pass is not evidence. Running it anyway is not caution; it
+is a habit that makes the gate look expensive and teaches people to skip it.
+
+**The moment anything else is in the commit, the full gate applies**, and that
+includes the generated files — `docs/reference/openapi.yaml` and the
+TypeScript client are not documents in this sense, and their two steps only
+pass on a commit anyway. A design document updated alongside the behavior it
+describes is in a commit with code in it, which is the ordinary case and takes
+the full gate by that rule rather than by an exception.
 
 Packages run in parallel in both. Each test binary builds the schema once — a
 migrated SQLite file copied per test, and on each server a database of the
