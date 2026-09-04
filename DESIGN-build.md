@@ -2,8 +2,8 @@
 
 How a change gets from an editor to `main`, and what stops it if it should not.
 
-Satisfies CIG-01 to CIG-08, SCP-06, SCP-07, API-04, API-10, API-11, API-13,
-API-15.
+Satisfies CIG-01 to CIG-08, SCP-06, SCP-07, SEC-10, API-04, API-10, API-11,
+API-13, API-15.
 
 ## Layout
 
@@ -92,6 +92,19 @@ refusal to run against an old server is exercised rather than skipped.
 
 The URLs are read when make starts, so the run that writes `local.mk` is not
 the run that uses it.
+
+## The review checklist is worked, not remembered
+
+The checklist in `AGENTS.md` is worked through on every review rather than
+consulted when somebody remembers (SEC-10). That is the difference between a
+control and a document: a list nobody opens is a list that agrees with whatever
+was done.
+
+It is not enforced by the pipeline, and saying so is the point. What CI can
+check, CI checks — the gate below is long precisely so that the checklist is
+left holding only what a machine cannot decide. What remains there is judgment,
+and judgment that is skipped is invisible unless working the list is a step
+somebody takes deliberately.
 
 ## Static analysis
 

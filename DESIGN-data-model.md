@@ -2,7 +2,7 @@
 
 What a scan is filed against, and why the shape is what it is.
 
-Satisfies MDL-01 to MDL-08, MDL-11 to MDL-13, MDL-17, MDL-18, MDL-21,
+Satisfies MDL-01 to MDL-08, MDL-10 to MDL-13, MDL-16 to MDL-18, MDL-21,
 REM-16, RPT-04, ING-09, ING-11,
 ING-36 to ING-38, STA-08.
 
@@ -268,6 +268,27 @@ A scan that names no root of its own is filed against the unit it was sent for
 — the product, stream and variant it arrived against. Standing in costs
 nothing, for the same reason the root is excluded from identity in the first
 place: what it says about itself was never load-bearing.
+
+## What the graph does not say
+
+**The same version built with different feature flags can use its dependencies
+differently, and nothing in a scan file distinguishes the two** (MDL-10). Two
+builds of one library at one version can link different things, and both report
+the same name and the same version. This is a limitation and it is recorded as
+one: an edge here means the inventory said so, not that the code takes that
+path at run time.
+
+It matters most where a dismissal rests on reachability. "The vulnerable
+function is not called" is a claim about a build, and the graph cannot confirm
+or contradict it — which is why a claim of that kind is keyed on the versions
+in hand and asked again when they move, rather than being treated as settled by
+the structure.
+
+**A finding of a kind that has no dependency path gets no tree view** (MDL-16).
+The tree exists to answer "why is this here", and for something a scanner found
+in a source file there is no path to walk: the answer is the file. The finding
+model carries a kind from the start so a second kind needs no rewrite, and the
+screens that assume a path check it rather than drawing an empty one.
 
 ## History is intervals, not snapshots
 

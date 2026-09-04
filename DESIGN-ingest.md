@@ -2,9 +2,10 @@
 
 What happens to a scan when it arrives.
 
-Satisfies ING-01, ING-02, ING-04 to ING-08, ING-11, ING-12, ING-14 to ING-23,
-ING-28 to ING-35, MDL-19, ACC-12, ACC-50, ACC-53, DAT-39, SCP-15, SEC-05,
-SEC-06.
+Satisfies ING-01, ING-02, ING-04 to ING-08, ING-11, ING-12, ING-14 to ING-35,
+MDL-19, ACC-12, ACC-50, ACC-53, DAT-39, SCP-01, SCP-11, SCP-15, SEC-05, SEC-06.
+What arrives from a static analyzer is intended scope and is not built; the
+section at the foot says what has been decided about it.
 
 ## Deciding before parsing
 
@@ -669,3 +670,36 @@ as three separate changes.
 Fixed-width character columns blank-pad on some engines, so a hash read back
 carries trailing spaces that make an exact-match lookup fail. Variable-width
 columns do not. Both cost the same for a value that is always the same length.
+
+## What a second kind of finding would arrive as
+
+The primary input is an inventory a build produced, and the vulnerability data
+is produced here rather than sent to us (SCP-01). Findings from a static
+analyzer or a fuzzer are intended scope and **are not built** (SCP-11). What
+has been decided is recorded here, because the parts that are expensive to
+retrofit are the parts that were settled early.
+
+**They are scoped the same way everything else is**: to a product, a release
+and a variant. A finding that cannot say which build it is about cannot be
+compared release to release, and comparison is most of what this tool is for.
+
+**SARIF is the default interchange**, the way CycloneDX is for inventories, and
+not the only path (ING-24). It is what the analyzers already emit, and taking
+their native output instead would mean one reader per tool with nothing in
+common between them.
+
+**One adapter per source, normalizing into the internal model** (ING-25) — the
+same seam the inventory producers arrive through. What that seam is for is that
+the rest of the system never learns which tool produced anything.
+
+**Some sources are pulled rather than pushed** (ING-26). A hosted analyzer has
+its own store and no reason to call us, so a deployment holds credentials to it
+and polls. That is a different shape from the upload path: there is no request
+to refuse, so a source that starts returning nothing has to be noticed the way
+a build that stopped being scanned is noticed, rather than by an error.
+
+**Identity is computed here, never taken from the producer** (ING-27). The same
+rule the inventory reader already follows for components, for the same reason:
+an analyzer's identifier for a result is stable until the tool is upgraded or
+the file is reformatted, and a finding whose identity moves is a finding that
+reopens as new and loses every judgment made about it.

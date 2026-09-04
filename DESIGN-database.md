@@ -2,7 +2,7 @@
 
 How OpenPSIRT talks to a database, and why the awkward parts are awkward.
 
-Satisfies SCP-15, DAT-01 to DAT-24, DAT-30 to DAT-36, and the portability
+Satisfies SCP-15, DAT-01 to DAT-24, DAT-29 to DAT-36, and the portability
 constraints in Section 6 of `DECISIONS.md`.
 
 ## Four engines, one set of queries
@@ -58,6 +58,24 @@ engine. The first migration is the clearest example: a timestamp column has no
 portable spelling. PostgreSQL has no `DATETIME`; MySQL's `TIMESTAMP` is a 32-bit
 value that can acquire an implicit default and an on-update clause depending on
 server configuration. Each engine gets the column it should have.
+
+### Before the first release, a migration is edited rather than added to
+
+Nothing before the first release keeps schema compatibility (DAT-29). A change
+to a table **edits the migration that created it**, and anybody holding a
+development database recreates it. Adding a second migration beside the first
+to alter what the first just made is a record of the order things were thought
+of, not of anything an operator will ever run.
+
+The migrations that exist are kept only because walking the chain up and down
+is what catches an ordering mistake between two of them. **They collapse into a
+single initial migration before the first release**, and compatibility — of the
+schema and of the API alike — starts from that point rather than from now.
+
+This is the one place where the rule about temporary documents does not save
+us: the collapse has to happen, and it happens once, at the end. It is written
+here as well as in the plan so that deleting the plan does not delete the
+obligation.
 
 ### Two locks, for two different problems
 

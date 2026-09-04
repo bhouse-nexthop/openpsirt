@@ -2,9 +2,9 @@
 
 Who is asking, and what they may reach.
 
-Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-50 to ACC-53, SEC-03,
-SEC-07, SEC-09, SEC-20, ACC-44, ACC-54 to ACC-59, UIX-32's server half, and the
-half of ACC-43 that has a trigger today.
+Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-44 to ACC-59, SEC-03,
+SEC-07 to SEC-09, SEC-20, UIX-32's server half, and the half of ACC-43 that has
+a trigger today. What is not built is named at the foot.
 
 ## Authenticating is not being authorized
 
@@ -592,6 +592,66 @@ somebody else operates, a way back in matters more than a tidy one-shot.
 
 It is a pre-authorization and not a bypass. Being named grants the role; it
 does not admit anybody who has not authenticated.
+
+## A secret never reaches a log
+
+Connection strings are redacted and credentials and tokens are never written at
+any level (SEC-08). Not a level to be turned down in production: a token at
+debug is a token in whatever collects the logs, read by everybody who can read
+those and kept for as long as they are kept, which is usually longer than the
+token's own life.
+
+The one that actually happens is a database URL with a password in it, printed
+once at startup by something helpful. It is redacted where it is formatted, not
+where it is logged, so a second caller that logs the same value cannot
+reintroduce it.
+
+The rule is written down rather than left as a habit because the failure is
+invisible: nothing breaks, no test fails, and the leak lives in a system nobody
+thinks of as holding secrets.
+
+## Disclosure, which is not built
+
+Public and private mean disclosed and not disclosed, so an undisclosed finding
+is one somebody intends to disclose eventually. None of the machinery around
+that exists yet — it arrives with private findings, which are entered by hand
+and are Phase 2 — and it is named here rather than left to be rediscovered.
+
+**A private finding carries a disclosure date**, defaulting to ninety days from
+creation and configurable per deployment (ACC-46). A public finding has none:
+it is already disclosed, and a date on it would be a deadline for something
+that has already happened. Ninety days is what coordinated disclosure practice
+converges on, and the point of having one at all is that it gives the embargo
+an end somebody outside could hold us to.
+
+**Reaching the date discloses nothing** (ACC-47). It escalates: the finding is
+flagged, and administrators and whoever owns it are told. Publishing embargoed
+detail because a timer expired is the wrong default in both directions — if the
+fix is not ready, disclosing anyway is a decision a person makes, and automatic
+publication eventually publishes something nobody was ready for.
+
+**Extending the date needs a reason, and past a configured threshold, a second
+person** (ACC-48) — the same shape as a deferral, because it is the same act:
+keeping risk hidden for longer. Without that the date is decoration, and the
+indefinite secrecy the disclosure frameworks warn about arrives one quiet
+extension at a time.
+
+**What is approaching disclosure is surfaced before the date** (ACC-49). The
+date arriving is the last moment to act on it, not the first useful warning.
+
+## Somebody who has stopped coming in
+
+**An administrator is told when somebody has not signed in for a configured
+period and still holds assigned work** (ACC-45) — "X has not signed in for two
+weeks and has six items assigned". Not built: assignment exists and so does
+handing back what an absent person holds, and what is missing is the prompt.
+
+That is the honest shape of the gap. Nothing tells this software somebody has
+left (ACC-44), membership is only read at sign-in, and a person who has gone
+never signs in again — so the software cannot discover it and can only notice
+the absence and say so. Until it does, work assigned to somebody who stopped
+coming in is in no list at all: not in the shared one because it is assigned,
+and not in theirs because they are not here.
 
 ## Choices the decisions did not cover
 

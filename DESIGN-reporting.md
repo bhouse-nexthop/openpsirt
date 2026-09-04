@@ -2,8 +2,9 @@
 
 The numbers this produces, and what each of them is honestly a number of.
 
-Satisfies RPT-05 to RPT-07, RPT-10 to RPT-13, RPT-15 to RPT-17, REM-25,
-REL-08, ING-13. RPT-09 is only half done and says where.
+Satisfies RPT-01 to RPT-02, RPT-04 to RPT-08, RPT-10 to RPT-13, RPT-15 to
+RPT-17, REM-25, REM-26, REL-08, ING-13. RPT-09 is only half done and says
+where; RPT-03 is not built and says so at the foot.
 
 Everything here reads what the findings and decisions already hold. Nothing in
 this document has a table of its own.
@@ -145,6 +146,19 @@ severity says. Severity is how bad a flaw is; being exploited is a fact about
 the world. Without a separate window the deadline contradicts the ranking — the
 list says look at this first while the clock says ninety days.
 
+**The deadline is worked out when a scan is ingested and stored on the
+finding** (REM-26), and every open finding's is recomputed when the policy that
+sets it changes. Computing it per request costs a pass over every open finding
+*per urgency band*, because each band allows a different number of days —
+measured at about eight seconds over 441,108 findings, on the screen whose
+whole purpose is noticing something before it runs out. Stored, it is an
+indexed range scan.
+
+Urgency is stored at ingest for the same reason and carries the same staleness,
+but nobody edits the ranking and people do edit deadlines, so the stale window
+is not acceptable here: changing "a high may stay open sixty days" has to move
+the list rather than wait for the next nightly scan.
+
 **Anything the reports did not rate takes the medium window.** Nobody having
 scored it is not a claim that it is mild, and giving silence the longest window
 puts the findings least is known about at the back of the queue.
@@ -215,6 +229,33 @@ nothing.
 
 Counted as issues at components, at or above the deployment's line, and the
 line is named beside the number (RPT-14).
+
+## What was dismissed, and what is being scanned
+
+**Dismissals are a reportable dataset in their own right** (RPT-01) —
+everything decided not to be fixed, and why. That is the core of the reporting
+role, and it is the question an auditor asks first. It is answered two ways:
+the findings list filters on outcome, justification and whether a rating was
+changed, and the record screen lists every judgment with its reasoning, both
+approvals and the dates they happened on.
+
+**What is being scanned, and when each build was last seen, is its own view**
+(RPT-02) — the shape of it is in `DESIGN-ingest.md`, and the reason it matters
+belongs here. A product silently dropping out of scanning is the failure that
+quietly makes everything else wrong: every number on every screen goes on
+looking reasonable, and each one is describing a build nobody has looked at
+since. A broken scan reports itself; one that stopped arriving reports nothing,
+which is why absence is derived rather than waited for.
+
+**Releases past end-of-life are reported apart from live ones and raise no
+coverage alert** (RPT-04). A dead release not being scanned is expected. Left
+in, the view that exists to catch the product that dropped out silently fills
+with releases that stopped on purpose, and stops being read within a month.
+
+**This is a report an operator uses, not the tool publishing** (RPT-08). We
+produce the numbers and a person decides what to do with them; nothing here
+emits anything outward, which is why publication being entirely Phase 2 does
+not contradict a comparison that reads like release notes.
 
 ## Who is holding what
 
@@ -315,3 +356,23 @@ took its value from the deployment's environment and never looked.
 
 The order is the administrator's setting first, then whatever the process was
 started with, then the built-in default.
+
+## Remediation metrics, which are not built
+
+Fix velocity, mean time to remediate by severity, aging buckets, and the trend
+against the previous thirty days (RPT-03). None of it exists.
+
+What it would be built from is already here — a finding records the run that
+opened it and the run that closed it, so how long something took is a
+subtraction rather than a second record somebody maintains. Two rules it would
+have to inherit, stated now because they are the ones that make such a figure
+honest or useless:
+
+**A closure only counts as resolved if the issue actually went away** (RPT-15).
+A bump that carried the issue with it, and a finding the scanner silently
+stopped reporting, are not fixes, and a velocity figure counting them measures
+churn.
+
+**Counted as issues, not places.** One kernel flaw across sixty modules is one
+thing that was fixed, and a mean time to remediate weighted by how far a
+component fans out is a measurement of the dependency graph.

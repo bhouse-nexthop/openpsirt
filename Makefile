@@ -154,7 +154,7 @@ DEV_DIR  ?= $(DEMO_DIR)/dev
 DEV_DB   ?= $(DEV_DIR)/dev.db
 DEV_URL  := http://$(DEV_HOST):$(DEV_PORT)
 
-.PHONY: unreachable all build test test-all vet lint fmt openapi openapi-current run clean check check-packaging check-engines measure engines-up engines-down engines-status engines-check tools govulncheck licenses sbom web web-deps web-api web-check demo demo-image demo-up demo-down demo-seed demo-reset demo-status dev dev-up dev-down dev-seed dev-reset dev-status
+.PHONY: unreachable unclaimed all build test test-all vet lint fmt openapi openapi-current run clean check check-packaging check-engines measure engines-up engines-down engines-status engines-check tools govulncheck licenses sbom web web-deps web-api web-check demo demo-image demo-up demo-down demo-seed demo-reset demo-status dev dev-up dev-down dev-seed dev-reset dev-status
 
 all: check build
 
@@ -208,7 +208,7 @@ openapi:
 # Everything CI runs, reachable from one command. Container and chart checks
 # are included because CI runs them; omitting them meant four of nine jobs
 # could not be reproduced locally.
-check: build vet lint unreachable test-all govulncheck licenses openapi-current sbom web-check
+check: build vet lint unreachable unclaimed test-all govulncheck licenses openapi-current sbom web-check
 ifneq ($(ENGINES_MISSING),)
 	@echo
 	@echo "NOT TESTED ON: $(ENGINES_MISSING). Those engines were not configured,"
@@ -256,6 +256,13 @@ web-check:
 # second place nothing called. Every one looked like working code.
 unreachable:
 	$(GO) run ./internal/tools/unreachable
+
+# Decisions no design document names. The chain that makes this auditable runs
+# code to design document to decision, and nothing checked that it was whole:
+# 71 decisions in force were named nowhere, five of them cited by code that
+# runs. A decision not built yet is not exempt — its design document says so.
+unclaimed:
+	$(GO) run ./internal/tools/unclaimed
 
 # CI fails when the committed document has drifted, so check the same thing.
 openapi-current: openapi

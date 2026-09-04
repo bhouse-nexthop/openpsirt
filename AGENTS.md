@@ -30,6 +30,14 @@ re-examined; neither is assumed correct. This is the whole reason the design
 documents exist, so keeping them current is part of the change, not follow-up
 work.
 
+**The other direction is checked by the gate.** `make check` fails on a
+decision in force that no design document names. A decision that is not built
+yet is not exempt — the document for its area says that it is not built, in
+words, which is the difference between a plan somebody can read and a gap
+somebody rediscovers by clicking. Naming a decision means describing it: adding
+the identifier to a "Satisfies" line without writing what it does makes the
+audit trail a lie, which is worse than the gap it was hiding.
+
 ## Design documents
 
 All at the repository root, named `DESIGN-<area>.md`.
@@ -84,6 +92,7 @@ unpick later.
 | **SQL values are parameterized and SQL identifiers come from an allowlist.** A placeholder cannot bind a column name, so a sort column from a query parameter is the real risk | SEC-01, SEC-02 |
 | **An affected-row count means rows matched, not rows changed.** A conditional update reads it as "the row was still there", so a write whose values were already correct must not report zero — the connection settings make that true on all four engines | DAT-35 |
 | **Exported code with no caller is a defect, not spare capacity.** A store method nothing routes to, a renderer nothing renders with — the analysis gate only sees unexported symbols, so this is checked separately and the check is not optional | — |
+| **A decision no design document names is a defect too.** Built or not, every decision in force is described somewhere permanent; the gate fails on one that is not. It found 71 the first time it ran, five of them cited by running code | — |
 | **A test for a control is verified by breaking the control.** Watch it fail for the reason it names, then put the control back. A control whose test has never been seen to fail is a control nobody has tested | — |
 | **A request is authorized before any name in it is resolved.** Resolving first and refusing after makes the refusal informative: a name nobody holds and a name somebody holds come back differently, which turns a lookup into a directory | ACC-56 |
 | **Every setting offered is one something reads.** A value somebody sets that changes nothing is worse than not offering it, and zero or negative reads as unset everywhere — so those are refused rather than stored | — |

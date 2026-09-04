@@ -108,6 +108,7 @@ each is built:
 |---|---|
 | [DESIGN-access.md](DESIGN-access.md) | Who is asking, and what they may reach |
 | [DESIGN-api.md](DESIGN-api.md) | The shape of the HTTP surface |
+| [DESIGN-attachments.md](DESIGN-attachments.md) | Files on a finding — the seam that is built, and the rest that is not |
 | [DESIGN-build.md](DESIGN-build.md) | Layout, the validation pipeline, how a change is checked |
 | [DESIGN-data-model.md](DESIGN-data-model.md) | What a scan is filed against, and the dependency graph |
 | [DESIGN-database.md](DESIGN-database.md) | Four engines, migrations, locking |

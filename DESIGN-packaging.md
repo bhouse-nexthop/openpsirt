@@ -2,7 +2,8 @@
 
 How OpenPSIRT is delivered, and what a deployment looks like.
 
-Satisfies SCP-03, SCP-12 to SCP-14, and the probe behavior DAT-10 requires.
+Satisfies SCP-03, SCP-04, SCP-12 to SCP-14, and the probe behavior DAT-10
+requires.
 
 ## The image
 
@@ -158,6 +159,20 @@ and the chart is not published to a repository. Both belong with a release
 process, which does not exist yet — so the chart's default image reference
 points at something that does not exist, and the values file says so rather
 than leaving an operator to discover it as a pod that cannot pull.
+
+## Apache 2.0, and what that means for delivery
+
+The licence is Apache 2.0 (SCP-04), which is a delivery decision as much as a
+legal one: whoever runs this compiled it or pulled it, and can read and change
+what they run. Two things follow that this document has to keep true.
+
+**Everything needed to run it is in the image or is an ordinary dependency.**
+No component is fetched at run time from somewhere only we can reach, and
+nothing is gated on a key we issue. An operator who mirrors the image into
+their own registry has the whole thing.
+
+**The image says what it is made of**, which is the section below: a tool whose
+subject is knowing what is in a build has no standing to ship an opaque one.
 
 ## The image carries its own inventory
 

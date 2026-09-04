@@ -2,12 +2,11 @@
 
 What people decide about findings, and when a decision stops applying.
 
-Satisfies TRI-01 to TRI-03, TRI-05 to TRI-08, TRI-10 to TRI-18, TRI-20 to
-TRI-36, TRI-40 to TRI-43, TRI-45 to TRI-47, TRI-49, TRI-50, REM-25, REM-27,
-RNK-07, UIX-35,
-UIX-46, REL-05, REL-06, REL-09, MDL-08, MDL-19, ACC-09. The
-text rules themselves are in `DESIGN-text.md`, and the reports these numbers
-feed are in `DESIGN-reporting.md`.
+Satisfies TRI-01 to TRI-03, TRI-05 to TRI-08, TRI-10 to TRI-50, REM-25,
+REM-27, RNK-07, UIX-35, UIX-46, REL-02 to REL-07, REL-09, MDL-08, MDL-19,
+ACC-09. The text rules themselves are in `DESIGN-text.md`, and the reports
+these numbers feed are in `DESIGN-reporting.md`. TRI-04 and TRI-19 wait for the
+export and the reports that carry them, and say so below.
 
 ## A decision is a claim about code, not about a release
 
@@ -1035,6 +1034,81 @@ answer, so guessing identifiers says nothing.
 Whether a claim is waiting for a second person is answered when it is made, not
 discovered later. A short deferral takes effect at once, and somebody who has
 just written one should be told that rather than left watching a queue.
+
+## One judgment, many places, one group
+
+**A judgment is made on the finding and covers every place it sits at by
+default** (TRI-37). The places are listed and ticked; unticking one leaves that
+place open, and nothing is asked about the places left out — silence about a
+place is not a claim about it.
+
+**Covering many places does not by itself require a second person** (TRI-38).
+The ordinary thresholds apply however many places one judgment reaches. The
+alternative was tried and is worse: making every wide judgment need approval
+teaches people to make narrow ones, which produces more records saying less,
+and the thing worth a second pair of eyes is what is being claimed rather than
+how much shares the claim.
+
+**Grouping is presentation only** (REL-02). One grouped action writes an
+individual record per place, and the group is derived when it is read rather
+than stored. A stored group is a second thing to keep true: places arrive and
+leave with every scan, and a group that outlived them would describe a build
+that no longer exists.
+
+**A list that is hiding something says so, with the count** (TRI-44). The same
+rule the filters hold to: a screen quietly showing part of an answer is how two
+people quote different figures for one question and neither finds out. The
+place this shows up most is a list capped for size — it says how many there
+are, not just how many it drew.
+
+## Exceptions, and the layer they come from
+
+**Exceptions are grouped by the layer they come from, not listed flat**
+(REL-03). A suppression a build supplied, a decision somebody made here, and a
+finding below the line are three different kinds of "not shown", and one flat
+list of them invites reading a build's own claim as a judgment this deployment
+made.
+
+**Every kind of variant follows the same exceptions model** (REL-04). A chip
+variant, an architecture, a customer build: the machinery does not learn what
+kind of thing a variant is, and a rule that applied to some of them would be a
+rule somebody has to remember the shape of.
+
+## A dismissal that rests on a mitigation names it
+
+**Choosing `inline_mitigations_already_exist` requires saying what actually
+stops it** — the rule, the setting, the service that is not exposed (TRI-39).
+
+Every other recognized reason for something not applying is a claim about code,
+and code is what makes a decision lapse: the version moves, the key changes,
+and somebody is asked again. This one is a claim about configuration, which can
+be removed with no version moving at all. **Nothing here watches configuration,
+and nothing expires this claim.**
+
+Naming the control does not close that gap and is not pretended to. It is the
+difference between a claim somebody can go and check and one nobody can, and it
+is the justification an auditor asks about first, because the protection lives
+outside this software entirely.
+
+## What is not built, and what carries it
+
+**A deferred item exports as affected, never as not-affected** (TRI-04). The
+deferral is an internal scheduling decision; publishing it as not-affected
+would tell the outside world we assessed something as harmless when we had only
+postponed it. There is no export yet, and this is the rule it arrives with.
+
+**Repeat and long-running deferrals are reported** (TRI-19). A cumulative cap
+already exists on how long one thing may be deferred for, and what is missing
+is the report that makes the pattern visible across everything — one item
+deferred three times is a judgment, and forty of them is a policy nobody wrote
+down.
+
+**What a decision would carry to other builds is a sentence, not a panel**
+(REL-07). The decision says how far it reaches and asks separately about the
+versions it does not already cover; what the mockup draws instead is a list of
+matching findings on other branches and tags as unticked checkboxes, one per
+match. The reach is computed and shown, so what is missing is the form rather
+than the answer.
 
 ## Choices the decisions did not cover
 

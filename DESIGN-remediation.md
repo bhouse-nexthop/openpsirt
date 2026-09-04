@@ -3,10 +3,11 @@
 What somebody intends to fix, where, and how the tool finds out whether it
 happened.
 
-Satisfies REM-02, REM-03, REM-06 to REM-10, REM-13, REM-16. REM-04's escalation
-view and REM-05's work distribution read what is here and are described in
-`DESIGN-reporting.md` and `DESIGN-findings.md`. REM-11 and REM-12 are the
-external hand-off, which is not built.
+Satisfies REM-01 to REM-03, REM-06 to REM-10, REM-13, REM-15 to REM-24.
+REM-04's escalation view and REM-05's work distribution read what is here and
+are described in `DESIGN-reporting.md` and `DESIGN-findings.md`. REM-11 and
+REM-12 are the external hand-off, which is not built, and neither is anything
+in "Publication" below.
 
 ## Nothing here is declared done
 
@@ -134,8 +135,58 @@ different feature needing a different integration.
 
 **No per-item due dates.** A deadline comes from how urgent the finding is
 (REM-14, REM-25), and moving one is a deferral, which carries a reason and an
-approval threshold. A plan says where, not when.
+approval threshold — and **the deferral date then becomes the effective
+target**, with deferred items reported apart from plainly overdue ones
+(REM-15). A conscious, approved postponement and an item nobody looked at are
+different states, and a figure holding both says nothing about either. A plan
+says where, not when.
+
+**Assigning notifies; planning does not** (REM-01). Somebody is told when work
+is put on them, because that is a thing done *to* a person. Saying which
+releases the work is meant to reach is a thing done to the work, and it changes
+nothing about who owns it.
 
 **No hand-off to an external tracker.** REM-11 and REM-12 record that the seams
 should exist; the integration does not, and private work defaults to no
 hand-off whether it is built or not.
+
+## Publication, none of which is built
+
+Phase 1 publishes nothing (REM-24). Publication arrives with private findings,
+because of what it is for: an advisory is about a vulnerability in our own
+product, and a known CVE in a shipped third-party component is dependency
+hygiene that a consumer can already see from the inventory (REM-23). Issuing a
+vendor advisory for every upstream CVE in a dependency is not what an advisory
+is. That is a scope choice for now rather than a permanent boundary — some
+vendors do publish on third-party components.
+
+**It is a pluggable output with several adapters, not one integration**
+(REM-17). Publishing routes differ completely by product: an open-source
+project uses its forge's advisory system, an appliance vendor publishes on its
+own site under its own process. One integration would be one of those wearing
+the name of the general case.
+
+**We own the triage record; the platform owns the published advisory** (REM-18).
+That question decides whether an integration works or rots. Ours is the
+decision history — who judged what, who agreed, when — and theirs is the public
+artifact. Neither is a copy of the other and neither syncs.
+
+**CSAF is the adapter that matters for commercial products** (REM-21): a
+machine-readable advisory document the vendor publishes wherever they like. It
+is nearly free from what is already held, because VEX is a CSAF profile and the
+dismissal vocabulary was aligned to it from the start.
+
+**A forge's advisory system is one adapter, for products hosted there**
+(REM-22) — draft privately, request an identifier, publish, and use its
+temporary private fork for fix work under embargo. That covers advisory
+publication, coordinated disclosure and the private fix space together, and it
+applies to nothing hosted elsewhere.
+
+**Publishing aggregates** (REM-19). One advisory covers a product and a version
+range, not a path — which is the one place this design collapses rather than
+separates, and it is stated because everything else here is deliberately
+granular. A reader of an advisory is asking "am I affected", and the answer is
+a version, not a dependency chain.
+
+**Optional and configured per deployment** (REM-20), like any other hand-off.
+Nobody should need an account anywhere to use this.

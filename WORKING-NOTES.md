@@ -2425,3 +2425,40 @@ five thousand rows to show one of them.
 
 The step on the path is kept individually now, past the cap, wherever it sits.
 Same guarantee, one row instead of five thousand.
+
+## The audit chain was broken in 71 places, and nothing checked it (2026-09-04)
+
+`AGENTS.md` describes the chain this repository is organized around: code
+satisfies a design document, a design document names the decisions it
+implements, a decision says why. Nothing enforced the middle link. Checking it
+by hand: **71 of 423 decisions in force were named by no design document**,
+five of them cited by code that runs — behaviour that executes, is reasoned
+about in comments, and appears in no document describing the system.
+
+`make check` now fails on that, next to the unreachable gate and for the same
+reason: the thing the analysis tools cannot see is the thing that rots.
+
+Closing 71 of them took the afternoon and was worth more than any feature in
+it. Three findings from doing it:
+
+- **A whole area had no document.** Attachments — twelve decisions, all of them
+  about a seam that has to be right before anything is built on it, and no
+  `DESIGN-attachments.md` to hold them. Writing it is what turned "Phase 2" from
+  a label into a description.
+- **Two decisions were built and undescribed.** TRI-39, the rule that a
+  dismissal resting on a mitigation must name the mitigation and that *nothing
+  expires that claim*, lived only in a migration comment. TRI-44, that a list
+  hiding something says so with the count, lived nowhere at all.
+- **Naming is not describing.** The first pass added identifiers to four
+  "Satisfies" lines, and a check found that none of the four documents said
+  anything about the behaviour. An identifier on a line nobody wrote the
+  paragraph for is an audit trail that lies, which is worse than the gap it
+  covers. That is now a rule in `AGENTS.md`.
+
+The tool reads only design documents, and deliberately: a decision named in a
+commit message, a code comment or the plan is not described anywhere permanent
+— the plan is deleted when its work lands. It skips decisions recorded as
+withdrawn, since asking for a description of something that was taken back is
+asking for a description of nothing.
+
+Verified by removing `DESIGN-attachments.md`: thirteen come back.

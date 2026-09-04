@@ -2,9 +2,10 @@
 
 What somebody is told, and through what.
 
-Satisfies NTF-01, NTF-02, NTF-05, NTF-08, NTF-09, NTF-10. The channels that
-carry things outside the application — mail, and chat behind the same interface
-— are not built; what is here is the one that needs nothing configured.
+Satisfies NTF-01 to NTF-14. The channels that carry things outside the
+application — mail, and chat behind the same interface — are not built; what is
+here is the one that needs nothing configured, and what is missing is named
+below rather than left to be discovered.
 
 ## The area that works with nothing set up
 
@@ -54,6 +55,39 @@ not the same.
 | Somebody named you | event | Not built: the editor writes `@name` and nothing resolves it to a person yet (UIX-24). There is no word for it either — a name nothing can produce, advertised in an API description and drawn by a screen, is a promise the tool does not keep |
 | An approval an edit withdrew | event | Not built. NTF-13 wants the people who granted it told, so it does not quietly stop counting |
 | A build that stopped being scanned | condition | Built. A sweep derives every declared build with when it was last scanned, compares it against how long this deployment allows, and reconciles — so a build that resumes leaves the list on its own |
+
+**A mention notifies the person mentioned, immediately** (NTF-12), and is the
+row above that is not built: nothing resolves `@name` to a person yet.
+
+**A new build notifies nobody** (NTF-04). A build arriving is the ordinary
+state of a tool that is scanned nightly, and a message per night per build is
+how somebody learns to ignore the channel. What a build *changed* is on the
+receipts and in the trend; that a build happened is not news.
+
+**A newly-critical vulnerability in a shipped release is an operational alert**
+rather than a line on a dashboard (NTF-11), and operational alerts are their
+own category: they go to administrators and are outside the opt-in digest
+(NTF-07), because a category somebody has to opt in to is one that is silent on
+the deployment that most needs it.
+
+**The proposer's own view lists their dismissals still awaiting review**
+(NTF-06). Silence covers both "approved" and "nobody has looked", and those are
+not the same thing to the person waiting — which is what the queue's own
+"mine, pending" tab answers.
+
+## What is not built, and what it will be
+
+**A daily digest** carrying everything that is not urgent, opt-in and off by
+default (NTF-03). Off by default because a digest nobody asked for is mail
+somebody filters, and a filtered channel is worse than no channel: it looks
+like it is working.
+
+**Mail carries the markdown as its text part** (NTF-14). A chat adapter
+translates rather than forwarding it, and mostly sends a summary and a link
+rather than the whole thing — a channel people read on a phone is not a channel
+to paste a justification into. Neither is built, and the server-side renderer
+that the HTML part of a mail would need is kept for that reason rather than
+deleted.
 
 **Nobody is told they were unassigned.** A name being removed is not an action
 directed at the person who held it, and a queue that gets shorter says so

@@ -2,11 +2,11 @@
 
 The web interface, how it is built, and how it reaches the server.
 
-Satisfies UIX-01 to UIX-05, UIX-07, UIX-08, UIX-11, UIX-12, UIX-14, UIX-16,
-UIX-18 to UIX-23, UIX-25 to UIX-27, UIX-30 to UIX-32, UIX-34 to UIX-51,
-API-17, ACC-56 to ACC-59, the half of ING-41 that is shown rather than
-collected, and the interface half of TRI-45 to TRI-47. What is not built is
-named at the end rather than left to be found by clicking.
+Satisfies UIX-01 to UIX-27, UIX-30 to UIX-51, SCP-05, API-17, ACC-56 to
+ACC-59, the half of ING-41 that is shown rather than collected, and the
+interface half of TRI-45 to TRI-47. UIX-28 is in `DESIGN-text.md` with the rest
+of the rendering, and UIX-29 was withdrawn. What is not built is named at the
+end rather than left to be found by clicking.
 
 ## One artifact
 
@@ -1024,6 +1024,49 @@ the ring stay with the library.
 The mockup writes "3 days" in the field; the server takes and returns its own
 duration syntax, so what is typed is what is stored and the reading — "= 3
 days" — sits beside it rather than in it.
+
+## Rules the whole interface holds to
+
+**A screen works on a phone, and that is a requirement rather than an
+enhancement** (UIX-15). It rules out any packaged data grid that owns its own
+markup: the findings table has to become something else on a narrow screen
+rather than scroll sideways, and a component that will not let it is a
+component this cannot use. That is why the tables here are written rather than
+installed.
+
+**A small screen is shaped around review and respond, not bulk work** (UIX-17).
+Read a finding, agree to one or send it back, see what is assigned to you.
+Nobody triages three hundred findings or explores a deep dependency tree on a
+phone, and designing as though they might is what produces a screen that does
+neither well — so the wide-only screens stay wide and say so, rather than being
+folded into something unusable.
+
+**Panel order and what is left out are decided rather than accumulated**
+(UIX-06). The risk in a page that gathers everything is that it succeeds at
+nothing, so home leads with the work and puts the shape of things underneath,
+and what does not earn a panel does not get one.
+
+**Reports may span products** (UIX-09), unlike every other screen, which is
+bound to one. Comparing products is often the point of a report, and it costs
+no visibility: a person only ever sees products they hold a role on, whichever
+screen is asking.
+
+**Saved filters are personal and nothing is shared** (UIX-10). No ownership, no
+permissions, and no arguing about whose filter is authoritative — and nobody
+hesitates to save something half-formed. It is the same rule the look follows,
+for the same reason: a preference that changes nothing anybody else sees does
+not need a policy around it.
+
+**Two rows are only ambiguous when both ends match** (UIX-13) — the same
+subproject reaching the same component twice by different routes. Rare, and
+visible when it happens: expanding the row, or the tree, resolves it. Nothing
+is invented to disambiguate a case the reader can see.
+
+**Preview returns warnings as well as rendered output** (UIX-33), so anything
+that would be refused says so before somebody presses submit. The preview
+already runs the real renderer, so the checks are there for nothing otherwise —
+and a refusal at submit, on a long justification, sends somebody hunting for
+the line by eye.
 
 ## Not built yet
 
