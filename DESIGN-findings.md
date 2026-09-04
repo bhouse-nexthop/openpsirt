@@ -94,6 +94,27 @@ A model that assumed every finding came from a scan could not take one that did
 not without changing how closure works, and closure is the part that is easy to
 get subtly wrong and hard to notice.
 
+## A finding carries when it opened
+
+The row holds the moment it became true, rather than reaching the run that
+opened it for a timestamp.
+
+Three passes did the reaching, and all three did it as an inner join: the
+trend, the deadline rewrite when the policy changes, and the urgency recount
+when an issue's rating moves. A finding with no run therefore did not appear in
+any of them — not wrongly, but **absent**. That is the worse failure of the
+two. A number that is wrong invites somebody to check it; a row that is missing
+looks like there was nothing to say.
+
+It is also less work. Each of those joins existed to read one column, and two
+of them grouped on the run only so they could reach it — so the run is one
+table fewer in each, at the same cardinality, because every finding a run
+opened carries that run's start.
+
+**The run is still recorded where there is one**, and it is what "what did this
+run change" is counted by: that question is about a run, and a finding no run
+opened is correctly absent from the answer.
+
 ## Findings are held over intervals, like the graph
 
 Open until closed, never deleted. Re-scanning happens nightly against a

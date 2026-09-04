@@ -527,3 +527,75 @@ func (f *fixture) recorded(t *testing.T, id int64, identity string) {
 		t.Fatalf("record a person to hang a claim on: %v", err)
 	}
 }
+
+func TestAFindingWithNoRunIsStillOnTheClockAndOnTheChart(t *testing.T) {
+	// A finding somebody recorded has no scan run. Three passes reached the
+	// run for one column — when it opened — and reached it with an inner join,
+	// so a finding without one was not mis-reported but **absent**: off the
+	// trend, and never rewritten when the deadline policy changed.
+	//
+	// Absent is the worse failure. A wrong number invites somebody to check
+	// it; a missing row looks like there was nothing to say.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		scan := f.run(t)
+		f.seenAt(t, scan, time.Now().UTC().Add(-14*24*time.Hour))
+		rated := found("CVE-2026-HIGH", libnl)
+		rated.Issue.Severity = "high"
+		if _, err := f.store.Apply(t.Context(), f.target, scan,
+			[]finding.Reported{rated}); err != nil {
+			t.Fatal(err)
+		}
+
+		// One recorded by hand, opened a fortnight ago, rated high like the
+		// scanned one so the same window applies to both.
+		opened := time.Now().UTC().Add(-14 * 24 * time.Hour).Truncate(time.Microsecond)
+		entered := finding.Finding{
+			TargetID: f.target, Kind: finding.Entered,
+			Visibility:      access.Public,
+			VulnerabilityID: f.interned(t, "SONIC-2026-0007"),
+			ComponentID:     f.open(t)[0].ComponentID,
+			PlaceIdentity:   "place-of-something-we-build",
+			LastChangedAt:   opened,
+			OpenedAt:        opened,
+			DueAt:           ptr(opened.Add(testWindows.High)),
+		}
+		if _, err := f.db.DB.NewInsert().Model(&entered).Exec(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+
+		// The deadline policy changes. Everything open is rewritten, whatever
+		// opened it.
+		shorter := testWindows
+		shorter.High = 15 * 24 * time.Hour
+		if _, err := f.store.Recompute(t.Context(), shorter); err != nil {
+			t.Fatal(err)
+		}
+		var now time.Time
+		if err := f.db.DB.NewSelect().Model((*finding.Finding)(nil)).
+			ColumnExpr("due_at").Where("id = ?", entered.ID).
+			Scan(t.Context(), &now); err != nil {
+			t.Fatal(err)
+		}
+		if now.Sub(opened.Add(shorter.High)).Abs() > time.Second {
+			t.Errorf("a recorded finding's deadline is %s after the policy changed, want %s",
+				now, opened.Add(shorter.High))
+		}
+
+		// And it is on the chart. Counted as issues, so this is one more than
+		// the scan alone produced.
+		points, err := f.store.Trend(t.Context(), f.holding(t, access.PublicRead),
+			finding.Scope{}, time.Now().UTC().Add(-28*24*time.Hour), 7*24*time.Hour, 4)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(points) == 0 {
+			t.Fatal("the trend answered with no points")
+		}
+		last := points[len(points)-1]
+		if last.Open != 2 {
+			t.Errorf("the trend counts %d issues open, want 2 — the scanned one and the "+
+				"recorded one", last.Open)
+		}
+	})
+}

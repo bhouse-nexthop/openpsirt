@@ -227,7 +227,17 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			"assigned_to"      ` + t.refNull + ` NULL,
 			"assigned_at"      ` + t.timestamp + ` NULL,
 			"last_changed_at"  ` + t.timestamp + ` NOT NULL,
-			"opened_run_id"    ` + t.ref + ` NOT NULL,
+			-- When this became true, carried on the row rather than reached
+			-- through the run that opened it. Not every finding has one: a
+			-- flaw somebody recorded by hand was opened by a person. Three
+			-- queries reached the run for this timestamp and reached it with
+			-- an inner join, which drops a finding that has no run rather
+			-- than reporting it — silently, from a trend, a deadline sweep
+			-- and an urgency recount at once.
+			"opened_at"        ` + t.timestamp + ` NOT NULL,
+			-- The run that opened it, where a run did. Null is a finding a
+			-- person opened, and it is why the column stopped being required.
+			"opened_run_id"    ` + t.refNull + ` NULL,
 			"closed_run_id"    ` + t.refNull + ` NULL,
 			"closed_because"   ` + t.kind + ` NULL,
 			CONSTRAINT "finding_target_id_fk" FOREIGN KEY ("target_id") REFERENCES "target"("id"),

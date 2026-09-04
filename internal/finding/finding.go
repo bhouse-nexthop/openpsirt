@@ -152,8 +152,15 @@ type Finding struct {
 	// only where the version moved and the issue came with it. Its presence is
 	// the statement that somebody bumped this and the bump did not resolve it;
 	// its value is what they bumped from, so saying so needs no second query.
-	ArrivedFrom   string  `bun:"arrived_from"`
-	OpenedRunID   int64   `bun:"opened_run_id,notnull"`
+	ArrivedFrom string `bun:"arrived_from"`
+	// OpenedAt is when this became true. Carried here rather than reached
+	// through the run, because not every finding has a run: one somebody
+	// recorded by hand was opened by a person, and everything that asks when a
+	// finding opened has to be able to answer for it.
+	OpenedAt time.Time `bun:"opened_at,notnull"`
+	// OpenedRunID is the run that opened it, where one did. Nil is a finding a
+	// person opened.
+	OpenedRunID   *int64  `bun:"opened_run_id"`
 	ClosedRunID   *int64  `bun:"closed_run_id"`
 	ClosedBecause Closure `bun:"closed_because"`
 }

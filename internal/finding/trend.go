@@ -73,21 +73,23 @@ func (s *Store) Trend(ctx context.Context, subject access.Subject, scope Scope, 
 		Join("JOIN target AS tg ON tg.id = f.target_id").
 		Join("JOIN stream AS st ON st.id = tg.stream_id").
 		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
-		Join("JOIN scan_run AS o ON o.id = f.opened_run_id").
 		Join("LEFT JOIN scan_run AS c ON c.id = f.closed_run_id").
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		// An issue with no published severity is stored as '', not NULL, so
 		// the empty string is what has to be named — a COALESCE alone never
 		// fires and the chart's split gained a key with no name.
 		ColumnExpr("COALESCE(NULLIF(v.severity, ''), 'unknown') AS severity").
-		ColumnExpr("o.started_at AS opened_at").
+		// Off the row, not through the run that opened it. That join was an
+		// inner one, so a finding with no run — one somebody recorded by hand
+		// — did not appear on the chart at all rather than appearing wrongly.
+		ColumnExpr("f.opened_at AS opened_at").
 		ColumnExpr("c.started_at AS closed_at").
 		ColumnExpr("COALESCE(f.closed_because, '') AS closed_because").
 		// Only what can fall in the range. A finding opened after the last
 		// point contributes to nothing, and one closed before the first
 		// contributes to nothing either — reading the whole table to discard
 		// most of it grows the cost of a chart with the age of the deployment.
-		Where("o.started_at <= ?", until).
+		Where("f.opened_at <= ?", until).
 		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 			return q.WhereOr("f.closed_run_id IS NULL").
 				WhereOr("c.started_at > ?", since)

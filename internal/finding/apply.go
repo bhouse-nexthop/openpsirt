@@ -193,7 +193,8 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 					PlaceIdentity:   PlaceIdentity(component.Name, present.nameOf(consumerID)),
 					FixState:        r.FixState, FixedIn: r.FixedIn, FixedAt: r.FixedAt,
 					SuppressedBy: covering,
-					OpenedRunID:  runID,
+					OpenedAt:     startedAt,
+					OpenedRunID:  &runID,
 				}
 				rating := ratings[vulnerabilityID]
 				ranked := Ranked{

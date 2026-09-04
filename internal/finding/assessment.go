@@ -321,27 +321,28 @@ func redue(ctx context.Context, tx bun.Tx, vulnerabilityID int64) error {
 		return err
 	}
 
+	// Grouped on when each finding opened, which the row carries. It used to
+	// group on the run and join it for the timestamp — one join to read one
+	// column, and an inner one, so a finding a person opened was left out of
+	// its own recount.
 	var groups []struct {
 		Exploited bool      `bun:"exploited"`
-		RunID     int64     `bun:"run_id"`
-		StartedAt time.Time `bun:"started_at"`
+		OpenedAt  time.Time `bun:"opened_at"`
 		ProductID int64     `bun:"product_id"`
 		Severity  string    `bun:"severity"`
 	}
 	err = tx.NewSelect().
 		TableExpr("finding AS f").
-		Join("JOIN scan_run AS o ON o.id = f.opened_run_id").
 		Join("JOIN target AS tg ON tg.id = f.target_id").
 		Join("JOIN stream AS st ON st.id = tg.stream_id").
 		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
 		ColumnExpr("f.urgency_exploited AS exploited").
-		ColumnExpr("f.opened_run_id AS run_id").
-		ColumnExpr("o.started_at AS started_at").
+		ColumnExpr("f.opened_at AS opened_at").
 		ColumnExpr("st.product_id AS product_id").
 		ColumnExpr(EffectiveSeverityExpr+" AS severity").
 		Where("f.vulnerability_id = ?", vulnerabilityID).
 		Where("f.closed_run_id IS NULL").
-		GroupExpr("f.urgency_exploited, f.opened_run_id, o.started_at, st.product_id, "+
+		GroupExpr("f.urgency_exploited, f.opened_at, st.product_id, "+
 			EffectiveSeverityExpr).
 		Scan(ctx, &groups)
 	if err != nil {
@@ -364,12 +365,12 @@ func redue(ctx context.Context, tx bun.Tx, vulnerabilityID int64) error {
 			Where("vulnerability_id = ?", vulnerabilityID).
 			Where("closed_run_id IS NULL").
 			Where("urgency_exploited = ?", group.Exploited).
-			Where("opened_run_id = ?", group.RunID).
+			Where("opened_at = ?", group.OpenedAt).
 			Where(`target_id IN (SELECT tg.id FROM "target" AS tg
 				JOIN "stream" AS st ON st.id = tg.stream_id
 				WHERE st.product_id = ?)`, group.ProductID)
 		if floor.Admits(group.Exploited, group.Severity) {
-			q = q.Set("due_at = ?", group.StartedAt.Add(windows.For(group.Exploited, group.Severity)))
+			q = q.Set("due_at = ?", group.OpenedAt.Add(windows.For(group.Exploited, group.Severity)))
 		} else {
 			q = q.Set("due_at = NULL")
 		}

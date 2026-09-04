@@ -259,19 +259,23 @@ func (s *Store) RunningOut(ctx context.Context, subject access.Subject, scope Sc
 // keeps it portable — no engine agrees on how to add days to a timestamp —
 // and it is a handful of statements rather than hundreds of thousands.
 func (s *Store) Recompute(ctx context.Context, windows Windows) (int, error) {
-	var runs []struct {
-		ID        int64     `bun:"id"`
-		StartedAt time.Time `bun:"started_at"`
-	}
+	// The distinct moments something opened, off the findings themselves.
+	// This walked the runs and joined back for the timestamp, which asked the
+	// question in terms of the thing that usually answers it rather than the
+	// thing that always does: a finding a person opened has no run, so its
+	// deadline was never rewritten when the policy changed.
+	//
+	// The same cardinality either way — every finding a run opened carries
+	// that run's start — so this is one table fewer rather than more rows.
+	var opened []time.Time
 	err := s.db.NewSelect().
-		TableExpr("scan_run AS r").
-		ColumnExpr("r.id AS id").
-		ColumnExpr("r.started_at AS started_at").
-		Where(`EXISTS (SELECT 1 FROM "finding" AS f
-			WHERE f.opened_run_id = r.id AND f.closed_run_id IS NULL)`).
-		Scan(ctx, &runs)
+		TableExpr("finding AS f").
+		ColumnExpr("f.opened_at").
+		Where("f.closed_run_id IS NULL").
+		GroupExpr("f.opened_at").
+		Scan(ctx, &opened)
 	if err != nil {
-		return 0, fmt.Errorf("read which runs opened what is still open: %w", err)
+		return 0, fmt.Errorf("read when what is still open was opened: %w", err)
 	}
 
 	// Bands as predicates on the rating, in the same order For() decides them,
@@ -314,16 +318,16 @@ func (s *Store) Recompute(ctx context.Context, windows Windows) (int, error) {
 	}
 
 	changed := 0
-	for _, run := range runs {
+	for _, at := range opened {
 		for _, each := range bands {
-			due := run.StartedAt.Add(each.window)
+			due := at.Add(each.window)
 			for from := int64(0); from <= highest; from += recomputeSlice {
 				query := s.db.NewUpdate().
 					Model((*Finding)(nil)).
 					Set("due_at = ?", due).
 					Where("id > ?", from).
 					Where("id <= ?", from+recomputeSlice).
-					Where("opened_run_id = ?", run.ID).
+					Where("opened_at = ?", at).
 					Where("closed_run_id IS NULL")
 				result, err := each.where(query).Exec(ctx)
 				if err != nil {

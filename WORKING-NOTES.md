@@ -2489,3 +2489,26 @@ read by joining the run that opened it, and three hot queries do that as an
 inner join, which would silently drop every entered finding rather than
 mis-report it. That is the next change and it is a schema one. Then entering a
 finding at all, then disclosure dates and the escalation around them.
+
+## A finding now carries when it opened (2026-09-04)
+
+"When did this open" was answered by joining the run that opened it. Three
+passes did that — the trend, the deadline rewrite when the policy changes, and
+the urgency recount when a rating moves — and every one of them used an inner
+join, so a finding with no run would have been **absent** from all three rather
+than wrong in them.
+
+Absent is the worse failure. A wrong number invites checking; a missing row
+looks like there was nothing to say. On a trend that would have read as an
+issue nobody had, and on the deadline sweep as a finding permanently on an old
+policy's clock.
+
+The column moves to the finding, and `opened_run_id` becomes nullable. Two of
+the three passes were *grouping on the run* purely to reach its timestamp, so
+this is one table fewer in each at the same cardinality — every finding a run
+opened carries that run's start. The run is still recorded where there is one,
+and "what did this run change" still counts by it, which is correct: that
+question is about a run.
+
+Verified by putting both joins back: the deadline stays on the old policy and
+the trend counts one issue where there are two.
