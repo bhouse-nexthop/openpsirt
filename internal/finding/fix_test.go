@@ -35,7 +35,7 @@ func (f *fixture) fixing(t *testing.T, target int64) (issue, component int64) {
 	}
 	var row finding.Finding
 	if err := f.db.DB.NewSelect().Model(&row).
-		Where("target_id = ?", target).Where("closed_run_id IS NULL").
+		Where("target_id = ?", target).Where("closed_at IS NULL").
 		Limit(1).Scan(t.Context()); err != nil {
 		t.Fatal(err)
 	}

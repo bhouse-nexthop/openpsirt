@@ -66,7 +66,7 @@ func (s *Store) OpenBy(ctx context.Context, subject access.Subject, scope Scope,
 		ColumnExpr(column + " AS grouped_by").
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("f.component_id AS component_id").
-		Where("f.closed_run_id IS NULL")
+		Where("f.closed_at IS NULL")
 	if !all {
 		inner = inner.Where("st.product_id IN (?)", bun.List(products))
 	}

@@ -128,24 +128,32 @@ about. Recording is where that guess costs most: a lookup that picks wrongly
 answers the wrong question and can be asked again, and a flaw filed against the
 wrong version of three is a record that reads as deliberate.
 
-**Nothing resolves one.** A flaw a person recorded opens and stays open. The
-one path that closes a finding is a scan applying what it found, and it passes
-over anything a person recorded on purpose — a run is the authority on what it
-found, and it found none of this. Nothing else closes one, so a flaw fixed
-three releases ago still reads as present.
+**A person closes it, because nothing else can** (REM-28). Resolution is
+computed from scans everywhere else, and that rule is right: it removes the gap
+between somebody marking work done and the work being done. It also needs
+evidence, and here there is none — the one path that closes a finding is a scan
+applying what it found, and it passes over anything a person recorded on
+purpose, because a run is the authority on what it found and it found none of
+this.
 
-This is written down rather than left to be discovered because it is invisible
-from inside: every screen looks right, the finding sits in the list like any
-other, and the wrongness is that it never leaves. It also bounds what an
-advisory can say — `DESIGN-remediation.md` records that a generated document
-names the releases holding a flaw and never says one is fixed, for exactly this
-reason — and a test pins it, so whatever closes the gap fails that test and is
-pointed at both documents.
+So the computation has no input, and what came of that was not "not yet
+resolved" but a finding that stayed open forever: a fix that shipped three
+releases ago still reading as present, invisibly, because every screen looked
+right and the wrongness was only that it never left.
 
-What it is not is an argument for letting a scan close them. That rule is the
-one that stops a nightly run quietly deleting work nobody scanned for, and it
-was put there after the opposite behavior was found. Whatever resolves a
-recorded flaw has to be somebody saying so.
+The exception is exactly that wide. **A scanner's finding is refused**, because
+for that one the evidence exists and overruling it is what computing resolution
+was chosen to prevent. It is closed **per build**, across every place the issue
+sits at there, because a fix ships in a release. It carries **who, when and
+why**, and a closure with no reason is refused for the same reason moving a
+disclosure date without one is. It asks the **same right recording it asked**,
+checked against each row rather than the issue: somebody who may argue about
+disclosed findings has not been handed the undisclosed ones here either.
+
+**Nothing reopens one.** Undoing a closure needs somewhere to keep the closure
+that was undone, and that is a table rather than a column — a closure whose
+history nobody can see is the state the rest of this design keeps refusing to
+ship. Closing is a considered act.
 
 **Each refusal is the caller's to fix, and says so.** A name that reaches
 nothing, a name that reaches several, a summary of nothing but whitespace, and
@@ -237,6 +245,22 @@ opened carries that run's start.
 **The run is still recorded where there is one**, and it is what "what did this
 run change" is counted by: that question is about a run, and a finding no run
 opened is correctly absent from the answer.
+
+**And when it closed, for the same reasons and one more.** Closure was readable
+only as "a run closed this", so the trend reached the run for the moment with
+the same join the opening used to — and a finding closed by a person would have
+been absent from the chart exactly as one opened by a person was. The stronger
+reason is that with closure spelled that way, a finding a run will never close
+could not be closed at all: the column that says a finding is over could only
+be filled in by something that never looks at it.
+
+So the row carries the moment, and what closed it sits beside as provenance —
+the run, or the person and their reason. Every index that carried the run in
+order to answer "is this open" carries the moment instead, because an index on
+the provenance answers a question nobody asks. A closure a scan wrote is dated
+by the run's own start, which is what the opening side does: a finding's life
+is measured against the runs that observed it rather than against when a write
+happened to land.
 
 ## Findings are held over intervals, like the graph
 

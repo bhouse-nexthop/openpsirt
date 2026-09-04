@@ -296,7 +296,7 @@ func rerank(ctx context.Context, tx bun.Tx, vulnerabilityID int64, assessed stri
 			" + (CASE WHEN urgency_shipped THEN ? ELSE 0 END) + ?",
 			int64(exploitedBand), int64(shippedBand), int64(rest)).
 		Where("vulnerability_id = ?", vulnerabilityID).
-		Where("closed_run_id IS NULL").
+		Where("closed_at IS NULL").
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("move this issue in the order: %w", err)
@@ -341,7 +341,7 @@ func redue(ctx context.Context, tx bun.Tx, vulnerabilityID int64) error {
 		ColumnExpr("st.product_id AS product_id").
 		ColumnExpr(EffectiveSeverityExpr+" AS severity").
 		Where("f.vulnerability_id = ?", vulnerabilityID).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		GroupExpr("f.urgency_exploited, f.opened_at, st.product_id, "+
 			EffectiveSeverityExpr).
 		Scan(ctx, &groups)
@@ -363,7 +363,7 @@ func redue(ctx context.Context, tx bun.Tx, vulnerabilityID int64) error {
 		q := tx.NewUpdate().
 			Model((*Finding)(nil)).
 			Where("vulnerability_id = ?", vulnerabilityID).
-			Where("closed_run_id IS NULL").
+			Where("closed_at IS NULL").
 			Where("urgency_exploited = ?", group.Exploited).
 			Where("opened_at = ?", group.OpenedAt).
 			Where(`target_id IN (SELECT tg.id FROM "target" AS tg
@@ -497,7 +497,7 @@ func (s *Store) WhatAgreeingWouldDo(ctx context.Context, subject access.Subject,
 		ColumnExpr(EffectiveSeverityExpr+" AS severity").
 		ColumnExpr("COUNT(*) AS open").
 		Where("f.vulnerability_id = ?", claim.VulnerabilityID).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		GroupExpr("st.product_id, f.urgency_exploited, " + EffectiveSeverityExpr)
 	q = onlyVisible(q, subject, products, all)
 	if err := q.Scan(ctx, &rows); err != nil {

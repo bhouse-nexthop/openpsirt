@@ -270,7 +270,7 @@ func (s *Store) buildsCovered(ctx context.Context, subject access.Subject, claim
 		ColumnExpr("st.display_name AS stream").
 		ColumnExpr("va.display_name AS variant").
 		Where("de.claim_id IN (?)", bun.List(claims)).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("st.product_id = de.product_id").
 		Where("COALESCE(de.component_upstream_version, '') = " + finding.ComponentUpstreamExpr).
 		Where("COALESCE(de.consumer_upstream_version, '') = " + finding.ConsumerUpstreamExpr)
@@ -364,7 +364,7 @@ func (s *Store) outliersFor(ctx context.Context, subject access.Subject, claims 
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("MIN(f.fixed_in) AS fixed_in").
 		Where("de.claim_id IN (?)", bun.List(claimIDs)).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("st.product_id = de.product_id").
 		Where("COALESCE(de.component_upstream_version, '') = " + finding.ComponentUpstreamExpr).
 		Where("COALESCE(de.consumer_upstream_version, '') = " + finding.ConsumerUpstreamExpr).

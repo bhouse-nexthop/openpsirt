@@ -170,7 +170,7 @@ func (w *Watch) pastDisclosure(ctx context.Context, admins []int64) (map[int64][
 		ColumnExpr("MIN(f.disclose_at) AS disclose_at").
 		ColumnExpr("MIN(f.assigned_to) AS assigned_to").
 		Where("f.visibility = ?", access.Private).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.disclose_at IS NOT NULL").
 		Where("f.disclose_at <= ?", time.Now().UTC()).
 		GroupExpr("p.name, st.name, va.name, c.name, v.identifier, st.product_id").

@@ -22,7 +22,7 @@ func init() {
 // descending follow the findings rather than being exploration. `finding`
 // carried five indexes and none of them contained `component_id`, so that
 // count had no way in: the planner took `finding_open_idx (target_id,
-// closed_run_id)`, which on a real build matches **every open finding for the
+// closed_at)`, which on a real build matches **every open finding for the
 // target**, and filtered them one at a time.
 //
 // Measured on a switch operating-system image — 441,108 open findings, and a
@@ -39,7 +39,7 @@ func init() {
 // lookup, which is the same prefix without the last column.
 func upGraphWalk(ctx context.Context, tx *sql.Tx) error {
 	statements := []string{
-		`CREATE INDEX "finding_component_idx" ON "finding" ("target_id", "component_id", "closed_run_id")`,
+		`CREATE INDEX "finding_component_idx" ON "finding" ("target_id", "component_id", "closed_at")`,
 	}
 	for _, stmt := range statements {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {

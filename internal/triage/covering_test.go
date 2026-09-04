@@ -85,6 +85,7 @@ func (f *fixture) finds(t *testing.T, in build, componentID int64, place string,
 func (f *fixture) moves(t *testing.T, in build, findingID, toComponent int64, place string) {
 	t.Helper()
 	if _, err := f.db.DB.NewUpdate().Model((*finding.Finding)(nil)).
+		Set("closed_at = ?", time.Now().UTC()).
 		Set("closed_run_id = ?", in.run).
 		Where("id = ?", findingID).Exec(t.Context()); err != nil {
 		t.Fatal(err)

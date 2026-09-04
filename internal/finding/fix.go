@@ -139,7 +139,7 @@ func (s *Store) FixingIn(ctx context.Context, subject access.Subject,
 		Where("st.product_id = ?", productID).
 		Where("f.vulnerability_id = ?", vulnerabilityID).
 		Where("f.component_id = ?", componentID).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		GroupExpr("f.target_id").
 		Scan(ctx, &open)

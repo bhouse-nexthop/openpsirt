@@ -165,7 +165,7 @@ func (f *fixture) open(t *testing.T) []finding.Finding {
 	t.Helper()
 	var rows []finding.Finding
 	err := f.db.DB.NewSelect().Model(&rows).
-		Where("target_id = ?", f.target).Where("closed_run_id IS NULL").Scan(t.Context())
+		Where("target_id = ?", f.target).Where("closed_at IS NULL").Scan(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +310,7 @@ func TestAnUpgradeClosesWithTheReason(t *testing.T) {
 
 		var closed []finding.Finding
 		if err := f.db.DB.NewSelect().Model(&closed).
-			Where("closed_run_id IS NOT NULL").Scan(t.Context()); err != nil {
+			Where("closed_at IS NOT NULL").Scan(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 		for _, row := range closed {
@@ -339,7 +339,7 @@ func TestAComponentGoneAltogetherClosesAsRemoved(t *testing.T) {
 
 		var closed []finding.Finding
 		if err := f.db.DB.NewSelect().Model(&closed).
-			Where("closed_run_id IS NOT NULL").Scan(t.Context()); err != nil {
+			Where("closed_at IS NOT NULL").Scan(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 		if len(closed) != 2 {
@@ -1474,6 +1474,7 @@ func TestOnlyTheVersionsCarryingTheIssueAreOffered(t *testing.T) {
 		// Closed findings are not offered: following one leads to a finding
 		// that is not there.
 		if _, err := f.db.DB.NewUpdate().Model((*finding.Finding)(nil)).
+			Set("closed_at = ?", time.Now().UTC()).
 			Set("closed_run_id = ?", f.run(t)).
 			Where("target_id = ?", f.target).Exec(t.Context()); err != nil {
 			t.Fatal(err)

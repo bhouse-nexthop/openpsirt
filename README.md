@@ -46,9 +46,7 @@ place to triage what it finds and track it through to a fix.
 >
 > What does not: every adapter that would send an advisory somewhere,
 > attachments, mail and the digest, remediation metrics, export, and findings
-> from a static analyzer. Nor does anything resolve a flaw recorded by hand —
-> `DESIGN-findings.md` says why that gap is stated rather than patched. The
-> design record is in [DECISIONS.md](DECISIONS.md).
+> from a static analyzer. The design record is in [DECISIONS.md](DECISIONS.md).
 
 ## What it does
 

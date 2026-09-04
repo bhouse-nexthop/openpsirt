@@ -1375,6 +1375,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close a recorded flaw as fixed in this build
+         * @description Closes a flaw somebody recorded here, in one build, because it has been fixed there. Every location of the issue in that build is closed together.
+         *
+         *     **Only a flaw somebody recorded.** Everywhere else, resolution is computed from scans rather than declared, which is what stops a fix being reported that shipped in nobody's release. A flaw recorded by hand is the one case with no such evidence and no prospect of any — no scan reports it — so a person closes it or nothing does. An issue a scanner found is refused.
+         *
+         *     **A reason is required.** A closure with no reason is a record saying somebody closed it and nothing else.
+         *
+         *     **Nothing reopens one.** Closing is a considered act, and this is the way it is undone: it is not.
+         */
+        post: operations["resolve-finding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product}/streams/{stream}/variants/{variant}/readiness": {
         parameters: {
             query?: never;
@@ -2629,6 +2655,8 @@ export interface components {
             places: components["schemas"]["SittingBody"][] | null;
             /** @description Decisions made at these places that lapsed or were withdrawn, newest first, with their reasoning */
             previous: components["schemas"]["EarlierBody"][] | null;
+            /** @description Somebody recorded this here rather than a scanner reporting it. Only such a finding can be closed as fixed by hand */
+            recorded?: boolean;
             references?: components["schemas"]["ReferenceBody"][] | null;
             /**
              * Format: double
@@ -3714,6 +3742,31 @@ export interface components {
             stream: string;
             variant: string;
         };
+        "Resolve-findingRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Resolve-findingRequest.json
+             */
+            readonly $schema?: string;
+            /** @description What fixed it */
+            because: string;
+        };
+        ResolvedBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ResolvedBody.json
+             */
+            readonly $schema?: string;
+            /** @description When it was closed */
+            at: string;
+            /**
+             * Format: int64
+             * @description How many locations of the issue in this build were closed
+             */
+            closed: number;
+        };
         "Revise-decisionRequest": {
             /**
              * Format: uri
@@ -3946,6 +3999,7 @@ export interface components {
             state: "proposed" | "approved";
         };
         Status: {
+            fixed?: string[] | null;
             known_affected?: string[] | null;
         };
         StepBody: {
@@ -6491,6 +6545,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReachBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "resolve-finding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+                stream: string;
+                variant: string;
+                vulnerability: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Resolve-findingRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolvedBody"];
                 };
             };
             /** @description Error */

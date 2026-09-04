@@ -979,7 +979,7 @@ func placesWithin(ctx context.Context, tx bun.Tx, subject access.Subject,
 		ColumnExpr("COALESCE(v.score_centi, 0) AS severity_centi").
 		Where("f.target_id = ?", at.TargetID).
 		Where("f.component_id = ?", at.ComponentID).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.vulnerability_id IN (?)", bun.List(at.VulnerabilityIDs)).
 		GroupExpr("st.product_id, f.vulnerability_id, f.place_identity, f.visibility, " +
 			"c.upstream_version, c.version, uc.upstream_version, uc.version, v.score_centi").

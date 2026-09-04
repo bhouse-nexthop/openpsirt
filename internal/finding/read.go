@@ -44,7 +44,7 @@ func (s *Store) Open(ctx context.Context, subject access.Subject, targetID int64
 	var rows []Finding
 	err = s.db.NewSelect().Model(&rows).
 		Where("target_id = ?", targetID).
-		Where("closed_run_id IS NULL").
+		Where("closed_at IS NULL").
 		Where("visibility IN (?)", bun.List(visible)).
 		Order("id").Scan(ctx)
 	if err != nil {
@@ -74,7 +74,7 @@ func (s *Store) CountOpen(ctx context.Context, subject access.Subject, targetID 
 
 	n, err := s.db.NewSelect().Model((*Finding)(nil)).
 		Where("target_id = ?", targetID).
-		Where("closed_run_id IS NULL").
+		Where("closed_at IS NULL").
 		Where("visibility IN (?)", bun.List(visible)).
 		Count(ctx)
 	if err != nil {
@@ -457,7 +457,7 @@ func (s *Store) Hidden(ctx context.Context, subject access.Subject, targetID int
 		TableExpr("finding AS f").
 		ColumnExpr("f.vulnerability_id").
 		Where("f.target_id = ?", targetID).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		GroupExpr("f.vulnerability_id, f.component_id")
 	if words := filter.Floor.admits(); len(words) > 0 {
@@ -603,7 +603,7 @@ func (f Filter) byState(q *bun.SelectQuery) *bun.SelectQuery {
 		ColumnExpr("MAX(CASE WHEN de.live_key IS NOT NULL AND de.outcome = ? THEN 1 ELSE 0 END) AS this_outcome",
 			outcome).
 		Where("de.product_id = ?", f.ProductID).
-		Where("f2.closed_run_id IS NULL").
+		Where("f2.closed_at IS NULL").
 		Where(coversHere).
 		GroupExpr("f2.id")
 	q = q.Join("LEFT JOIN (?) AS dd ON dd.finding_id = f.id", decided)
@@ -870,7 +870,7 @@ func (s *Store) heads(ctx context.Context, targetID int64, visible []access.Visi
 		ColumnExpr("MAX(f.urgency) AS urgency").
 		ColumnExpr("COUNT(*) OVER () AS total").
 		Where("f.target_id = ?", targetID).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		GroupExpr("f.vulnerability_id, f.component_id").
 		// Ordered by urgency rather than by how widespread something is.
@@ -890,7 +890,7 @@ func (s *Store) heads(ctx context.Context, targetID int64, visible []access.Visi
 		TableExpr("finding AS f").
 		ColumnExpr("f.vulnerability_id").
 		Where("f.target_id = ?", targetID).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		GroupExpr("f.vulnerability_id, f.component_id")
 	total, err := s.db.NewSelect().
@@ -975,7 +975,7 @@ func (s *Store) decorate(ctx context.Context, targetID, productID int64, visible
 			" AND de.state = ? AND de.live_key IS NOT NULL AND de.sent_back_at IS NOT NULL"),
 			productID, "proposed").
 		Where("f.target_id = ?", targetID).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		// The page's issues and the page's components, as two lists. That
 		// admits an issue from one row in the component of another, and
@@ -1111,6 +1111,11 @@ type Evidence struct {
 	// and the bump did not resolve it — which is aimed at whoever did the
 	// bump rather than at whoever triages.
 	ArrivedFrom string
+	// Recorded says a person entered this rather than a scanner reporting it,
+	// which is what decides whether a person may close it (REM-28). Everything
+	// else about it behaves the same, so this is the one place the difference
+	// has to be visible.
+	Recorded bool
 
 	// What the ecosystem's own index says is newest, and when it shipped
 	// (ING-41). Empty where asking is turned off, where nothing has asked yet,
@@ -1199,6 +1204,7 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		FixedIn       string     `bun:"fixed_in"`
 		FixedAt       *time.Time `bun:"fixed_at"`
 		Matched       string     `bun:"matched"`
+		Kind          string     `bun:"kind"`
 		MatchedFrom   string     `bun:"matched_from"`
 		ArrivedFrom   string     `bun:"arrived_from"`
 	}
@@ -1233,10 +1239,11 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		ColumnExpr("COALESCE(f.matched, '') AS matched").
 		ColumnExpr("COALESCE(f.matched_from, '') AS matched_from").
 		ColumnExpr("COALESCE(f.arrived_from, '') AS arrived_from").
+		ColumnExpr("f.kind AS kind").
 		Where("f.target_id = ?", targetID).
 		Where("f.vulnerability_id = ?", vulnerabilityID).
 		Where("f.component_id = ?", componentID).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		OrderExpr("f.urgency DESC, consumer").
 		Scan(ctx, &rows)
@@ -1290,6 +1297,7 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 	// Any place answers. They all come from one line of a scanner's report,
 	// which the applier writes to every place of the group.
 	evidence.Matched = Matched(rows[0].Matched)
+	evidence.Recorded = Kind(rows[0].Kind) == Entered
 	evidence.MatchedFrom = rows[0].MatchedFrom
 	if component.LatestVersion != nil {
 		evidence.LatestVersion = *component.LatestVersion
@@ -1379,7 +1387,7 @@ func (s *Store) heldBy(ctx context.Context, targetID, vulnerabilityID, component
 		Where("f.target_id = ?", targetID).
 		Where("f.vulnerability_id = ?", vulnerabilityID).
 		Where("f.component_id = ?", componentID).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		GroupExpr("p.identity").
 		Scan(ctx, &holders)
 	if err != nil {
@@ -1420,7 +1428,7 @@ func (s *Store) AtComponent(ctx context.Context, subject access.Subject, targetI
 		q = q.TableExpr("finding AS f").
 			Where("f.target_id = ?", targetID).
 			Where("f.component_id = ?", componentID).
-			Where("f.closed_run_id IS NULL").
+			Where("f.closed_at IS NULL").
 			Where("f.visibility IN (?)", bun.List(visible))
 		if contains != "" {
 			// Matched against what a report says, which is all that is held
@@ -1492,7 +1500,7 @@ func (s *Store) AtComponent(ctx context.Context, subject access.Subject, targetI
 			ColumnExpr("MIN(COALESCE(f.fixed_in, '')) AS fixed_in").
 			Where("f.target_id = ?", targetID).
 			Where("f.component_id = ?", componentID).
-			Where("f.closed_run_id IS NULL").
+			Where("f.closed_at IS NULL").
 			Where("f.visibility IN (?)", bun.List(visible)).
 			Where("f.vulnerability_id IN (?)", bun.List(issues)).
 			GroupExpr("f.vulnerability_id").
@@ -1555,7 +1563,7 @@ func (s *Store) placesOf(ctx context.Context, targetID, componentID int64, issue
 		ColumnExpr(ConsumerUpstreamExpr+" AS consumer_upstream").
 		Where("f.target_id = ?", targetID).
 		Where("f.component_id = ?", componentID).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.vulnerability_id IN (?)", bun.List(issues)).
 		Where("f.visibility IN (?)", bun.List(visible)).
 		GroupExpr("f.vulnerability_id, f.place_identity, f.visibility, c.upstream_version, c.version, uc.upstream_version, uc.version").
@@ -1651,7 +1659,7 @@ func (s *Store) ComponentGroups(ctx context.Context, subject access.Subject, tar
 		// The total rides on the page, as the findings list's does.
 		ColumnExpr("COUNT(*) OVER () AS total").
 		Where("f.target_id = ?", targetID).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		GroupExpr("f.component_id").
 		// By weight, not by urgency. The question this view answers is where
@@ -1671,7 +1679,7 @@ func (s *Store) ComponentGroups(ctx context.Context, subject access.Subject, tar
 			TableExpr("finding AS f").
 			ColumnExpr("f.component_id").
 			Where("f.target_id = ?", targetID).
-			Where("f.closed_run_id IS NULL").
+			Where("f.closed_at IS NULL").
 			Where("f.visibility IN (?)", bun.List(visible)).
 			GroupExpr("f.component_id")
 		if total, err = s.db.NewSelect().

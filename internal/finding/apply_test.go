@@ -277,7 +277,7 @@ func TestAScanDoesNotCloseWhatAPersonRecorded(t *testing.T) {
 		var still int
 		err := f.db.DB.NewSelect().Model((*finding.Finding)(nil)).
 			Where("kind = ?", finding.Entered).
-			Where("closed_run_id IS NULL").
+			Where("closed_at IS NULL").
 			ColumnExpr("COUNT(*)").Scan(t.Context(), &still)
 		if err != nil {
 			t.Fatal(err)
@@ -294,7 +294,7 @@ func TestAScanDoesNotCloseWhatAPersonRecorded(t *testing.T) {
 		var scannedOpen int
 		err = f.db.DB.NewSelect().Model((*finding.Finding)(nil)).
 			Where("kind = ?", finding.Vulnerable).
-			Where("closed_run_id IS NULL").
+			Where("closed_at IS NULL").
 			ColumnExpr("COUNT(*)").Scan(t.Context(), &scannedOpen)
 		if err != nil {
 			t.Fatal(err)

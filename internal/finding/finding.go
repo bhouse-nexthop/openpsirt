@@ -56,6 +56,13 @@ const (
 	// Unexplained means the component is present and unchanged and the scanner
 	// stopped reporting it. It is always flagged and never suppressed.
 	Unexplained Closure = "unexplained"
+	// Fixed means somebody said a flaw they recorded is fixed in this build.
+	//
+	// The only closure a person writes, and it exists because nothing else
+	// can write it: a run is the authority on what it found, and it never
+	// found a flaw somebody recorded by hand, so the evidence every other
+	// closure here rests on does not exist for this one (REM-28).
+	Fixed Closure = "fixed"
 )
 
 // Run is one execution of a scanner over one variant.
@@ -178,8 +185,22 @@ type Finding struct {
 	OpenedAt time.Time `bun:"opened_at,notnull"`
 	// OpenedRunID is the run that opened it, where one did. Nil is a finding a
 	// person opened.
-	OpenedRunID   *int64  `bun:"opened_run_id"`
-	ClosedRunID   *int64  `bun:"closed_run_id"`
+	OpenedRunID *int64 `bun:"opened_run_id"`
+	// ClosedAt is when it stopped being true, and nil is open. The same
+	// separation the opening has, for the same reason and then one more: a run
+	// closes nothing a person recorded — it is the authority on what it found,
+	// and it found none of that — so with closure readable only through a run,
+	// a finding somebody recorded by hand could never be closed at all.
+	ClosedAt *time.Time `bun:"closed_at"`
+	// ClosedRunID is the run that closed it and ClosedBy the person who did.
+	// Exactly one of them is set on a closed finding: a scan closing what it
+	// no longer sees, or somebody saying a flaw they recorded is fixed.
+	ClosedRunID *int64 `bun:"closed_run_id"`
+	ClosedBy    *int64 `bun:"closed_by"`
+	// ClosedNote is why, where a person closed it. Required of them: a
+	// closure with no reason is a record saying somebody closed it and
+	// nothing else.
+	ClosedNote    string  `bun:"closed_note"`
 	ClosedBecause Closure `bun:"closed_because"`
 }
 

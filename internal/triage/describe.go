@@ -126,7 +126,7 @@ func (s *Store) Describe(ctx context.Context, subject access.Subject, decisions 
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		Where("de.id IN (?)", bun.List(ids)).
 		Where("st.product_id = de.product_id").
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(readable)).
 		OrderExpr("de.id, exact DESC, st.display_name, va.display_name, c.name").
 		Scan(ctx, &rows)
@@ -185,7 +185,7 @@ func (s *Store) Describe(ctx context.Context, subject access.Subject, decisions 
 		Where("f.target_id IN (?)", bun.List(targets)).
 		Where("f.vulnerability_id IN (?)", bun.List(wanted)).
 		Where("f.component_id IN (?)", bun.List(components)).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(readable)).
 		GroupExpr("f.target_id, f.vulnerability_id, f.component_id").
 		Scan(ctx, &counts); err != nil {
@@ -233,7 +233,7 @@ func (s *Store) Describe(ctx context.Context, subject access.Subject, decisions 
 		Where("COALESCE(de.consumer_upstream_version, '') = "+finding.ConsumerUpstreamExpr).
 		Where("f.target_id IN (?)", bun.List(targets)).
 		Where("f.component_id IN (?)", bun.List(components)).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(readable)).
 		GroupExpr("de.claim_id, f.target_id, f.vulnerability_id, f.component_id").
 		Scan(ctx, &covered); err != nil {

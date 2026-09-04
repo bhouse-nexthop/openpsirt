@@ -333,7 +333,7 @@ func TestALiveDecisionCoversOnlyTheVersionsItWasKeyedOn(t *testing.T) {
 			t.Helper()
 			var open []finding.Finding
 			if err := f.db.DB.NewSelect().Model(&open).
-				Where("target_id = ?", target).Where("closed_run_id IS NULL").Scan(ctx); err != nil {
+				Where("target_id = ?", target).Where("closed_at IS NULL").Scan(ctx); err != nil {
 				t.Fatal(err)
 			}
 			evidence, err := f.store.Detail(ctx, who, target, open[0].VulnerabilityID, open[0].ComponentID)

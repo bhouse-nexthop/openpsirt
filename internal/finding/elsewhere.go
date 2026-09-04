@@ -117,7 +117,7 @@ func (s *Store) Reaching(ctx context.Context, subject access.Subject, at Decidin
 		Where("st.product_id = ?", at.ProductID).
 		Where("f.vulnerability_id = ?", at.VulnerabilityID).
 		Where("f.place_identity = ?", at.PlaceIdentity).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		GroupExpr("f.target_id, st.display_name, va.display_name, c.version, "+
 			ComponentUpstreamExpr+", "+ConsumerUpstreamExpr).

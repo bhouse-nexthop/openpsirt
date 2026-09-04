@@ -409,6 +409,10 @@ type EvidenceBody struct {
 	// rather than whoever triages.
 	ArrivedFrom string `json:"arrived_from,omitempty" doc:"The version this was bumped from, where the bump did not resolve it"`
 
+	// Recorded says a person entered this rather than a scanner reporting it,
+	// which is the one thing that decides whether it can be closed by hand.
+	Recorded bool `json:"recorded,omitempty" doc:"Somebody recorded this here rather than a scanner reporting it. Only such a finding can be closed as fixed by hand"`
+
 	// What upstream has released (ING-41). Absent unless this deployment has
 	// turned asking on, which is off by default because it is the only thing
 	// here that reaches the network.
@@ -559,7 +563,7 @@ func evidenceBody(e finding.Evidence) EvidenceBody {
 		Weaknesses: e.Weaknesses, Description: e.Description, Advisory: e.Advisory,
 		Component: e.Component, Version: e.Version, Upstream: e.Upstream,
 		FixState: string(e.FixState), FixedIn: e.FixedIn, ArrivedFrom: e.ArrivedFrom,
-		Matched: string(e.Matched), MatchedFrom: e.MatchedFrom,
+		Matched: string(e.Matched), MatchedFrom: e.MatchedFrom, Recorded: e.Recorded,
 		LatestVersion: e.LatestVersion, NothingSince: e.NothingSince,
 		AssignedTo: e.AssignedTo,
 		Places:     make([]SittingBody, 0, len(e.Places)),

@@ -42,7 +42,7 @@ func upDeadline(ctx context.Context, tx *sql.Tx) error {
 
 	statements := []string{
 		`ALTER TABLE "finding" ADD COLUMN "due_at" ` + t.timestamp + ` NULL`,
-		`CREATE INDEX "finding_due_idx" ON "finding" ("closed_run_id", "suppressed_by", "due_at")`,
+		`CREATE INDEX "finding_due_idx" ON "finding" ("closed_at", "suppressed_by", "due_at")`,
 	}
 	for _, stmt := range statements {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {

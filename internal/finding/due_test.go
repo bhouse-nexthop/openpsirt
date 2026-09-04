@@ -310,7 +310,7 @@ func (f *fixture) deadline(t *testing.T, identifier string) time.Time {
 		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
 		ColumnExpr("f.due_at").
 		Where("v.identifier = ?", identifier).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Limit(1).Scan(t.Context(), &due)
 	if err != nil {
 		t.Fatalf("read the stored deadline for %s: %v", identifier, err)
@@ -439,7 +439,7 @@ func (f *fixture) deadlineOrZero(t *testing.T, identifier string) time.Time {
 		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
 		ColumnExpr("f.due_at").
 		Where("v.identifier = ?", identifier).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Limit(1).Scan(t.Context(), &due)
 	if err != nil {
 		t.Fatalf("read the stored deadline for %s: %v", identifier, err)
@@ -459,7 +459,7 @@ func (f *fixture) urgency(t *testing.T, identifier string) int64 {
 		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
 		ColumnExpr("MAX(f.urgency)").
 		Where("v.identifier = ?", identifier).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Scan(t.Context(), &rank)
 	if err != nil {
 		t.Fatalf("read where %s sits: %v", identifier, err)

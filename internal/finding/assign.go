@@ -72,7 +72,7 @@ func (s *Store) Assign(ctx context.Context, subject access.Subject, targetID, vu
 			WHERE st.product_id = ?)`, productID).
 		Where("vulnerability_id = ?", vulnerabilityID).
 		Where("component_id = ?", componentID).
-		Where("closed_run_id IS NULL").
+		Where("closed_at IS NULL").
 		// Narrowed by what this person may see, like every other query here. A
 		// finding nobody has disclosed is not one somebody may hand around.
 		Where("visibility IN (?)", bun.List(visible))
@@ -137,7 +137,7 @@ func (s *Store) ReleaseIn(ctx context.Context, subject access.Subject, personID,
 		result, err := tx.NewUpdate().Model((*Finding)(nil)).
 			Set("assigned_to = ?", nil).Set("assigned_at = ?", nil).
 			Where("assigned_to = ?", personID).
-			Where("closed_run_id IS NULL").
+			Where("closed_at IS NULL").
 			Where(`target_id IN (SELECT tg.id FROM "target" AS tg
 				JOIN "stream" AS st ON st.id = tg.stream_id
 				WHERE st.product_id = ?)`, productID).
@@ -163,7 +163,7 @@ func (s *Store) handOver(ctx context.Context, subject access.Subject, from int64
 	err := database.InTransaction(ctx, s.db, func(ctx context.Context, tx bun.Tx) error {
 		update := tx.NewUpdate().Model((*Finding)(nil)).
 			Where("assigned_to = ?", from).
-			Where("closed_run_id IS NULL")
+			Where("closed_at IS NULL")
 		if to == nil {
 			update = update.Set("assigned_to = ?", nil).Set("assigned_at = ?", nil)
 		} else {
@@ -220,7 +220,7 @@ func (s *Store) HeldBy(ctx context.Context, subject access.Subject) ([]Holding, 
 			TableExpr("finding AS f").
 			Join("JOIN target AS tg ON tg.id = f.target_id").
 			Join("JOIN stream AS st ON st.id = tg.stream_id").
-			Where("f.closed_run_id IS NULL").
+			Where("f.closed_at IS NULL").
 			Where("f.assigned_to IS NOT NULL")
 		if !all {
 			query = query.Where("st.product_id IN (?)", bun.List(products))
@@ -406,7 +406,7 @@ func (s *Store) work(ctx context.Context, subject access.Subject, scope Scope,
 		q = q.TableExpr("finding AS f").
 			Join("JOIN target AS tg ON tg.id = f.target_id").
 			Join("JOIN stream AS st ON st.id = tg.stream_id").
-			Where("f.closed_run_id IS NULL")
+			Where("f.closed_at IS NULL")
 		if holder == nil {
 			q = q.Where("f.assigned_to IS NULL")
 		} else {

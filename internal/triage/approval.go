@@ -428,7 +428,7 @@ func (s *Store) covering(ctx context.Context, subject access.Subject, decision D
 		Where("st.product_id = ?", decision.ProductID).
 		Where("f.vulnerability_id = ?", decision.VulnerabilityID).
 		Where("f.place_identity = ?", decision.PlaceIdentity).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("COALESCE(?, '') = "+finding.ComponentUpstreamExpr, decision.ComponentUpstreamVersion).
 		Where("COALESCE(?, '') = "+finding.ConsumerUpstreamExpr, decision.ConsumerUpstreamVersion).
 		Where("f.visibility IN (?)", bun.List(readable))

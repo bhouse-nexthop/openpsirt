@@ -142,6 +142,81 @@ func registerEntry(api huma.API, in Ingest) {
 	})
 }
 
+// ResolvedBody is what came of saying a flaw is fixed.
+type ResolvedBody struct {
+	Closed int    `json:"closed" doc:"How many locations of the issue in this build were closed"`
+	At     string `json:"at" doc:"When it was closed"`
+}
+
+func registerResolution(api huma.API, in Ingest) {
+	huma.Register(api, huma.Operation{
+		OperationID: "resolve-finding", Method: http.MethodPost,
+		Path: "/v1/products/{product}/streams/{stream}/variants/{variant}" +
+			"/findings/{vulnerability}/resolve",
+		Summary: "Close a recorded flaw as fixed in this build",
+		Description: "Closes a flaw somebody recorded here, in one build, because it has been " +
+			"fixed there. Every location of the issue in that build is closed together.\n\n" +
+			"**Only a flaw somebody recorded.** Everywhere else, resolution is computed from " +
+			"scans rather than declared, which is what stops a fix being reported that shipped " +
+			"in nobody's release. A flaw recorded by hand is the one case with no such " +
+			"evidence and no prospect of any — no scan reports it — so a person closes it or " +
+			"nothing does. An issue a scanner found is refused.\n\n" +
+			"**A reason is required.** A closure with no reason is a record saying somebody " +
+			"closed it and nothing else.\n\n" +
+			"**Nothing reopens one.** Closing is a considered act, and this is the way it is " +
+			"undone: it is not.",
+		Tags: []string{"Findings"},
+	}, func(ctx context.Context, input *struct {
+		Product       string `path:"product"`
+		Stream        string `path:"stream"`
+		Variant       string `path:"variant"`
+		Vulnerability string `path:"vulnerability"`
+		Body          struct {
+			Because string `json:"because" minLength:"1" doc:"What fixed it"`
+		}
+	}) (*struct{ Body ResolvedBody }, error) {
+		subject, err := reading(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if in.DB == nil {
+			return nil, huma.Error500InternalServerError("this process cannot close findings")
+		}
+		names := catalog.NewStore(in.DB.DB)
+		named, err := names.LocateVisible(ctx, subject, input.Product, input.Stream, input.Variant)
+		if err != nil {
+			return nil, noSuchProduct()
+		}
+		target, err := names.ExistingTarget(ctx, named.StreamID, named.VariantID)
+		if err != nil {
+			return nil, nothingScannedThere()
+		}
+		issueID, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, input.Vulnerability)
+		if err != nil {
+			return nil, noSuchIssue()
+		}
+
+		done, err := finding.NewStore(in.DB.DB).Resolve(ctx, subject,
+			target.ID, issueID, input.Body.Because)
+		if err != nil {
+			switch {
+			case errors.Is(err, finding.ErrNotOursToClose):
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			case errors.Is(err, finding.ErrNoReason):
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			case errors.Is(err, finding.ErrNothingOpenThere):
+				return nil, noSuchFinding()
+			case errors.Is(err, access.ErrDenied):
+				return nil, noSuchFinding()
+			}
+			return nil, wentWrong(in.Logger, "that could not be closed", err)
+		}
+		return &struct{ Body ResolvedBody }{Body: ResolvedBody{
+			Closed: done.Closed, At: stamp(done.At),
+		}}, nil
+	})
+}
+
 func registerDisclosure(api huma.API, in Ingest) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-approaching-disclosure", Method: http.MethodGet,

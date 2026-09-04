@@ -211,7 +211,7 @@ func (s *Store) RunningOut(ctx context.Context, subject access.Subject, scope Sc
 		ColumnExpr("MIN(f.assigned_to) AS assigned_to").
 		ColumnExpr("MAX(f.assigned_to) AS assigned_high").
 		ColumnExpr("COUNT(f.assigned_to) AS assigned_count").
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.due_at IS NOT NULL").
 		Where("f.due_at <= ?", s.now().UTC().Add(within)).
 		// Nothing the build already argued away, and nothing a decision
@@ -271,7 +271,7 @@ func (s *Store) Recompute(ctx context.Context, windows Windows) (int, error) {
 	err := s.db.NewSelect().
 		TableExpr("finding AS f").
 		ColumnExpr("f.opened_at").
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		GroupExpr("f.opened_at").
 		Scan(ctx, &opened)
 	if err != nil {
@@ -328,7 +328,7 @@ func (s *Store) Recompute(ctx context.Context, windows Windows) (int, error) {
 					Where("id > ?", from).
 					Where("id <= ?", from+recomputeSlice).
 					Where("opened_at = ?", at).
-					Where("closed_run_id IS NULL")
+					Where("closed_at IS NULL")
 				result, err := each.where(query).Exec(ctx)
 				if err != nil {
 					return changed, fmt.Errorf("rewrite deadlines: %w", err)
@@ -394,7 +394,7 @@ func (s *Store) clearPastEndOfLife(ctx context.Context) (int, error) {
 		result, err := s.db.NewUpdate().
 			Model((*Finding)(nil)).
 			Set("due_at = NULL").
-			Where("closed_run_id IS NULL").
+			Where("closed_at IS NULL").
 			Where("due_at IS NOT NULL").
 			Where(`target_id IN (SELECT tg.id FROM "target" AS tg
 				WHERE tg.stream_id IN (?))`, bun.List(batch)).
@@ -438,7 +438,7 @@ func (s *Store) clearBelowFloor(ctx context.Context) (int, error) {
 		result, err := s.db.NewUpdate().
 			Model((*Finding)(nil)).
 			Set("due_at = NULL").
-			Where("closed_run_id IS NULL").
+			Where("closed_at IS NULL").
 			Where("due_at IS NOT NULL").
 			Where("urgency_exploited = ?", false).
 			Where(`target_id IN (SELECT tg.id FROM "target" AS tg

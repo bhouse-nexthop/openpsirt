@@ -73,7 +73,7 @@ func (s *Store) Releases(ctx context.Context, subject access.Subject,
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("f.component_id AS component_id").
 		Where("st.product_id = ?", productID).
-		Where("f.closed_run_id IS NULL")
+		Where("f.closed_at IS NULL")
 	inner = onlyVisible(inner, subject, products, all)
 
 	query := s.db.NewSelect().
@@ -183,7 +183,7 @@ func (s *Store) VersionsWithIssue(ctx context.Context, subject access.Subject,
 		ColumnExpr("c.purl AS purl").
 		Where("f.target_id = ?", targetID).
 		Where("f.vulnerability_id = ?", vulnerabilityID).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("c.name = ?", name).
 		Where("f.visibility IN (?)", bun.List(visible)).
 		OrderExpr("c.version, c.purl").

@@ -385,7 +385,7 @@ func (s *Store) approveRows(ctx context.Context, subject access.Subject, ids []i
 		`WHERE st.product_id = de.product_id `+
 		`AND f.vulnerability_id = de.vulnerability_id `+
 		`AND f.place_identity = de.place_identity `+
-		`AND f.closed_run_id IS NULL `+
+		`AND f.closed_at IS NULL `+
 		`AND COALESCE(de.component_upstream_version, '') = `+finding.ComponentUpstreamExpr+` `+
 		`AND COALESCE(de.consumer_upstream_version, '') = `+finding.ConsumerUpstreamExpr+` `+
 		`AND f.visibility IN (?)) `+

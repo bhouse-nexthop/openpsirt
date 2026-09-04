@@ -102,7 +102,7 @@ func (s *Store) beneath(ctx context.Context, targetID int64, visible []access.Vi
 	JOIN "graph_node" AS n ON n.id = w.node
 	JOIN (SELECT f.component_id AS component_id, f.vulnerability_id AS vulnerability_id
 	      FROM "finding" AS f
-	      WHERE f.target_id = ? AND f.closed_run_id IS NULL AND f.visibility IN (?)
+	      WHERE f.target_id = ? AND f.closed_at IS NULL AND f.visibility IN (?)
 	      GROUP BY f.component_id, f.vulnerability_id) AS p ON p.component_id = n.component_id
 	GROUP BY sn.component_id`,
 		targetID, bun.List(of), targetID, depth, targetID, bun.List(visible)).

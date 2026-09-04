@@ -10,7 +10,7 @@ REM-12 are the external hand-off, which is not built. Of "Publication" below,
 the CSAF document is built and every adapter that would send it somewhere is
 not.
 
-## Nothing here is declared done
+## Nothing here is declared done, with one exception that proves the rule
 
 A fix is **declared** and never **completed**. Somebody says which releases
 they intend to fix an issue in; whether it arrived is answered by the next scan
@@ -26,6 +26,16 @@ that fails is the tool reporting a fix that shipped in nobody's release.
 
 So the stored row is the declaration and nothing else: which build, who said
 so, and when. There is no state column, no completed-at, and nothing to move.
+
+**The exception is a flaw somebody recorded by hand** (REM-28), and it exists
+because the argument above turns on having independent evidence. No scan
+reports such a flaw — a run is the authority on what it found, and it found
+none of this — so there is no second opinion to check a declaration against,
+and refusing the declaration does not leave the tool cautious. It leaves the
+finding open forever. That one class is closed by a person, with who, when and
+why on the record, and nothing else is: a scanner's finding declared fixed by
+hand is exactly the failure this section refuses. `DESIGN-findings.md` carries
+the shape.
 
 ## The unit is the work, not the finding
 
@@ -222,15 +232,12 @@ refers to is named in the product tree, and the list is ordered here rather
 than by the engine, so two documents generated from the same facts are the same
 bytes and a diff between them is a real change.
 
-**The document says which releases hold the flaw, and never that one is
-fixed.** That is a limit rather than an omission, and it is the same gap seen
-from this side that `DESIGN-findings.md` records: nothing resolves a finding
-somebody recorded by hand. One path closes a finding and it passes over
-anything a person recorded, because a run is the authority on what it found and
-it found none of this — so a `fixed` list would be a field that is always
-empty, which reads as "we checked and nothing is fixed" rather than as "this
-cannot be answered yet". A test pins that, so the day something does resolve
-one, it fails and points here.
+**A release that fixed the flaw is named as fixed**, rather than left out —
+leaving it out reads identically to a release that never shipped the thing at
+all, and those are opposite answers with one of them the answer a reader is
+hoping for. What fills that list is somebody saying so (REM-28), because for a
+flaw recorded by hand no scan ever will; `DESIGN-findings.md` says why the
+exception is exactly that wide.
 
 ### What is not built
 

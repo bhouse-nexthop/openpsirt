@@ -346,6 +346,8 @@ export function Finding() {
 
         <Holder at={at} assigned={it.assigned_to ?? ""} />
 
+        {it.recorded && <Resolve at={at} vulnerability={vulnerability} />}
+
         <FixingIn at={at} />
 
         {places.some((p) => p.decision == null) && (
@@ -1485,6 +1487,94 @@ function Holder({
         — the same code built several ways is one piece of work. Handing it back to nobody is the
         same action.
       </p>
+    </div>
+  );
+}
+
+// Closing a flaw somebody recorded, because it is fixed in this build.
+//
+// Only here, and only on a recorded flaw. Everywhere else resolution is
+// computed from scans, which is what stops a fix being reported that shipped in
+// nobody's release. A flaw recorded by hand is the one case with no such
+// evidence and no prospect of any — no scan reports it — so a person closes it
+// or nothing does.
+function Resolve({
+  at,
+  vulnerability,
+}: {
+  at: { product: string; stream: string; variant: string };
+  vulnerability: string;
+}) {
+  const queries = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [because, setBecause] = useState("");
+
+  const close = useMutation({
+    mutationFn: async () =>
+      unwrap(
+        await api.POST(
+          "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/resolve",
+          {
+            params: { path: { ...at, vulnerability } },
+            body: { because: because.trim() },
+          },
+        ),
+      ),
+    onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: ["finding"] });
+      void queries.invalidateQueries({ queryKey: ["findings"] });
+      setOpen(false);
+    },
+  });
+
+  return (
+    <div className="card">
+      <h3>Fixed here</h3>
+      <p className="reading" style={{ marginBottom: 8 }}>
+        Nothing else can close this. A scan is the authority on what it found and it never found
+        this, so it stays open until somebody says it is fixed in this build. Every location of it
+        here closes together, and <b>nothing reopens it</b>.
+      </p>
+      {close.error != null && <Failed error={close.error} what="That could not be closed." />}
+      {!open ? (
+        <button type="button" className="btn quiet" onClick={() => setOpen(true)}>
+          Close as fixed…
+        </button>
+      ) : (
+        <>
+          <div className="field">
+            <label htmlFor="res-because">
+              What fixed it{" "}
+              <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--sev-high)" }}>
+                required
+              </span>
+            </label>
+            <textarea
+              id="res-because"
+              value={because}
+              placeholder="The authentication check added in 1.0.1, shipped in this build."
+              onChange={(event) => setBecause(event.target.value)}
+              style={{ minHeight: 80 }}
+            />
+            <span className="hint">
+              A closure with no reason is a record saying somebody closed it and nothing else.
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              className="btn"
+              disabled={because.trim() === "" || close.isPending}
+              onClick={() => close.mutate()}
+            >
+              {close.isPending ? "Closing…" : "Close as fixed"}
+            </button>
+            <button type="button" className="btn quiet" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

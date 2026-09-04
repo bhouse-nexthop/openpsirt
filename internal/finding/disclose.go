@@ -103,7 +103,7 @@ func (s *Store) Disclosing(ctx context.Context, subject access.Subject, scope Sc
 		ColumnExpr("MIN(f.assigned_to) AS assigned_to").
 		ColumnExpr("COUNT(*) AS places").
 		Where("f.visibility = ?", access.Private).
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.disclose_at IS NOT NULL").
 		Where("f.disclose_at <= ?", s.now().UTC().Add(within)).
 		GroupExpr("v.identifier, v.description, " + EffectiveSeverityExpr +
@@ -201,7 +201,7 @@ func (s *Store) Extend(ctx context.Context, subject access.Subject,
 			Where("st.product_id = ?", productID).
 			Where("f.vulnerability_id = ?", vulnerabilityID).
 			Where("f.visibility = ?", access.Private).
-			Where("f.closed_run_id IS NULL").
+			Where("f.closed_at IS NULL").
 			Where("f.disclose_at IS NOT NULL").
 			Scan(ctx, &was)
 		if database.IsNoRows(err) || (err == nil && was.IsZero()) {
@@ -345,7 +345,7 @@ func moveTo(ctx context.Context, db bun.IDB, productID, vulnerabilityID int64,
 		Set("last_changed_at = ?", now).
 		Where("vulnerability_id = ?", vulnerabilityID).
 		Where("visibility = ?", access.Private).
-		Where("closed_run_id IS NULL").
+		Where("closed_at IS NULL").
 		Where(`target_id IN (SELECT tg.id FROM "target" AS tg
 			JOIN "stream" AS st ON st.id = tg.stream_id
 			WHERE st.product_id = ?)`, productID).

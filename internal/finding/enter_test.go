@@ -55,7 +55,7 @@ func TestAFlawInWhatWeShipIsRecordedAndSurvivesTheNextScan(t *testing.T) {
 		}
 		var open int
 		if err := f.db.DB.NewSelect().Model((*finding.Finding)(nil)).
-			Where("kind = ?", finding.Entered).Where("closed_run_id IS NULL").
+			Where("kind = ?", finding.Entered).Where("closed_at IS NULL").
 			ColumnExpr("COUNT(*)").Scan(t.Context(), &open); err != nil {
 			t.Fatal(err)
 		}

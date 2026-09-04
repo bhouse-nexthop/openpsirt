@@ -656,6 +656,13 @@ at several versions the server refuses with the choices and the drawer offers
 them; picking one is the whole of the answer. Recording lands on the finding,
 because working on it is the next thing anybody does.
 
+**A recorded flaw is closed from its own finding screen**, and only a recorded
+one shows the control: everything a scanner found is resolved by the next scan
+of the release, and offering a button that overrules that would be offering the
+thing the rule exists to prevent. The panel says outright that nothing else can
+close it and that nothing reopens it, because both are surprising and the
+second is irreversible. A reason is required, and the screen says why one is.
+
 **The screen that lists receipts is called Inventories.** A scan is what the
 deployment does to an inventory after it arrives; what a person uploads, and
 what the list is of, is inventories.

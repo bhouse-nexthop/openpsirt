@@ -526,7 +526,7 @@ func (s *Store) describe(ctx context.Context, readable []access.Visibility, targ
 		// reader may not see.
 		ColumnExpr(`(SELECT COUNT(DISTINCT f.vulnerability_id) FROM "finding" AS f
 			WHERE f.target_id = ? AND f.component_id = c.id
-			  AND f.closed_run_id IS NULL AND f.visibility IN (?)) AS findings`,
+			  AND f.closed_at IS NULL AND f.visibility IN (?)) AS findings`,
 			targetID, bun.List(readable)).
 		Where("c.id = ?", componentID).
 		Scan(ctx, row)
@@ -582,7 +582,7 @@ func (s *Store) step(ctx context.Context, readable []access.Visibility, targetID
 		// the root's thirty children against 0.09 s as one grouped pass.
 		Join(`LEFT JOIN (SELECT f.component_id AS cid, COUNT(DISTINCT f.vulnerability_id) AS n
 			FROM "finding" AS f
-			WHERE f.target_id = ? AND f.closed_run_id IS NULL AND f.visibility IN (?)
+			WHERE f.target_id = ? AND f.closed_at IS NULL AND f.visibility IN (?)
 			GROUP BY f.component_id) AS open ON open.cid = c.id`, targetID, bun.List(readable)).
 		ColumnExpr("COALESCE(open.n, 0) AS findings").
 		// Whether anything is under it, so a node that opens can be told from
@@ -779,7 +779,7 @@ func (s *Store) Search(ctx context.Context, subject access.Subject, targetID int
 		ColumnExpr("c.version AS version").
 		ColumnExpr(`(SELECT COUNT(*) FROM "finding" AS f
 			WHERE f.target_id = ? AND f.component_id = c.id
-			  AND f.closed_run_id IS NULL AND f.visibility IN (?)) AS findings`,
+			  AND f.closed_at IS NULL AND f.visibility IN (?)) AS findings`,
 			targetID, bun.List(readable)).
 		ColumnExpr("COALESCE(kids.n, 0) AS children").
 		Where("n.target_id = ?", targetID).

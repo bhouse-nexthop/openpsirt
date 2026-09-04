@@ -85,7 +85,7 @@ func (s *Store) Compare(ctx context.Context, subject access.Subject, fromTarget,
 			Where("f.target_id = ?", targetID).
 			Where("f.visibility IN (?)", bun.List(visible)).
 			GroupExpr("v.identifier, c.name, v.severity, f.closed_because")
-		return q.Where("f.closed_run_id IS NULL")
+		return q.Where("f.closed_at IS NULL")
 	}
 
 	var was, now []Changed
@@ -213,7 +213,7 @@ func (s *Store) whyGone(ctx context.Context, targetID int64, fixed []Changed) (m
 			ColumnExpr("cp.name AS component").
 			ColumnExpr("COALESCE(f.closed_because, '') AS because").
 			Where("f.target_id = ?", targetID).
-			Where("f.closed_run_id IS NOT NULL").
+			Where("f.closed_at IS NOT NULL").
 			Where("v.identifier IN (?)", bun.List(issues)).
 			Where("cp.name IN (?)", bun.List(components)).
 			// Ascending, so the last row read for a pair is its highest

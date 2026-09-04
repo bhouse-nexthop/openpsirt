@@ -310,7 +310,7 @@ func (s *Store) Lapse(ctx context.Context, targetID int64) (int64, error) {
 			Join("JOIN component AS c ON c.id = f.component_id").
 			Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
 			Where("f.target_id = ?", targetID).
-			Where("f.closed_run_id IS NULL").
+			Where("f.closed_at IS NULL").
 			Where("f.vulnerability_id = de.vulnerability_id").
 			Where("f.place_identity = de.place_identity")
 	}
@@ -327,7 +327,7 @@ func (s *Store) Lapse(ctx context.Context, targetID int64) (int64, error) {
 		Join("JOIN target AS tg ON tg.id = f.target_id").
 		Join("JOIN stream AS st ON st.id = tg.stream_id").
 		Where("st.product_id = de.product_id").
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("f.vulnerability_id = de.vulnerability_id").
 		Where("f.place_identity = de.place_identity").
 		Where(matching)
@@ -464,7 +464,7 @@ func (s *Store) WouldCarry(ctx context.Context, subject access.Subject,
 		ColumnExpr(`COALESCE((SELECT MIN(c.name) FROM "finding" AS f
 			JOIN "component" AS c ON c.id = f.component_id
 			WHERE f.target_id = ? AND f.vulnerability_id = de.vulnerability_id
-			  AND f.place_identity = de.place_identity AND f.closed_run_id IS NULL), '')
+			  AND f.place_identity = de.place_identity AND f.closed_at IS NULL), '')
 			AS component`, toTarget).
 		// Both versions, because a decision is keyed on both. Comparing only
 		// the component's meant a build whose *consumer* had moved was
@@ -474,18 +474,18 @@ func (s *Store) WouldCarry(ctx context.Context, subject access.Subject,
 			JOIN "component" AS c ON c.id = f.component_id
 			LEFT JOIN "component" AS uc ON uc.id = f.consumer_id
 			WHERE f.target_id = ? AND f.vulnerability_id = de.vulnerability_id
-			  AND f.place_identity = de.place_identity AND f.closed_run_id IS NULL), '')
+			  AND f.place_identity = de.place_identity AND f.closed_at IS NULL), '')
 			AS now_at`, toTarget).
 		ColumnExpr(`COALESCE((SELECT MIN(`+finding.ConsumerUpstreamExpr+`) FROM "finding" AS f
 			JOIN "component" AS c ON c.id = f.component_id
 			LEFT JOIN "component" AS uc ON uc.id = f.consumer_id
 			WHERE f.target_id = ? AND f.vulnerability_id = de.vulnerability_id
-			  AND f.place_identity = de.place_identity AND f.closed_run_id IS NULL), '')
+			  AND f.place_identity = de.place_identity AND f.closed_at IS NULL), '')
 			AS consumer_now`, toTarget).
 		ColumnExpr("COALESCE(de.consumer_upstream_version, '') AS consumer_was").
 		ColumnExpr(`EXISTS (SELECT 1 FROM "finding" AS f
 			WHERE f.target_id = ? AND f.vulnerability_id = de.vulnerability_id
-			  AND f.place_identity = de.place_identity AND f.closed_run_id IS NULL)
+			  AND f.place_identity = de.place_identity AND f.closed_at IS NULL)
 			AS still_there`, toTarget).
 		Where("de.live_key IS NOT NULL").
 		Where("de.product_id = ?", productID).

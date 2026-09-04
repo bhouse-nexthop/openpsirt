@@ -229,7 +229,7 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 		err = tx.NewSelect().Model(&open).
 			Where("target_id = ?", targetID).
 			Where("kind = ?", Vulnerable).
-			Where("closed_run_id IS NULL").Scan(ctx)
+			Where("closed_at IS NULL").Scan(ctx)
 		if err != nil {
 			return fmt.Errorf("read what is already open: %w", err)
 		}
@@ -355,6 +355,13 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 		for reason, ids := range byReason {
 			err := database.IDsInBatches(ctx, ids, func(ctx context.Context, batch []int64) error {
 				_, err := tx.NewUpdate().Model((*Finding)(nil)).
+					// The run's own moment, which is what the opening side
+					// dates a finding by: a finding's life is measured
+					// against the runs that observed it, not against when
+					// the write happened to land. The run stays beside it as
+					// provenance, and is what "what did this run change" is
+					// counted by.
+					Set("closed_at = ?", startedAt).
 					Set("closed_run_id = ?", runID).
 					Set("closed_because = ?", reason).
 					Where("id IN (?)", bun.List(batch)).Exec(ctx)

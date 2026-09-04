@@ -146,7 +146,7 @@ func (s *Store) standing(ctx context.Context, subject access.Subject,
 		ColumnExpr(BandExpr+" AS band").
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
 		ColumnExpr("f.component_id AS component_id").
-		Where("f.closed_run_id IS NULL").
+		Where("f.closed_at IS NULL").
 		Where("st.product_id = ?", productID).
 		Where("tg.stream_id = ?", streamID).
 		Where("tg.variant_id = ?", variantID)

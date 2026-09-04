@@ -184,39 +184,39 @@ func TestAnAdvisoryNamesEveryReleaseHoldingTheFlawAndNamesEachInTheTree(t *testi
 	})
 }
 
-func TestNothingResolvesAFlawSomebodyRecorded(t *testing.T) {
-	// Not a wish: the limit the advisory's status list is shaped around. One
-	// path closes a finding and it passes over anything a person recorded,
-	// because a run is the authority on what it found and it found none of
-	// this. So an advisory says which releases hold the flaw and never that
-	// one is fixed, and this is what would have to change first.
-	//
-	// It is pinned rather than left as a comment because the day something
-	// does resolve one, this test fails and points at the document that has
-	// to be brought level with it.
+func TestAReleaseThatFixedTheFlawIsNamedAsFixedRatherThanLeftOut(t *testing.T) {
+	// The answer a reader of an advisory is hoping for. A release that held
+	// the flaw and no longer does is the one to upgrade to, and leaving it out
+	// of the document reads identically to a release that never shipped the
+	// thing at all.
 	each(t, func(t *testing.T, f *fixture) {
 		ctx := t.Context()
 		identifier := f.recorded(t, f.master)
+		f.alsoIn(t, identifier, f.tagged)
 
-		// A scan of the build that reports nothing: exactly the run that
-		// closes every scanner finding it did not see again.
-		run, err := f.finds.Begin(ctx, finding.Run{
-			TargetID: f.master, Scanner: "grype", ScannerVersion: "0.118.0",
-			DatabaseVersion: "2026-08-28", RanHere: true,
-		})
+		issueID, err := finding.NewVulnerabilities(f.db.DB).ByName(ctx, identifier)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.finds.Apply(ctx, f.master, run.ID, nil); err != nil {
-			t.Fatal(err)
+		done, err := f.finds.Resolve(ctx, f.who, f.tagged, issueID,
+			"Shipped in 202411.3, which carries the patch.")
+		if err != nil {
+			t.Fatalf("closing it in the tagged release: %v", err)
+		}
+		if done.Closed != 1 {
+			t.Errorf("closed %d locations, want the one the release holds", done.Closed)
 		}
 
 		doc, err := f.store.For(ctx, f.who, issuer, "sonic", identifier)
 		if err != nil {
 			t.Fatalf("generating: %v", err)
 		}
-		if got := doc.Vulnerabilities[0].Status.KnownAffected; len(got) != 1 {
-			t.Errorf("a scan reporting nothing left the flaw as %v, want it still affected", got)
+		status := doc.Vulnerabilities[0].Status
+		if len(status.KnownAffected) != 1 || status.KnownAffected[0] != "sonic:master:broadcom" {
+			t.Errorf("affected: %v, want the branch alone", status.KnownAffected)
+		}
+		if len(status.Fixed) != 1 || status.Fixed[0] != "sonic:202411:broadcom" {
+			t.Errorf("fixed: %v, want the release it left", status.Fixed)
 		}
 	})
 }

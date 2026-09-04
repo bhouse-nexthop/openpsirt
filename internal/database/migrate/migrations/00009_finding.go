@@ -262,7 +262,25 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			-- The run that opened it, where a run did. Null is a finding a
 			-- person opened, and it is why the column stopped being required.
 			"opened_run_id"    ` + t.refNull + ` NULL,
+			-- When it stopped being true, and what closed it. The same
+			-- separation the opening has, and for the same reason: a run is
+			-- the authority on what it found, so it closes nothing a person
+			-- recorded, and a finding whose closure could only be read
+			-- through a run was one a person could never close at all.
+			"closed_at"        ` + t.timestamp + ` NULL,
+			-- The run that closed it, where a run did. Null with a closed_at
+			-- set is a finding a person closed.
 			"closed_run_id"    ` + t.refNull + ` NULL,
+			-- Who closed it, with no constraint, for the reason assigned_to
+			-- above carries: person is created by a later migration, and
+			-- SQLite takes the forward reference happily while the other
+			-- three refuse the table outright.
+			"closed_by"        ` + t.refNull + ` NULL,
+			-- Why, where a person closed it. Required of them, for the same
+			-- reason moving a disclosure date is: a closure with no reason is
+			-- a record saying somebody closed it and nothing else, which is
+			-- the state keeping a history exists to prevent.
+			"closed_note"      ` + t.text + ` NULL,
 			"closed_because"   ` + t.kind + ` NULL,
 			CONSTRAINT "finding_target_id_fk" FOREIGN KEY ("target_id") REFERENCES "target"("id"),
 			CONSTRAINT "finding_vulnerability_id_fk" FOREIGN KEY ("vulnerability_id") REFERENCES "vulnerability"("id"),
@@ -274,10 +292,10 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 		)` + t.suffix,
 
 		// What is open now, per variant, is the query behind every screen.
-		`CREATE INDEX "finding_open_idx" ON "finding" ("target_id", "closed_run_id")`,
+		`CREATE INDEX "finding_open_idx" ON "finding" ("target_id", "closed_at")`,
 		// Finding one issue everywhere it is present, which is what triaging
 		// one vulnerability across a portfolio asks for.
-		`CREATE INDEX "finding_vulnerability_idx" ON "finding" ("vulnerability_id", "closed_run_id")`,
+		`CREATE INDEX "finding_vulnerability_idx" ON "finding" ("vulnerability_id", "closed_at")`,
 		// Carrying a decision forward to the same place elsewhere, and reading
 		// the findings a decision is about: a decision names an issue at a
 		// place, and the place alone is not selective — one place in a switch
@@ -289,7 +307,7 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 		// Both directions are asked constantly: what one person holds, and what
 		// nobody holds. The second is the one that matters and the one a plain
 		// index on the column would serve badly, since it is a null lookup.
-		`CREATE INDEX "finding_assigned_idx" ON "finding" ("assigned_to", "closed_run_id")`,
+		`CREATE INDEX "finding_assigned_idx" ON "finding" ("assigned_to", "closed_at")`,
 		// Everything the findings list groups by, in one index, so grouping a
 		// build's open findings never touches the table. The list is one row
 		// per (issue, component) over every open finding in a build, ordered
@@ -305,7 +323,7 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 		// aggregate reads. Every engine here can answer the grouping from the
 		// index alone in that order; a narrower index on urgency was tried
 		// first, and it still cost a table lookup per row for the group key.
-		`CREATE INDEX "finding_group_idx" ON "finding" ("target_id", "closed_run_id", "visibility", "vulnerability_id", "component_id", "urgency")`,
+		`CREATE INDEX "finding_group_idx" ON "finding" ("target_id", "closed_at", "visibility", "vulnerability_id", "component_id", "urgency")`,
 	}
 
 	for _, stmt := range statements {

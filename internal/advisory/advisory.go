@@ -180,20 +180,18 @@ type Issued struct {
 	Text       string `json:"text"`
 }
 
-// Status is which releases the flaw is in.
+// Status is which releases the flaw is in and which it is out of.
 //
-// Affected alone, and that is not an omission to be filled in later. Nothing
-// closes a finding somebody recorded by hand — a scan is the authority on what
-// it found and it found none of this, so the one path that closes anything
-// passes them over — and nothing else resolves one either. A `fixed` list
-// would therefore be a field that is always empty, which reads as "we checked
-// and nothing is fixed" rather than as "this cannot be answered yet".
-// `DESIGN-findings.md` records the gap.
+// A release that held the flaw and no longer does is named as fixed rather
+// than left out, because leaving it out reads identically to a release that
+// never shipped the thing at all — and those are opposite answers, one of them
+// the one a reader is hoping for.
 //
 // What a person decided about a release — not affected, and the reason why —
-// is the VEX half, and is not assembled here either.
+// is the VEX half, and is not assembled here.
 type Status struct {
 	KnownAffected []string `json:"known_affected,omitempty"`
+	Fixed         []string `json:"fixed,omitempty"`
 }
 
 // Store assembles advisories.
@@ -305,8 +303,13 @@ func (s *Store) For(ctx context.Context, subject access.Subject, publisher Publi
 				ID:   release.ProductID(product),
 			},
 		})
-		vulnerability.Status.KnownAffected = append(
-			vulnerability.Status.KnownAffected, release.ProductID(product))
+		if release.Holds {
+			vulnerability.Status.KnownAffected = append(
+				vulnerability.Status.KnownAffected, release.ProductID(product))
+		} else {
+			vulnerability.Status.Fixed = append(
+				vulnerability.Status.Fixed, release.ProductID(product))
+		}
 	}
 	doc.ProductTree = ProductTree{Branches: []Branch{{
 		Category: "vendor", Name: publisher.Name,
@@ -318,10 +321,13 @@ func (s *Store) For(ctx context.Context, subject access.Subject, publisher Publi
 	return doc, nil
 }
 
-// Release is one build of the product that holds the issue.
+// Release is one build of the product and where it stands on the issue.
 type Release struct {
 	Stream  string
 	Variant string
+	// Holds says the issue is open there. False is a release that held it and
+	// no longer does, which is the one that was fixed.
+	Holds bool
 }
 
 // Name is how the release is written in the document.
@@ -388,14 +394,15 @@ func (s *Store) here(ctx context.Context, subject access.Subject,
 	return err == nil && count > 0
 }
 
-// releases reports every build of the product that holds this issue, which is
-// what an advisory states something about.
+// releases reports every build of the product that holds this issue or once
+// did, which is what an advisory states something about.
 func (s *Store) releases(ctx context.Context, subject access.Subject,
 	productID, issueID int64) ([]Release, error) {
 
 	var rows []struct {
 		Stream  string `bun:"stream"`
 		Variant string `bun:"variant"`
+		Open    int    `bun:"open"`
 	}
 	// One statement rather than one per build: a product with thirty tags
 	// would otherwise be thirty round trips to write one document, and the
@@ -407,9 +414,13 @@ func (s *Store) releases(ctx context.Context, subject access.Subject,
 		Join("JOIN variant AS va ON va.id = t.variant_id").
 		ColumnExpr("st.name AS stream").
 		ColumnExpr("va.name AS variant").
+		// Counted rather than filtered, so a release that held the flaw and no
+		// longer does is still a row — that is the release somebody upgrades
+		// to, and dropping it would leave finished work indistinguishable
+		// from a release that never shipped the thing.
+		ColumnExpr("COUNT(CASE WHEN f.closed_at IS NULL THEN 1 END) AS open").
 		Where("st.product_id = ?", productID).
 		Where("f.vulnerability_id = ?", issueID).
-		Where("f.closed_run_id IS NULL").
 		Where("f.visibility IN (?)", bun.List(access.Visible(subject, productID))).
 		GroupExpr("st.name, va.name").
 		Scan(ctx, &rows)
@@ -419,7 +430,9 @@ func (s *Store) releases(ctx context.Context, subject access.Subject,
 
 	releases := make([]Release, 0, len(rows))
 	for _, row := range rows {
-		releases = append(releases, Release{Stream: row.Stream, Variant: row.Variant})
+		releases = append(releases, Release{
+			Stream: row.Stream, Variant: row.Variant, Holds: row.Open > 0,
+		})
 	}
 	// Ordered here rather than by the engine, so the document is byte-for-byte
 	// the same whatever it was generated against — which is what lets somebody
