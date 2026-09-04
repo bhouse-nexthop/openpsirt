@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/advisory"
 	"github.com/bhouse-nexthop/openpsirt/internal/config"
 	"github.com/bhouse-nexthop/openpsirt/internal/currency"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
@@ -162,7 +163,11 @@ func run(args []string, stdout, stderr *os.File) error {
 		BaseURL:         cfg.BaseURL,
 		PlainHTTP:       cfg.PlainHTTP,
 		SessionLifetime: cfg.SessionLifetime,
-		Mode:            roleMode(settings),
+		Publisher: advisory.Publisher{
+			Name: cfg.PublisherName, Namespace: cfg.PublisherNamespace,
+			Category: cfg.PublisherCategory,
+		},
+		Mode: roleMode(settings),
 	})
 
 	// Every replica serves, reads and scans. Separate worker deployments would

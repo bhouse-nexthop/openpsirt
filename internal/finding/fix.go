@@ -120,7 +120,7 @@ func (s *Store) FixingIn(ctx context.Context, subject access.Subject,
 	if !subject.Sees(productID) {
 		return nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
-	visible := visibleTo(subject, productID)
+	visible := access.Visible(subject, productID)
 	if len(visible) == 0 {
 		return nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
@@ -245,7 +245,7 @@ func (s *Store) FixIn(ctx context.Context, subject access.Subject,
 		!subject.Holds(access.PrivateTriage, productID) {
 		return 0, access.Denied(fmt.Sprintf("decide what is fixed in product %d", productID))
 	}
-	if len(visibleTo(subject, productID)) == 0 {
+	if len(access.Visible(subject, productID)) == 0 {
 		return 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
 	if subject.ID == 0 {

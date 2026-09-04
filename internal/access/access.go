@@ -186,6 +186,22 @@ func (s Subject) Reads(visibility Visibility, productID int64) bool {
 // A product somebody holds nothing on is invisible rather than merely
 // unreadable — not listed and not counted — because the list of products is
 // itself a statement about what an organization ships.
+// Visible is which visibilities this subject may read in one product.
+//
+// Here rather than in each package that queries, because it is one rule and a
+// second spelling of it is a second rule to keep in step with the first. Every
+// read narrows by what comes back from this, so a subject who may read only
+// what has been disclosed cannot be handed a row that has not been.
+func Visible(s Subject, productID int64) []Visibility {
+	var visible []Visibility
+	for _, v := range []Visibility{Public, Private} {
+		if s.Reads(v, productID) {
+			visible = append(visible, v)
+		}
+	}
+	return visible
+}
+
 func (s Subject) Sees(productID int64) bool {
 	if s.Kind == Pipeline && s.scope != nil {
 		// A pipeline knows the product it may send to exists, because it may

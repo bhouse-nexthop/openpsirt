@@ -75,7 +75,7 @@ func (s *Store) ReadyFor(ctx context.Context, subject access.Subject,
 	if !subject.Sees(productID) {
 		return nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
-	if len(visibleTo(subject, productID)) == 0 {
+	if len(access.Visible(subject, productID)) == 0 {
 		return nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
 	floor, err := FloorFor(ctx, s.db, productID)

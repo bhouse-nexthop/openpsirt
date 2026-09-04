@@ -78,7 +78,7 @@ func (s *Store) Reaching(ctx context.Context, subject access.Subject, at Decidin
 	if !subject.Sees(at.ProductID) {
 		return Reach{}, access.Denied(fmt.Sprintf("read findings in product %d", at.ProductID))
 	}
-	visible := visibleTo(subject, at.ProductID)
+	visible := access.Visible(subject, at.ProductID)
 	if len(visible) == 0 {
 		return Reach{}, access.Denied(fmt.Sprintf("read findings in product %d", at.ProductID))
 	}

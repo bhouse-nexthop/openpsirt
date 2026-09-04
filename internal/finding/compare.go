@@ -149,7 +149,7 @@ func (s *Store) mayCompare(ctx context.Context, subject access.Subject, targetID
 	if err != nil {
 		return nil, err
 	}
-	visible := visibleTo(subject, productID)
+	visible := access.Visible(subject, productID)
 	if !subject.Sees(productID) || len(visible) == 0 {
 		return nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}

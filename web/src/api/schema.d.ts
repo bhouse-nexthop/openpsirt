@@ -806,6 +806,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product}/issues/{vulnerability}/advisory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Generate a CSAF advisory for an issue
+         * @description Returns a CSAF 2.0 document for a flaw in this product: what it is, and which releases hold it and which no longer do.
+         *
+         *     **The document is generated, not published.** Nothing is sent anywhere and nothing here records that an advisory was issued — the triage record is ours and the published advisory belongs to whoever publishes it, and keeping both as the source of truth is how such an arrangement rots.
+         *
+         *     **Only for a flaw in what you ship.** An issue a scanner reported against a third-party component is refused: that is dependency hygiene a consumer can already read out of the inventory, and a vendor advisory for every upstream CVE in a dependency is not what an advisory is.
+         *
+         *     **A document about an undisclosed flaw is a draft**, and says so in `tracking.status`. Reaching a disclosure date discloses nothing, so nothing here does either.
+         *
+         *     Requires a publisher configured for this deployment: a document naming none is not a valid CSAF document.
+         */
+        get: operations["get-advisory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product}/issues/{vulnerability}/disclosure": {
         parameters: {
             query?: never;
@@ -1965,6 +1993,12 @@ export interface components {
              */
             role: "reporting" | "approver" | "public-read" | "private-read" | "public-triage" | "private-triage" | "admin";
         };
+        Branch: {
+            branches?: components["schemas"]["Branch"][] | null;
+            category: string;
+            name: string;
+            product?: components["schemas"]["Named"];
+        };
         BuildBody: {
             stream: string;
             variant: string;
@@ -2409,6 +2443,17 @@ export interface components {
             created: boolean;
             item: components["schemas"]["VariantBody"];
         };
+        Document: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Document.json
+             */
+            readonly $schema?: string;
+            document: components["schemas"]["Meta"];
+            product_tree: components["schemas"]["ProductTree"];
+            vulnerabilities: components["schemas"]["Vulnerability"][] | null;
+        };
         EarlierBody: {
             /** @description The component upstream version it was a claim about */
             about?: string;
@@ -2468,6 +2513,10 @@ export interface components {
             readonly $schema?: string;
             /** @description The date support ends, as YYYY-MM-DD, or empty to clear it */
             on: string;
+        };
+        Engine: {
+            name: string;
+            version?: string;
         };
         EnteredBody: {
             /**
@@ -2831,6 +2880,11 @@ export interface components {
             stream: string;
             variant: string;
         };
+        Generator: {
+            /** Format: date-time */
+            date: string;
+            engine: components["schemas"]["Engine"];
+        };
         GrantBody: {
             /** @description The product the role is held against */
             product: string;
@@ -2907,6 +2961,15 @@ export interface components {
             vulnerability: string;
             /** @description The version the claim was made against */
             was: string;
+        };
+        Issued: {
+            system_name: string;
+            text: string;
+        };
+        Issuer: {
+            category: string;
+            name: string;
+            namespace: string;
         };
         JudgedBody: {
             approvals: components["schemas"]["AgreedBody"][] | null;
@@ -3238,6 +3301,15 @@ export interface components {
             /** @description What to show while choosing */
             name: string;
         };
+        Meta: {
+            category: string;
+            csaf_version: string;
+            lang?: string;
+            notes?: components["schemas"]["Note"][] | null;
+            publisher: components["schemas"]["Issuer"];
+            title: string;
+            tracking: components["schemas"]["Tracking"];
+        };
         ModeBody: {
             /**
              * Format: uri
@@ -3250,6 +3322,10 @@ export interface components {
              * @enum {string}
              */
             mode: "direct" | "group-bound";
+        };
+        Named: {
+            name: string;
+            product_id: string;
         };
         NeighbourBody: {
             /**
@@ -3269,6 +3345,11 @@ export interface components {
              */
             findings: number;
             version: string;
+        };
+        Note: {
+            category: string;
+            text: string;
+            title?: string;
         };
         NotificationBody: {
             /** @description What a condition is about. Absent for an event */
@@ -3425,6 +3506,9 @@ export interface components {
              * @description How many variants are declared
              */
             variants?: number;
+        };
+        ProductTree: {
+            branches?: components["schemas"]["Branch"][] | null;
         };
         ProviderBody: {
             /** @description What to put in the sign-in path */
@@ -3638,6 +3722,12 @@ export interface components {
              */
             readonly $schema?: string;
             reasoning: string;
+        };
+        Revision: {
+            /** Format: date-time */
+            date: string;
+            number: string;
+            summary: string;
         };
         RevisionBody: {
             /** @description The justification text, in markdown */
@@ -3855,6 +3945,9 @@ export interface components {
              */
             state: "proposed" | "approved";
         };
+        Status: {
+            known_affected?: string[] | null;
+        };
         StepBody: {
             component: string;
             version?: string;
@@ -3910,6 +4003,17 @@ export interface components {
             revoked?: boolean;
             /** @description Shown once, at creation. It is stored hashed and cannot be shown again */
             secret?: string;
+        };
+        Tracking: {
+            /** Format: date-time */
+            current_release_date: string;
+            generator?: components["schemas"]["Generator"];
+            id: string;
+            /** Format: date-time */
+            initial_release_date: string;
+            revision_history: components["schemas"]["Revision"][] | null;
+            status: string;
+            version: string;
         };
         TriageFloorBody: {
             /**
@@ -3994,6 +4098,14 @@ export interface components {
              * @description Issues open against it here, counted at components rather than at every place they sit
              */
             open?: number;
+        };
+        Vulnerability: {
+            cve?: string;
+            discovery_date?: string;
+            ids?: components["schemas"]["Issued"][] | null;
+            notes?: components["schemas"]["Note"][] | null;
+            product_status: components["schemas"]["Status"];
+            title?: string;
         };
         WaitingBody: {
             /**
@@ -5372,6 +5484,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-advisory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+                /** @description The identifier the issue is filed under */
+                vulnerability: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Document"];
+                };
             };
             /** @description Error */
             default: {

@@ -1,0 +1,276 @@
+package advisory_test
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"testing"
+	"time"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/advisory"
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
+	"github.com/bhouse-nexthop/openpsirt/internal/dbtest"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
+	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
+	"github.com/bhouse-nexthop/openpsirt/internal/schema"
+)
+
+// issuer is a deployment that has been told who it publishes as.
+var issuer = advisory.Publisher{Name: "Example Networks", Namespace: "https://example.test"}
+
+type fixture struct {
+	db      *database.DB
+	store   *advisory.Store
+	finds   *finding.Store
+	graph   *graph.Store
+	scans   *ingest.Store
+	product int64
+	// master is the branch and 202411 the tagged release, so an advisory has
+	// more than one release to name. With one, the list cannot be told from
+	// "whichever build was asked from".
+	master, tagged int64
+	who            access.Subject
+	seq            int
+	built          time.Time
+}
+
+var (
+	root    = graph.Described{Purl: "pkg:deb/debian/sonic@1.0", Name: "sonic", Version: "1.0"}
+	carrier = graph.Described{
+		Purl: "pkg:deb/debian/libswsscommon@1.0.0", Name: "libswsscommon", Version: "1.0.0",
+	}
+)
+
+func each(t *testing.T, fn func(t *testing.T, f *fixture)) {
+	t.Helper()
+	dbtest.Each(t, func(t *testing.T, db *database.DB) {
+		ctx := t.Context()
+		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+		if err := schema.Up(ctx, db, quiet); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		dbtest.Reset(t, db)
+
+		cat := catalog.NewStore(db.DB)
+		product, err := cat.DeclareProduct(ctx, "sonic", "SONiC")
+		if err != nil {
+			t.Fatal(err)
+		}
+		variant, err := cat.DeclareVariant(ctx, product.ID, "broadcom", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		targets := map[string]int64{}
+		for name, kind := range map[string]catalog.Kind{
+			"master": catalog.Branch, "202411": catalog.Tag,
+		} {
+			stream, err := cat.DeclareStream(ctx, product.ID, name, kind, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			target, err := cat.TargetFor(ctx, stream.ID, variant.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			targets[name] = target.ID
+		}
+
+		person, err := access.NewStore(db.DB).Ensure(ctx, "me@example.com", "Me", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f := &fixture{
+			db: db, store: advisory.NewStore(db.DB), finds: finding.NewStore(db.DB),
+			graph: graph.NewStore(db.DB), scans: ingest.NewStore(db.DB),
+			product: product.ID, master: targets["master"], tagged: targets["202411"],
+			who: access.NewPerson(person.ID, "me@example.com", false, map[int64][]access.Role{
+				product.ID: {access.PublicRead, access.PrivateRead, access.PrivateTriage},
+			}),
+			built: time.Now().UTC().Add(-72 * time.Hour),
+		}
+		f.shipped(t, f.master)
+		f.shipped(t, f.tagged)
+		fn(t, f)
+	})
+}
+
+// shipped stores a graph against one build.
+func (f *fixture) shipped(t *testing.T, target int64) {
+	t.Helper()
+	ctx := t.Context()
+	f.seq++
+	f.built = f.built.Add(time.Hour)
+	scan, outcome, err := f.scans.Record(ctx, ingest.Arriving{
+		TargetID: target, ContentHash: fmt.Sprintf("hash-%d", f.seq), BuiltAt: f.built,
+		ParserVersion: "test",
+	})
+	if err != nil || outcome != ingest.Accept {
+		t.Fatalf("record scan: %v %v", outcome, err)
+	}
+	if _, err := f.graph.Apply(ctx, target, scan.ID, graph.Snapshot{
+		Root: root, Components: []graph.Described{carrier},
+		Dependencies: []graph.Dependency{{Parent: root, Child: carrier}},
+	}); err != nil {
+		t.Fatalf("apply graph: %v", err)
+	}
+}
+
+// recorded enters a flaw against one build and returns what it was filed as.
+func (f *fixture) recorded(t *testing.T, target int64) string {
+	t.Helper()
+	_, identifier, err := f.finds.Enter(t.Context(), f.who, finding.Entering{
+		TargetID: target, Component: carrier.Name, Severity: "high",
+		Summary: "The management socket answers before anyone authenticated.",
+	})
+	if err != nil {
+		t.Fatalf("recording a flaw: %v", err)
+	}
+	return identifier
+}
+
+func TestAnAdvisoryNamesEveryReleaseHoldingTheFlawAndNamesEachInTheTree(t *testing.T) {
+	// A reader of an advisory is asking "am I affected", and the answer is a
+	// release rather than a dependency path (REM-19). Two releases, because a
+	// document with one cannot show that the list follows the findings rather
+	// than the build somebody happened to ask from.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		identifier := f.recorded(t, f.master)
+		// The same issue in the tagged release. Recording again would mint a
+		// second identifier, so the row is filed against the issue that
+		// already exists — which is what one flaw in two releases is.
+		f.alsoIn(t, identifier, f.tagged)
+
+		doc, err := f.store.For(ctx, f.who, issuer, "sonic", identifier)
+		if err != nil {
+			t.Fatalf("generating: %v", err)
+		}
+		if len(doc.Vulnerabilities) != 1 {
+			t.Fatalf("the document carries %d vulnerabilities", len(doc.Vulnerabilities))
+		}
+		affected := doc.Vulnerabilities[0].Status.KnownAffected
+		// Named by stream and variant together, never by one of them: the same
+		// branch built two ways is two builds, and naming only the branch
+		// would claim something about hardware nobody built for.
+		want := []string{"sonic:202411:broadcom", "sonic:master:broadcom"}
+		if len(affected) != len(want) {
+			t.Fatalf("affected: %v, want %v", affected, want)
+		}
+		for i := range want {
+			if affected[i] != want[i] {
+				t.Errorf("affected[%d] is %q, want %q", i, affected[i], want[i])
+			}
+		}
+
+		// Every release a status names is named in the tree, or the document
+		// makes a statement about something it never introduced.
+		named := map[string]bool{}
+		for _, vendor := range doc.ProductTree.Branches {
+			for _, product := range vendor.Branches {
+				for _, release := range product.Branches {
+					named[release.Product.ID] = true
+				}
+			}
+		}
+		for _, id := range affected {
+			if !named[id] {
+				t.Errorf("the product tree does not name %q", id)
+			}
+		}
+	})
+}
+
+func TestNothingResolvesAFlawSomebodyRecorded(t *testing.T) {
+	// Not a wish: the limit the advisory's status list is shaped around. One
+	// path closes a finding and it passes over anything a person recorded,
+	// because a run is the authority on what it found and it found none of
+	// this. So an advisory says which releases hold the flaw and never that
+	// one is fixed, and this is what would have to change first.
+	//
+	// It is pinned rather than left as a comment because the day something
+	// does resolve one, this test fails and points at the document that has
+	// to be brought level with it.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		identifier := f.recorded(t, f.master)
+
+		// A scan of the build that reports nothing: exactly the run that
+		// closes every scanner finding it did not see again.
+		run, err := f.finds.Begin(ctx, finding.Run{
+			TargetID: f.master, Scanner: "grype", ScannerVersion: "0.118.0",
+			DatabaseVersion: "2026-08-28", RanHere: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.finds.Apply(ctx, f.master, run.ID, nil); err != nil {
+			t.Fatal(err)
+		}
+
+		doc, err := f.store.For(ctx, f.who, issuer, "sonic", identifier)
+		if err != nil {
+			t.Fatalf("generating: %v", err)
+		}
+		if got := doc.Vulnerabilities[0].Status.KnownAffected; len(got) != 1 {
+			t.Errorf("a scan reporting nothing left the flaw as %v, want it still affected", got)
+		}
+	})
+}
+
+func TestAnAdvisoryIsRefusedWhereNobodyHasSaidWhoPublishesIt(t *testing.T) {
+	// A CSAF document requires a publisher, so one generated without a
+	// configured identity would fail validation wherever somebody took it
+	// next — after they had already sent it. Refused here instead, saying
+	// which part is missing.
+	each(t, func(t *testing.T, f *fixture) {
+		identifier := f.recorded(t, f.master)
+		_, err := f.store.For(t.Context(), f.who, advisory.Publisher{}, "sonic", identifier)
+		if !errors.Is(err, advisory.ErrNoPublisher) {
+			t.Errorf("an unconfigured deployment generated a document: %v", err)
+		}
+		// A name with no namespace is the same gap: both fields are required.
+		_, err = f.store.For(t.Context(), f.who,
+			advisory.Publisher{Name: "Example Networks"}, "sonic", identifier)
+		if !errors.Is(err, advisory.ErrNoPublisher) {
+			t.Errorf("a publisher with no namespace was accepted: %v", err)
+		}
+	})
+}
+
+// alsoIn files the same issue against a second build.
+//
+// Recording it again would mint a second identifier, which is a second flaw.
+// One flaw present in two releases is one issue with a finding in each, and
+// that is what an advisory aggregates.
+func (f *fixture) alsoIn(t *testing.T, identifier string, target int64) {
+	t.Helper()
+	ctx := t.Context()
+	issueID, err := finding.NewVulnerabilities(f.db.DB).ByName(ctx, identifier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var componentID int64
+	if err := f.db.DB.NewSelect().
+		TableExpr("graph_node AS n").
+		Join("JOIN component AS c ON c.id = n.component_id").
+		ColumnExpr("c.id").
+		Where("n.target_id = ?", target).
+		Where("c.name = ?", carrier.Name).
+		Limit(1).Scan(ctx, &componentID); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	row := &finding.Finding{
+		TargetID: target, Kind: finding.Entered, Visibility: access.Private,
+		VulnerabilityID: issueID, ComponentID: componentID,
+		PlaceIdentity: finding.PlaceIdentity(carrier.Name, ""),
+		LastChangedAt: now, OpenedAt: now,
+	}
+	if _, err := f.db.DB.NewInsert().Model(row).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+}

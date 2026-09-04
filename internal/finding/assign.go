@@ -54,7 +54,7 @@ func (s *Store) Assign(ctx context.Context, subject access.Subject, targetID, vu
 		!subject.Holds(access.PrivateTriage, productID) {
 		return 0, access.Denied(fmt.Sprintf("decide who deals with findings in product %d", productID))
 	}
-	visible := visibleTo(subject, productID)
+	visible := access.Visible(subject, productID)
 	if len(visible) == 0 {
 		return 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}

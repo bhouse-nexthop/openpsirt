@@ -76,7 +76,7 @@ func (s *Store) PlaceFor(ctx context.Context, subject access.Subject, targetID i
 	if !subject.Sees(productID) {
 		return nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
-	visible := visibleTo(subject, productID)
+	visible := access.Visible(subject, productID)
 	if len(visible) == 0 {
 		return nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
@@ -179,7 +179,7 @@ func (s *Store) PlacesFor(ctx context.Context, subject access.Subject, targetID 
 	if !subject.Sees(productID) {
 		return nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
-	visible := visibleTo(subject, productID)
+	visible := access.Visible(subject, productID)
 	if len(visible) == 0 {
 		return nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}

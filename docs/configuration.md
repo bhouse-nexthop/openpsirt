@@ -40,6 +40,26 @@ taken.
 |---|---|---|
 | `OPENPSIRT_SCANNER_PATH` | Where the vulnerability scanner binary lives. Empty means whatever the environment resolves. The scanner is a requirement of a deployment rather than an option: the vulnerability data is produced here, not sent in | unset |
 
+## Publishing advisories
+
+An advisory is a document about a flaw in your own product. It is generated
+from what this deployment already holds and handed to you; nothing is sent
+anywhere, and nothing records that you published it.
+
+Both a name and a namespace are needed for either to do anything. A CSAF
+document requires a publisher, so with one missing no advisory is generated and
+the refusal says which — rather than handing you a document that fails
+validation after you have sent it.
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `OPENPSIRT_PUBLISHER_NAME` | The organization advisories say issued them. Set it and the namespace together, or neither | unset |
+| `OPENPSIRT_PUBLISHER_NAMESPACE` | A URL identifying that organization, which is what a reader of a CSAF document matches on | unset |
+| `OPENPSIRT_PUBLISHER_CATEGORY` | What the standard calls the kind of publisher. A deployment publishing about its own product is a vendor | `vendor` |
+
+On the Helm chart these go through `extraEnv`, since a deployment that does not
+publish needs none of them.
+
 ## Who may sign in
 
 The process refuses to start until somebody can administer it, and naming

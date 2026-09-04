@@ -128,6 +128,25 @@ about. Recording is where that guess costs most: a lookup that picks wrongly
 answers the wrong question and can be asked again, and a flaw filed against the
 wrong version of three is a record that reads as deliberate.
 
+**Nothing resolves one.** A flaw a person recorded opens and stays open. The
+one path that closes a finding is a scan applying what it found, and it passes
+over anything a person recorded on purpose — a run is the authority on what it
+found, and it found none of this. Nothing else closes one, so a flaw fixed
+three releases ago still reads as present.
+
+This is written down rather than left to be discovered because it is invisible
+from inside: every screen looks right, the finding sits in the list like any
+other, and the wrongness is that it never leaves. It also bounds what an
+advisory can say — `DESIGN-remediation.md` records that a generated document
+names the releases holding a flaw and never says one is fixed, for exactly this
+reason — and a test pins it, so whatever closes the gap fails that test and is
+pointed at both documents.
+
+What it is not is an argument for letting a scan close them. That rule is the
+one that stops a nightly run quietly deleting work nobody scanned for, and it
+was put there after the opposite behavior was found. Whatever resolves a
+recorded flaw has to be somebody saying so.
+
 **Each refusal is the caller's to fix, and says so.** A name that reaches
 nothing, a name that reaches several, a summary of nothing but whitespace, and
 a build with no contents to record against are four different answers. The

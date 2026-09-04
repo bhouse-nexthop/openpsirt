@@ -36,7 +36,7 @@ func (s *Store) Open(ctx context.Context, subject access.Subject, targetID int64
 		return nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
 
-	visible := visibleTo(subject, productID)
+	visible := access.Visible(subject, productID)
 	if len(visible) == 0 {
 		return nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
@@ -67,7 +67,7 @@ func (s *Store) CountOpen(ctx context.Context, subject access.Subject, targetID 
 		return 0, access.Denied(fmt.Sprintf("count findings in product %d", productID))
 	}
 
-	visible := visibleTo(subject, productID)
+	visible := access.Visible(subject, productID)
 	if len(visible) == 0 {
 		return 0, access.Denied(fmt.Sprintf("count findings in product %d", productID))
 	}
@@ -85,16 +85,6 @@ func (s *Store) CountOpen(ctx context.Context, subject access.Subject, targetID 
 
 // visibleTo is what a subject may read in a product, as values to compare
 // against. Empty means nothing, which is a refusal rather than a filter.
-func visibleTo(subject access.Subject, productID int64) []access.Visibility {
-	var visible []access.Visibility
-	for _, v := range []access.Visibility{access.Public, access.Private} {
-		if subject.Reads(v, productID) {
-			visible = append(visible, v)
-		}
-	}
-	return visible
-}
-
 // productOf reads which product a target belongs to.
 func productOf(ctx context.Context, db bun.IDB, targetID int64) (int64, error) {
 	var productID int64
@@ -451,7 +441,7 @@ func (s *Store) Hidden(ctx context.Context, subject access.Subject, targetID int
 	if err != nil {
 		return 0, err
 	}
-	visible := visibleTo(subject, productID)
+	visible := access.Visible(subject, productID)
 	if !subject.Sees(productID) || len(visible) == 0 {
 		return 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
@@ -694,7 +684,7 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 	if !subject.Sees(productID) {
 		return nil, 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
-	visible := visibleTo(subject, productID)
+	visible := access.Visible(subject, productID)
 	if len(visible) == 0 {
 		return nil, 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
@@ -1193,7 +1183,7 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 	if err != nil {
 		return nil, err
 	}
-	visible := visibleTo(subject, productID)
+	visible := access.Visible(subject, productID)
 	if !subject.Sees(productID) || len(visible) == 0 {
 		return nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
@@ -1418,7 +1408,7 @@ func (s *Store) AtComponent(ctx context.Context, subject access.Subject, targetI
 	if err != nil {
 		return nil, 0, err
 	}
-	visible := visibleTo(subject, productID)
+	visible := access.Visible(subject, productID)
 	if !subject.Sees(productID) || len(visible) == 0 {
 		return nil, 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
@@ -1627,7 +1617,7 @@ func (s *Store) ComponentGroups(ctx context.Context, subject access.Subject, tar
 	if !subject.Sees(productID) {
 		return nil, 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
-	visible := visibleTo(subject, productID)
+	visible := access.Visible(subject, productID)
 	if len(visible) == 0 {
 		return nil, 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}

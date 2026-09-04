@@ -233,6 +233,25 @@ components:
         - group
         - role
       type: object
+    Branch:
+      additionalProperties: false
+      properties:
+        branches:
+          items:
+            $ref: "#/components/schemas/Branch"
+          type:
+            - array
+            - "null"
+        category:
+          type: string
+        name:
+          type: string
+        product:
+          $ref: "#/components/schemas/Named"
+      required:
+        - category
+        - name
+      type: object
     BuildBody:
       additionalProperties: false
       properties:
@@ -1016,6 +1035,31 @@ components:
         - created
         - item
       type: object
+    Document:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Document.json
+          format: uri
+          readOnly: true
+          type: string
+        document:
+          $ref: "#/components/schemas/Meta"
+        product_tree:
+          $ref: "#/components/schemas/ProductTree"
+        vulnerabilities:
+          items:
+            $ref: "#/components/schemas/Vulnerability"
+          type:
+            - array
+            - "null"
+      required:
+        - document
+        - product_tree
+        - vulnerabilities
+      type: object
     EarlierBody:
       additionalProperties: false
       properties:
@@ -1130,6 +1174,16 @@ components:
           type: string
       required:
         - "on"
+      type: object
+    Engine:
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+      required:
+        - name
       type: object
     EnteredBody:
       additionalProperties: false
@@ -1723,6 +1777,18 @@ components:
         - places
         - state
       type: object
+    Generator:
+      additionalProperties: false
+      properties:
+        date:
+          format: date-time
+          type: string
+        engine:
+          $ref: "#/components/schemas/Engine"
+      required:
+        - engine
+        - date
+      type: object
     GrantBody:
       additionalProperties: false
       properties:
@@ -1859,6 +1925,31 @@ components:
         - was
         - now
         - reasoning
+      type: object
+    Issued:
+      additionalProperties: false
+      properties:
+        system_name:
+          type: string
+        text:
+          type: string
+      required:
+        - system_name
+        - text
+      type: object
+    Issuer:
+      additionalProperties: false
+      properties:
+        category:
+          type: string
+        name:
+          type: string
+        namespace:
+          type: string
+      required:
+        - category
+        - name
+        - namespace
       type: object
     JudgedBody:
       additionalProperties: false
@@ -2542,6 +2633,34 @@ components:
         - identity
         - name
       type: object
+    Meta:
+      additionalProperties: false
+      properties:
+        category:
+          type: string
+        csaf_version:
+          type: string
+        lang:
+          type: string
+        notes:
+          items:
+            $ref: "#/components/schemas/Note"
+          type:
+            - array
+            - "null"
+        publisher:
+          $ref: "#/components/schemas/Issuer"
+        title:
+          type: string
+        tracking:
+          $ref: "#/components/schemas/Tracking"
+      required:
+        - category
+        - csaf_version
+        - title
+        - publisher
+        - tracking
+      type: object
     ModeBody:
       additionalProperties: false
       properties:
@@ -2560,6 +2679,17 @@ components:
           type: string
       required:
         - mode
+      type: object
+    Named:
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        product_id:
+          type: string
+      required:
+        - name
+        - product_id
       type: object
     NeighbourBody:
       additionalProperties: false
@@ -2586,6 +2716,19 @@ components:
         - findings
         - beneath
         - children
+      type: object
+    Note:
+      additionalProperties: false
+      properties:
+        category:
+          type: string
+        text:
+          type: string
+        title:
+          type: string
+      required:
+        - category
+        - text
       type: object
     NotificationBody:
       additionalProperties: false
@@ -2843,6 +2986,16 @@ components:
           type: integer
       required:
         - name
+      type: object
+    ProductTree:
+      additionalProperties: false
+      properties:
+        branches:
+          items:
+            $ref: "#/components/schemas/Branch"
+          type:
+            - array
+            - "null"
       type: object
     ProviderBody:
       additionalProperties: false
@@ -3204,6 +3357,21 @@ components:
           type: string
       required:
         - reasoning
+      type: object
+    Revision:
+      additionalProperties: false
+      properties:
+        date:
+          format: date-time
+          type: string
+        number:
+          type: string
+        summary:
+          type: string
+      required:
+        - number
+        - date
+        - summary
       type: object
     RevisionBody:
       additionalProperties: false
@@ -3573,6 +3741,16 @@ components:
         - places
         - builds
       type: object
+    Status:
+      additionalProperties: false
+      properties:
+        known_affected:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+      type: object
     StepBody:
       additionalProperties: false
       properties:
@@ -3662,6 +3840,37 @@ components:
           type: string
       required:
         - name
+      type: object
+    Tracking:
+      additionalProperties: false
+      properties:
+        current_release_date:
+          format: date-time
+          type: string
+        generator:
+          $ref: "#/components/schemas/Generator"
+        id:
+          type: string
+        initial_release_date:
+          format: date-time
+          type: string
+        revision_history:
+          items:
+            $ref: "#/components/schemas/Revision"
+          type:
+            - array
+            - "null"
+        status:
+          type: string
+        version:
+          type: string
+      required:
+        - id
+        - status
+        - version
+        - initial_release_date
+        - current_release_date
+        - revision_history
       type: object
     TriageFloorBody:
       additionalProperties: false
@@ -3795,6 +4004,32 @@ components:
           type: integer
       required:
         - name
+      type: object
+    Vulnerability:
+      additionalProperties: false
+      properties:
+        cve:
+          type: string
+        discovery_date:
+          type: string
+        ids:
+          items:
+            $ref: "#/components/schemas/Issued"
+          type:
+            - array
+            - "null"
+        notes:
+          items:
+            $ref: "#/components/schemas/Note"
+          type:
+            - array
+            - "null"
+        product_status:
+          $ref: "#/components/schemas/Status"
+        title:
+          type: string
+      required:
+        - product_status
       type: object
     WaitingBody:
       additionalProperties: false
@@ -5334,6 +5569,48 @@ paths:
       summary: Set when a product goes out of support
       tags:
         - Catalog
+  /v1/products/{product}/issues/{vulnerability}/advisory:
+    get:
+      description: |-
+        Returns a CSAF 2.0 document for a flaw in this product: what it is, and which releases hold it and which no longer do.
+
+        **The document is generated, not published.** Nothing is sent anywhere and nothing here records that an advisory was issued — the triage record is ours and the published advisory belongs to whoever publishes it, and keeping both as the source of truth is how such an arrangement rots.
+
+        **Only for a flaw in what you ship.** An issue a scanner reported against a third-party component is refused: that is dependency hygiene a consumer can already read out of the inventory, and a vendor advisory for every upstream CVE in a dependency is not what an advisory is.
+
+        **A document about an undisclosed flaw is a draft**, and says so in `tracking.status`. Reaching a disclosure date discloses nothing, so nothing here does either.
+
+        Requires a publisher configured for this deployment: a document naming none is not a valid CSAF document.
+      operationId: get-advisory
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - description: The identifier the issue is filed under
+          in: path
+          name: vulnerability
+          required: true
+          schema:
+            description: The identifier the issue is filed under
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Generate a CSAF advisory for an issue
+      tags:
+        - Findings
   /v1/products/{product}/issues/{vulnerability}/disclosure:
     get:
       description: |-

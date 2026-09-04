@@ -6,8 +6,9 @@ happened.
 Satisfies REM-01 to REM-03, REM-06 to REM-10, REM-13, REM-15 to REM-24.
 REM-04's escalation view and REM-05's work distribution read what is here and
 are described in `DESIGN-reporting.md` and `DESIGN-findings.md`. REM-11 and
-REM-12 are the external hand-off, which is not built, and neither is anything
-in "Publication" below.
+REM-12 are the external hand-off, which is not built. Of "Publication" below,
+the CSAF document is built and every adapter that would send it somewhere is
+not.
 
 ## Nothing here is declared done
 
@@ -150,7 +151,7 @@ nothing about who owns it.
 should exist; the integration does not, and private work defaults to no
 hand-off whether it is built or not.
 
-## Publication, none of which is built
+## Publication: the document is generated, and nothing is published
 
 Phase 1 publishes nothing (REM-24). Publication arrives with private findings,
 because of what it is for: an advisory is about a vulnerability in our own
@@ -190,3 +191,57 @@ a version, not a dependency chain.
 
 **Optional and configured per deployment** (REM-20), like any other hand-off.
 Nobody should need an account anywhere to use this.
+
+### What is built: the CSAF document
+
+A CSAF 2.0 document is generated for one issue in one product, from what is
+already held (REM-21). **Nothing is sent anywhere**, and nothing records that
+an advisory was issued: the triage record is ours and the published artifact
+belongs to whoever publishes it (REM-18), and a second copy of the same fact is
+one somebody has to keep true.
+
+**Only for a flaw in what we ship.** An issue a scanner reported against a
+third-party component is refused by name rather than answered with a document
+that looks the same and means something else (REM-23).
+
+**The publisher is deployment configuration**, not an administrator's setting:
+it is the identity of the organization running this, in the way the address
+people arrive on is. Both a name and a namespace are required, because a
+document naming no publisher is not a CSAF document — so an unconfigured
+deployment is refused with the reason rather than handed something that fails
+validation after it has been sent.
+
+**A document about an undisclosed flaw is a draft**, and says so in the field a
+reader checks before acting on one. Reaching a disclosure date discloses
+nothing (ACC-47), so generating a document does not either.
+
+**The releases are named by stream and variant together**, never by one of
+them: the same branch built two ways is two builds, and naming only the branch
+would claim something about hardware nobody built for. Every release a status
+refers to is named in the product tree, and the list is ordered here rather
+than by the engine, so two documents generated from the same facts are the same
+bytes and a diff between them is a real change.
+
+**The document says which releases hold the flaw, and never that one is
+fixed.** That is a limit rather than an omission, and it is the same gap seen
+from this side that `DESIGN-findings.md` records: nothing resolves a finding
+somebody recorded by hand. One path closes a finding and it passes over
+anything a person recorded, because a run is the authority on what it found and
+it found none of this — so a `fixed` list would be a field that is always
+empty, which reads as "we checked and nothing is fixed" rather than as "this
+cannot be answered yet". A test pins that, so the day something does resolve
+one, it fails and points here.
+
+### What is not built
+
+**The VEX profile.** The document is categorized as a security advisory rather
+than as VEX, because the VEX profile's point is "not affected, and here is
+why", and those justifications are not assembled into it. The vocabulary is
+already the right one — the dismissal words were aligned to VEX from the start
+(TRI-06) — so what is missing is not the words but the mapping from a decision
+to the releases it covers.
+
+**Every adapter.** REM-17's several outputs, and REM-22's forge advisory
+system, are not built. What exists is the document and a way to fetch it, which
+is the part every route needs and the part that is ours; where it goes next is
+the part that differs completely by product.

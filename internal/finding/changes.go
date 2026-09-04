@@ -44,7 +44,7 @@ func (s *Store) Changes(ctx context.Context, subject access.Subject, targetID in
 	// that opened an undisclosed finding must not report a larger number to
 	// somebody who cannot see it — a count is a disclosure with the details
 	// removed rather than a different kind of answer (ACC-07).
-	visible := visibleTo(subject, productID)
+	visible := access.Visible(subject, productID)
 	if len(visible) == 0 {
 		return map[int64]Change{}, nil
 	}

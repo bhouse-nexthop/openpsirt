@@ -166,7 +166,7 @@ func (s *Store) VersionsWithIssue(ctx context.Context, subject access.Subject,
 	if err != nil {
 		return nil, err
 	}
-	visible := visibleTo(subject, productID)
+	visible := access.Visible(subject, productID)
 	if !subject.Sees(productID) || len(visible) == 0 {
 		return nil, nil
 	}

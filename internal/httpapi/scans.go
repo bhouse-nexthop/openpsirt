@@ -17,6 +17,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/advisory"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
@@ -62,6 +63,11 @@ type Ingest struct {
 	BaseURL string
 	// SessionLifetime bounds a sign-in. Zero takes the default.
 	SessionLifetime time.Duration
+	// Publisher is who an advisory says issued it. Unstated means no advisory
+	// is generated, and the refusal says which part is missing — a document
+	// naming no publisher is not a CSAF document, and handing one over would
+	// fail wherever somebody took it next.
+	Publisher advisory.Publisher
 	// Mode says where roles come from. Read per request rather than held, so
 	// an administrator turning group binding off takes effect at once.
 	Mode func(context.Context) access.Mode

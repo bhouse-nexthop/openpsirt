@@ -39,9 +39,16 @@ place to triage what it finds and track it through to a fix.
 > bulk triage, inventory upload, release comparison, people and roles, and
 > settings — embedded into the binary and served from it.
 >
-> What does not: advisory publication and attachments, mail and the digest,
-> remediation metrics, export, and findings from a static analyzer. The design
-> record is in [DECISIONS.md](DECISIONS.md).
+> An advisory about such a flaw is generated as a CSAF document from what is
+> already held — and generated is all: nothing is sent anywhere, because the
+> triage record is ours and a published advisory belongs to whoever publishes
+> it.
+>
+> What does not: every adapter that would send an advisory somewhere,
+> attachments, mail and the digest, remediation metrics, export, and findings
+> from a static analyzer. Nor does anything resolve a flaw recorded by hand —
+> `DESIGN-findings.md` says why that gap is stated rather than patched. The
+> design record is in [DECISIONS.md](DECISIONS.md).
 
 ## What it does
 

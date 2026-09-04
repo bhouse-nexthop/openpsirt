@@ -74,6 +74,21 @@ type Config struct {
 	// PlainHTTP serves without TLS, which is what running this locally looks
 	// like. It only loosens cookies, and it is named for what it is.
 	PlainHTTP bool
+
+	// Publisher is who an advisory says issued it: the organization running
+	// this deployment. Per deployment rather than tuned by an administrator,
+	// like any other hand-off (REM-20), because it is the identity of the
+	// installation in the way the address people arrive on is.
+	//
+	// Both a name and a namespace are needed for either to do anything: a CSAF
+	// document requires both, and one without the other produces a document
+	// that fails validation wherever somebody takes it next. With neither, no
+	// advisory is generated and the refusal says why.
+	PublisherName      string
+	PublisherNamespace string
+	// PublisherCategory is what the standard calls the kind of publisher.
+	// A deployment publishing about its own product is a vendor.
+	PublisherCategory string
 	// SessionLifetime bounds a sign-in. Zero takes the built-in default.
 	SessionLifetime time.Duration
 
@@ -115,6 +130,9 @@ func Load() (Config, error) {
 	c := Config{
 		Addr:                   env("ADDR", ":8080"),
 		BaseURL:                env("BASE_URL", ""),
+		PublisherName:          env("PUBLISHER_NAME", ""),
+		PublisherNamespace:     env("PUBLISHER_NAMESPACE", ""),
+		PublisherCategory:      env("PUBLISHER_CATEGORY", "vendor"),
 		TrustedGroupsHeader:    env("TRUSTED_GROUPS_HEADER", ""),
 		TrustedGroupsDelimiter: env("TRUSTED_GROUPS_DELIMITER", ","),
 		PlainHTTP:              r.boolean("PLAIN_HTTP", false),

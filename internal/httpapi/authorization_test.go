@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/advisory"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/dbtest"
@@ -278,6 +279,12 @@ func reachOn(t *testing.T, on engines, fn func(t *testing.T, r *reach)) {
 		handler, _ := httpapi.New(quiet, nil, httpapi.Ingest{
 			DB: db, Queue: queue.New(db, queue.DefaultOptions()),
 			Access: access.NewResolver(rights, access.Trust{Header: testHeader, From: sources}),
+			// A deployment that has been told who it publishes as, which is
+			// what an advisory needs. The one that has not is tested where
+			// that refusal is.
+			Publisher: advisory.Publisher{
+				Name: "Example Networks", Namespace: "https://example.test",
+			},
 		})
 		fn(t, &reach{handler: handler, key: secret, revoked: revokedSecret, rights: rights, db: db})
 	})
