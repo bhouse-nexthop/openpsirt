@@ -2,7 +2,7 @@
 
 What somebody is told, and through what.
 
-Satisfies NTF-01 to NTF-15. Mail is built, behind the one interface a chat
+Satisfies NTF-01 to NTF-18. Mail is built, behind the one interface a chat
 adapter will use; what is missing is named at the foot rather than left to be
 discovered.
 
@@ -78,7 +78,8 @@ not the same thing to the person waiting — which is what the queue's own
 ## What is not built, and what it will be
 
 **A daily digest** carrying everything that is not urgent, opt-in and off by
-default (NTF-03). Not built. Off by default because a digest nobody asked for is mail
+default (NTF-03). Not built, and what it will carry is settled (NTF-16 to
+NTF-18) — see below. Off by default because a digest nobody asked for is mail
 somebody filters, and a filtered channel is worse than no channel: it looks
 like it is working.
 
@@ -122,6 +123,43 @@ it can be seen to work.
 sweep offers STARTTLS and will not send a password without it: a password sent
 in the clear to whatever answered on that port is a password given away, and an
 operator who configured one is entitled to assume it is not.
+
+## The digest, and why it was nearly empty
+
+Everything built so far leaves immediately. Work arriving and a claim sent back
+are explicit human actions (NTF-02, NTF-05); a build that stopped being scanned
+and an embargo that reached its date are operational alerts, which go to
+administrators and sit outside the opt-in (NTF-07). A daily message carrying
+what was left would carry nothing, and a channel that arrives empty is the one
+people stop opening — which takes the rest of the channel with it.
+
+**So the digest carries what nothing else told you** (NTF-16), and there are
+exactly two of those.
+
+**Work that became yours without a message.** The immediate one is not sent
+when somebody assigns something to themselves, when nothing could send at that
+moment, or when the person had no address yet. Those are silent today, and
+silence about work that is now yours is the failure the channel exists to
+prevent.
+
+**Findings nobody owns** (NTF-17), for whoever asks for them. Somebody
+triaging a product wants to know what arrived; somebody who only holds work
+assigned to them does not want a daily list of everything found anywhere. That
+is why it is a second switch rather than part of the first, and why neither is
+derived from a role: a role says what somebody may do, not what they want to
+read, and a channel nobody can turn off without giving up an ability is one
+people route to a folder.
+
+**Nothing is repeated.** A thing already sent immediately is not in the digest,
+which is what makes "carries what nothing else told you" a rule rather than a
+description.
+
+**It names what has been disclosed and counts what has not** (NTF-18). A public
+finding is listed with its issue, component and build. An undisclosed one
+contributes a number and nothing else, with the same way in NTF-15 gives —
+because a digest is a message, and dropping such findings entirely would be the
+other failure: somebody reading "nothing to report" while an embargoed item
+sits unowned.
 
 ## What leaves the building says less than what stays in it
 
