@@ -400,6 +400,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/disclosing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List what is approaching disclosure
+         * @description Returns findings nobody has announced whose embargo is running out, soonest first, and the ones whose date has already arrived.
+         *
+         *     **Before the date, not on it.** The date arriving is the last moment to act on something rather than the first useful warning, and a list that only ever showed what was already past would be a list of decisions somebody has already failed to make.
+         *
+         *     **Nothing here discloses anything.** Reaching the date escalates: the row appears and the people who can act on it are told. Publishing embargoed detail because a timer expired is the wrong default — if the fix is not ready, disclosing anyway is a decision a person makes.
+         *
+         *     Every row is undisclosed by definition, so this list is a disclosure in its own right: a product you may not read undisclosed work in contributes nothing to it, not even a count.
+         */
+        get: operations["list-approaching-disclosure"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/issues/{vulnerability}/assessment": {
         parameters: {
             query?: never;
@@ -2359,6 +2385,24 @@ export interface components {
             readonly $schema?: string;
             body: string;
         };
+        EmbargoedBody: {
+            component: string;
+            /** @description When the embargo ends. Reaching it discloses nothing */
+            disclose_at: string;
+            /** @description Whether the date has already arrived */
+            passed: boolean;
+            /**
+             * Format: int64
+             * @description How many findings this covers
+             */
+            places: number;
+            product: string;
+            severity?: string;
+            stream: string;
+            summary?: string;
+            variant: string;
+            vulnerability: string;
+        };
         EndOfLifeBody: {
             /**
              * Format: uri
@@ -2922,6 +2966,15 @@ export interface components {
              */
             readonly $schema?: string;
             items: components["schemas"]["CommentBody"][] | null;
+        };
+        ListBodyEmbargoedBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListBodyEmbargoedBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["EmbargoedBody"][] | null;
         };
         ListBodyHoldingBody: {
             /**
@@ -4514,6 +4567,45 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-approaching-disclosure": {
+        parameters: {
+            query?: {
+                /** @description Limit to one product, by name. Empty means every product you can see */
+                product?: string;
+                /** @description Limit to one branch or tag. Only meaningful with a product */
+                stream?: string;
+                /** @description Limit to one variant. Only meaningful with a product, and independent of the branch */
+                variant?: string;
+                /** @description How many days ahead to look */
+                within?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListBodyEmbargoedBody"];
+                };
             };
             /** @description Error */
             default: {
