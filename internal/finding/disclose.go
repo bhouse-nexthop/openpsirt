@@ -2,12 +2,16 @@ package finding
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/database"
+	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 )
 
 // Embargoed is one finding nobody has announced, and when that ends.
@@ -116,4 +120,238 @@ func (s *Store) Disclosing(ctx context.Context, subject access.Subject, scope Sc
 		return nil, fmt.Errorf("read what is approaching disclosure: %w", err)
 	}
 	return rows, nil
+}
+
+// Extension is one time somebody moved the end of an embargo.
+type Extension struct {
+	bun.BaseModel `bun:"table:disclosure_extension,alias:dx"`
+
+	ID              int64 `bun:"id,pk,autoincrement"`
+	VulnerabilityID int64 `bun:"vulnerability_id,notnull"`
+	ProductID       int64 `bun:"product_id,notnull"`
+	// Was and Until are where the embargo ended before and where it is asked
+	// to end. Both kept: "extended by three weeks" is not answerable from the
+	// new date alone once a second extension follows it.
+	Was     time.Time `bun:"was,notnull"`
+	Until   time.Time `bun:"until,notnull"`
+	Reason  string    `bun:"reason,notnull"`
+	AskedBy int64     `bun:"asked_by,notnull"`
+	AskedAt time.Time `bun:"asked_at,notnull"`
+	// NeedsApproval says a second person had to agree, recorded rather than
+	// recomputed: the threshold is a setting and it moves.
+	NeedsApproval bool       `bun:"needs_approval,notnull"`
+	ApprovedBy    *int64     `bun:"approved_by"`
+	ApprovedAt    *time.Time `bun:"approved_at"`
+}
+
+// InForce says this extension is the one the date follows.
+func (e Extension) InForce() bool { return !e.NeedsApproval || e.ApprovedAt != nil }
+
+// ErrNotEmbargoed says there is no embargo here to move.
+var ErrNotEmbargoed = errors.New("nothing undisclosed here has a date to move")
+
+// ErrBackwards says an extension would bring a date forward.
+var ErrBackwards = errors.New("an extension moves a date later, not earlier")
+
+// Extend asks to move the end of an embargo, and reports whether it took
+// effect or is waiting for somebody to agree.
+//
+// **A reason is required, always**, however short the extension. One with no
+// reason is the record saying somebody moved it and nothing else, which is the
+// state the whole table exists to prevent.
+//
+// **Past a threshold it needs a second person** (ACC-48), and it is the same
+// act a deferral is — keeping risk hidden for longer — so it is measured the
+// same way: against everything this embargo has *already* been moved by, not
+// against this request alone. Measured per request the exception swallows the
+// rule three weeks at a time.
+//
+// **An extension that needs agreement does not move the date until it has it.**
+// A proposal waiting for a second person changes nothing about the finding it
+// is about, which is already true of a decision waiting for one; an embargo
+// that quietly ran on while somebody thought about it would be the extension
+// taking effect on one person's say-so with a queue entry as decoration.
+func (s *Store) Extend(ctx context.Context, subject access.Subject,
+	productID, vulnerabilityID int64, until time.Time, reason string) (*Extension, error) {
+
+	if !mayRecord(subject, productID, access.Private) {
+		return nil, access.Denied(
+			fmt.Sprintf("move a disclosure date in product %d", productID))
+	}
+	if subject.ID == 0 {
+		return nil, access.Denied("move a disclosure date without being anybody")
+	}
+	if strings.TrimSpace(reason) == "" {
+		return nil, fmt.Errorf("say why the embargo is being extended")
+	}
+
+	now := s.now().UTC().Truncate(time.Microsecond)
+	until = until.UTC().Truncate(time.Microsecond)
+
+	var out *Extension
+	err := database.InTransaction(ctx, s.db, func(ctx context.Context, tx bun.Tx) error {
+		// Where it ends now, read inside the transaction: a retry re-runs this
+		// against a database another extension may have moved (DAT-31).
+		var was time.Time
+		err := tx.NewSelect().
+			TableExpr("finding AS f").
+			Join("JOIN target AS tg ON tg.id = f.target_id").
+			Join("JOIN stream AS st ON st.id = tg.stream_id").
+			ColumnExpr("MAX(f.disclose_at)").
+			Where("st.product_id = ?", productID).
+			Where("f.vulnerability_id = ?", vulnerabilityID).
+			Where("f.visibility = ?", access.Private).
+			Where("f.closed_run_id IS NULL").
+			Where("f.disclose_at IS NOT NULL").
+			Scan(ctx, &was)
+		if database.IsNoRows(err) || (err == nil && was.IsZero()) {
+			return ErrNotEmbargoed
+		}
+		if err != nil {
+			return fmt.Errorf("read where the embargo ends: %w", err)
+		}
+		if !until.After(was) {
+			return ErrBackwards
+		}
+
+		threshold, err := setting.NewStore(tx).Duration(ctx,
+			setting.ExtensionThreshold, setting.DefaultExtensionThreshold)
+		if err != nil {
+			return err
+		}
+		already, err := movedBy(ctx, tx, productID, vulnerabilityID)
+		if err != nil {
+			return err
+		}
+		needs := threshold <= 0 || already+until.Sub(was) >= threshold
+
+		out = &Extension{
+			VulnerabilityID: vulnerabilityID, ProductID: productID,
+			Was: was, Until: until, Reason: reason,
+			AskedBy: subject.ID, AskedAt: now, NeedsApproval: needs,
+		}
+		if !needs {
+			out.ApprovedAt = nil
+		}
+		if _, err := tx.NewInsert().Model(out).Exec(ctx); err != nil {
+			return fmt.Errorf("record the extension: %w", err)
+		}
+		if needs {
+			// Written, and the date left where it was. What is on record is
+			// that somebody asked; what is in force is still the old date.
+			return nil
+		}
+		return moveTo(ctx, tx, productID, vulnerabilityID, until, now)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// AgreeToExtension records a second person agreeing, and moves the date.
+//
+// The person who asked may not be the one who agrees. That is the control the
+// threshold exists to reach, and an extension somebody approved for themselves
+// is the same as one nobody approved (TRI-41).
+func (s *Store) AgreeToExtension(ctx context.Context, subject access.Subject, id int64) error {
+	if subject.ID == 0 {
+		return access.Denied("agree to an extension without being anybody")
+	}
+	now := s.now().UTC().Truncate(time.Microsecond)
+
+	return database.InTransaction(ctx, s.db, func(ctx context.Context, tx bun.Tx) error {
+		asked := new(Extension)
+		if err := tx.NewSelect().Model(asked).Where("id = ?", id).Scan(ctx); err != nil {
+			// An extension somebody may not reach and one that is not there
+			// answer alike, so guessing identifiers says nothing (ACC-56).
+			return ErrNotEmbargoed
+		}
+		if !mayRecord(subject, asked.ProductID, access.Private) {
+			return ErrNotEmbargoed
+		}
+		if asked.AskedBy == subject.ID {
+			return ErrSamePerson
+		}
+		if asked.ApprovedAt != nil {
+			return fmt.Errorf("that extension has already been agreed to")
+		}
+
+		if _, err := tx.NewUpdate().Model((*Extension)(nil)).
+			Set("approved_by = ?", subject.ID).
+			Set("approved_at = ?", now).
+			Where("id = ?", id).
+			Where("approved_at IS NULL").Exec(ctx); err != nil {
+			return fmt.Errorf("record the agreement: %w", err)
+		}
+		return moveTo(ctx, tx, asked.ProductID, asked.VulnerabilityID, asked.Until, now)
+	})
+}
+
+// Extensions lists every time this embargo was moved, oldest first.
+//
+// Kept in full and never overwritten. One extension is a judgment and six is a
+// policy nobody wrote down, and the difference is invisible if each replaces
+// the last.
+func (s *Store) Extensions(ctx context.Context, subject access.Subject,
+	productID, vulnerabilityID int64) ([]Extension, error) {
+
+	if !subject.Reads(access.Private, productID) {
+		return nil, access.Denied(fmt.Sprintf("read undisclosed work in product %d", productID))
+	}
+	var rows []Extension
+	if err := s.db.NewSelect().Model(&rows).
+		Where("product_id = ?", productID).
+		Where("vulnerability_id = ?", vulnerabilityID).
+		Order("asked_at", "id").Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read how this embargo has been moved: %w", err)
+	}
+	return rows, nil
+}
+
+// movedBy is how much this embargo has already been moved by, counting only
+// what took effect.
+//
+// A request nobody agreed to moved nothing, so it does not count toward the
+// threshold — otherwise asking for a long extension and being refused would
+// push every later request over the line for something that never happened.
+func movedBy(ctx context.Context, db bun.IDB, productID, vulnerabilityID int64) (time.Duration, error) {
+	var rows []Extension
+	err := db.NewSelect().Model(&rows).
+		Where("product_id = ?", productID).
+		Where("vulnerability_id = ?", vulnerabilityID).
+		Scan(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("read how far this has already been moved: %w", err)
+	}
+	total := time.Duration(0)
+	for _, row := range rows {
+		if !row.InForce() {
+			continue
+		}
+		if span := row.Until.Sub(row.Was); span > 0 {
+			total += span
+		}
+	}
+	return total, nil
+}
+
+// moveTo writes the new end of an embargo across everything it covers.
+func moveTo(ctx context.Context, db bun.IDB, productID, vulnerabilityID int64,
+	until, now time.Time) error {
+
+	_, err := db.NewUpdate().Model((*Finding)(nil)).
+		Set("disclose_at = ?", until).
+		Set("last_changed_at = ?", now).
+		Where("vulnerability_id = ?", vulnerabilityID).
+		Where("visibility = ?", access.Private).
+		Where("closed_run_id IS NULL").
+		Where(`target_id IN (SELECT tg.id FROM "target" AS tg
+			JOIN "stream" AS st ON st.id = tg.stream_id
+			WHERE st.product_id = ?)`, productID).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("move the disclosure date: %w", err)
+	}
+	return nil
 }

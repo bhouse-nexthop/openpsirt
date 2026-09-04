@@ -647,8 +647,37 @@ costs is the thing the whole public and private split exists to prevent.
 person** (ACC-48) — the same shape as a deferral, because it is the same act:
 keeping risk hidden for longer. Without that the date is decoration, and the
 indefinite secrecy the disclosure frameworks warn about arrives one quiet
-extension at a time. **This half is not built.** The date exists and is
-surfaced; nothing yet moves it.
+extension at a time.
+
+**A reason is required always**, however short the extension. One with no
+reason is a record saying somebody moved it and nothing else, which is the
+state keeping the history exists to prevent.
+
+**The threshold is measured against everything the embargo has already been
+moved by**, not against the request in hand. Measured per request the exception
+swallows the rule three weeks at a time — the same reasoning the deferral
+threshold is written with, and the same arithmetic. Only extensions that took
+effect count toward it: asking for a long one and being refused moved nothing,
+and letting a refusal push every later request over the line would charge
+somebody for something that never happened.
+
+**An extension that needs agreement moves nothing until it has it.** A request
+waiting for a second person changes nothing about the finding it is about,
+which is already true of a decision waiting for one. An embargo that ran on
+while somebody thought about it would be the extension taking effect on one
+person's say-so with a queue entry as decoration.
+
+**The person who asked may not be the one who agrees.** That is the control the
+threshold exists to reach.
+
+**A date only ever moves later.** Bringing one forward is disclosing sooner,
+which is a different act and not this one.
+
+**Every request is kept, granted or not**, oldest first, with why and by whom.
+One extension is a judgment and six is a policy nobody wrote down, and the
+difference is invisible if each replaces the last. A request nobody agreed to
+is part of the record too: what was asked for is part of how long this stayed
+hidden.
 
 **Telling somebody is not built either.** ACC-47 says administrators and
 whoever owns it are told when the date arrives, and what exists is the list.

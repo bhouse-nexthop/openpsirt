@@ -2,6 +2,7 @@ package httpapi_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 )
@@ -125,6 +126,79 @@ func TestWhatIsApproachingDisclosureIsAnsweredOnlyToWhoMaySeeIt(t *testing.T) {
 			if len(theirs.Items) != 0 {
 				t.Errorf("%s was shown %d undisclosed findings", who, len(theirs.Items))
 			}
+		}
+	})
+}
+
+func TestMovingADisclosureDateIsRecordedAndGatedTheSameWayADeferralIs(t *testing.T) {
+	// A short extension is ordinary triage; past the threshold it needs a
+	// second person, and until it has one the date has not moved. The request
+	// is on record either way, because what was asked for is part of how long
+	// this stayed hidden.
+	twoReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+		const findings = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		got := asPerson(t, r, "private-triage", http.MethodPost, findings,
+			`{"summary":"Not announced anywhere.","severity":"high"}`)
+		if got.Code != http.StatusCreated {
+			t.Fatalf("recording answered %d: %s", got.Code, got.Body.String())
+		}
+		var recorded struct {
+			Identifier string `json:"identifier"`
+		}
+		if err := json.Unmarshal(got.Body.Bytes(), &recorded); err != nil {
+			t.Fatal(err)
+		}
+		at := "/v1/products/mine/issues/" + recorded.Identifier + "/disclosure"
+
+		// A reason is required.
+		if got := asPerson(t, r, "private-triage", http.MethodPost, at,
+			`{"until":"2030-01-01","reason":""}`); got.Code < 400 {
+			t.Errorf("an embargo was extended for no stated reason: %d", got.Code)
+		}
+		// And somebody who may not see undisclosed work cannot move one.
+		if got := asPerson(t, r, "triager", http.MethodPost, at,
+			`{"until":"2030-01-01","reason":"Because."}`); got.Code < 400 {
+			t.Errorf("somebody holding only public triage moved an embargo: %d", got.Code)
+		}
+
+		// Years out, so well past the threshold: it waits.
+		got = asPerson(t, r, "private-triage", http.MethodPost, at,
+			`{"until":"2030-01-01","reason":"Upstream has not answered."}`)
+		if got.Code != http.StatusCreated {
+			t.Fatalf("asking answered %d: %s", got.Code, got.Body.String())
+		}
+		var asked struct {
+			ID            int64 `json:"id"`
+			NeedsApproval bool  `json:"needs_approval"`
+			InForce       bool  `json:"in_force"`
+		}
+		if err := json.Unmarshal(got.Body.Bytes(), &asked); err != nil {
+			t.Fatal(err)
+		}
+		if !asked.NeedsApproval || asked.InForce {
+			t.Errorf("a four-year extension stood on one person's say-so: %+v", asked)
+		}
+
+		// The person who asked may not agree to it.
+		approval := fmt.Sprintf("/v1/disclosure-extensions/%d/approval", asked.ID)
+		if got := asPerson(t, r, "private-triage", http.MethodPost, approval, `{}`); got.Code != http.StatusConflict {
+			t.Errorf("agreeing to one's own extension answered %d, want 409", got.Code)
+		}
+
+		// The history is kept whether or not anybody agreed.
+		var history struct {
+			Items []struct {
+				Reason  string `json:"reason"`
+				InForce bool   `json:"in_force"`
+			} `json:"items"`
+		}
+		read(t, r, "private-triage", at, &history)
+		if len(history.Items) != 1 || history.Items[0].Reason == "" {
+			t.Fatalf("the record of what was asked reads as %+v", history.Items)
+		}
+		if history.Items[0].InForce {
+			t.Error("an extension nobody agreed to is reported as in force")
 		}
 	})
 }

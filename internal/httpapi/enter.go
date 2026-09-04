@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 )
@@ -180,4 +181,195 @@ func registerDisclosure(api huma.API, in Ingest) {
 		}
 		return out, nil
 	})
+}
+
+// ExtensionBody is one time somebody moved the end of an embargo.
+type ExtensionBody struct {
+	ID            int64  `json:"id"`
+	Was           string `json:"was" doc:"Where the embargo ended before"`
+	Until         string `json:"until" doc:"Where it was asked to end"`
+	Reason        string `json:"reason"`
+	AskedBy       string `json:"asked_by"`
+	AskedAt       string `json:"asked_at"`
+	NeedsApproval bool   `json:"needs_approval" doc:"Whether a second person had to agree"`
+	ApprovedBy    string `json:"approved_by,omitempty"`
+	ApprovedAt    string `json:"approved_at,omitempty"`
+	// InForce says the date follows this one. An extension waiting for
+	// agreement has moved nothing.
+	InForce bool `json:"in_force"`
+}
+
+func registerExtensions(api huma.API, in Ingest) {
+	const path = "/v1/products/{product}/issues/{vulnerability}/disclosure"
+
+	huma.Register(api, huma.Operation{
+		OperationID: "extend-disclosure", Method: http.MethodPost, Path: path,
+		Summary: "Ask to move a disclosure date later",
+		Description: "Moves the end of an embargo, across every undisclosed finding of this " +
+			"issue in this product.\n\n" +
+			"**A reason is required, always**, however short the extension. One with no reason " +
+			"is a record saying somebody moved it and nothing else.\n\n" +
+			"**Past a threshold it needs a second person**, and the threshold is measured " +
+			"against everything this embargo has already been moved by rather than against " +
+			"this request alone — measured per request, the exception swallows the rule three " +
+			"weeks at a time. It is the same act a deferral is, and the same shape.\n\n" +
+			"**An extension that needs agreement moves nothing until it has it.** The request " +
+			"is on record either way; `in_force` says whether the date follows it.\n\n" +
+			"A date only ever moves later. Bringing one forward is disclosing sooner, which is " +
+			"a different act.",
+		Tags: []string{"Findings"}, DefaultStatus: http.StatusCreated,
+	}, func(ctx context.Context, input *struct {
+		Product       string `path:"product"`
+		Vulnerability string `path:"vulnerability"`
+		Body          struct {
+			Until  string `json:"until" doc:"Where the embargo should end, as a date"`
+			Reason string `json:"reason" minLength:"1" doc:"Why it is being extended"`
+		}
+	}) (*struct {
+		Status int
+		Body   ExtensionBody
+	}, error) {
+		subject, store, product, issue, err := embargoAt(ctx, in, input.Product, input.Vulnerability)
+		if err != nil {
+			return nil, err
+		}
+		until, err := time.Parse(time.DateOnly, input.Body.Until)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity(
+				"until has to be a date, as 2026-12-31")
+		}
+
+		asked, err := store.Extend(ctx, subject, product, issue, until, input.Body.Reason)
+		if err != nil {
+			if errors.Is(err, finding.ErrNotEmbargoed) {
+				return nil, noSuchFinding()
+			}
+			return nil, refusedFinding(in, err)
+		}
+		body, err := extensionBody(ctx, in, []finding.Extension{*asked})
+		if err != nil {
+			return nil, wentWrong(in.Logger, "the extension could not be read back", err)
+		}
+		return &struct {
+			Status int
+			Body   ExtensionBody
+		}{Status: http.StatusCreated, Body: body[0]}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "list-disclosure-extensions", Method: http.MethodGet, Path: path,
+		Summary: "List how an embargo has been moved",
+		Description: "Every time this embargo was moved, oldest first, with why and by whom.\n\n" +
+			"Kept in full and never overwritten. One extension is a judgment and six is a " +
+			"policy nobody wrote down, and the difference is invisible if each replaces the " +
+			"last. A request still waiting for agreement is here too: what was asked for is " +
+			"part of how long this stayed hidden, whether or not it was granted.",
+		Tags: []string{"Findings"},
+	}, func(ctx context.Context, input *struct {
+		Product       string `path:"product"`
+		Vulnerability string `path:"vulnerability"`
+	}) (*listOutput[ExtensionBody], error) {
+		subject, store, product, issue, err := embargoAt(ctx, in, input.Product, input.Vulnerability)
+		if err != nil {
+			return nil, err
+		}
+		rows, err := store.Extensions(ctx, subject, product, issue)
+		if err != nil {
+			return nil, refusedFinding(in, err)
+		}
+		items, err := extensionBody(ctx, in, rows)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "the extensions could not be read", err)
+		}
+		out := &listOutput[ExtensionBody]{}
+		out.Body.Items = items
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "agree-to-extension", Method: http.MethodPost,
+		Path:    "/v1/disclosure-extensions/{id}/approval",
+		Summary: "Agree to moving a disclosure date",
+		Description: "Records a second person agreeing, and moves the date.\n\n" +
+			"The person who asked may not be the one who agrees. That is the control the " +
+			"threshold exists to reach, and an extension somebody approved for themselves is " +
+			"the same as one nobody approved.",
+		Tags: []string{"Findings"}, DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, input *struct {
+		ID int64 `path:"id"`
+	}) (*struct{}, error) {
+		subject, err := reading(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if in.DB == nil {
+			return nil, huma.Error500InternalServerError("this process cannot read findings")
+		}
+		err = finding.NewStore(in.DB.DB).AgreeToExtension(ctx, subject, input.ID)
+		switch {
+		case errors.Is(err, finding.ErrNotEmbargoed):
+			return nil, noSuchFinding()
+		case errors.Is(err, finding.ErrSamePerson):
+			return nil, huma.Error409Conflict(
+				"the person who asked to move a date may not be the one who agrees to it")
+		case err != nil:
+			return nil, refusedFinding(in, err)
+		}
+		return &struct{}{}, nil
+	})
+}
+
+// embargoAt resolves a product and an issue for the disclosure endpoints.
+func embargoAt(ctx context.Context, in Ingest, productName, issueName string) (
+	access.Subject, *finding.Store, int64, int64, error) {
+
+	subject, err := reading(ctx)
+	if err != nil {
+		return subject, nil, 0, 0, err
+	}
+	if in.DB == nil {
+		return subject, nil, 0, 0,
+			huma.Error500InternalServerError("this process cannot read findings")
+	}
+	product, err := catalog.NewStore(in.DB.DB).VisibleProduct(ctx, subject, productName)
+	if err != nil {
+		return subject, nil, 0, 0, noSuchProduct()
+	}
+	issue, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, issueName)
+	if err != nil {
+		return subject, nil, 0, 0, noSuchIssue()
+	}
+	return subject, finding.NewStore(in.DB.DB), product.ID, issue, nil
+}
+
+// extensionBody names the people an extension record refers to by identifier.
+func extensionBody(ctx context.Context, in Ingest, rows []finding.Extension) ([]ExtensionBody, error) {
+	people := make([]int64, 0, len(rows)*2)
+	for _, row := range rows {
+		people = append(people, row.AskedBy)
+		if row.ApprovedBy != nil {
+			people = append(people, *row.ApprovedBy)
+		}
+	}
+	names, err := access.NewStore(in.DB.DB).Names(ctx, people)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ExtensionBody, 0, len(rows))
+	for _, row := range rows {
+		body := ExtensionBody{
+			ID: row.ID, Was: stamp(row.Was), Until: stamp(row.Until),
+			Reason: row.Reason, AskedBy: names[row.AskedBy],
+			AskedAt: stamp(row.AskedAt), NeedsApproval: row.NeedsApproval,
+			InForce: row.InForce(),
+		}
+		if row.ApprovedBy != nil {
+			body.ApprovedBy = names[*row.ApprovedBy]
+		}
+		if row.ApprovedAt != nil {
+			body.ApprovedAt = stamp(*row.ApprovedAt)
+		}
+		out = append(out, body)
+	}
+	return out, nil
 }

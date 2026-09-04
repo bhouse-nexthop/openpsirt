@@ -2583,3 +2583,34 @@ spelling it a second way here would have been a second rule to keep in step.
 which needs a reason and a second person past a threshold (ACC-48), and telling
 somebody when a date arrives (the other half of ACC-47). The mechanism for the
 second already exists — it is what reports a build that stopped being scanned.
+
+## An embargo can be extended, and it costs something to (2026-09-04)
+
+ACC-48, built as the same shape a deferral has, because it is the same act:
+keeping risk hidden for longer.
+
+Four things, each pinned by a test watched failing:
+
+- **A reason, always.** However short. One with no reason is a record saying
+  somebody moved it and nothing else.
+- **The threshold is cumulative.** Measured per request, the exception swallows
+  the rule three weeks at a time — which is the reasoning already written into
+  the deferral threshold, and the same arithmetic. Only extensions that took
+  effect count: a refusal moved nothing, and charging somebody for it would
+  push every later request over a line for something that never happened.
+- **Nothing moves until somebody agrees.** A request waiting for a second
+  person changes nothing about the finding, which is already true of a decision
+  waiting for one. Otherwise the extension takes effect on one person's say-so
+  and the queue entry is decoration.
+- **A date only moves later.** Bringing one forward is disclosing sooner, which
+  is a different act.
+
+Every request is kept, granted or not. One extension is a judgment and six is a
+policy nobody wrote down, and the difference is invisible if each replaces the
+last — so the date lives on the finding and the history lives beside it.
+
+A mutation-testing note worth keeping: the first attempt at the "not
+cumulative" mutant left a variable unused, so the package failed to build and
+the run reported exit 1 — which looks exactly like the test catching it. A
+mutant that does not compile has tested nothing. Re-run so it compiled, and it
+does fail honestly, on both assertions.

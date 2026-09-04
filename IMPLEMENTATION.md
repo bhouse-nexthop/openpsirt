@@ -221,7 +221,9 @@ that release, and raises an alert rather than sitting in a report.
   behaving like any other finding from there. Visibility handling shipped in
   Phase 1. **A disclosure date is built** — an embargo gets an end, and what
   is approaching one is a list, before the date rather than on it.
-  **Extending a date, and telling somebody the date arrived, are not**
+  **Extending a date is built** — with a reason always, a second person past
+  a cumulative threshold, and nothing moving until that person agrees.
+  **Telling somebody the date arrived is not**
 - Advisory publication: CSAF, and GitHub Security Advisories where they apply
 - Attachments: object store, authorized fetch, redaction (`ATT`)
 

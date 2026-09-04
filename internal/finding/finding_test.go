@@ -858,6 +858,18 @@ func (f *fixture) interned(t *testing.T, name string) int64 {
 	return ids[name]
 }
 
+// someoneElse is a second real person holding a role here, for the checks that
+// need two — agreeing to somebody else's request, most of all.
+func (f *fixture) someoneElse(t *testing.T, roles ...access.Role) access.Subject {
+	t.Helper()
+	person, err := access.NewStore(f.db.DB).Ensure(t.Context(), "other@example.com", "Other", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return access.NewPerson(person.ID, "other@example.com", false,
+		map[int64][]access.Role{f.productID: roles})
+}
+
 // holding returns a subject holding one role on the product this fixture's
 // target belongs to.
 func (f *fixture) holding(t *testing.T, roles ...access.Role) access.Subject {

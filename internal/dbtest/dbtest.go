@@ -366,6 +366,8 @@ var tables = []string{
 	// Before person, vulnerability, component and target, all of which it
 	// points at.
 	"fix_target",
+	// Before person, vulnerability and product, all of which it points at.
+	"disclosure_extension",
 	"decision_comment",
 	"vulnerability_reference",
 	"decision_approval",
