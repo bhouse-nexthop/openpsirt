@@ -1022,7 +1022,19 @@ export interface paths {
          */
         get: operations["list-findings"];
         put?: never;
-        post?: never;
+        /**
+         * Record a flaw in what this build ships
+         * @description Records a vulnerability in your own product — one no scanner reported, usually because nobody outside knows about it yet.
+         *
+         *     **It starts undisclosed.** That is the case this exists for, and defaulting the other way would make the dangerous mistake the quiet one. Recording an undisclosed finding needs the private triage role on the product; send `disclosed` for one that is already public, which needs the ordinary one.
+         *
+         *     **It is filed under an identifier this deployment mints** — the product's name, the year and a number, which is the shape a vendor advisory takes. When a CVE is assigned later it becomes another name for the same issue and nothing about the finding, the decisions or the approvals moves.
+         *
+         *     `component` names what in the build carries it, as the build calls it. Leave it out for the build itself, which is the honest answer where the flaw is in how the pieces fit together rather than in one of them.
+         *
+         *     From here it behaves like any other finding: triaged, assigned, decided, on the same clock and in the same reports. No scan will close it — a run is the authority on what it found, and it found none of this.
+         */
+        post: operations["record-finding"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2357,6 +2369,25 @@ export interface components {
             /** @description The date support ends, as YYYY-MM-DD, or empty to clear it */
             on: string;
         };
+        EnteredBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/EnteredBody.json
+             */
+            readonly $schema?: string;
+            /** @description What in the build carries it */
+            component: string;
+            /** @description When it has to be answered by */
+            due_at?: string;
+            /** @description What this deployment filed it as, such as SONIC-2026-0001 */
+            identifier: string;
+            /**
+             * @description Whether it has been disclosed
+             * @enum {string}
+             */
+            visibility: "public" | "private";
+        };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
             location?: string;
@@ -3341,6 +3372,25 @@ export interface components {
             measured_against?: components["schemas"]["MeasuredBody"];
             /** Format: int64 */
             total: number;
+        };
+        "Record-findingRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Record-findingRequest.json
+             */
+            readonly $schema?: string;
+            /** @description What carries it. Omit for the build itself */
+            component?: string;
+            /** @description Whether this is already public. Undisclosed by default */
+            disclosed?: boolean;
+            /**
+             * @description How bad it is
+             * @enum {string}
+             */
+            severity: "critical" | "high" | "medium" | "low" | "negligible" | "none";
+            /** @description What the flaw is, in your own words */
+            summary: string;
         };
         RecordBody: {
             /**
@@ -5537,6 +5587,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FindingsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "record-finding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+                stream: string;
+                variant: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Record-findingRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnteredBody"];
                 };
             };
             /** @description Error */
