@@ -86,7 +86,8 @@ vocabulary — the dismissal words were aligned to VEX from the start.
 ingests as the `container` variant are both 1.7 documents going through a
 reader whose only fixtures are 1.6. It demonstrably works. Nothing pins it, and
 a 1.7 fixture through the existing reader tests would turn "accepted by
-construction" into something checked.
+construction" into something checked. *Recorded in `DESIGN-ingest.md`, which is
+where it lives now — this note is a copy and the design document is not.*
 
 **Phase 1 leftovers**: remediation metrics (RPT-03), mail and the digest
 (NTF-03, NTF-14), mentions that link (UIX-24, which blocks NTF-12), the

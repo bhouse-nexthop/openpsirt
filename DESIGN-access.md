@@ -610,15 +610,14 @@ The rule is written down rather than left as a habit because the failure is
 invisible: nothing breaks, no test fails, and the leak lives in a system nobody
 thinks of as holding secrets.
 
-## Disclosure, which is not built
+## Disclosure
 
 Public and private mean disclosed and not disclosed, so an undisclosed finding
-is one somebody intends to disclose eventually. None of the machinery around
-that exists yet — it arrives with private findings, which are entered by hand
-and are Phase 2 — and it is named here rather than left to be rediscovered.
+is one somebody intends to disclose eventually. All of this is built, and
+arrived with private findings — a flaw in what a build ships, recorded by hand.
 
-**A private finding carries a disclosure date**, defaulting to ninety days from
-creation and configurable per deployment (ACC-46). A public finding has none:
+**A private finding carries a disclosure date**, from a setting that defaults
+to ninety days after it was recorded (ACC-46). A public finding has none:
 it is already disclosed, and a date on it would be a deadline for something
 that has already happened. Ninety days is what coordinated disclosure practice
 converges on, and the point of having one at all is that it gives the embargo
@@ -643,8 +642,9 @@ nothing to their copy of it — not a row and not a count, because a count says
 as much as a row. What that costs them is a shorter list; what the alternative
 costs is the thing the whole public and private split exists to prevent.
 
-**Extending the date needs a reason, and past a configured threshold, a second
-person** (ACC-48) — the same shape as a deferral, because it is the same act:
+**Extending the date needs a reason, and past a threshold that is a setting —
+thirty days by default — a second person** (ACC-48). The same shape as a
+deferral, because it is the same act:
 keeping risk hidden for longer. Without that the date is decoration, and the
 indefinite secrecy the disclosure frameworks warn about arrives one quiet
 extension at a time.
@@ -679,11 +679,13 @@ difference is invisible if each replaces the last. A request nobody agreed to
 is part of the record too: what was asked for is part of how long this stayed
 hidden.
 
-**Telling somebody is not built either.** ACC-47 says administrators and
-whoever owns it are told when the date arrives, and what exists is the list.
-The mechanism a condition uses to become something somebody is told is already
-there — it is what reports a build that stopped being scanned — so this is
-wiring rather than design.
+**The date arriving tells somebody** (ACC-47). Administrators, and whoever
+holds the finding where they may still read undisclosed work in that product —
+the second only where they may, for the same reason the list itself is a
+disclosure. It is a condition rather than an event: it stands while the date is
+past and nothing has been decided, and it clears when somebody answers it,
+which is the same shape as reporting a build that stopped being scanned. A
+finding that becomes disclosed leaves it by ceasing to be private.
 
 ## Somebody who has stopped coming in
 

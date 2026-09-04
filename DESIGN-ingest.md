@@ -462,6 +462,38 @@ The same walk answers the question a large document otherwise hides: how many
 structures carried by a single component are the ones a small document does
 not have and a hand-written one does not think of.
 
+### The reader accepts a minor version nothing has been tested against
+
+The reader checks the major version and refuses what it has not been written
+against; anything within that major version parses. That is deliberate — a
+minor revision of the format adds fields rather than moving the ones read —
+but it means a revision is **accepted by construction rather than by
+evidence**, and every fixture here states 1.6.
+
+That stopped being theoretical. The reference producer now emits **1.7**, so
+the inventory this deployment's own image carries and the one the demo ingests
+are both 1.7 documents going through a reader whose fixtures are all 1.6. It
+demonstrably works — the components are placed and the findings are the same
+shape — and nothing would notice if a later revision moved something the reader
+depends on. A fixture at the newer revision through the existing reader tests
+is what turns the first sentence of this section into a checked claim.
+
+### What the scanner says that is not kept
+
+The scanner's own warnings are read only when it fails. A run that succeeds
+while warning about the quality of its answer discards the warning, and one of
+those matters: told to match Go binaries that carry no function symbols, it
+says so and falls back to module granularity, which may report a component as
+affected when the vulnerable function is not linked in. That qualification
+belongs with the findings it qualifies and currently reaches nobody.
+
+Two things it reports per match are also dropped, and both bear on the question
+MDL-26 exists to ask. The **version range the match fired on** — an upstream
+range for a distribution's package, which is what makes a backported fix
+invisible — and the **data source that answered**, which is finer than the two
+words a finding records. Keeping either means a column and a field; keeping
+them is what would let somebody judge a match rather than take it.
+
 ### Choices the decisions did not cover
 
 | Choice | Why this way |
