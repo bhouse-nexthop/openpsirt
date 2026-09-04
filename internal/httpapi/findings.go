@@ -371,6 +371,7 @@ type SittingBody struct {
 	Consumer   string `json:"consumer,omitempty" doc:"What pulls the component in here. Absent under the product itself"`
 	Suppressed bool   `json:"suppressed,omitempty" doc:"The build has already argued this place away"`
 	Decision   int64  `json:"decision,omitempty" doc:"The claim already standing here, where one does. Not the same as suppressed, which is the build's own argument"`
+	Claim      int64  `json:"claim,omitempty" doc:"The action that decision was one row of, so a claim shown on this finding can name the places it covers rather than only count them"`
 	// Chain is display rather than identity. A decision is keyed on the direct
 	// consumer and nothing else, which is what keeps one judgment from
 	// multiplying by every route through the graph.
@@ -601,6 +602,9 @@ func evidenceBody(e finding.Evidence) EvidenceBody {
 		}
 		if place.Decision != nil {
 			sitting.Decision = *place.Decision
+		}
+		if place.Claim != nil {
+			sitting.Claim = *place.Claim
 		}
 		for _, step := range place.Chain {
 			sitting.Chain = append(sitting.Chain, StepBody{

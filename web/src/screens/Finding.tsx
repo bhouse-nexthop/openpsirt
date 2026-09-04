@@ -334,6 +334,7 @@ export function Finding() {
             key={claim.decision?.id}
             claim={claim}
             summary={it.standing?.[i]}
+            places={places}
             mine={mine(claim.proposed_by ?? "")}
             mayApprove={!!who.data?.reach.find((r) => r.product === product)?.may_agree}
             onRevised={() => void finding.refetch()}
@@ -471,17 +472,25 @@ const OUTCOME: Record<string, string> = {
 function Standing({
   claim,
   summary,
+  places,
   mine,
   mayApprove,
   onRevised,
 }: {
   claim: Detail;
   summary?: Body<"StandingClaimBody">;
+  places: Sitting[];
   mine: boolean;
   mayApprove: boolean;
   onRevised: () => void;
 }) {
   const id = claim.decision?.id ?? 0;
+  // Which locations this claim covers, named rather than counted. A count says
+  // how big the judgment was and not which code it was about, and on a finding
+  // that is only partly decided that is the question somebody has.
+  const covers = places
+    .filter((place) => summary?.claim_id != null && place.claim === summary.claim_id)
+    .map((place) => place.consumer || UNPLACED);
   // The claim's state as a whole, not its representative row's: a claim with
   // one row approved and forty sent back is not approved.
   const state = summary?.state ?? claim.decision?.state ?? "";
@@ -562,6 +571,17 @@ function Standing({
           <span className="v">
             {summary?.places ?? claim.decision?.places ?? 1}{" "}
             {(summary?.places ?? claim.decision?.places ?? 1) === 1 ? "location" : "locations"} here
+            {/* Named, not just counted — a location is what pulls the
+                component in, which is what the decision is keyed on. Three at
+                most: a kernel sits at sixty and the list would be the card. */}
+            {covers.length > 0 && (
+              <>
+                {" ("}
+                <span className="id">{covers.slice(0, 3).join(", ")}</span>
+                {covers.length > 3 && <> and {covers.length - 3} more</>}
+                {")"}
+              </>
+            )}
             {(summary?.builds ?? []).length > 0 && <> · also {summary?.builds?.join(", ")}</>}
             {summary?.kind === "extension" && <> · extends an approved claim</>}
             {claim.decision?.selected_by && <> · narrowed by: {claim.decision.selected_by}</>}

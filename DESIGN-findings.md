@@ -498,6 +498,14 @@ It is written out rather than using the engines' greatest-of function, which is
 not agreed on when one side is absent: two of the four answer "unknown" where
 the useful answer is the number that is known.
 
+### A place names the claim standing on it
+
+Each place a finding sits at carries the live claim covering it, not only the
+decision. At most one live decision stands per combination of code, so the two
+reach the same row — but the claim is what a person acts on and what the
+finding shows, and without it a claim shown there can count its places and
+cannot name them.
+
 ## A row says how far it has been decided
 
 Each row of the findings list carries how far we have decided it, in the same

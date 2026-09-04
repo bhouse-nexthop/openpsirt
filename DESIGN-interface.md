@@ -533,6 +533,14 @@ their reasoning offered back as "reuse this reasoning". The revisions and
 comments shown are the claim's representative decision's, which the finding
 names; a claim's records share one reasoning, so any of them answers.
 
+**A claim's scope names its locations rather than only counting them.** "One
+location" says how large a judgment was and not which code it was about, and on
+a finding that is only partly decided — some places answered and the rest never
+touched — which ones is the whole question the reader has. Each place carries
+the claim standing on it, so the card names the consumers its own claim covers:
+three at most, then how many more, because a kernel sits at sixty and the list
+would become the card.
+
 **A comment can be rewritten by whoever wrote it**, in place, and the row goes
 on saying only that it was edited — the previous text is not kept, because
 discussion is not the record a decision rests on. The control is offered only

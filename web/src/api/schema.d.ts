@@ -3954,6 +3954,11 @@ export interface components {
         SittingBody: {
             /** @description The way down to here, the build first and this component last. Empty where the inventory left the component unplaced */
             chain?: components["schemas"]["StepBody"][] | null;
+            /**
+             * Format: int64
+             * @description The action that decision was one row of, so a claim shown on this finding can name the places it covers rather than only count them
+             */
+            claim?: number;
             /** @description What pulls the component in here. Absent under the product itself */
             consumer?: string;
             /**

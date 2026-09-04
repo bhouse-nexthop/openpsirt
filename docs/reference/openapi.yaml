@@ -3710,6 +3710,10 @@ components:
           type:
             - array
             - "null"
+        claim:
+          description: The action that decision was one row of, so a claim shown on this finding can name the places it covers rather than only count them
+          format: int64
+          type: integer
         consumer:
           description: What pulls the component in here. Absent under the product itself
           type: string

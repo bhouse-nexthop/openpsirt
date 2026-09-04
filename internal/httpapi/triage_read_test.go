@@ -1269,3 +1269,67 @@ func TestOnlyPeopleWhoCanAlreadySeeItAreOfferedAsMentions(t *testing.T) {
 		}
 	})
 }
+
+func TestAPlaceNamesTheClaimStandingOnIt(t *testing.T) {
+	// A claim shown on a finding says how many places it covers. That is how
+	// big the judgment was and not which code it was about, and on a finding
+	// only partly decided — some places answered and the rest never touched —
+	// which ones is the whole question. The place carries the claim so the
+	// screen can name them rather than only count them.
+	eachReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+
+		var detail struct {
+			Places []struct {
+				Place    string `json:"place"`
+				Consumer string `json:"consumer"`
+				Decision int64  `json:"decision"`
+				Claim    int64  `json:"claim"`
+			} `json:"places"`
+		}
+		at := "/v1/products/mine/streams/master/variants/broadcom" +
+			"/findings/CVE-2026-9999/components/libnl-3-200"
+		read(t, r, "reader", at, &detail)
+		if len(detail.Places) == 0 {
+			t.Fatal("the finding sits nowhere")
+		}
+		for _, place := range detail.Places {
+			if place.Claim != 0 {
+				t.Errorf("a place nobody has decided names claim %d", place.Claim)
+			}
+		}
+
+		made := asPerson(t, r, "triager", http.MethodPost,
+			"/v1/products/mine/streams/master/variants/broadcom"+
+				"/findings/CVE-2026-9999/places/"+detail.Places[0].Place+"/decision",
+			`{"outcome":"not-applicable","justification":"vulnerable_code_not_in_execute_path",`+
+				`"reasoning":"The parser is never reached."}`)
+		if made.Code != http.StatusCreated {
+			t.Fatalf("recording a decision answered %d: %s", made.Code, made.Body.String())
+		}
+		var recorded struct {
+			ClaimID int64 `json:"claim_id"`
+		}
+		if err := json.Unmarshal(made.Body.Bytes(), &recorded); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		read(t, r, "reader", at, &detail)
+		var named int
+		for _, place := range detail.Places {
+			if place.Decision == 0 {
+				if place.Claim != 0 {
+					t.Errorf("a place with no decision names claim %d", place.Claim)
+				}
+				continue
+			}
+			named++
+			if place.Claim != recorded.ClaimID {
+				t.Errorf("the decided place names claim %d, want %d", place.Claim, recorded.ClaimID)
+			}
+		}
+		if named == 0 {
+			t.Error("no place carries the decision that was just recorded")
+		}
+	})
+}
