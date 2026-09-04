@@ -1,3 +1,19 @@
+# The base every stage that is not somebody else's toolchain image starts from.
+# Declared here because an argument a `FROM` line reads has to be declared
+# before the first one, and pinned in one place so three stages cannot drift
+# apart.
+#
+# **It has an end-of-life date and somebody has to move it.** 3.21, which this
+# carried until now, shipped in December 2024 and stops being supported on
+# 2026-11-01 — after which its packages get no security backports, and this
+# tool would report unfixable findings against its own image and be right about
+# them. 3.24 shipped 2026-06-09 and is supported to 2028-06-01.
+#
+# Pinned rather than tracking latest for the reason the scanner is pinned: what
+# a finding means depends on what was measured, and a base that moves under a
+# rebuild changes the answer without anybody asking it to.
+ARG ALPINE_VERSION=3.24
+
 # The interface, built here rather than taken from the build context.
 #
 # The Go build embeds whatever `internal/webui/dist` holds, and that directory
@@ -75,7 +91,7 @@ RUN go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CDXGOMOD_V
 # Pinned and checksummed. Which scanner build answered is part of what a
 # finding means — counts are only comparable between products measured the same
 # way — so "whatever was latest at build time" is not good enough.
-FROM alpine:3.21 AS scanner
+FROM alpine:${ALPINE_VERSION} AS scanner
 ARG GRYPE_VERSION=0.118.0
 ARG TARGETARCH=amd64
 RUN apk add --no-cache curl ca-certificates \
@@ -97,7 +113,7 @@ RUN apk add --no-cache curl ca-certificates \
 # Pinned by version and checksum, the same way the scanner is, and from the
 # same project — a build that fetches an unpinned tool over the network is a
 # build whose output depends on a day.
-FROM alpine:3.21 AS inventory-tool
+FROM alpine:${ALPINE_VERSION} AS inventory-tool
 ARG SYFT_VERSION=1.51.1
 ARG TARGETARCH=amd64
 RUN apk add --no-cache curl ca-certificates \
@@ -113,7 +129,7 @@ RUN apk add --no-cache curl ca-certificates \
  && tar -xzf /tmp/syft.tar.gz -C /out syft \
  && chmod 0755 /out/syft
 
-FROM alpine:3.21 AS runtime
+FROM alpine:${ALPINE_VERSION} AS runtime
 
 # Outbound TLS needs root certificates: the ranking feeds are fetched over
 # HTTPS, and without these every fetch fails with an unhelpful error.
@@ -193,9 +209,15 @@ RUN /out/syft scan dir:/rootfs \
  && /out/compose -name openpsirt-image -version "${VERSION}" \
       -out /image.cdx.json \
       parts/filesystem.cdx.json parts/openpsirt.cdx.json parts/grype.cdx.json \
- && test -s /image.cdx.json
+ && test -s /image.cdx.json \
+ && chmod 0644 /image.cdx.json
 
 FROM runtime
+# Readable, like the module inventory beside it. The composer writes 0600 —
+# what the analysis gate allows a program to write — and the mode travels
+# through this copy, so shipped as written it landed root-only in an image that
+# runs as nobody: the one document saying what this image contains could not be
+# read from inside it.
 COPY --from=image-inventory /image.cdx.json /usr/share/openpsirt/image.cdx.json
 
 USER openpsirt

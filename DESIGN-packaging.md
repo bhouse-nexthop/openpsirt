@@ -26,6 +26,23 @@ Alpine is used anyway, deliberately. A self-hosted operator debugging their own
 deployment wants a shell, and that is worth the few megabytes and the extra
 surface. It is one line to change if that trade ever stops being worth it.
 
+**The version is pinned in one place, and the pin has an expiry somebody has to
+watch.** Every stage that is not somebody else's toolchain image starts from
+the same argument, so three of them cannot drift apart. It is pinned rather
+than tracking latest for the reason the scanner is: what a finding means
+depends on what was measured, and a base that moves under a rebuild changes the
+answer without anybody asking it to.
+
+What that costs is that nothing moves it either. The image carried 3.21 —
+released December 2024, support ending 2026-11-01 — until somebody looked, by
+which point it was three releases behind and weeks from the date. **Past a
+base's end-of-life its packages get no security backports**, so the seventeen
+Alpine packages this image ships would accumulate findings with no fix
+available, and this tool would report them against its own image and be right.
+That is the shape of the failure rather than a one-off: the same week found the
+scanner and the inventory tool two releases behind each, and nothing watches
+any of the three.
+
 | | |
 |---|---|
 | Size | ~40 MB |

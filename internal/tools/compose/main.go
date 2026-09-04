@@ -159,10 +159,15 @@ func run(name, version, out string, inputs []string) error {
 	if err != nil {
 		return err
 	}
-	// Readable only by whoever ran this. It is an inventory of a build, copied
-	// into an image by the next stage — nothing else on the machine needs to
-	// read it where it is written, and the narrower mode is the one to have
-	// when the wider one buys nothing.
+	// Readable only by whoever ran this, which is what the analysis gate
+	// allows a program to write and is the right default for one.
+	//
+	// **The mode travels with the file**, and that is the part worth knowing:
+	// a container build copying this into an image carries 0600 along, into an
+	// image whose process runs as somebody else — so the document describing
+	// what that image contains could not be read from inside it. Widening it
+	// belongs to whoever ships it, beside the decision to ship it, and the
+	// Dockerfile does exactly that.
 	return os.WriteFile(out, append(body, '\n'), 0o600)
 }
 
