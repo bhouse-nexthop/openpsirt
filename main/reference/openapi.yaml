@@ -1094,6 +1094,36 @@ components:
       required:
         - "on"
       type: object
+    EnteredBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/EnteredBody.json
+          format: uri
+          readOnly: true
+          type: string
+        component:
+          description: What in the build carries it
+          type: string
+        due_at:
+          description: When it has to be answered by
+          type: string
+        identifier:
+          description: What this deployment filed it as, such as SONIC-2026-0001
+          type: string
+        visibility:
+          description: Whether it has been disclosed
+          enum:
+            - public
+            - private
+          type: string
+      required:
+        - identifier
+        - component
+        - visibility
+      type: object
     ErrorDetail:
       additionalProperties: false
       properties:
@@ -2846,6 +2876,40 @@ components:
       required:
         - items
         - total
+      type: object
+    Record-findingRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Record-findingRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        component:
+          description: What carries it. Omit for the build itself
+          type: string
+        disclosed:
+          description: Whether this is already public. Undisclosed by default
+          type: boolean
+        severity:
+          description: How bad it is
+          enum:
+            - critical
+            - high
+            - medium
+            - low
+            - negligible
+            - none
+          type: string
+        summary:
+          description: What the flaw is, in your own words
+          minLength: 1
+          type: string
+      required:
+        - summary
+        - severity
       type: object
     RecordBody:
       additionalProperties: false
@@ -5716,6 +5780,56 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: List vulnerability findings
+      tags:
+        - Findings
+    post:
+      description: |-
+        Records a vulnerability in your own product — one no scanner reported, usually because nobody outside knows about it yet.
+
+        **It starts undisclosed.** That is the case this exists for, and defaulting the other way would make the dangerous mistake the quiet one. Recording an undisclosed finding needs the private triage role on the product; send `disclosed` for one that is already public, which needs the ordinary one.
+
+        **It is filed under an identifier this deployment mints** — the product's name, the year and a number, which is the shape a vendor advisory takes. When a CVE is assigned later it becomes another name for the same issue and nothing about the finding, the decisions or the approvals moves.
+
+        `component` names what in the build carries it, as the build calls it. Leave it out for the build itself, which is the honest answer where the flaw is in how the pieces fit together rather than in one of them.
+
+        From here it behaves like any other finding: triaged, assigned, decided, on the same clock and in the same reports. No scan will close it — a run is the authority on what it found, and it found none of this.
+      operationId: record-finding
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Record-findingRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnteredBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Record a flaw in what this build ships
       tags:
         - Findings
   /v1/products/{product}/streams/{stream}/variants/{variant}/findings/components:
