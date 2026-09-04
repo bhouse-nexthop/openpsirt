@@ -171,10 +171,24 @@ export function Tree() {
   }
 
   // Selecting also opens, because the question "what is under this" is the one
-  // being asked by clicking it.
-  function select(name: string) {
+  // being asked by clicking it — and clicking the row you are already on is
+  // the second half of that pair, which can only mean close it again. Without
+  // that, the name opened and never closed: the triangle beside it toggled and
+  // the larger target, the one people actually hit, did not.
+  //
+  // A node with nothing under it is only selected, never opened. Opening one
+  // asked the server for children it does not have, and the row drew "Loading"
+  // underneath until the empty answer arrived and took it away again — a
+  // flicker under a leaf, which is what it looked like.
+  function select(name: string, children = 0) {
     setParams(name ? { at: name } : {});
-    if (name) setOpened((prev) => (prev.has(name) ? prev : new Set(prev).add(name)));
+    if (!name || children === 0) return;
+    setOpened((prev) => {
+      const next = new Set(prev);
+      if (prev.has(name) && name === focus) next.delete(name);
+      else next.add(name);
+      return next;
+    });
   }
 
   return (
@@ -297,7 +311,7 @@ function Matches({
 }: {
   found: Node[];
   focus: string;
-  onSelect: (name: string) => void;
+  onSelect: (name: string, children?: number) => void;
 }) {
   return (
     <div className="tree">
@@ -307,7 +321,11 @@ function Matches({
           className={`node openable${node.component === focus ? " here" : ""}`}
         >
           <span className="rule">·</span>
-          <span className="id" style={{ cursor: "pointer" }} onClick={() => onSelect(node.component)}>
+          <span
+            className="id"
+            style={{ cursor: "pointer" }}
+            onClick={() => onSelect(node.component, node.children)}
+          >
             {node.component}
           </span>
           <span className="ver">{node.version}</span>
@@ -342,7 +360,7 @@ function Branches({
   onPath: Set<string>;
   focus: string;
   onToggle: (name: string) => void;
-  onSelect: (name: string) => void;
+  onSelect: (name: string, children?: number) => void;
   onWiden: (name: string) => void;
 }) {
   const rows: React.ReactNode[] = [];
@@ -369,8 +387,25 @@ function Branches({
         className={`node${name === focus ? " here" : ""}${openable ? " openable" : ""}`}
         style={{ paddingLeft: depth * 20 }}
       >
+        {/* Whether anything hangs off this row, said by the marker itself.
+            Both states were drawn in the same faint line color, so a node
+            with a hundred things under it and a leaf looked alike until you
+            clicked one — and clicking the wrong one was how the leaf's
+            behavior got noticed. The triangle is ink, because it is a
+            control; the leaf's dot stays faint, because it is punctuation. */}
         <span
-          className="rule"
+          className={`rule${openable ? " has" : ""}`}
+          title={
+            openable
+              ? isOpen
+                ? "Close what this pulls in"
+                : `Open what this pulls in — ${node.children.toLocaleString()} ${
+                    node.children === 1 ? "component" : "components"
+                  }`
+              : repeated
+                ? "Shown above, where it is open"
+                : "Pulls nothing in"
+          }
           style={openable ? { cursor: "pointer" } : undefined}
           onClick={
             openable
@@ -383,7 +418,14 @@ function Branches({
         >
           {openable ? (isOpen ? "▾" : "▸") : "·"}
         </span>
-        <span className="id" style={{ cursor: "pointer" }} onClick={() => onSelect(name)}>
+        {/* Openable rather than the raw count: a component already drawn
+            higher up is marked instead of expanded again, and clicking its
+            name should not open a second copy of it. */}
+        <span
+          className="id"
+          style={{ cursor: "pointer" }}
+          onClick={() => onSelect(name, openable ? node.children : 0)}
+        >
           {name}
         </span>
         <span className="ver" title={node.version}>

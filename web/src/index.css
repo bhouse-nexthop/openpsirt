@@ -752,7 +752,13 @@ input[type=checkbox] { accent-color: var(--accent); }
 .tree .node { display: flex; gap: 7px; align-items: center; padding: 4px 8px; border-radius: 6px; cursor: default; }
 .tree .node.here { background: var(--accent-soft); font-weight: 600; }
 .tree .node .ver { color: var(--faint); font-family: var(--mono); }
-.tree .rule { color: var(--line-strong); width: 12px; display: inline-block; text-align: center; flex: none; }
+/* A row with something under it is told from one without at a glance, by two
+   things at once. Colour alone was not enough — at this size the triangle and
+   the dot were the same mark in two shades — so the control is also half again
+   the size of the punctuation. The line-height is pinned so the larger glyph
+   does not push the row taller than its neighbours. */
+.tree .rule { color: var(--line-strong); width: 15px; display: inline-block; text-align: center; flex: none; font-size: 11px; line-height: 1; }
+.tree .rule.has { color: var(--ink); font-size: 16px; }
 .tree .node.openable { cursor: pointer; }
 .tree .node.openable:hover { background: var(--raised); }
 .tree .count { margin-left: auto; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted); border: 1px solid var(--line); border-radius: var(--pill); padding: 0 7px; flex: none; }
