@@ -90,7 +90,29 @@ RUN apk add --no-cache curl ca-certificates \
  && tar -xzf /tmp/grype.tar.gz -C /out grype \
  && chmod 0755 /out/grype
 
-FROM alpine:3.21
+# The generator for the second inventory: what the whole image ships, rather
+# than what the binary was linked from.
+#
+# Pinned by version and checksum, the same way the scanner is, and from the
+# same project — a build that fetches an unpinned tool over the network is a
+# build whose output depends on a day.
+FROM alpine:3.21 AS inventory-tool
+ARG SYFT_VERSION=1.29.0
+ARG TARGETARCH=amd64
+RUN apk add --no-cache curl ca-certificates \
+ && case "${TARGETARCH}" in \
+      amd64) expected=5b01c831cb5d712899d9179cabd80f55b6708dbd36af981ce27e59b6569e6690 ;; \
+      arm64) expected=1d93db2bf6f366683e7aef46d3d6a9c6ab5d72caaae1c3be1a35823c18b6f970 ;; \
+      *) echo "no pinned checksum for ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+ && curl -fsSL -o /tmp/syft.tar.gz \
+      "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_${TARGETARCH}.tar.gz" \
+ && echo "${expected}  /tmp/syft.tar.gz" | sha256sum -c - \
+ && mkdir -p /out \
+ && tar -xzf /tmp/syft.tar.gz -C /out syft \
+ && chmod 0755 /out/syft
+
+FROM alpine:3.21 AS runtime
 
 # Outbound TLS needs root certificates: the ranking feeds are fetched over
 # HTTPS, and without these every fetch fails with an unhelpful error.
@@ -122,6 +144,37 @@ ENV GRYPE_DB_CACHE_DIR=/var/cache/openpsirt/grype \
     OPENPSIRT_SCANNER_PATH=/usr/local/bin/grype
 RUN mkdir -p /var/cache/openpsirt/grype \
  && chown -R 65532:65532 /var/cache/openpsirt
+
+# What the whole image ships, read off the assembled filesystem.
+#
+# The other inventory describes the binary — every module it was linked from —
+# and that is not what this image is. musl, busybox, the certificate bundle and
+# the bundled scanner are all shipped here and appear in none of it. For a tool
+# whose subject is knowing what is inside what you ship, carrying one inventory
+# that leaves out most of the image is the wrong half to carry alone.
+#
+# Read from a copy of the runtime rather than by scanning an image, because the
+# image being described does not exist until this build finishes. What is
+# copied is the same filesystem the last stage starts from, so the answer is
+# about this build rather than about one like it.
+FROM inventory-tool AS image-inventory
+ARG VERSION=0.0.0
+COPY --from=runtime / /rootfs
+# Packages, not files. The file catalogers add a component per path with no
+# version and no package identifier — eight hundred of them here — and nothing
+# downstream can do anything with those: a scanner matches packages, so they
+# would be eight hundred rows in a dependency tree that no finding can ever
+# hang off. They also carry the scan path, which is a build-time detail that
+# has no business in a shipped inventory.
+ENV SYFT_FILE_METADATA_SELECTION=none
+RUN /out/syft scan dir:/rootfs \
+      --select-catalogers "-file" \
+      --source-name openpsirt-image --source-version "${VERSION}" \
+      -o cyclonedx-json=/image.cdx.json \
+ && test -s /image.cdx.json
+
+FROM runtime
+COPY --from=image-inventory /image.cdx.json /usr/share/openpsirt/image.cdx.json
 
 USER openpsirt
 EXPOSE 8080

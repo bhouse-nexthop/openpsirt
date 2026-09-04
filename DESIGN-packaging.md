@@ -2,8 +2,8 @@
 
 How OpenPSIRT is delivered, and what a deployment looks like.
 
-Satisfies SCP-03, SCP-04, SCP-12 to SCP-14, and the probe behavior DAT-10
-requires.
+Satisfies SCP-03, SCP-04, SCP-08, SCP-09, SCP-12 to SCP-14, SCP-16, and the
+probe behavior DAT-10 requires.
 
 ## The image
 
@@ -174,17 +174,43 @@ their own registry has the whole thing.
 **The image says what it is made of**, which is the section below: a tool whose
 subject is knowing what is in a build has no standing to ship an opaque one.
 
-## The image carries its own inventory
+## The image carries two inventories, and they are not the same list
 
-The CycloneDX inventory of what the image ships (SCP-08) is generated in the
-build stage by reading the built binary (SCP-09) — the build information it
-carries names every module it was linked from and the main module's version,
-so no checkout is needed and the build context carries none — and copied into
-the runtime image at `/usr/share/openpsirt/openpsirt.cdx.json`. Two things want
-it there. A release's inventory should travel with the artifact it describes,
-not only sit beside it on a release page. And a deployment can then be its own
-first product: the demo declares OpenPSIRT as a product and uploads that file,
-so somebody evaluating the tool sees two products without owning a build
-pipeline, and the screens that compare across products have something to
-compare. The generator's version is pinned by the same variable the `sbom`
-target uses, so the image and the release asset are made the same way.
+**What the binary was linked from**, at `/usr/share/openpsirt/openpsirt.cdx.json`
+(SCP-08, SCP-09). Generated in the build stage by reading the built binary: the
+build information it carries names every module and the main module's version,
+so no checkout is needed and the build context carries none. The generator's
+version is pinned by the same variable the `sbom` target uses, so the image and
+the release asset are made the same way.
+
+**What the image ships**, at `/usr/share/openpsirt/image.cdx.json`. The first
+inventory describes a program; this describes a container. musl, busybox, the
+certificate bundle and the scanner that rides along are all shipped here and
+appear in none of the first one — and for a tool whose entire subject is
+knowing what is inside what you ship, carrying only the half that leaves out
+most of the image is the wrong half to carry alone.
+
+It is read off the assembled filesystem rather than by scanning an image,
+because the image being described does not exist until the build finishes. The
+runtime is a stage; a later stage copies that stage's filesystem and catalogs
+it. What is described is therefore this build rather than one like it.
+
+**Packages, not files.** The file catalogers add a component per path with no
+version and no package identifier — eight hundred of them here. Nothing
+downstream can act on those: a scanner matches packages, so they would be eight
+hundred rows in a dependency tree that no finding can ever hang off. They also
+carry the scan path, which is a build-time detail with no business in a shipped
+inventory. With them off the answer is 357 components — seventeen Alpine
+packages, the operating system itself, and the modules of both binaries.
+
+The generator is pinned by version and checksum, the same way the scanner is
+and from the same project. A build that fetches an unpinned tool over the
+network is a build whose output depends on the day it ran.
+
+**Two things want an inventory in the image.** A release's inventory should
+travel with the artifact it describes rather than only sitting beside it on a
+release page. And a deployment can then be its own first product: the demo
+declares OpenPSIRT and uploads both files as two variants, `binary` and
+`container`, so somebody evaluating the tool sees the difference between "what
+we wrote" and "what we ship" on itself, on the first screen they open, without
+owning a build pipeline.

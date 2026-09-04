@@ -2646,3 +2646,41 @@ should tell.
 That failure cannot arise for a condition that only ever goes to
 administrators, which is why the quiet-build sweep beside it has never shown
 it. It arrives the moment the audience depends on who holds something.
+
+## Two inventories of ourselves, and the second one is not clean (2026-09-04)
+
+The image carried one inventory: every Go module the binary was linked from.
+That is not what the image is. musl, busybox, the certificate bundle and the
+bundled scanner all ship and appeared in none of it.
+
+SCP-09 chose the binary's module graph over the source tree *because it
+describes what actually ships* — and that argument does not stop where it was
+left. A module graph is what one program is made of; the artifact somebody runs
+is an image. Recorded as SCP-16.
+
+Measured on ourselves, which is the whole reason to do it here:
+
+| | components | open findings |
+|---|---|---|
+| `binary` | 41 | 0 |
+| `container` | 345 | 79 |
+
+The inventory we were shipping said we were clean. Seventy-nine findings were
+invisible because the document describing us described the wrong artifact.
+A tool whose subject is knowing what is inside what you ship should be able to
+show somebody that on itself, on the first screen they open — so the demo seeds
+both as two variants of one product, `binary` and `container`.
+
+Two things worth keeping about generating it:
+
+**Packages, not files.** The file catalogers add a component per path — 837 of
+them — with no version and no package identifier. A scanner matches packages,
+so those are 837 rows in a dependency tree no finding can ever hang off, and
+they carried the build-time scan path (`/rootfs/...`) into a document that
+ships. Off, the answer is 357 components: seventeen Alpine packages, the
+operating system, and the modules of both binaries.
+
+**Read off the assembled filesystem, not by scanning an image**, because the
+image being described does not exist until the build finishes. The runtime is a
+stage; a later stage copies that stage's filesystem and catalogs it, so what is
+described is this build rather than one like it.

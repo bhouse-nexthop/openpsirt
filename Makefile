@@ -670,24 +670,36 @@ demo-seed:
 	    -F "inventory=@$(DEMO_DIR)/$$product-$$stream-$$variant.cdx.json" \
 	    "$(DEMO_URL)/v1/products/$$product/streams/$$stream/variants/$$variant/scans"; \
 	done
-	@# A second product: this deployment itself, from the inventory the image
-	@# carries of what it ships. Two products is what makes the cross-product
-	@# screens mean anything, and this one costs nobody a build pipeline.
-	@$(DOCKER) cp openpsirt-demo:/usr/share/openpsirt/openpsirt.cdx.json $(DEMO_DIR)/openpsirt.cdx.json
+	@# A second product: this deployment itself, from the two inventories the
+	@# image carries. Two products is what makes the cross-product screens mean
+	@# anything, and this one costs nobody a build pipeline.
+	@#
+	@# Two variants, and the difference between them is the point. "binary" is
+	@# what the program was linked from — every Go module, and nothing else.
+	@# "container" is what the image actually ships: musl, busybox, the
+	@# certificate bundle, the scanner that rides along, and the modules of
+	@# both binaries. A tool whose subject is knowing what is inside what you
+	@# ship should be able to show somebody that those are not the same list,
+	@# on itself, on the first screen they open.
+	@$(DOCKER) cp openpsirt-demo:/usr/share/openpsirt/openpsirt.cdx.json $(DEMO_DIR)/openpsirt-binary.cdx.json
+	@$(DOCKER) cp openpsirt-demo:/usr/share/openpsirt/image.cdx.json $(DEMO_DIR)/openpsirt-container.cdx.json
 	@for spec in \
 	  '/v1/products|{"name":"openpsirt","display_name":"OpenPSIRT"}' \
 	  '/v1/products/openpsirt/streams|{"name":"main","kind":"branch"}' \
-	  '/v1/products/openpsirt/variants|{"name":"linux-amd64","customer_facing":true}'; do \
+	  '/v1/products/openpsirt/variants|{"name":"binary","customer_facing":true}' \
+	  '/v1/products/openpsirt/variants|{"name":"container","customer_facing":true}'; do \
 	  path=$${spec%%|*}; body=$${spec#*|}; \
 	  curl -sS --noproxy '*' -o /dev/null -w "  $$path %{http_code}\n" \
 	    -X POST -H "Origin: $(DEMO_URL)" \
 	    -H 'Content-Type: application/json' -d "$$body" \
 	    "$(DEMO_URL)$$path"; \
 	done
-	@curl -sS --noproxy '*' -o /dev/null -w "  upload %{http_code}\n" \
-	  -X POST -H "Origin: $(DEMO_URL)" \
-	  -F "inventory=@$(DEMO_DIR)/openpsirt.cdx.json" \
-	  "$(DEMO_URL)/v1/products/openpsirt/streams/main/variants/linux-amd64/scans"
+	@for variant in binary container; do \
+	  curl -sS --noproxy '*' -o /dev/null -w "  upload openpsirt/main/$$variant %{http_code}\n" \
+	    -X POST -H "Origin: $(DEMO_URL)" \
+	    -F "inventory=@$(DEMO_DIR)/openpsirt-$$variant.cdx.json" \
+	    "$(DEMO_URL)/v1/products/openpsirt/streams/main/variants/$$variant/scans"; \
+	done
 	@# The rest of the cast, with roles on every product just declared.
 	@#
 	@# Recorded rather than created on arrival: nobody appears here by having
@@ -716,7 +728,9 @@ demo-status:
 	  IFS=',' read -r file product display stream variant <<< "$$entry"; \
 	  builds="$$builds $$product/streams/$$stream/variants/$$variant"; \
 	done; \
-	for build in $$builds openpsirt/streams/main/variants/linux-amd64; do \
+	for build in $$builds \
+	    openpsirt/streams/main/variants/binary \
+	    openpsirt/streams/main/variants/container; do \
 	  printf "  %-46s scan " "$$build"; curl -sS --noproxy '*' \
 	    "$(DEMO_URL)/v1/products/$$build/scans" \
 	    | sed -e 's/.*"state":"\([a-z]*\)".*/\1/' -e 's/^{.*/no scans yet/' | tr -d '\n'; \
@@ -798,11 +812,17 @@ dev-seed:
 	    "http://$(DEV_API)/v1/products/$$product/streams/$$stream/variants/$$variant/scans"; \
 	done
 	@# A second product: this deployment itself, from its own inventory.
+	@#
+	@# One variant here, not the two the container demo seeds. There is no
+	@# container in this loop — it runs the binary on this machine — so the
+	@# inventory of what an image ships does not exist to upload. Naming the
+	@# one that does exist the same thing it is called there keeps the two
+	@# loops describing one product rather than two that look alike.
 	@$(MAKE) --no-print-directory sbom >/dev/null
 	@for spec in \
 	  '/v1/products|{"name":"openpsirt","display_name":"OpenPSIRT"}' \
 	  '/v1/products/openpsirt/streams|{"name":"main","kind":"branch"}' \
-	  '/v1/products/openpsirt/variants|{"name":"linux-amd64","customer_facing":true}'; do \
+	  '/v1/products/openpsirt/variants|{"name":"binary","customer_facing":true}'; do \
 	  path=$${spec%%|*}; body=$${spec#*|}; \
 	  curl -sS --noproxy '*' -o /dev/null -w "  $$path %{http_code}\n" \
 	    -X POST -H "X-User: $(DEMO_USER)" -H "Origin: $(DEV_URL)" \
@@ -812,7 +832,7 @@ dev-seed:
 	@curl -sS --noproxy '*' -o /dev/null -w "  upload %{http_code}\n" \
 	  -X POST -H "X-User: $(DEMO_USER)" -H "Origin: $(DEV_URL)" \
 	  -F "inventory=@bin/openpsirt.cdx.json" \
-	  "http://$(DEV_API)/v1/products/openpsirt/streams/main/variants/linux-amd64/scans"
+	  "http://$(DEV_API)/v1/products/openpsirt/streams/main/variants/binary/scans"
 	@echo "  the scans run in the background; make dev-status shows when they land"
 
 dev-status:
@@ -820,7 +840,7 @@ dev-status:
 	  IFS=',' read -r file product display stream variant <<< "$$entry"; \
 	  builds="$$builds $$product/streams/$$stream/variants/$$variant"; \
 	done; \
-	for build in $$builds openpsirt/streams/main/variants/linux-amd64; do \
+	for build in $$builds openpsirt/streams/main/variants/binary; do \
 	  printf "  %-46s scan " "$$build"; curl -sS --noproxy '*' -H "X-User: $(DEMO_USER)" \
 	    "http://$(DEV_API)/v1/products/$$build/scans" \
 	    | sed -e 's/.*"state":"\([a-z]*\)".*/\1/' -e 's/^{.*/no scans yet/' | tr -d '\n'; \
