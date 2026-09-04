@@ -1332,6 +1332,12 @@ components:
           description: Published probability of exploitation, 0 to 1
           format: double
           type: number
+        links:
+          items:
+            $ref: "#/components/schemas/LinkBody"
+          type:
+            - array
+            - "null"
         matched:
           enum:
             - advisory
@@ -2111,6 +2117,18 @@ components:
         - places
         - due
         - days_left
+      type: object
+    LinkBody:
+      additionalProperties: false
+      properties:
+        name:
+          description: What is at the other end — the issue's record, a distribution's answer about it, or the package's own page
+          type: string
+        url:
+          type: string
+      required:
+        - url
+        - name
       type: object
     List-assignedResponse:
       additionalProperties: false
