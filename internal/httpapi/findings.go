@@ -416,7 +416,13 @@ type EvidenceBody struct {
 	// link to another's tracker.
 	Matched     string `json:"matched,omitempty" enum:"advisory,identifier"`
 	MatchedFrom string `json:"matched_from,omitempty" doc:"Where this match came from"`
-	FixedAt     string `json:"fixed_at,omitempty" doc:"When that version became available"`
+	// The evidence for the judgment `matched` asks for, rather than a second
+	// way of making it. Recorded as the scanner wrote them and never parsed:
+	// deciding whether a version falls inside a range needs an ordering per
+	// ecosystem, which this does not have and does not attempt.
+	MatchedIn    string `json:"matched_in,omitempty" doc:"Which body of vulnerability data answered, as the scanner names it — an ecosystem's own advisories against the national database's identifiers"`
+	MatchedRange string `json:"matched_range,omitempty" doc:"The version range this match fired on. For a distribution's package reached by identifier it is an upstream range, which names no packaging revision and so cannot see a backported fix"`
+	FixedAt      string `json:"fixed_at,omitempty" doc:"When that version became available"`
 	// ArrivedFrom says somebody moved this version and the issue came with it.
 	// A different sentence aimed at a different person: whoever did the bump,
 	// rather than whoever triages.
@@ -576,7 +582,8 @@ func evidenceBody(e finding.Evidence) EvidenceBody {
 		Weaknesses: e.Weaknesses, Description: e.Description, Advisory: e.Advisory,
 		Component: e.Component, Version: e.Version, Upstream: e.Upstream,
 		FixState: string(e.FixState), FixedIn: e.FixedIn, ArrivedFrom: e.ArrivedFrom,
-		Matched: string(e.Matched), MatchedFrom: e.MatchedFrom, Recorded: e.Recorded,
+		Matched: string(e.Matched), MatchedFrom: e.MatchedFrom,
+		MatchedIn: e.MatchedIn, MatchedRange: e.MatchedRange, Recorded: e.Recorded,
 		LatestVersion: e.LatestVersion, NothingSince: e.NothingSince,
 		AssignedTo: e.AssignedTo,
 		Places:     make([]SittingBody, 0, len(e.Places)),

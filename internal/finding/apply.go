@@ -193,6 +193,7 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 					PlaceIdentity:   PlaceIdentity(component.Name, present.nameOf(consumerID)),
 					FixState:        r.FixState, FixedIn: r.FixedIn, FixedAt: r.FixedAt,
 					Matched: r.Matched, MatchedFrom: r.MatchedFrom,
+					MatchedIn: r.MatchedIn, MatchedRange: r.MatchedRange,
 					SuppressedBy: covering,
 					OpenedAt:     startedAt,
 					OpenedRunID:  &runID,
@@ -288,6 +289,8 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 				Set("fixed_at = ?", f.FixedAt).
 				Set("matched = ?", f.Matched).
 				Set("matched_from = ?", f.MatchedFrom).
+				Set("matched_in = ?", f.MatchedIn).
+				Set("matched_range = ?", f.MatchedRange).
 				Set("suppressed_by = ?", f.SuppressedBy).
 				Set("last_changed_at = ?", now)
 			if moved {
@@ -395,6 +398,8 @@ func same(held, found Finding) bool {
 		// that moved is a night worth recording.
 		held.Matched == found.Matched &&
 		held.MatchedFrom == found.MatchedFrom &&
+		held.MatchedIn == found.MatchedIn &&
+		held.MatchedRange == found.MatchedRange &&
 		equalRef(held.SuppressedBy, found.SuppressedBy)
 }
 

@@ -1150,6 +1150,12 @@ type Evidence struct {
 	// like.
 	Matched     Matched
 	MatchedFrom string
+	// MatchedIn and MatchedRange are the evidence for the judgment Matched
+	// asks for: which body of data answered, and the version range the match
+	// fired on. A range naming no packaging revision, read beside a version
+	// that has one, is the whole argument in a line.
+	MatchedIn    string
+	MatchedRange string
 }
 
 // Sitting is one place a component occupies, as a finding presents it.
@@ -1217,6 +1223,8 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		Matched       string     `bun:"matched"`
 		Kind          string     `bun:"kind"`
 		MatchedFrom   string     `bun:"matched_from"`
+		MatchedIn     string     `bun:"matched_in"`
+		MatchedRange  string     `bun:"matched_range"`
 		ArrivedFrom   string     `bun:"arrived_from"`
 	}
 	err = s.db.NewSelect().
@@ -1259,6 +1267,8 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		ColumnExpr("f.fixed_at AS fixed_at").
 		ColumnExpr("COALESCE(f.matched, '') AS matched").
 		ColumnExpr("COALESCE(f.matched_from, '') AS matched_from").
+		ColumnExpr("COALESCE(f.matched_in, '') AS matched_in").
+		ColumnExpr("COALESCE(f.matched_range, '') AS matched_range").
 		ColumnExpr("COALESCE(f.arrived_from, '') AS arrived_from").
 		ColumnExpr("f.kind AS kind").
 		Where("f.target_id = ?", targetID).
@@ -1320,6 +1330,8 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 	evidence.Matched = Matched(rows[0].Matched)
 	evidence.Recorded = Kind(rows[0].Kind) == Entered
 	evidence.MatchedFrom = rows[0].MatchedFrom
+	evidence.MatchedIn = rows[0].MatchedIn
+	evidence.MatchedRange = rows[0].MatchedRange
 	if component.LatestVersion != nil {
 		evidence.LatestVersion = *component.LatestVersion
 	}

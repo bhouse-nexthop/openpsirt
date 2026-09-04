@@ -273,7 +273,13 @@ export function Finding() {
 
         <References advisory={it.advisory} refs={it.references ?? []} />
 
-        <HowMatched matched={it.matched} from={it.matched_from} version={it.version} />
+        <HowMatched
+          matched={it.matched}
+          from={it.matched_from}
+          version={it.version}
+          inData={it.matched_in}
+          range={it.matched_range}
+        />
 
         <LookItUp links={it.links ?? []} />
 
@@ -1320,7 +1326,19 @@ function References({ advisory, refs }: { advisory?: string; refs: { url?: strin
 // which is the wrong way round: the list is where they are noticed and this is
 // where the judgment is made. Nothing is said where the scanner said nothing,
 // because unknown is not unconfirmed.
-function HowMatched({ matched, from, version }: { matched?: string; from?: string; version?: string }) {
+function HowMatched({
+  matched,
+  from,
+  version,
+  inData,
+  range,
+}: {
+  matched?: string;
+  from?: string;
+  version?: string;
+  inData?: string;
+  range?: string;
+}) {
   if (matched !== "identifier" && matched !== "advisory") return null;
   return (
     <div className="evblock">
@@ -1335,6 +1353,21 @@ function HowMatched({ matched, from, version }: { matched?: string; from?: strin
         <p>
           <b>Confirmed by a packager.</b> Matched through an advisory for this package's own ecosystem,
           which counts the release number and names the release that carries the fix.
+        </p>
+      )}
+      {/* The evidence for the judgment above rather than a second way of
+          making it: the range fired on, read beside the version that ships.
+          Where the range names no packaging revision and the version has one,
+          the argument is complete in a line and needs no explaining. */}
+      {(range || inData) && (
+        <p className="mono" style={{ fontSize: "var(--step--1)" }}>
+          {range && (
+            <>
+              matched <b>{range}</b> against <b>{version}</b>
+            </>
+          )}
+          {range && inData && " · "}
+          {inData && <>from {inData}</>}
         </p>
       )}
       {from && (

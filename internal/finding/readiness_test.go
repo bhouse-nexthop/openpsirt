@@ -54,7 +54,7 @@ func TestABranchIsComparedAgainstWhatWasLastShippedFromIt(t *testing.T) {
 			[]finding.Reported{critical("CVE-2026-1", libnl)}); err != nil {
 			t.Fatal(err)
 		}
-		if err := f.store.Finish(t.Context(), shippedRun, "0.100.0", "2026-09-01", nil); err != nil {
+		if err := f.store.Finish(t.Context(), shippedRun, "0.100.0", "2026-09-01", "", nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -66,7 +66,7 @@ func TestABranchIsComparedAgainstWhatWasLastShippedFromIt(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		if err := f.store.Finish(t.Context(), here, "0.100.0", "2026-09-03", nil); err != nil {
+		if err := f.store.Finish(t.Context(), here, "0.100.0", "2026-09-03", "", nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -181,7 +181,7 @@ func TestAReleaseBuiltAnotherWayIsNotTheComparison(t *testing.T) {
 			[]finding.Reported{critical("CVE-2026-1", libnl)}); err != nil {
 			t.Fatal(err)
 		}
-		if err := f.store.Finish(t.Context(), run, "0.100.0", "2026-09-01", nil); err != nil {
+		if err := f.store.Finish(t.Context(), run, "0.100.0", "2026-09-01", "", nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -213,7 +213,7 @@ func TestAReleaseIsNotComparedAgainstItself(t *testing.T) {
 			[]finding.Reported{critical("CVE-2026-1", libnl)}); err != nil {
 			t.Fatal(err)
 		}
-		if err := f.store.Finish(t.Context(), run, "0.100.0", "2026-09-01", nil); err != nil {
+		if err := f.store.Finish(t.Context(), run, "0.100.0", "2026-09-01", "", nil); err != nil {
 			t.Fatal(err)
 		}
 

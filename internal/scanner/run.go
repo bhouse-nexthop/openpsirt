@@ -199,7 +199,8 @@ func (r *Runner) scan(ctx context.Context, reference string) (*Outcome, error) {
 	// cancel the record of it, or the run is left open for ever.
 	settled, done := queue.Settling(ctx)
 	defer done()
-	if finished := findings.Finish(settled, run.ID, result.Version, result.DatabaseVersion, err); finished != nil {
+	if finished := findings.Finish(settled, run.ID, result.Version, result.DatabaseVersion,
+		result.Caution, err); finished != nil {
 		r.logger.Error("could not record the end of a scan run", "run", run.ID, "error", finished)
 	}
 	if err != nil {

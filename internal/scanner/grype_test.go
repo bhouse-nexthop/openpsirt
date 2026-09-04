@@ -234,3 +234,61 @@ func TestAnUnknownMatchKindIsTreatedAsTheWeakerOne(t *testing.T) {
 		t.Errorf("a match reached both ways reads as %q, want the weaker of the two", got)
 	}
 }
+
+func TestTheRangeAMatchFiredOnAndTheDataThatAnsweredAreKept(t *testing.T) {
+	// The match kind says a distribution's package was reached by comparing an
+	// upstream range, which is the judgment somebody has to make (MDL-26).
+	// These two are the evidence for it: the range itself, which names no
+	// packaging revision, and which body of data answered, which is finer than
+	// the two words the kind records.
+	//
+	// Both are the scanner's own words, kept and never parsed. Deciding
+	// whether a version falls inside a range needs an ordering per ecosystem,
+	// which is a different project (STA-18).
+	const doc = `{"matches":[{
+	  "vulnerability":{"id":"CVE-2025-60876","severity":"Medium",
+	    "namespace":"nvd:cpe",
+	    "dataSource":"https://nvd.nist.gov/vuln/detail/CVE-2025-60876"},
+	  "artifact":{"name":"busybox-binsh","version":"1.37.0-r31",
+	    "purl":"pkg:apk/alpine/busybox-binsh@1.37.0-r31?distro=alpine-3.24.1"},
+	  "matchDetails":[{"type":"cpe-match","found":{"versionConstraint":"<= 1.37.0 (unknown)"}}]
+	}]}`
+
+	result, err := scanner.ParseGrype(strings.NewReader(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Reported) != 1 {
+		t.Fatalf("%d findings reported", len(result.Reported))
+	}
+	got := result.Reported[0]
+	if got.MatchedRange != "<= 1.37.0 (unknown)" {
+		t.Errorf("the range it fired on reads %q", got.MatchedRange)
+	}
+	if got.MatchedIn != "nvd:cpe" {
+		t.Errorf("what answered reads %q", got.MatchedIn)
+	}
+	// And the range is the one the kind is about: an upstream range against a
+	// version carrying a packaging revision the range never mentions.
+	if got.Matched != finding.ByIdentifier {
+		t.Errorf("reached %q, want the identifier match this range describes", got.Matched)
+	}
+}
+
+func TestAMatchThatStatesNoRangeSaysSoRatherThanGuessing(t *testing.T) {
+	// A scanner reporting no range is not the same as one reporting an empty
+	// range, and neither is something to fill in.
+	const doc = `{"matches":[{
+	  "vulnerability":{"id":"CVE-2026-1","severity":"High"},
+	  "artifact":{"name":"libfoo","version":"1.0","purl":"pkg:deb/debian/libfoo@1.0"},
+	  "matchDetails":[{"type":"exact-direct-match"}]
+	}]}`
+
+	result, err := scanner.ParseGrype(strings.NewReader(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.Reported[0]; got.MatchedRange != "" || got.MatchedIn != "" {
+		t.Errorf("invented range %q from %q", got.MatchedRange, got.MatchedIn)
+	}
+}

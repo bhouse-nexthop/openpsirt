@@ -2657,6 +2657,10 @@ export interface components {
             matched?: "advisory" | "identifier";
             /** @description Where this match came from */
             matched_from?: string;
+            /** @description Which body of vulnerability data answered, as the scanner names it — an ecosystem's own advisories against the national database's identifiers */
+            matched_in?: string;
+            /** @description The version range this match fired on. For a distribution's package reached by identifier it is an upstream range, which names no packaging revision and so cannot see a backported fix */
+            matched_range?: string;
             /** @description Upstream has released nothing since the year this issue was named, and there is no fix. Two dates compared — it says why there is no fix, not that the project is abandoned */
             nothing_since?: boolean;
             places: components["schemas"]["SittingBody"][] | null;
@@ -3618,6 +3622,8 @@ export interface components {
         ReceiptBody: {
             /** @description When the producer says the build was made */
             built_at?: string;
+            /** @description What the scanner said while succeeding — a qualification on what it found, such as matching Go binaries at module granularity because they carry no function symbols, which can report a component as affected when the vulnerable function is not linked in */
+            caution?: string;
             /**
              * Format: int64
              * @description Issues that were open and are not any more

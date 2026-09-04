@@ -28,6 +28,7 @@ import (
 type stub struct {
 	saw      []byte
 	reported []finding.Reported
+	caution  string
 	fail     error
 	// interrupt, where set, is what a shutdown does while the scanner is
 	// running: the scan's context ends under it.
@@ -47,6 +48,7 @@ func (s *stub) Scan(ctx context.Context, inventory io.Reader) (scanner.Result, e
 	}
 	return scanner.Result{
 		Version: "9.9.9", DatabaseVersion: "2026-08-28",
+		Caution:  s.caution,
 		Reported: s.reported,
 	}, nil
 }
@@ -425,6 +427,40 @@ func TestAScanCutShortByShutdownHandsItsJobBack(t *testing.T) {
 		}
 		if run.FinishedAt == nil {
 			t.Error("the run an interrupted scan began is still open")
+		}
+	})
+}
+
+func TestWhatTheScannerSaidWhileSucceedingReachesTheRun(t *testing.T) {
+	// It was read only on failure, so a run that answered while warning that
+	// its answer was coarse threw the warning away — and that warning
+	// qualifies every finding the run produced.
+	eachRun(t, func(t *testing.T, f *runFixture) {
+		const said = "go binary packages were found but none carry function symbols"
+		s := &stub{caution: said, reported: []finding.Reported{{
+			Issue:     finding.Named{Identifier: "CVE-2026-1", Severity: "high"},
+			Component: libnl, FixState: finding.NoFix,
+		}}}
+		f.waiting(t)
+
+		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+		if _, err := scanner.NewRunner(f.db, f.queue, s, quiet, "test").Once(t.Context()); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+
+		var runs []finding.Run
+		if err := f.db.DB.NewSelect().Model(&runs).
+			Where("finished_at IS NOT NULL").Scan(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if len(runs) != 1 {
+			t.Fatalf("%d finished runs", len(runs))
+		}
+		if runs[0].Caution != said {
+			t.Errorf("the run kept %q", runs[0].Caution)
+		}
+		if runs[0].Failure != "" {
+			t.Errorf("a run that warned reads as failed: %q", runs[0].Failure)
 		}
 	})
 }

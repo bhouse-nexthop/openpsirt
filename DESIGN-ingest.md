@@ -484,21 +484,31 @@ left alone. That is the check working as intended: a producer filling in a
 field it did not fill before is something somebody answers, rather than
 something that quietly goes nowhere.
 
-### What the scanner says that is not kept
+### What the scanner says while succeeding is kept
 
-The scanner's own warnings are read only when it fails. A run that succeeds
-while warning about the quality of its answer discards the warning, and one of
-those matters: told to match Go binaries that carry no function symbols, it
-says so and falls back to module granularity, which may report a component as
-affected when the vulnerable function is not linked in. That qualification
-belongs with the findings it qualifies and currently reaches nobody.
+Its warnings were read only when it failed, which discarded the case that
+matters: a run that answers and says its answer is coarse. Told to match Go
+binaries carrying no function symbols it says so and falls back to module
+granularity, which can report a component as affected when the vulnerable
+function is not linked in — a qualification on every finding that run produced.
 
-Two things it reports per match are also dropped, and both bear on the question
-MDL-26 exists to ask. The **version range the match fired on** — an upstream
-range for a distribution's package, which is what makes a backported fix
-invisible — and the **data source that answered**, which is finer than the two
-words a finding records. Keeping either means a column and a field; keeping
-them is what would let somebody judge a match rather than take it.
+It is recorded on the run and kept apart from the failure. A run that warned
+and a run that failed are different things, and one column holding either makes
+them one. It travels with the receipt, because what became of an upload is
+where somebody reads it, and a warning shown to nobody is a warning discarded.
+
+Two things reported per match are kept for the same reason, and both are
+evidence for the question MDL-26 asks rather than a second way of answering it:
+the **version range the match fired on**, which for a distribution's package
+reached by identifier names no packaging revision and so cannot see a
+backported fix, and the **body of data that answered**, which is finer than the
+two words the match kind records. Read beside the version that ships, a range
+naming no revision is the whole argument in a line.
+
+Both are kept as the scanner wrote them and **never parsed**. Deciding whether
+a version falls inside a range needs an ordering per ecosystem — Debian epochs,
+RPM release segments, and the ecosystems that follow neither — which is a
+different project, and what these are for is a person reading them (STA-18).
 
 ### Choices the decisions did not cover
 

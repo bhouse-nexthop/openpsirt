@@ -177,6 +177,15 @@ moving the upstream version, so `busybox 1.37.0-r14` and `1.37.0-r15` are the
 same release to an upstream range, and the match fires whether or not the patch
 is already in. Neither confirmed nor refuted — somebody has to look.
 
+**The range and the source are kept with it**, because "somebody has to look"
+is easier to act on with the thing to look at in hand. The range the match
+fired on, read beside the version that ships, is the argument in a line: a
+range naming no packaging revision against a version that has one. The source
+is which body of data answered, as the scanner names it, which is finer than
+these two words and says which of the two answers above it is. Neither is
+compared against anything — that would need an ordering per ecosystem, which is
+a different project.
+
 That distinction is the first question anybody asks about a distribution's
 packages, and the scanner answers it in every result. It was being discarded,
 which left a finding nobody had confirmed looking exactly like one the people

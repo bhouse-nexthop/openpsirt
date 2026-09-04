@@ -121,6 +121,15 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			"started_at"       ` + t.timestamp + ` NOT NULL,
 			"finished_at"      ` + t.timestamp + ` NULL,
 			"failure"          ` + t.text + ` NULL,
+			-- What the scanner said while succeeding: a qualification on the
+			-- answer rather than a reason there is none. Kept apart from the
+			-- failure above because a run that warned and a run that failed
+			-- are different things, and one column holding either makes them
+			-- one. Told to match Go binaries with no function symbols the
+			-- scanner says so and falls back to module granularity, which can
+			-- report a component as affected when the vulnerable function is
+			-- not linked in — that qualifies every finding of that run.
+			"caution"          ` + t.text + ` NULL,
 			CONSTRAINT "scan_run_target_id_fk" FOREIGN KEY ("target_id") REFERENCES "target"("id")
 		)` + t.suffix,
 
@@ -242,6 +251,22 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			-- link to Debian's tracker.
 			"matched"          ` + t.kind + ` NULL,
 			"matched_from"     ` + t.free + ` NULL,
+			-- Which body of data answered, as the scanner names it, and the
+			-- version range the match fired on. Both are evidence for the
+			-- judgment the two columns above ask for rather than a second way
+			-- of making it: a range naming no packaging revision, read beside
+			-- a version that has one, is the argument in a line.
+			--
+			-- Free text, and never parsed. Deciding whether a version is
+			-- inside a range needs an ordering per ecosystem, which is a
+			-- different project; what these are for is a person reading them.
+			--
+			-- Named around the reserved word rather than quoted past it: a
+			-- column called "constraint" is a syntax error the moment any
+			-- query names it bare, which SQLite caught here and the other
+			-- three would have caught later (DAT-36).
+			"matched_in"       ` + t.free + ` NULL,
+			"matched_range"    ` + t.free + ` NULL,
 			-- When this stops being an embargo, on a finding nobody has
 			-- announced. Null on a public one: it is already disclosed, and a
 			-- date on it would be a deadline for something that has happened.

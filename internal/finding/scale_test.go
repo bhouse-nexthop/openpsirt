@@ -145,7 +145,7 @@ func TestMeasureAYearOfNightlyScans(t *testing.T) {
 			}
 			took := time.Since(start)
 			issued := statements.n.Load() - before
-			if err := store.Finish(ctx, run.ID, "0", "0", nil); err != nil {
+			if err := store.Finish(ctx, run.ID, "0", "0", "", nil); err != nil {
 				t.Fatal(err)
 			}
 			return applied, took, issued

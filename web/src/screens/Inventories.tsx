@@ -112,6 +112,14 @@ export function Inventories() {
                   <td>
                     <State state={scan.state} />
                     {scan.failure && <div className="hint" style={{ marginTop: 4 }}>{scan.failure}</div>}
+                    {/* A scanner that answers and warns its answer is coarse
+                        is qualifying every finding of that run. Shown beside a
+                        run that worked, because that is when it is said. */}
+                    {scan.caution && (
+                      <div className="hint" style={{ marginTop: 4 }} title="What the scanner said while succeeding. It qualifies what the run found rather than saying it found nothing">
+                        ⚠ {scan.caution}
+                      </div>
+                    )}
                   </td>
                   <td className="num">{scan.opened || (scan.state === "scanned" ? "—" : "")}</td>
                   <td className="num">{scan.closed || (scan.state === "scanned" ? "—" : "")}</td>

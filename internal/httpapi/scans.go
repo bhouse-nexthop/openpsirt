@@ -414,6 +414,9 @@ type ReceiptBody struct {
 	// and where. It is not a fault in this deployment, so it is reported
 	// rather than logged away.
 	Failure string `json:"failure,omitempty" doc:"Why it could not be used, where it could not"`
+	// Caution qualifies the answer rather than saying there is none, so it is
+	// reported beside a scan that succeeded rather than instead of one.
+	Caution string `json:"caution,omitempty" doc:"What the scanner said while succeeding — a qualification on what it found, such as matching Go binaries at module granularity because they carry no function symbols, which can report a component as affected when the vulnerable function is not linked in"`
 	// What the run covering this upload changed, counted as issues at
 	// components rather than as places. Absent where no run has covered it
 	// yet, and absent on an upload whose run was already reported against a
@@ -570,6 +573,7 @@ func registerReceipts(api huma.API, in Ingest) {
 				ReceivedAt: stamp(r.Scan.ReceivedAt),
 				State:      string(r.State),
 				Failure:    r.Failure,
+				Caution:    r.Caution,
 			}
 			if r.RunID != nil {
 				change := changed[*r.RunID]

@@ -82,6 +82,11 @@ type Run struct {
 	StartedAt       time.Time  `bun:"started_at,notnull"`
 	FinishedAt      *time.Time `bun:"finished_at"`
 	Failure         string     `bun:"failure"`
+	// Caution is what the scanner said while succeeding — a qualification on
+	// the answer rather than a reason there is none. Kept apart from Failure
+	// because a run that warned and a run that failed are different things,
+	// and a column holding either would make them one.
+	Caution string `bun:"caution"`
 }
 
 // Finding is a vulnerability at a place.
@@ -169,6 +174,21 @@ type Finding struct {
 	// answers and the issue can hold only one. Empty where the scanner said
 	// nothing.
 	MatchedFrom string `bun:"matched_from"`
+	// MatchedIn is which body of vulnerability data answered, as the scanner
+	// names it — an ecosystem's own advisories against the national database's
+	// identifiers. Finer than Matched, which is two words, and the difference
+	// between the two is the whole of what a distribution's package needs
+	// asking about.
+	MatchedIn string `bun:"matched_in"`
+	// MatchedRange is the version range the match fired on.
+	//
+	// The evidence for the judgment the match kind asks for rather than a
+	// second way of making it: a range that names no packaging revision, read
+	// beside a version that has one, is the whole argument in one line.
+	// Recorded as the scanner wrote it and never parsed — comparing a version
+	// against a range needs an ordering per ecosystem, which is a different
+	// project (STA-18).
+	MatchedRange string `bun:"matched_range"`
 	// DiscloseAt is when the embargo on this ends, on a finding nobody has
 	// announced. Nil on a disclosed one, which is already public.
 	//
@@ -221,8 +241,10 @@ type Reported struct {
 	// Matched is how the scanner reached this, and MatchedFrom is where that
 	// match came from. Kept because the two ways of reaching a finding mean
 	// different things about a distribution's package.
-	Matched     Matched
-	MatchedFrom string
+	Matched      Matched
+	MatchedFrom  string
+	MatchedIn    string
+	MatchedRange string
 }
 
 // Applied describes what a run changed.
@@ -297,7 +319,9 @@ func (s *Store) Begin(ctx context.Context, run Run) (*Run, error) {
 // scanner's answer, not our question: what it says it is and what data it
 // matched against are known once it has run. A finding that appeared or
 // vanished because either moved is unexplainable without them.
-func (s *Store) Finish(ctx context.Context, runID int64, version, databaseVersion string, cause error) error {
+func (s *Store) Finish(ctx context.Context, runID int64, version, databaseVersion,
+	caution string, cause error) error {
+
 	done := s.now().Truncate(time.Microsecond)
 	failure := ""
 	if cause != nil {
@@ -305,6 +329,7 @@ func (s *Store) Finish(ctx context.Context, runID int64, version, databaseVersio
 	}
 	_, err := s.db.NewUpdate().Model((*Run)(nil)).
 		Set("finished_at = ?", done).Set("failure = ?", failure).
+		Set("caution = ?", caution).
 		Set("scanner_version = ?", version).Set("database_version = ?", databaseVersion).
 		Where("id = ?", runID).Exec(ctx)
 	if err != nil {

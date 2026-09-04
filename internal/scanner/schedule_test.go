@@ -49,7 +49,7 @@ func (f *runFixture) ranJustNow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := finding.NewStore(f.db.DB).Finish(t.Context(), run.ID, "9.9.9", "2026-08-28", nil); err != nil {
+	if err := finding.NewStore(f.db.DB).Finish(t.Context(), run.ID, "9.9.9", "2026-08-28", "", nil); err != nil {
 		t.Fatal(err)
 	}
 }

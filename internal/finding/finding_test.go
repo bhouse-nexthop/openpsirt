@@ -1370,13 +1370,13 @@ func TestTheLastRunSaysWhatItWasMeasuredWith(t *testing.T) {
 		if unfinished != nil {
 			t.Fatalf("an unfinished run was reported: %+v", unfinished)
 		}
-		if err := f.store.Finish(t.Context(), running, "0.100.1", "2026-08-29", nil); err != nil {
+		if err := f.store.Finish(t.Context(), running, "0.100.1", "2026-08-29", "", nil); err != nil {
 			t.Fatal(err)
 		}
 
 		// A second, later run. "Most recent" is untestable with one.
 		later := f.run(t)
-		if err := f.store.Finish(t.Context(), later, "0.101.0", "2026-09-02", nil); err != nil {
+		if err := f.store.Finish(t.Context(), later, "0.101.0", "2026-09-02", "", nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -1662,4 +1662,34 @@ func (f *fixture) componentID(t *testing.T, name string) int64 {
 		t.Fatalf("resolve %s: %v", name, err)
 	}
 	return id
+}
+
+func TestARunThatWarnsWhileSucceedingKeepsWhatItSaid(t *testing.T) {
+	// The scanner's own words were read only when it failed, which discarded
+	// the case that matters: a run that answers and says its answer is coarse.
+	// Told to match Go binaries carrying no function symbols it falls back to
+	// module granularity, which can report a component as affected when the
+	// vulnerable function is not linked in — a qualification on every finding
+	// the run produced.
+	//
+	// Kept apart from the failure, because a run that warned and a run that
+	// failed are different things and one column holding either makes them one.
+	each(t, func(t *testing.T, f *fixture) {
+		const said = "go binary packages were found but none carry function symbols"
+		run := f.run(t)
+		if err := f.store.Finish(t.Context(), run, "0.118.0", "2026-09-04", said, nil); err != nil {
+			t.Fatal(err)
+		}
+
+		var kept finding.Run
+		if err := f.db.DB.NewSelect().Model(&kept).Where("id = ?", run).Scan(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if kept.Caution != said {
+			t.Errorf("what the scanner said reads %q", kept.Caution)
+		}
+		if kept.Failure != "" {
+			t.Errorf("a run that warned reads as failed: %q", kept.Failure)
+		}
+	})
 }

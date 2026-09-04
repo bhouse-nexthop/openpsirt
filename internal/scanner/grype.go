@@ -69,7 +69,31 @@ func (g Grype) Scan(ctx context.Context, inventory io.Reader) (Result, error) {
 	if err := cmd.Run(); err != nil {
 		return Result{}, fmt.Errorf("run %s: %w: %s", g.executable(), err, tail(errs.String()))
 	}
-	return ParseGrype(&out)
+	result, err := ParseGrype(&out)
+	if err != nil {
+		return Result{}, err
+	}
+	// What it said while succeeding, bounded the same way the failure is. A
+	// scanner writes progress to this stream as well, which it suppresses when
+	// nothing is watching — as nothing is here.
+	result.Caution = tail(strings.TrimSpace(errs.String()))
+	return result, nil
+}
+
+// matchDetail is how the scanner says it reached one match.
+//
+// Named rather than written inline because three things read it, and the same
+// anonymous struct repeated in three signatures is one edit away from two of
+// them disagreeing.
+type matchDetail struct {
+	Type string `json:"type"`
+	// Found is what the match was made against. The version range is the
+	// evidence for the judgment MDL-26 asks somebody to make: for a
+	// distribution's package reached by identifier it is an upstream range,
+	// which is precisely what cannot see a backported fix.
+	Found struct {
+		VersionConstraint string `json:"versionConstraint"`
+	} `json:"found"`
 }
 
 // grypeDocument is the part of the scanner's output that is read.
@@ -81,7 +105,12 @@ type grypeDocument struct {
 			Description string `json:"description"`
 			// Where the issue is written up. Every match carries one, and for
 			// the great majority it is the only route to a patch.
-			DataSource string   `json:"dataSource"`
+			DataSource string `json:"dataSource"`
+			// Which body of data answered, as the scanner names it —
+			// "nvd:cpe" against "alpine:distro:alpine:3.24". Finer than the
+			// two words a finding records for how it was reached, and the
+			// difference between them is the whole of MDL-26.
+			Namespace  string   `json:"namespace"`
 			URLs       []string `json:"urls"`
 			Advisories []struct {
 				Link string `json:"link"`
@@ -130,9 +159,7 @@ type grypeDocument struct {
 		// published identifier against an upstream version range, and those
 		// two answers mean very different things about a distribution's
 		// package (MDL-26).
-		MatchDetails []struct {
-			Type string `json:"type"`
-		} `json:"matchDetails"`
+		MatchDetails []matchDetail `json:"matchDetails"`
 	} `json:"matches"`
 	Descriptor struct {
 		Name    string `json:"name"`
@@ -203,10 +230,28 @@ func ParseGrype(r io.Reader) (Result, error) {
 			// Where *this* match came from, which is not always where the
 			// issue is written up. One issue reached through two ecosystems
 			// has two answers, and the issue can only hold one.
-			MatchedFrom: strings.TrimSpace(match.Vulnerability.DataSource),
+			MatchedFrom:  strings.TrimSpace(match.Vulnerability.DataSource),
+			MatchedIn:    strings.TrimSpace(match.Vulnerability.Namespace),
+			MatchedRange: matchedRange(match.MatchDetails),
 		})
 	}
 	return result, nil
+}
+
+// matchedRange is the version range the match fired on.
+//
+// The first one that states a range. A match usually has one detail and
+// occasionally several — the same package reached two ways — and they agree
+// about the package while differing about the route. Taking the first stated
+// keeps this a description of the match rather than an attempt to reconcile
+// two, which is what the match kind beside it already refuses to do.
+func matchedRange(details []matchDetail) string {
+	for _, detail := range details {
+		if stated := strings.TrimSpace(detail.Found.VersionConstraint); stated != "" {
+			return stated
+		}
+	}
+	return ""
 }
 
 // weaknesses reads what kind of flaw this is, deduplicated and in a stable
@@ -405,9 +450,7 @@ func firstFixDate(available []struct {
 // Anything unrecognized reads as the weaker of the two. A word this does not
 // know is a word whose strength nobody here has checked, and treating it as
 // authoritative is the direction that hides something.
-func matched(details []struct {
-	Type string `json:"type"`
-}) finding.Matched {
+func matched(details []matchDetail) finding.Matched {
 	for _, detail := range details {
 		if strings.Contains(strings.ToLower(detail.Type), "cpe") {
 			return finding.ByIdentifier

@@ -42,6 +42,11 @@ type Receipt struct {
 	Scan    Scan
 	State   Progress
 	Failure string
+	// Caution is what the scanner said while succeeding — a qualification on
+	// the answer this receipt reports rather than a reason there is none. It
+	// travels with the receipt because that is where somebody reads what came
+	// of an upload, and a warning nobody is shown is a warning discarded.
+	Caution string
 	// RunID is the scan run that reflects this upload, where one has finished.
 	//
 	// A run covers a target rather than an upload, so several uploads can be
@@ -144,8 +149,8 @@ func (s *Store) Receipts(ctx context.Context, subject access.Subject, targetID i
 
 	receipts := make([]Receipt, 0, len(scans))
 	for _, sc := range scans {
-		state, failure, run := progressOf(sc, read[strconv.FormatInt(sc.ID, 10)], runs)
-		receipt := Receipt{Scan: sc, State: state, Failure: failure}
+		state, failure, caution, run := progressOf(sc, read[strconv.FormatInt(sc.ID, 10)], runs)
+		receipt := Receipt{Scan: sc, State: state, Failure: failure, Caution: caution}
 		if run != nil && claimed[*run] == sc.ID {
 			receipt.RunID = run
 		}
@@ -156,25 +161,25 @@ func (s *Store) Receipts(ctx context.Context, subject access.Subject, targetID i
 
 // progressOf folds a scan, the job that read it and the target's latest
 // finished run into one answer.
-func progressOf(sc Scan, job queue.Job, runs []finding.Run) (Progress, string, *int64) {
+func progressOf(sc Scan, job queue.Job, runs []finding.Run) (Progress, string, string, *int64) {
 	if sc.Status == Failed {
-		return Refused, sc.Failure, nil
+		return Refused, sc.Failure, "", nil
 	}
 	switch job.State {
 	case queue.Dead:
 		// The scan row is marked too, but a job that died before it could mark
 		// anything would otherwise read as still being worked on.
 		if job.LastError != nil {
-			return Refused, *job.LastError, nil
+			return Refused, *job.LastError, "", nil
 		}
-		return Refused, "the upload could not be read", nil
+		return Refused, "the upload could not be read", "", nil
 	case queue.Pending, queue.Running:
-		return Reading, "", nil
+		return Reading, "", "", nil
 	}
 	if job.State != queue.Done {
 		// No job row at all. An upload that matched one already held is
 		// answered by the scan it matched, which has its own job.
-		return Reading, "", nil
+		return Reading, "", "", nil
 	}
 
 	parsed := job.UpdatedAt
@@ -209,12 +214,12 @@ func progressOf(sc Scan, job queue.Job, runs []finding.Run) (Progress, string, *
 		answered = &runs[i]
 	}
 	if answered != nil {
-		return Scanned, "", &answered.ID
+		return Scanned, "", answered.Caution, &answered.ID
 	}
 	if failed != nil {
-		return Refused, failed.Failure, nil
+		return Refused, failed.Failure, "", nil
 	}
-	return Scanning, "", nil
+	return Scanning, "", "", nil
 }
 
 // productOf reads which product a build belongs to, so that reaching it can be
