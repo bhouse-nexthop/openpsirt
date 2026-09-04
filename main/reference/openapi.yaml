@@ -1357,6 +1357,12 @@ components:
         matched_from:
           description: Where this match came from
           type: string
+        matched_in:
+          description: Which body of vulnerability data answered, as the scanner names it — an ecosystem's own advisories against the national database's identifiers
+          type: string
+        matched_range:
+          description: The version range this match fired on. For a distribution's package reached by identifier it is an upstream range, which names no packaging revision and so cannot see a backported fix
+          type: string
         nothing_since:
           description: Upstream has released nothing since the year this issue was named, and there is no fix. Two dates compared — it says why there is no fix, not that the project is abandoned
           type: boolean
@@ -3153,6 +3159,9 @@ components:
       properties:
         built_at:
           description: When the producer says the build was made
+          type: string
+        caution:
+          description: What the scanner said while succeeding — a qualification on what it found, such as matching Go binaries at module granularity because they carry no function symbols, which can report a component as affected when the vulnerable function is not linked in
           type: string
         closed:
           description: Issues that were open and are not any more
