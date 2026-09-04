@@ -237,3 +237,33 @@ func TestAProviderThatNamesNobodyIsAMisconfigurationRatherThanAnAnonymousUser(t 
 		t.Errorf("picked %q", got)
 	}
 }
+
+func TestAnAddressIsOfferedOnlyWhereTheProviderCheckedIt(t *testing.T) {
+	// An unverified address is whatever the account holder typed. Nothing here
+	// is authorized by one — the username fallback already refuses it — and
+	// mail sent to it goes wherever they said, which for an alert about an
+	// undisclosed finding is the disclosure the alert exists to avoid.
+	//
+	// Providers spell the claim two ways and some do not send it at all, so
+	// what is pinned is that only the true forms count.
+	for _, c := range []struct {
+		name   string
+		claims map[string]any
+		want   bool
+	}{
+		{name: "boolean true", claims: map[string]any{"email_verified": true}, want: true},
+		{name: "string true", claims: map[string]any{"email_verified": "true"}, want: true},
+		{name: "string True", claims: map[string]any{"email_verified": "True"}, want: true},
+		{name: "boolean false", claims: map[string]any{"email_verified": false}},
+		{name: "string false", claims: map[string]any{"email_verified": "false"}},
+		{name: "absent", claims: map[string]any{}},
+		{name: "a number", claims: map[string]any{"email_verified": 1}},
+		{name: "null", claims: map[string]any{"email_verified": nil}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := verifiedEmail(c.claims); got != c.want {
+				t.Errorf("verifiedEmail(%v) = %v, want %v", c.claims, got, c.want)
+			}
+		})
+	}
+}

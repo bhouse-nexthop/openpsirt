@@ -1,6 +1,7 @@
 package access
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"testing"
@@ -110,4 +111,83 @@ func TestATokenStopsWorkingOnceItHasRunOut(t *testing.T) {
 			t.Error("a token outlived its expiry")
 		}
 	})
+}
+
+func TestAProviderMayRefreshWhatAProviderGaveAndNotWhatSomebodySet(t *testing.T) {
+	// An address has two sources and one column (ACC-60). The precedence is
+	// what keeps the next sign-in from quietly undoing a correction somebody
+	// made on purpose — written the other way round, an administrator fixing a
+	// wrong address would watch it change back the moment its owner signed in.
+	dbtest.Each(t, func(t *testing.T, db *database.DB) {
+		ctx := t.Context()
+		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+		if err := schema.Up(ctx, db, quiet); err != nil {
+			t.Fatal(err)
+		}
+		dbtest.Reset(t, db)
+		store := NewStore(db.DB)
+		person, err := store.Ensure(ctx, "ana", "Ana", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// A provider fills in what nobody recorded.
+		if err := store.SetEmail(ctx, person.ID, "ana@provider.example", true); err != nil {
+			t.Fatal(err)
+		}
+		if got := reread(t, store, ctx, "ana"); got.Email != "ana@provider.example" || !got.EmailDerived {
+			t.Fatalf("a provider filling an empty address left %q derived=%v", got.Email, got.EmailDerived)
+		}
+
+		// And may refresh its own.
+		if err := store.SetEmail(ctx, person.ID, "ana@moved.example", true); err != nil {
+			t.Fatal(err)
+		}
+		if got := reread(t, store, ctx, "ana"); got.Email != "ana@moved.example" {
+			t.Errorf("a provider could not refresh what it gave: %q", got.Email)
+		}
+
+		// An administrator's overrides it and stops being a provider's.
+		if err := store.SetEmail(ctx, person.ID, "ana@work.example", false); err != nil {
+			t.Fatal(err)
+		}
+		if got := reread(t, store, ctx, "ana"); got.Email != "ana@work.example" || got.EmailDerived {
+			t.Fatalf("recording an address left %q derived=%v", got.Email, got.EmailDerived)
+		}
+
+		// After which a provider may not take it back.
+		if err := store.SetEmail(ctx, person.ID, "ana@provider.example", true); err != nil {
+			t.Fatal(err)
+		}
+		if got := reread(t, store, ctx, "ana"); got.Email != "ana@work.example" {
+			t.Errorf("a sign-in undid what somebody recorded: %q", got.Email)
+		}
+
+		// A provider stating nothing is silent rather than asking for the
+		// stored address to go.
+		if err := store.SetEmail(ctx, person.ID, "", true); err != nil {
+			t.Fatal(err)
+		}
+		if got := reread(t, store, ctx, "ana"); got.Email != "ana@work.example" {
+			t.Errorf("a provider with no address cleared one: %q", got.Email)
+		}
+
+		// An administrator clearing it is how somebody comes off mail without
+		// coming off the tool.
+		if err := store.SetEmail(ctx, person.ID, "", false); err != nil {
+			t.Fatal(err)
+		}
+		if got := reread(t, store, ctx, "ana"); got.Email != "" {
+			t.Errorf("an address could not be cleared: %q", got.Email)
+		}
+	})
+}
+
+func reread(t *testing.T, store *Store, ctx context.Context, identity string) *Account {
+	t.Helper()
+	got, err := store.ByIdentity(ctx, identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
 }

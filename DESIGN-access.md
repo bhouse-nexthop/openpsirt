@@ -2,7 +2,7 @@
 
 Who is asking, and what they may reach.
 
-Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-44 to ACC-59, SEC-03,
+Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-44 to ACC-60, SEC-03,
 SEC-07 to SEC-09, SEC-20, UIX-32's server half, and the half of ACC-43 that has
 a trigger today. What is not built is named at the foot.
 
@@ -686,6 +686,42 @@ disclosure. It is a condition rather than an event: it stands while the date is
 past and nothing has been decided, and it clears when somebody answers it,
 which is the same shape as reporting a build that stopped being scanned. A
 finding that becomes disclosed leaves it by ceasing to be private.
+
+## Where somebody is reached outside the application
+
+**A person's record carries a mail address, and it is optional** (ACC-60).
+Somebody without one is told nothing outside the application and keeps the area
+inside it, which is the same shape as a deployment that never configured mail
+at all.
+
+It has two sources and one field. An administrator sets it with the rest of the
+record, and a sign-in provider fills in one nobody set. Which of the two it came
+from is kept, exactly as it is kept for an administrator a group granted — so a
+provider may refresh what a provider gave, and may never overwrite what
+somebody here decided. Written the other way round, an administrator correcting
+a wrong address would watch the next sign-in put it back.
+
+Neither source alone is enough, which is why there are two. A provider covers
+the ordinary case for nothing and covers nothing at all on the trusted-header
+path, which is a supported deployment and the one the demo uses; it also has
+nothing to offer until a first sign-in, which is exactly the person ACC-45 is
+about. Recording every address by hand covers everybody and asks somebody to
+type what the provider already knows.
+
+**A provider's address is taken only where the provider says it checked it.**
+That is the caution the username fallback already takes and it matters more
+here: an address nobody checked is whatever the account holder typed, and mail
+sent to it is mail sent wherever they said — which, for an alert about a
+finding nobody has announced, is the disclosure the alert exists to avoid
+(NTF-15). The identity a provider hands over says both things separately, so an
+adapter that cannot check says so rather than handing over an address and
+leaving the question open. For one forge that means asking for the addresses it
+has confirmed rather than reading the one on the public profile, which is
+whatever somebody chose to show and often nothing.
+
+**Failing to record an address does not fail a sign-in.** Arriving is what was
+asked for; where to reach somebody later is not part of it, and refusing the
+first because the second did not work would lock people out over a column.
 
 ## Somebody who has stopped coming in
 

@@ -20,7 +20,17 @@ type Identity struct {
 	Subject     string
 	Username    string
 	DisplayName string
-	Email       string
+	// Email is where the provider says this person is reached, and
+	// EmailVerified says the provider claims to have checked that they
+	// control it.
+	//
+	// The two are separate because an unverified address is whatever the
+	// account holder typed. Nothing here is authorized by it — the username
+	// fallback already refuses one for that reason — and mail sent to it is
+	// mail sent wherever they said, which for an alert about an undisclosed
+	// finding is the disclosure the alert exists to avoid (NTF-15).
+	Email         string
+	EmailVerified bool
 	// Groups is what the provider says they belong to, read at sign-in and
 	// never again. Empty means no groups, never unrestricted.
 	Groups []string

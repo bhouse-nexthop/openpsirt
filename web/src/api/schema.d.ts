@@ -3477,6 +3477,10 @@ export interface components {
             admin?: boolean;
             /** @description What to show instead of the identity */
             display_name?: string;
+            /** @description Where they are reached outside the application */
+            email?: string;
+            /** @description A sign-in provider supplied this address rather than somebody here, so a later sign-in may refresh it */
+            email_derived?: boolean;
             holds?: components["schemas"]["HeldBody"][] | null;
             /** @description What to call them here */
             identity: string;
@@ -3710,6 +3714,11 @@ export interface components {
             admin?: boolean;
             /** @description What to show instead of the identity */
             display_name?: string;
+            /**
+             * Format: email
+             * @description Where to reach them outside the application. Optional. A sign-in provider that verifies an address fills this in when it is empty, and never overwrites one recorded here
+             */
+            email?: string;
             holds?: components["schemas"]["GrantBody"][] | null;
             /** @description What to call them here */
             identity: string;

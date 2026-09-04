@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -28,7 +29,17 @@ type Account struct {
 	// AdminDerived says a group granted this rather than a person. Only what
 	// a group gave is taken back when groups stop deciding, so somebody
 	// promoted inside the application survives a change of mode.
-	AdminDerived bool       `bun:"admin_derived,notnull"`
+	AdminDerived bool `bun:"admin_derived,notnull"`
+	// Email is where to reach this person outside the application, and
+	// EmailDerived says a sign-in provider supplied it rather than somebody
+	// here (ACC-60). The pair works like the two above: a provider may
+	// refresh what a provider gave and may never overwrite what an
+	// administrator set.
+	//
+	// Empty is ordinary. An address is optional, and somebody without one is
+	// told nothing outside the application and keeps the area inside it.
+	Email        string     `bun:"email"`
+	EmailDerived bool       `bun:"email_derived,notnull"`
 	CreatedAt    time.Time  `bun:"created_at,notnull"`
 	LastSeenAt   *time.Time `bun:"last_seen_at"`
 }
@@ -133,6 +144,43 @@ func (s *Store) Ensure(ctx context.Context, identity, displayName string, admin 
 		return nil, fmt.Errorf("record %q: %w", identity, err)
 	}
 	return person, nil
+}
+
+// SetEmail records where to reach somebody outside the application (ACC-60).
+//
+// `derived` says a sign-in provider supplied it rather than somebody here, and
+// it decides precedence: a provider's address is written only over one nobody
+// here recorded, so a provider may refresh what a provider gave and may never
+// overwrite what an administrator set. Written the other way round, the next
+// sign-in would quietly undo a correction somebody made on purpose.
+//
+// An empty address from an administrator clears it, which is how somebody is
+// taken off mail without being taken off the tool. An empty one from a
+// provider changes nothing: a provider that has stopped stating an address is
+// silent about it rather than asking for the stored one to go.
+//
+// The comparison is on what is stored rather than on what was read earlier,
+// so two sign-ins racing cannot both decide they are the first.
+func (s *Store) SetEmail(ctx context.Context, personID int64, address string, derived bool) error {
+	address = strings.TrimSpace(address)
+	if personID == 0 {
+		return errors.New("an address needs somebody to belong to")
+	}
+	if derived && address == "" {
+		return nil
+	}
+
+	update := s.db.NewUpdate().Model((*Account)(nil)).
+		Set("email = ?", address).
+		Set("email_derived = ?", derived).
+		Where("id = ?", personID)
+	if derived {
+		update = update.Where("email IS NULL OR email = ? OR email_derived = ?", "", true)
+	}
+	if _, err := update.Exec(ctx); err != nil {
+		return fmt.Errorf("record where to reach person %d: %w", personID, err)
+	}
+	return nil
 }
 
 // ByIdentity finds somebody by what a sign-in path calls them.

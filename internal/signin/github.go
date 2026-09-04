@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
@@ -118,7 +119,14 @@ func (g *GitHub) Complete(ctx context.Context, code string, pending Pending, red
 		Subject:     strconv.FormatInt(account.ID, 10),
 		Username:    username,
 		DisplayName: account.Name,
-		Email:       account.Email,
+	}
+	// The address on the profile is whatever somebody chose to show publicly,
+	// and often nothing at all. The verified ones are a list of their own, and
+	// the scope to read it is already asked for — so the address this hands
+	// over is the primary verified one or none, rather than a public string
+	// nobody checked.
+	if address, ok := g.verifiedEmail(ctx, token); ok {
+		identity.Email, identity.EmailVerified = address, true
 	}
 	if g.organization != "" {
 		identity.Groups, err = g.teams(ctx, token)
@@ -200,4 +208,34 @@ func (g *GitHub) get(ctx context.Context, token *oauth2.Token, url string, into 
 		return fmt.Errorf("read what github answered: %w", err)
 	}
 	return nil
+}
+
+// verifiedEmail asks for the addresses GitHub has confirmed and returns the
+// primary one.
+//
+// A failure is not a failure to sign in. Somebody arriving is what was asked
+// for; where to reach them later is not part of it, and refusing the first
+// because the second did not answer would lock people out over a column.
+func (g *GitHub) verifiedEmail(ctx context.Context, token *oauth2.Token) (string, bool) {
+	var addresses []struct {
+		Email    string `json:"email"`
+		Primary  bool   `json:"primary"`
+		Verified bool   `json:"verified"`
+	}
+	if err := g.get(ctx, token, "https://api.github.com/user/emails", &addresses); err != nil {
+		return "", false
+	}
+	fallback := ""
+	for _, address := range addresses {
+		if !address.Verified || strings.TrimSpace(address.Email) == "" {
+			continue
+		}
+		if address.Primary {
+			return address.Email, true
+		}
+		if fallback == "" {
+			fallback = address.Email
+		}
+	}
+	return fallback, fallback != ""
 }

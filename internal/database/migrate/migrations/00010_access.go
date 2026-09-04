@@ -54,6 +54,16 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 			-- deciding, so somebody promoted inside the application survives a
 			-- change of mode rather than losing access nothing can restore.
 			"admin_derived" ` + t.boolean + ` NOT NULL,
+			-- Where to reach this person outside the application, and which
+			-- of the two sources it came from. Null is the ordinary state:
+			-- an address is optional, and somebody without one is told
+			-- nothing outside the application and keeps the area inside it.
+			--
+			-- The flag is the same shape as admin_derived above and for the
+			-- same reason: a provider may refresh what a provider gave and
+			-- may never overwrite what somebody here decided.
+			"email"        ` + t.free + ` NULL,
+			"email_derived" ` + t.boolean + ` NOT NULL,
 			"created_at"   ` + t.timestamp + ` NOT NULL,
 			"last_seen_at" ` + t.timestamp + ` NULL,
 			CONSTRAINT "person_identity_unique" UNIQUE ("identity")

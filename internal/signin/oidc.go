@@ -181,7 +181,7 @@ func (o *OIDC) Complete(ctx context.Context, code string, pending Pending, redir
 	// authorization waiting under somebody's work address would be redeemable
 	// by anybody willing to claim that address at the provider.
 	fallback := ""
-	if verified, ok := claims["email_verified"].(bool); ok && verified {
+	if verifiedEmail(claims) {
 		fallback = text(claims["email"])
 	}
 	username, err := usernameFrom(text(claims[o.usernameClaim]), fallback, verified.Subject)
@@ -189,11 +189,12 @@ func (o *OIDC) Complete(ctx context.Context, code string, pending Pending, redir
 		return nil, err
 	}
 	return &Identity{
-		Subject:     verified.Subject,
-		Username:    username,
-		DisplayName: text(claims["name"]),
-		Email:       text(claims["email"]),
-		Groups:      groups(claims[o.groupsClaim]),
+		Subject:       verified.Subject,
+		Username:      username,
+		DisplayName:   text(claims["name"]),
+		Email:         text(claims["email"]),
+		EmailVerified: verifiedEmail(claims),
+		Groups:        groups(claims[o.groupsClaim]),
 	}, nil
 }
 
@@ -236,4 +237,22 @@ func trimmed(values []string) []string {
 		}
 	}
 	return kept
+}
+
+// verifiedEmail reports whether the provider says it checked that this person
+// controls the address it stated.
+//
+// Providers spell the claim two ways — a boolean, and the same word as a
+// string — and one that says nothing has not verified anything. Read in one
+// place because two readers of the same claim eventually disagree, and the
+// half that matters here is the strict one: an address nobody checked is
+// whatever the account holder typed.
+func verifiedEmail(claims map[string]any) bool {
+	switch stated := claims["email_verified"].(type) {
+	case bool:
+		return stated
+	case string:
+		return strings.EqualFold(strings.TrimSpace(stated), "true")
+	}
+	return false
 }

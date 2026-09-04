@@ -231,7 +231,35 @@ func admit(r *http.Request, in Ingest, rights *access.Store, provider string, id
 	if _, err := rights.Resolve(r.Context(), person.Identity); err != nil {
 		return nil, err
 	}
+	fillEmail(r, in, rights, person, identity)
 	return person, nil
+}
+
+// fillEmail takes an address from the provider, where it gave one and nobody
+// here has recorded one (ACC-60).
+//
+// Only where the provider says it verified the address, which is the same
+// caution the username fallback already takes: an unverified one is whatever
+// the account holder typed, and mail sent to it is mail sent wherever they
+// said — which for an alert about an undisclosed finding is the disclosure the
+// alert exists to avoid. Each adapter decides what verified means for its
+// provider and says so rather than handing over an address and leaving the
+// question open.
+//
+// A failure here does not fail the sign-in. Somebody arriving and being let in
+// is the thing that was asked for; where to reach them later is not part of
+// it, and refusing the first because the second did not work would lock people
+// out over a column.
+func fillEmail(r *http.Request, in Ingest, rights *access.Store,
+	person *access.Account, identity *signin.Identity,
+) {
+	if !identity.EmailVerified || strings.TrimSpace(identity.Email) == "" {
+		return
+	}
+	if err := rights.SetEmail(r.Context(), person.ID, identity.Email, true); err != nil && in.Logger != nil {
+		in.Logger.Warn("could not record where to reach somebody who signed in",
+			"person", person.Identity, "error", err)
+	}
 }
 
 // pendingFrom reads back what the sign-in remembered.

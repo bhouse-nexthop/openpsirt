@@ -33,6 +33,7 @@ func described(ctx context.Context, a Administering, store *access.Store,
 	}
 	body := &PersonBody{
 		Identity: person.Identity, DisplayName: person.DisplayName, Admin: person.IsAdmin,
+		Email: person.Email, EmailDerived: person.EmailDerived,
 	}
 	for _, door := range doors {
 		body.SignsInBy = append(body.SignsInBy, SignInBody{
@@ -78,6 +79,11 @@ type PersonBody struct {
 	// first time it is redeemed.
 	Provider string `json:"provider,omitempty" doc:"Which sign-in path they will arrive by, such as proxy for a trusted header"`
 	Username string `json:"username,omitempty" doc:"What that provider calls them. Defaults to the identity"`
+	// Email, and whether a provider gave it. The second is worth answering:
+	// an address a provider supplied is one a later sign-in may change, and
+	// one recorded here is not.
+	Email        string `json:"email,omitempty" doc:"Where they are reached outside the application"`
+	EmailDerived bool   `json:"email_derived,omitempty" doc:"A sign-in provider supplied this address rather than somebody here, so a later sign-in may refresh it"`
 	// Holds is what they may do, listed as product and role.
 	Holds []HeldBody `json:"holds,omitempty"`
 	// SignsInBy lists the ways they can arrive.
@@ -99,6 +105,11 @@ type RecordBody struct {
 	Admin       bool   `json:"admin,omitempty" doc:"Whether they administer this deployment"`
 	Provider    string `json:"provider,omitempty" doc:"Which sign-in path they will arrive by, such as proxy for a trusted header"`
 	Username    string `json:"username,omitempty" doc:"What that provider calls them. Defaults to the identity"`
+	// Email is where to reach them outside the application. Optional: without
+	// one somebody is told nothing outside it and keeps the area inside it.
+	// A provider that verifies an address fills in one nobody stated here,
+	// and never replaces one that was (ACC-60).
+	Email string `json:"email,omitempty" format:"email" doc:"Where to reach them outside the application. Optional. A sign-in provider that verifies an address fills this in when it is empty, and never overwrites one recorded here"`
 	// Holds is what to grant them, listed as product and role.
 	Holds []GrantBody `json:"holds,omitempty"`
 }
@@ -238,6 +249,15 @@ func registerAdministration(api huma.API, a Administering) {
 		if provider != "" {
 			if err := store.Claim(ctx, person.ID, provider, username); err != nil {
 				return nil, huma.Error422UnprocessableEntity(err.Error())
+			}
+		}
+		// Recorded here, so it outranks whatever a provider states later
+		// (ACC-60). A request that says nothing about an address leaves the
+		// stored one alone rather than clearing it: this endpoint records
+		// somebody, and an omission is silence rather than an instruction.
+		if strings.TrimSpace(in.Body.Email) != "" {
+			if err := store.SetEmail(ctx, person.ID, in.Body.Email, false); err != nil {
+				return nil, wentWrong(a.Logger, "where to reach them could not be recorded", err)
 			}
 		}
 
