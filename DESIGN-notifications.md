@@ -2,7 +2,7 @@
 
 What somebody is told, and through what.
 
-Satisfies NTF-01 to NTF-14. The channels that carry things outside the
+Satisfies NTF-01 to NTF-15. The channels that carry things outside the
 application — mail, and chat behind the same interface — are not built; what is
 here is the one that needs nothing configured, and what is missing is named
 below rather than left to be discovered.
@@ -89,6 +89,40 @@ rather than the whole thing — a channel people read on a phone is not a channe
 to paste a justification into. Neither is built, and the server-side renderer
 that the HTML part of a mail would need is kept for that reason rather than
 deleted.
+
+## What leaves the building says less than what stays in it
+
+**A message about an undisclosed finding carries no detail — that there is
+something, and a link** (NTF-15). Not the identifier, not the component, not
+the summary, and not in the subject line, which a preview shows without
+anybody opening anything.
+
+The in-app area is not held to this, and the difference is the whole reason for
+the rule: reaching a notification there means holding a credential and passing
+the visibility check, so the area can say what the thing is. A message cannot
+re-check its reader. It sits on a mail server this deployment does not run, in
+an inbox, in a phone's lock screen, and in whatever it is forwarded to — so an
+alert about a flaw nobody has announced is itself the announcement unless it
+says nothing.
+
+**A disclosed finding is not held to this**, and saying so matters as much as
+the rule. A public vulnerability in a shipped component is public: the
+identifier, the component, the version and the build are in the message,
+because that is what makes it worth opening, and none of it is anything a mail
+server could leak that a vulnerability database does not already publish. A
+channel that says nothing about anything is one people stop reading, and then
+the embargo alerts go unread with the rest.
+
+The line is the finding's own visibility. It is not a second judgment made at
+the point of sending — it is the same field every query already narrows by, so
+a message cannot disagree with what the screen would show the same person.
+
+That is a different question from who is told, which ACC-47 already answers.
+Narrowing the recipients and emptying the body are both needed: the first stops
+it reaching somebody who should not know, the second stops it being disclosed
+by the delivery itself.
+
+What it costs is a click, which is the click the message was asking for anyway.
 
 **Who hears about an embargo is narrower than who hears about the tool's
 health.** Administrators, and whoever holds it (ACC-47) — and the second only
