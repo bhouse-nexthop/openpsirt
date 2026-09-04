@@ -418,6 +418,15 @@ type ReceiptBody struct {
 	// a branch build's contents are let go once they have been read, and this
 	// still says what arrived and what its bytes hashed to.
 	Sent []SentBody `json:"sent,omitempty" doc:"The documents this upload was made of"`
+	// Components and Placed are what the inventory described, and how much of
+	// it anything said the position of. Absent until it has been read.
+	//
+	// The pair is what says whether an inventory is a graph or a list. A
+	// document that places none of its components produces findings that are
+	// each correct and cannot answer "why is this here" about any of them —
+	// and nothing else on this screen tells the two apart.
+	Components *int `json:"components,omitempty" doc:"How many components the inventory described"`
+	Placed     *int `json:"placed,omitempty" doc:"How many of them something placed in the graph"`
 }
 
 // SentBody is one document an upload was made of, as a record rather than as
@@ -560,6 +569,7 @@ func registerReceipts(api huma.API, in Ingest) {
 				change := changed[*r.RunID]
 				body.Opened, body.Closed = change.Opened, change.Closed
 			}
+			body.Components, body.Placed = r.Scan.Components, r.Scan.Placed
 			for _, doc := range sent[r.Scan.ID] {
 				body.Sent = append(body.Sent, SentBody{
 					Kind: string(doc.Kind), SizeBytes: doc.SizeBytes,

@@ -256,3 +256,63 @@ func TestAReceiptSaysWhatArrivedAfterTheContentsAreGone(t *testing.T) {
 		}
 	})
 }
+
+func TestAReceiptSaysHowMuchOfAnInventoryWasPlaced(t *testing.T) {
+	// The pair is what says whether an inventory is a graph or a list. A
+	// document that places none of its components produces findings that are
+	// each correct and cannot answer "why is this here" about any of them —
+	// and until this was on the receipt, the only record of it was a log line
+	// somebody would have to go and find.
+	//
+	// One unplaced component is ordinary and a producer emitting none of the
+	// edges is not. Only the ratio tells them apart.
+	eachIngest(t, queue.DefaultOptions(), func(t *testing.T, f *ingestFixture) {
+		// Two components and one edge between them, so something is placed and
+		// something is not: a flat list and a full graph both read as "fine"
+		// against a single number.
+		flat := `{
+		  "bomFormat": "CycloneDX", "specVersion": "1.6",
+		  "metadata": {"timestamp": "` + nowish().Format(time.RFC3339) + `",
+		    "component": {"bom-ref": "root", "name": "sonic-broadcom", "version": "1.0"}},
+		  "components": [
+		    {"bom-ref": "a", "name": "placed-under-root", "version": "1.0",
+		     "purl": "pkg:deb/debian/placed-under-root@1.0"},
+		    {"bom-ref": "b", "name": "placed-nowhere", "version": "2.0",
+		     "purl": "pkg:deb/debian/placed-nowhere@2.0"}
+		  ],
+		  "dependencies": [{"ref": "root", "dependsOn": ["a"]}]
+		}`
+		if code, _ := f.send(t, upload(t, f.path, flat)); code != http.StatusAccepted {
+			t.Fatal("the upload was not taken")
+		}
+
+		// Before it is read, nothing is claimed about it: an upload is bytes,
+		// and how much of it is placed is an answer the parser produces.
+		_, out := receipts(t, f, f.key, f.path)
+		if len(out.Body.Items) != 1 {
+			t.Fatalf("got %d receipts, want 1", len(out.Body.Items))
+		}
+		if out.Body.Items[0].Components != nil || out.Body.Items[0].Placed != nil {
+			t.Errorf("an upload nothing has read already claims what it is made of: %+v",
+				out.Body.Items[0])
+		}
+
+		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+		reader := ingest.NewReader(f.db, f.queue, sbom.Limits{}, quiet, "test")
+		if _, err := reader.Once(t.Context()); err != nil {
+			t.Fatalf("reading: %v", err)
+		}
+
+		_, out = receipts(t, f, f.key, f.path)
+		got := out.Body.Items[0]
+		if got.Components == nil || got.Placed == nil {
+			t.Fatalf("after reading, the receipt says nothing about what it was made of: %+v", got)
+		}
+		if *got.Components != 2 {
+			t.Errorf("the inventory reads as %d components, want 2", *got.Components)
+		}
+		if *got.Placed != 1 {
+			t.Errorf("%d components read as placed, want the one an edge leads to", *got.Placed)
+		}
+	})
+}

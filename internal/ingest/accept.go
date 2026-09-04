@@ -118,6 +118,16 @@ type Scan struct {
 	// Failure says why a scan that was taken could not be read. Empty until
 	// something goes wrong, which is most of the time.
 	Failure string `bun:"failure"`
+	// Components and Placed are what the inventory was made of, written when
+	// it is read. Nil until then, and on anything recorded before they were
+	// kept — which reads as "not known" rather than as none.
+	//
+	// The pair is the point. One component nothing places is ordinary; a
+	// document that places none of them is a list rather than a graph, and
+	// every finding it produces will be individually correct and unable to say
+	// why it is there. Nothing else on a receipt distinguishes the two.
+	Components *int `bun:"components"`
+	Placed     *int `bun:"placed"`
 }
 
 // Store records scans and answers what to do with a new one.
@@ -290,4 +300,20 @@ func truncate(s string, most int) string {
 		return s
 	}
 	return s[:most]
+}
+
+// Made records what an inventory turned out to be made of.
+//
+// Written after it has been read rather than when it arrives, because until
+// then nobody knows: an upload is bytes, and how many components it describes
+// and how many of them anything places are answers the parser produces.
+func (s *Store) Made(ctx context.Context, scanID int64, components, placed int) error {
+	_, err := s.db.NewUpdate().Model((*Scan)(nil)).
+		Set("components = ?", components).
+		Set("placed = ?", placed).
+		Where("id = ?", scanID).Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("record what the inventory was made of: %w", err)
+	}
+	return nil
 }

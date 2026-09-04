@@ -207,6 +207,24 @@ The generator is pinned by version and checksum, the same way the scanner is
 and from the same project. A build that fetches an unpinned tool over the
 network is a build whose output depends on the day it ran.
 
+**It is a list rather than a graph, and that is a known gap.** Scanning a
+directory catalogs the packages and emits almost no edges: seventeen apk
+packages carry the apk dependencies between them, and the three hundred and
+thirty-nine Go modules arrive with nothing above them, including the module
+that is the binary they came out of. Nothing links any of it to the image
+itself. The result is an inventory whose findings are each correct and cannot
+say where they live — a vulnerability in `containerd` is real and is inside the
+bundled scanner, and the document does not say so.
+
+The information exists. Scanning one binary rather than a directory produces a
+proper graph, with the main module above everything it was linked from, and the
+directory scan records the file each module came from as a property. Composing
+those — the distribution's packages, and each shipped binary with its own
+modules beneath it, all under the image — is the fix, and it is a document
+composer rather than a flag. Until it exists the receipt says how much of the
+inventory was placed, so this is visible rather than something somebody works
+out from an empty dependency tree.
+
 **Two things want an inventory in the image.** A release's inventory should
 travel with the artifact it describes rather than only sitting beside it on a
 release page. And a deployment can then be its own first product: the demo

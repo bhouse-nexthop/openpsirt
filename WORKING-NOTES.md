@@ -2684,3 +2684,41 @@ operating system, and the modules of both binaries.
 image being described does not exist until the build finishes. The runtime is a
 stage; a later stage copies that stage's filesystem and catalogs it, so what is
 described is this build rather than one like it.
+
+## Validating the container findings found a defect in the tool (2026-09-04)
+
+Reported: the container variant's findings list has Go dependencies with no
+parent. It does, and the diagnosis has two halves.
+
+**The findings are real.** `containerd` and `golang.org/x/crypto` genuinely
+ship inside this image — they are inside the bundled scanner binary. Seventy-
+nine real CVEs.
+
+**The inventory is a list, not a graph.** Syft's directory scan emits fourteen
+dependency entries, all apk-to-apk. The 339 Go modules arrive with nothing
+above them, including the main module of the binary they came out of, and
+nothing links any of it to the image. So the root has **0 children**, 345
+components float, and every finding answers "why is this here" with nothing.
+
+**And the tool said none of that.** The unrooted count was computed, recorded
+in the parse result, and written to a log line. Nowhere else. The design
+document said the count was worth keeping "because a sudden change in it says
+the producer's derivation changed, which is worth seeing" — and nobody could
+see it. That is the same shape as the other defects this week: a value computed
+for a stated reason, with no reader.
+
+A scan now records what the inventory was made of — components described, and
+components placed — and the receipt reports the pair. The pair, because one
+unplaced component is ordinary and a producer emitting none of the edges is
+not, and a single number cannot tell those apart. Marked on the screen when
+nothing at all was placed, since that is the case somebody has to notice rather
+than discover by wondering why a dependency tree is empty.
+
+**The generation gap is recorded rather than fixed.** Scanning one binary
+instead of a directory produces a proper graph — the main module above
+everything it was linked from — and the directory scan records the file each
+module came from as a property. Composing those is the fix and it is a document
+composer, not a flag. `DESIGN-packaging.md` says so.
+
+The tool itself is fine on a well-formed inventory: the switch image places
+5,621 findings under its root.

@@ -2954,11 +2954,19 @@ components:
           description: Issues that were open and are not any more
           format: int64
           type: integer
+        components:
+          description: How many components the inventory described
+          format: int64
+          type: integer
         failure:
           description: Why it could not be used, where it could not
           type: string
         opened:
           description: Issues this run found that were not open before
+          format: int64
+          type: integer
+        placed:
+          description: How many of them something placed in the graph
           format: int64
           type: integer
         received_at:

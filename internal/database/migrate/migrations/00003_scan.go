@@ -44,6 +44,21 @@ func upScan(ctx context.Context, tx *sql.Tx) error {
 			"parser_version" ` + t.name + ` NOT NULL,
 			"credential"     ` + t.name + ` NULL,
 			"status"         ` + t.kind + ` NOT NULL,
+			-- What the inventory was made of, recorded when it is read.
+			--
+			-- Not statistics. "Placed" against "components" is the difference
+			-- between a document that describes a graph and one that is a
+			-- list, and a reader has no other way to tell: an inventory whose
+			-- components are all placed nowhere produces findings that are
+			-- individually correct and cannot answer "why is this here" about
+			-- any of them. One unplaced component is ordinary and a producer
+			-- emitting none of the edges is not, and only the ratio says
+			-- which happened.
+			--
+			-- Null on a scan recorded before this was kept, which reads as
+			-- "not known" rather than as zero.
+			"components"     INTEGER NULL,
+			"placed"         INTEGER NULL,
 			CONSTRAINT "scan_target_fk" FOREIGN KEY ("target_id") REFERENCES "target"("id"),
 			CONSTRAINT "scan_content_unique" UNIQUE ("target_id", "content_hash")
 		)` + t.suffix,

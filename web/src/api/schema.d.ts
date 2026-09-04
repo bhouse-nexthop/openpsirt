@@ -3488,6 +3488,11 @@ export interface components {
              * @description Issues that were open and are not any more
              */
             closed?: number;
+            /**
+             * Format: int64
+             * @description How many components the inventory described
+             */
+            components?: number;
             /** @description Why it could not be used, where it could not */
             failure?: string;
             /**
@@ -3495,6 +3500,11 @@ export interface components {
              * @description Issues this run found that were not open before
              */
             opened?: number;
+            /**
+             * Format: int64
+             * @description How many of them something placed in the graph
+             */
+            placed?: number;
             /** @description When it arrived here */
             received_at: string;
             /**

@@ -671,6 +671,26 @@ Fixed-width character columns blank-pad on some engines, so a hash read back
 carries trailing spaces that make an exact-match lookup fail. Variable-width
 columns do not. Both cost the same for a value that is always the same length.
 
+## What an inventory turned out to be made of
+
+Two numbers are kept on a scan once it has been read: how many components the
+inventory described, and how many of them anything placed in the graph. They
+appear on the receipt.
+
+**The pair, not either one alone.** A component nothing places is ordinary — a
+producer emits the edges it can derive and records what it could not, and
+inventing the rest would report dependencies nobody declared. A document that
+places *none* of them is a different thing: it is a list rather than a graph,
+and every finding it produces will be individually correct and unable to answer
+"why is this here" about any of them. Only the ratio tells those apart.
+
+This was already counted and went only to a log line. The design said the count
+was worth keeping "because a sudden change in it says the producer's derivation
+changed, which is worth seeing" — and nobody could see it. It is on the screen
+that exists to answer what became of an upload, marked when nothing at all was
+placed, because that is the case somebody has to notice rather than discover by
+wondering why a dependency tree is empty.
+
 ## What a second kind of finding would arrive as
 
 The primary input is an inventory a build produced, and the vulnerability data

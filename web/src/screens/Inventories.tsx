@@ -100,6 +100,7 @@ export function Inventories() {
                 <th className="num">Opened</th>
                 <th className="num">Closed</th>
                 <th>Sent</th>
+                <th className="num">Placed</th>
                 <th>Serial</th>
               </tr>
             </thead>
@@ -116,6 +117,9 @@ export function Inventories() {
                   <td className="num">{scan.closed || (scan.state === "scanned" ? "—" : "")}</td>
                   <td>
                     <Sent sent={scan.sent ?? []} />
+                  </td>
+                  <td className="num">
+                    <Placed components={scan.components} placed={scan.placed} />
                   </td>
                   <td className="id hint">{scan.serial}</td>
                 </tr>
@@ -195,6 +199,35 @@ function size(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// How much of an inventory anything placed in the graph.
+//
+// The pair, not one number. A document that places none of its components
+// produces findings that are each correct and cannot answer "why is this
+// here" about any of them — and one unplaced component is ordinary while a
+// producer emitting none of the edges is not. Only the ratio tells the two
+// apart, so the ratio is what is drawn.
+//
+// Marked when nothing was placed, because that is the case somebody has to
+// notice: it means the dependency tree for this build will be empty and every
+// finding in it will say nothing recorded what pulls it in.
+function Placed({ components, placed }: { components?: number; placed?: number }) {
+  if (components == null || placed == null) return <span className="hint">—</span>;
+  const none = components > 0 && placed === 0;
+  return (
+    <span
+      className={none ? "state lapsed" : undefined}
+      title={
+        none
+          ? "Nothing in this inventory says what pulls anything in, so the dependency tree " +
+            "for this build is empty and no finding can say why it is here."
+          : `${placed.toLocaleString()} of ${components.toLocaleString()} components are placed in the graph`
+      }
+    >
+      {placed.toLocaleString()} / {components.toLocaleString()}
+    </span>
+  );
 }
 
 // The states an upload passes through, and the one it can end in.

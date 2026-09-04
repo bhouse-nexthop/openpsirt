@@ -300,6 +300,16 @@ func (r *Reader) read(ctx context.Context, reference string) (*Result, error) {
 		Retained: !target.Moves,
 	}
 
+	// What the inventory was made of, kept on the scan so a receipt can say
+	// it. The log line said it and nothing else did, which meant an operator
+	// could only learn that a document placed none of its components by going
+	// and finding the line — on the screen that exists to answer what became
+	// of an upload.
+	components, placed := len(doc.Components), len(doc.Components)-doc.Unrooted
+	if err := scans.Made(ctx, scanID, components, placed); err != nil {
+		return nil, fmt.Errorf("scan %d: %w", scanID, err)
+	}
+
 	// What was just stored has to be scanned: the inventory is new, and the
 	// vulnerability data has moved since whatever last looked at this target.
 	// The work is left behind rather than done here because it is a different
