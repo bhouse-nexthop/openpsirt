@@ -631,6 +631,31 @@ inventories screen, where the receipt shows "queued" until the run says what
 it changed. The receipts list re-reads itself while it is open, because that is
 when something is moving.
 
+**A flaw in our own product is recorded from the findings list of the build it
+is in.** An action and a drawer, the shape adding already takes (UIX-48),
+rather than a screen of its own: what somebody is doing is adding to the
+findings of a build they are already looking at, and a form living anywhere
+else would ask them to name the build again.
+
+The control appears only for somebody who may record one, which is triage on
+that product — a button leading to a refusal is worse than no button. Which of
+the two things they may record follows the same split the server enforces:
+undisclosed needs the private triage right, already-public needs the ordinary
+one, and somebody holding only the ordinary one is offered only the second with
+the first saying why it is not theirs.
+
+**It is undisclosed unless somebody says otherwise**, and that is a choice of
+two stated options rather than a checkbox — the dangerous mistake should not be
+the quiet one. **The severity has no default**: a judgment sitting in the field
+as though somebody had made it is this screen making it for them.
+
+**What carries it is searched, not typed from memory.** A build holds thousands
+of components, so the field offers what the build actually holds as somebody
+types, and empty means the build itself. Where the name is one the build holds
+at several versions the server refuses with the choices and the drawer offers
+them; picking one is the whole of the answer. Recording lands on the finding,
+because working on it is the next thing anybody does.
+
 **The screen that lists receipts is called Inventories.** A scan is what the
 deployment does to an inventory after it arrives; what a person uploads, and
 what the list is of, is inventories.
@@ -1079,10 +1104,6 @@ the line by eye.
 
 Named so that what is missing is a plan rather than something rediscovered by
 clicking.
-
-**No screen records a flaw in our own product.** The endpoint exists and
-nothing calls it, so a private finding can be entered through the API and not
-through the interface — which is where the person who knows about it is.
 
 **A mention links nobody.** The editor offers the right candidates and writes
 `@name` into the text, but the renderer treats it as ordinary words. UIX-24

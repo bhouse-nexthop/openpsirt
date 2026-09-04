@@ -29,9 +29,10 @@ place to triage what it finds and track it through to a fix.
 > area inside the application; nothing leaves it yet.
 >
 > Private findings have begun, which is where the work is. A flaw in what a
-> build ships can be recorded by hand; it starts undisclosed, its embargo has
-> an end, moving that end costs a reason and past a threshold a second person,
-> and the date arriving tells somebody.
+> build ships can be recorded by hand, from the findings list of the build it
+> is in; it starts undisclosed, its embargo has an end, moving that end costs a
+> reason and past a threshold a second person, and the date arriving tells
+> somebody.
 >
 > The web interface: sign-in, home, the catalog, findings, finding detail, the
 > dependency tree, decisions with their history, the review queue, assignment,
@@ -39,9 +40,8 @@ place to triage what it finds and track it through to a fix.
 > settings — embedded into the binary and served from it.
 >
 > What does not: advisory publication and attachments, mail and the digest,
-> remediation metrics, export, findings from a static analyzer, and a screen
-> for recording a flaw — that last one is an endpoint with nothing calling it.
-> The design record is in [DECISIONS.md](DECISIONS.md).
+> remediation metrics, export, and findings from a static analyzer. The design
+> record is in [DECISIONS.md](DECISIONS.md).
 
 ## What it does
 
