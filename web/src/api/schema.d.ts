@@ -426,6 +426,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/disclosure-extensions/{id}/approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Agree to moving a disclosure date
+         * @description Records a second person agreeing, and moves the date.
+         *
+         *     The person who asked may not be the one who agrees. That is the control the threshold exists to reach, and an extension somebody approved for themselves is the same as one nobody approved.
+         */
+        post: operations["agree-to-extension"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/issues/{vulnerability}/assessment": {
         parameters: {
             query?: never;
@@ -778,6 +800,40 @@ export interface paths {
          */
         put: operations["set-product-end-of-life"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/products/{product}/issues/{vulnerability}/disclosure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List how an embargo has been moved
+         * @description Every time this embargo was moved, oldest first, with why and by whom.
+         *
+         *     Kept in full and never overwritten. One extension is a judgment and six is a policy nobody wrote down, and the difference is invisible if each replaces the last. A request still waiting for agreement is here too: what was asked for is part of how long this stayed hidden, whether or not it was granted.
+         */
+        get: operations["list-disclosure-extensions"];
+        put?: never;
+        /**
+         * Ask to move a disclosure date later
+         * @description Moves the end of an embargo, across every undisclosed finding of this issue in this product.
+         *
+         *     **A reason is required, always**, however short the extension. One with no reason is a record saying somebody moved it and nothing else.
+         *
+         *     **Past a threshold it needs a second person**, and the threshold is measured against everything this embargo has already been moved by rather than against this request alone — measured per request, the exception swallows the rule three weeks at a time. It is the same act a deferral is, and the same shape.
+         *
+         *     **An extension that needs agreement moves nothing until it has it.** The request is on record either way; `in_force` says whether the date follows it.
+         *
+         *     A date only ever moves later. Bringing one forward is disclosing sooner, which is a different act.
+         */
+        post: operations["extend-disclosure"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2541,6 +2597,40 @@ export interface components {
             /** @description What kind of flaw this is, as CWE identifiers */
             weaknesses?: string[] | null;
         };
+        "Extend-disclosureRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Extend-disclosureRequest.json
+             */
+            readonly $schema?: string;
+            /** @description Why it is being extended */
+            reason: string;
+            /** @description Where the embargo should end, as a date */
+            until: string;
+        };
+        ExtensionBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ExtensionBody.json
+             */
+            readonly $schema?: string;
+            approved_at?: string;
+            approved_by?: string;
+            asked_at: string;
+            asked_by: string;
+            /** Format: int64 */
+            id: number;
+            in_force: boolean;
+            /** @description Whether a second person had to agree */
+            needs_approval: boolean;
+            reason: string;
+            /** @description Where it was asked to end */
+            until: string;
+            /** @description Where the embargo ended before */
+            was: string;
+        };
         FindingBody: {
             /**
              * Format: int64
@@ -2975,6 +3065,15 @@ export interface components {
              */
             readonly $schema?: string;
             items: components["schemas"]["EmbargoedBody"][] | null;
+        };
+        ListBodyExtensionBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListBodyExtensionBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ExtensionBody"][] | null;
         };
         ListBodyHoldingBody: {
             /**
@@ -4618,6 +4717,35 @@ export interface operations {
             };
         };
     };
+    "agree-to-extension": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "assess-issue": {
         parameters: {
             query?: never;
@@ -5221,6 +5349,74 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-disclosure-extensions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+                vulnerability: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListBodyExtensionBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "extend-disclosure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+                vulnerability: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Extend-disclosureRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionBody"];
+                };
             };
             /** @description Error */
             default: {
