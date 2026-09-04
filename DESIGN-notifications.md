@@ -154,12 +154,24 @@ people route to a folder.
 which is what makes "carries what nothing else told you" a rule rather than a
 description.
 
-**It names what has been disclosed and counts what has not** (NTF-18). A public
-finding is listed with its issue, component and build. An undisclosed one
-contributes a number and nothing else, with the same way in NTF-15 gives —
-because a digest is a message, and dropping such findings entirely would be the
-other failure: somebody reading "nothing to report" while an embargoed item
-sits unowned.
+**It names what has been disclosed and gives numbers for what has not**
+(NTF-18). A public finding is listed with its issue, component and build. The
+undisclosed ones become a count and the figures that say how urgent they are —
+how many at each severity, how many past their disclosure date, how many nobody
+owns — with the way in NTF-15 gives.
+
+A bare count would not have been enough. "Three undisclosed" does not tell
+somebody whether to open the tool now or after coffee, and a channel that
+cannot answer that is one people stop reading. Severity and lateness answer it
+and identify nothing.
+
+**The figures name nothing, including the product.** "Two critical embargoed
+items in this product" is a statement about that product, and a mail server has
+no business holding it. The recipients already hold the right to read these
+(ACC-47); what the aggregate protects is not them but the path the message
+takes to reach them — an inbox, a preview, a forward, a server this deployment
+does not run. So what is urgent is a number, and what it is about is behind the
+link.
 
 ## What leaves the building says less than what stays in it
 
