@@ -23,6 +23,14 @@ type FindingBody struct {
 	Ecosystem     string `json:"ecosystem,omitempty" doc:"The kind of package, as its identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. With the component and version it tells one row from another, which those two alone do not: one build can hold one name at one version as two components, a source repository and the package built from it"`
 	FixState      string `json:"fix_state,omitempty" enum:"fixed,none,wont-fix" doc:"What upstream has done about it"`
 	FixedIn       string `json:"fixed_in,omitempty" doc:"The version that resolves it, where one exists"`
+	// Matched says how the scanner reached this, and it is the question to ask
+	// about a distribution's packages. "advisory" is the people who package it
+	// saying so, and what they say about a fix is about the version actually
+	// installed. "identifier" is a published identifier compared against an
+	// upstream version range, which cannot see a backported patch: a
+	// distribution that has already fixed this looks the same as one that has
+	// not. Empty where the scanner said nothing.
+	Matched string `json:"matched,omitempty" enum:"advisory,identifier" doc:"How the scanner reached this"`
 	// Places is how many consumers pull this component in here, and Answered
 	// how many of those the build has already argued about.
 	// Both ends of the way down, with the middle collapsed (UIX-12). Those two
@@ -114,26 +122,27 @@ func registerFindings(api huma.API, in Ingest) {
 			"and one there.",
 		Tags: []string{"Findings"},
 	}, func(ctx context.Context, input *struct {
-		Product    string   `path:"product"`
-		Stream     string   `path:"stream"`
-		Variant    string   `path:"variant"`
-		Severity   string   `query:"severity" enum:"low,medium,high,critical" doc:"Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating"`
-		Exploited  bool     `query:"exploited" doc:"Keep only issues somebody is known to be exploiting"`
-		Fixable    bool     `query:"fixable" doc:"Keep only issues where an upstream fixed version is known"`
-		BelowFloor bool     `query:"below_floor" doc:"Include what this product does not consider worth triaging. Those are always recorded and counted; this asks to see them in the list"`
-		Component  string   `query:"component" doc:"Keep only what is open against components of this name, whatever version"`
-		Search     string   `query:"q" maxLength:"200" doc:"Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name"`
-		Ecosystem  string   `query:"ecosystem" doc:"Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"`
-		Under      string   `query:"under" doc:"Keep only what sits inside the container of this name"`
-		UnderBuild bool     `query:"under_build" doc:"Keep only what the build holds directly, which is what has no container above it"`
-		Beneath    string   `query:"beneath" doc:"Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused"`
-		State      string   `query:"state" enum:"undecided,waiting,agreed,lapsed" doc:"Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"`
-		Outcome    string   `query:"outcome" enum:"affected,not-applicable,deferred,wont-fix" doc:"Keep only groups a standing judgment of this kind covers — how to ask what has been dismissed, which state cannot answer: agreed says a judgment stands, not which one. Every place must be answered the same way, and only the claim standing now counts"`
-		Assigned   string   `query:"assigned" enum:"me,somebody,nobody" doc:"Keep only groups by who is dealing with them. A group whose places are held by different people is none of these"`
-		Reassessed bool     `query:"reassessed" doc:"Keep only groups whose issue we rated differently from the world — what has been re-prioritized here"`
-		Exclude    []string `query:"exclude" doc:"Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows"`
-		Limit      int      `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"How many to return"`
-		Offset     int      `query:"offset" minimum:"0" doc:"How many to skip"`
+		Product     string   `path:"product"`
+		Stream      string   `path:"stream"`
+		Variant     string   `path:"variant"`
+		Severity    string   `query:"severity" enum:"low,medium,high,critical" doc:"Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating"`
+		Exploited   bool     `query:"exploited" doc:"Keep only issues somebody is known to be exploiting"`
+		Fixable     bool     `query:"fixable" doc:"Keep only issues where an upstream fixed version is known"`
+		BelowFloor  bool     `query:"below_floor" doc:"Include what this product does not consider worth triaging. Those are always recorded and counted; this asks to see them in the list"`
+		Component   string   `query:"component" doc:"Keep only what is open against components of this name, whatever version"`
+		Search      string   `query:"q" maxLength:"200" doc:"Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name"`
+		Ecosystem   string   `query:"ecosystem" doc:"Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"`
+		Under       string   `query:"under" doc:"Keep only what sits inside the container of this name"`
+		UnderBuild  bool     `query:"under_build" doc:"Keep only what the build holds directly, which is what has no container above it"`
+		Beneath     string   `query:"beneath" doc:"Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused"`
+		State       string   `query:"state" enum:"undecided,waiting,agreed,lapsed" doc:"Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"`
+		Outcome     string   `query:"outcome" enum:"affected,not-applicable,deferred,wont-fix" doc:"Keep only groups a standing judgment of this kind covers — how to ask what has been dismissed, which state cannot answer: agreed says a judgment stands, not which one. Every place must be answered the same way, and only the claim standing now counts"`
+		Assigned    string   `query:"assigned" enum:"me,somebody,nobody" doc:"Keep only groups by who is dealing with them. A group whose places are held by different people is none of these"`
+		Reassessed  bool     `query:"reassessed" doc:"Keep only groups whose issue we rated differently from the world — what has been re-prioritized here"`
+		Unconfirmed bool     `query:"unconfirmed" doc:"Keep only groups a scanner reached by comparing a published identifier against an upstream version range, never against an advisory for the package in its own ecosystem. A distribution backports fixes without moving the upstream version, so these are neither confirmed nor refuted — somebody has to look, and finding them one at a time is not a thing anybody does"`
+		Exclude     []string `query:"exclude" doc:"Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows"`
+		Limit       int      `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"How many to return"`
+		Offset      int      `query:"offset" minimum:"0" doc:"How many to skip"`
 	}) (*FindingsOutput, error) {
 		subject, err := reading(ctx)
 		if err != nil {
@@ -176,6 +185,7 @@ func registerFindings(api huma.API, in Ingest) {
 			Outcome:       input.Outcome,
 			Assigned:      input.Assigned,
 			Reassessed:    input.Reassessed,
+			Unconfirmed:   input.Unconfirmed,
 			Exclude:       input.Exclude,
 			Floor:         floor,
 			BelowFloor:    input.BelowFloor,
@@ -207,7 +217,8 @@ func registerFindings(api huma.API, in Ingest) {
 				Component: group.Component, Version: group.Version, Upstream: group.Upstream,
 				Ecosystem: group.Ecosystem,
 				FixState:  string(group.FixState), FixedIn: group.FixedIn,
-				Owner: group.Owner, Parent: group.Parent,
+				Matched: string(group.Matched),
+				Owner:   group.Owner, Parent: group.Parent,
 				Middle: group.Middle, Chains: group.Chains,
 				Places: group.Places, Answered: group.Answered,
 				State: group.State, SentBack: group.SentBack,
@@ -385,7 +396,14 @@ type EvidenceBody struct {
 	Upstream  string `json:"upstream,omitempty" doc:"What a fork was made from, where it is one"`
 	FixState  string `json:"fix_state,omitempty" enum:"fixed,none,wont-fix"`
 	FixedIn   string `json:"fixed_in,omitempty" doc:"The version that resolves it"`
-	FixedAt   string `json:"fixed_at,omitempty" doc:"When that version became available"`
+	// Matched and MatchedFrom are how this place was reached and where that
+	// match came from. The source is here rather than on the issue because one
+	// issue reached through two ecosystems has two answers, and the issue can
+	// hold only one — which is how a package from one distribution came to
+	// link to another's tracker.
+	Matched     string `json:"matched,omitempty" enum:"advisory,identifier"`
+	MatchedFrom string `json:"matched_from,omitempty" doc:"Where this match came from"`
+	FixedAt     string `json:"fixed_at,omitempty" doc:"When that version became available"`
 	// ArrivedFrom says somebody moved this version and the issue came with it.
 	// A different sentence aimed at a different person: whoever did the bump,
 	// rather than whoever triages.
@@ -541,6 +559,7 @@ func evidenceBody(e finding.Evidence) EvidenceBody {
 		Weaknesses: e.Weaknesses, Description: e.Description, Advisory: e.Advisory,
 		Component: e.Component, Version: e.Version, Upstream: e.Upstream,
 		FixState: string(e.FixState), FixedIn: e.FixedIn, ArrivedFrom: e.ArrivedFrom,
+		Matched: string(e.Matched), MatchedFrom: e.MatchedFrom,
 		LatestVersion: e.LatestVersion, NothingSince: e.NothingSince,
 		AssignedTo: e.AssignedTo,
 		Places:     make([]SittingBody, 0, len(e.Places)),

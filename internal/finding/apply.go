@@ -192,6 +192,7 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 					ConsumerID:      optional(consumerID),
 					PlaceIdentity:   PlaceIdentity(component.Name, present.nameOf(consumerID)),
 					FixState:        r.FixState, FixedIn: r.FixedIn, FixedAt: r.FixedAt,
+					Matched: r.Matched, MatchedFrom: r.MatchedFrom,
 					SuppressedBy: covering,
 					OpenedAt:     startedAt,
 					OpenedRunID:  &runID,
@@ -285,6 +286,8 @@ func (s *Store) Apply(ctx context.Context, targetID, runID int64, reported []Rep
 				Set("fix_state = ?", f.FixState).
 				Set("fixed_in = ?", f.FixedIn).
 				Set("fixed_at = ?", f.FixedAt).
+				Set("matched = ?", f.Matched).
+				Set("matched_from = ?", f.MatchedFrom).
 				Set("suppressed_by = ?", f.SuppressedBy).
 				Set("last_changed_at = ?", now)
 			if moved {
@@ -378,6 +381,13 @@ func same(held, found Finding) bool {
 	return held.FixState == found.FixState &&
 		held.FixedIn == found.FixedIn &&
 		sameDate(held.FixedAt, found.FixedAt) &&
+		// How it was matched moves for a real reason: a distribution
+		// recording an advisory for something previously reached only by
+		// upstream identifier changes the answer from "somebody has to look"
+		// to "the people who package this said so". A night where that is all
+		// that moved is a night worth recording.
+		held.Matched == found.Matched &&
+		held.MatchedFrom == found.MatchedFrom &&
 		equalRef(held.SuppressedBy, found.SuppressedBy)
 }
 

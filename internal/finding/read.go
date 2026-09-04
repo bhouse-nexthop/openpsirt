@@ -181,6 +181,10 @@ type Group struct {
 	Parent string
 	Middle int
 	Chains int
+	// Matched says how the scanner reached this. One answer for the whole
+	// group: every place of it comes from the same line of a report. Empty
+	// where the scanner said nothing.
+	Matched Matched `bun:"matched"`
 }
 
 // Severities in the order they rank, least first. A floor keeps this word and
@@ -289,6 +293,17 @@ type Filter struct {
 	// world. It is how somebody finds what has been re-prioritized here,
 	// which is a question auditors ask and nothing else answers.
 	Reassessed bool
+	// Unconfirmed keeps groups a scanner reached only by comparing a published
+	// identifier against an upstream version range, never against an advisory
+	// for the package in its own ecosystem.
+	//
+	// This is the question somebody asks about a distribution's packages and
+	// nothing else answers: a distribution backports fixes without moving the
+	// upstream version, so busybox 1.37.0-r14 and 1.37.0-r15 are the same
+	// release to an upstream range and one of them may carry the patch. These
+	// are neither confirmed nor refuted — somebody has to look — and finding
+	// them one at a time is not a thing anybody does.
+	Unconfirmed bool
 	// Exclude drops components of these names.
 	//
 	// This exists because one package can drown the list. Measured on a switch
@@ -345,6 +360,14 @@ func (f Filter) narrow(q *bun.SelectQuery) *bun.SelectQuery {
 	}
 	if f.HasFix {
 		q = q.Having("MIN(f.fixed_in) IS NOT NULL AND MIN(f.fixed_in) <> ?", "")
+	}
+	if f.Unconfirmed {
+		// One place answers for the group. A group is an issue at a component,
+		// every place of it comes from the same line of a scanner's report,
+		// and the applier writes that line to all of them — so they cannot
+		// disagree, and an aggregate guarding against it would be a condition
+		// nothing can make false.
+		q = q.Having("MIN(f.matched) = ?", ByIdentifier)
 	}
 	if name := strings.TrimSpace(f.Component); name != "" {
 		q = q.Where("f.component_id IN (?)", componentsWhere(q, "c.name = ?", name))
@@ -764,6 +787,7 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 			Urgency: row.Urgency, Exploited: Rank(row.Urgency).Exploited(),
 			LikelihoodPPM: row.LikelihoodPPM, ScoreCenti: row.ScoreCenti,
 			FixState: FixState(row.FixState), FixedIn: row.FixedIn,
+			Matched:  Matched(row.Matched),
 			State:    stateWord(row.Places, row.AnyClaim, row.Waiting, row.Approved, row.Lapsed),
 			SentBack: row.SentBack > 0,
 		}
@@ -816,6 +840,7 @@ type decorated struct {
 	ScoreCenti    int    `bun:"score_centi"`
 	FixState      string `bun:"fix_state"`
 	FixedIn       string `bun:"fixed_in"`
+	Matched       string `bun:"matched"`
 	ConsumerID    *int64 `bun:"consumer_id"`
 	Consumers     int    `bun:"consumers"`
 	Direct        int    `bun:"direct"`
@@ -940,6 +965,10 @@ func (s *Store) decorate(ctx context.Context, targetID, productID int64, visible
 		ColumnExpr("SUM(CASE WHEN f.suppressed_by IS NULL THEN 0 ELSE 1 END) AS answered").
 		ColumnExpr("MIN(f.fix_state) AS fix_state").
 		ColumnExpr("MIN(f.fixed_in) AS fixed_in").
+		// Any of them: a group is an issue at a component, every place of it
+		// comes from one line of a scanner's report, and the applier writes
+		// that line to all of them.
+		ColumnExpr("MIN(COALESCE(f.matched, '')) AS matched").
 		// One of the ways down, and how many there are. MIN passes over the
 		// places the build pulls in directly, whose consumer is null, so those
 		// are counted separately rather than being read as "no route at all".
@@ -1111,6 +1140,16 @@ type Evidence struct {
 	// set for a group at once; where the places somehow disagree it is empty
 	// rather than naming one of them.
 	AssignedTo string
+	// Matched says how the scanner reached this, and MatchedFrom where that
+	// match came from. One answer for every place, because they all come from
+	// one line of a scanner's report.
+	//
+	// The source is here rather than on the issue because one issue reached
+	// through two ecosystems has two answers and the issue can hold one. An
+	// Alpine package linking to Debian's tracker is what the other way looks
+	// like.
+	Matched     Matched
+	MatchedFrom string
 }
 
 // Sitting is one place a component occupies, as a finding presents it.
@@ -1169,6 +1208,8 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		FixState      string     `bun:"fix_state"`
 		FixedIn       string     `bun:"fixed_in"`
 		FixedAt       *time.Time `bun:"fixed_at"`
+		Matched       string     `bun:"matched"`
+		MatchedFrom   string     `bun:"matched_from"`
 		ArrivedFrom   string     `bun:"arrived_from"`
 	}
 	err = s.db.NewSelect().
@@ -1199,6 +1240,8 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		ColumnExpr("f.fix_state AS fix_state").
 		ColumnExpr("f.fixed_in AS fixed_in").
 		ColumnExpr("f.fixed_at AS fixed_at").
+		ColumnExpr("COALESCE(f.matched, '') AS matched").
+		ColumnExpr("COALESCE(f.matched_from, '') AS matched_from").
 		ColumnExpr("COALESCE(f.arrived_from, '') AS arrived_from").
 		Where("f.target_id = ?", targetID).
 		Where("f.vulnerability_id = ?", vulnerabilityID).
@@ -1254,6 +1297,10 @@ func (s *Store) Detail(ctx context.Context, subject access.Subject, targetID, vu
 		FixState: FixState(rows[0].FixState), FixedIn: rows[0].FixedIn, FixedAt: rows[0].FixedAt,
 		ArrivedFrom: rows[0].ArrivedFrom,
 	}
+	// Any place answers. They all come from one line of a scanner's report,
+	// which the applier writes to every place of the group.
+	evidence.Matched = Matched(rows[0].Matched)
+	evidence.MatchedFrom = rows[0].MatchedFrom
 	if component.LatestVersion != nil {
 		evidence.LatestVersion = *component.LatestVersion
 	}

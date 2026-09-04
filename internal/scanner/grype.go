@@ -125,6 +125,14 @@ type grypeDocument struct {
 			Version string `json:"version"`
 			Purl    string `json:"purl"`
 		} `json:"artifact"`
+		// How the match was made. A scanner tries the advisory data for the
+		// package's own ecosystem first and falls back to comparing a
+		// published identifier against an upstream version range, and those
+		// two answers mean very different things about a distribution's
+		// package (MDL-26).
+		MatchDetails []struct {
+			Type string `json:"type"`
+		} `json:"matchDetails"`
 	} `json:"matches"`
 	Descriptor struct {
 		Name    string `json:"name"`
@@ -191,6 +199,11 @@ func ParseGrype(r io.Reader) (Result, error) {
 			FixState: fixState(match.Vulnerability.Fix.State),
 			FixedIn:  strings.Join(match.Vulnerability.Fix.Versions, ", "),
 			FixedAt:  firstFixDate(match.Vulnerability.Fix.Available),
+			Matched:  matched(match.MatchDetails),
+			// Where *this* match came from, which is not always where the
+			// issue is written up. One issue reached through two ecosystems
+			// has two answers, and the issue can only hold one.
+			MatchedFrom: strings.TrimSpace(match.Vulnerability.DataSource),
 		})
 	}
 	return result, nil
@@ -378,4 +391,30 @@ func firstFixDate(available []struct {
 		}
 	}
 	return earliest
+}
+
+// matched folds how a scanner made a match into the distinction that matters.
+//
+// Two answers, and the difference is what a distribution's packaging does to
+// them. An advisory for the package in its own ecosystem knows the packaging:
+// it says "fixed in 1.37.0-r15", counting the release number a backported
+// patch moves. A comparison against a published identifier and an upstream
+// version range knows none of that — it reads 1.37.0-r14 as "1.37.0 or
+// earlier" and fires whether or not the distribution patched it.
+//
+// Anything unrecognized reads as the weaker of the two. A word this does not
+// know is a word whose strength nobody here has checked, and treating it as
+// authoritative is the direction that hides something.
+func matched(details []struct {
+	Type string `json:"type"`
+}) finding.Matched {
+	for _, detail := range details {
+		if strings.Contains(strings.ToLower(detail.Type), "cpe") {
+			return finding.ByIdentifier
+		}
+	}
+	if len(details) == 0 {
+		return ""
+	}
+	return finding.ByAdvisory
 }

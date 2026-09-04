@@ -142,3 +142,95 @@ func TestAnEmptyRunIsNotAFailure(t *testing.T) {
 		t.Errorf("read %d issues from an empty run", len(result.Reported))
 	}
 }
+
+func TestHowGrypeReachedAMatchIsRead(t *testing.T) {
+	// The scanner tries advisory data for the package's own ecosystem first
+	// and falls back to comparing a published identifier against an upstream
+	// version range. On a distribution's package those two mean very
+	// different things, and the output says which happened.
+	//
+	// The real shape, from a scan of an Alpine image: an apk package whose
+	// only match detail is a cpe-match, with no fix information at all.
+	const output = `{
+	  "matches": [
+	    {
+	      "vulnerability": {"id": "CVE-2025-60876", "severity": "Medium",
+	        "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2025-60876",
+	        "fix": {"state": "", "versions": []}},
+	      "artifact": {"name": "busybox", "version": "1.37.0-r14",
+	        "purl": "pkg:apk/alpine/busybox@1.37.0-r14?distro=alpine-3.21.7"},
+	      "matchDetails": [{"type": "cpe-match"}]
+	    },
+	    {
+	      "vulnerability": {"id": "CVE-2026-1234", "severity": "High",
+	        "dataSource": "https://secdb.alpinelinux.org/",
+	        "fix": {"state": "fixed", "versions": ["1.37.0-r15"]}},
+	      "artifact": {"name": "curl", "version": "8.11.0-r2",
+	        "purl": "pkg:apk/alpine/curl@8.11.0-r2?distro=alpine-3.21.7"},
+	      "matchDetails": [{"type": "exact-direct-match"}]
+	    },
+	    {
+	      "vulnerability": {"id": "CVE-2026-9999", "severity": "Low",
+	        "dataSource": "https://example.test/"},
+	      "artifact": {"name": "mystery", "version": "1.0"},
+	      "matchDetails": []
+	    }
+	  ],
+	  "descriptor": {"name": "grype", "version": "0.118.0"}
+	}`
+
+	result, err := scanner.ParseGrype(strings.NewReader(output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Reported) != 3 {
+		t.Fatalf("%d reported, want 3", len(result.Reported))
+	}
+	how := map[string]finding.Reported{}
+	for _, r := range result.Reported {
+		how[r.Component.Name] = r
+	}
+
+	// Compared against an upstream range. A distribution that backported the
+	// fix looks the same as one that did not, which is what makes this the
+	// question worth surfacing.
+	if got := how["busybox"].Matched; got != finding.ByIdentifier {
+		t.Errorf("a cpe-match reads as %q, want it marked as reached by identifier", got)
+	}
+	if got := how["busybox"].MatchedFrom; got != "https://nvd.nist.gov/vuln/detail/CVE-2025-60876" {
+		t.Errorf("the match came from %q", got)
+	}
+
+	// The people who package it said so, and what they say about a fix is
+	// about the version actually installed.
+	if got := how["curl"].Matched; got != finding.ByAdvisory {
+		t.Errorf("an exact match against advisory data reads as %q", got)
+	}
+
+	// Nothing said. Left empty rather than guessed: a word this does not know
+	// is a word whose strength nobody has checked.
+	if got := how["mystery"].Matched; got != "" {
+		t.Errorf("a match with no details reads as %q, want nothing claimed", got)
+	}
+}
+
+func TestAnUnknownMatchKindIsTreatedAsTheWeakerOne(t *testing.T) {
+	// A scanner adding a match kind we have not seen must not have it read as
+	// "the people who package this confirmed it". Unrecognized is the
+	// direction that hides something, so it goes the other way.
+	const output = `{
+	  "matches": [{
+	    "vulnerability": {"id": "CVE-2026-1", "severity": "High"},
+	    "artifact": {"name": "thing", "version": "1.0"},
+	    "matchDetails": [{"type": "exact-direct-match"}, {"type": "cpe-match"}]
+	  }],
+	  "descriptor": {"name": "grype", "version": "0.118.0"}
+	}`
+	result, err := scanner.ParseGrype(strings.NewReader(output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.Reported[0].Matched; got != finding.ByIdentifier {
+		t.Errorf("a match reached both ways reads as %q, want the weaker of the two", got)
+	}
+}

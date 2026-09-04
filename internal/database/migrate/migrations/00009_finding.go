@@ -227,6 +227,21 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			"assigned_to"      ` + t.refNull + ` NULL,
 			"assigned_at"      ` + t.timestamp + ` NULL,
 			"last_changed_at"  ` + t.timestamp + ` NOT NULL,
+			-- How the scanner reached this, and where that match came from.
+			--
+			-- A distribution backports fixes without moving the upstream
+			-- version: busybox 1.37.0-r14 and 1.37.0-r15 are the same upstream
+			-- release and one of them may carry the patch. An advisory for the
+			-- package in its own ecosystem counts the release number; a
+			-- comparison against a published identifier and an upstream range
+			-- cannot, and fires whether or not the distribution has fixed it.
+			--
+			-- The source is per finding rather than per issue because one
+			-- issue reached through two ecosystems has two answers, and the
+			-- issue can hold only one — which is how an Alpine package came to
+			-- link to Debian's tracker.
+			"matched"          ` + t.kind + ` NULL,
+			"matched_from"     ` + t.free + ` NULL,
 			-- When this stops being an embargo, on a finding nobody has
 			-- announced. Null on a public one: it is already disclosed, and a
 			-- date on it would be a deadline for something that has happened.

@@ -2571,6 +2571,10 @@ export interface components {
              * @description Published probability of exploitation, 0 to 1
              */
             likelihood?: number;
+            /** @enum {string} */
+            matched?: "advisory" | "identifier";
+            /** @description Where this match came from */
+            matched_from?: string;
             /** @description Upstream has released nothing since the year this issue was named, and there is no fix. Two dates compared — it says why there is no fix, not that the project is abandoned */
             nothing_since?: boolean;
             places: components["schemas"]["SittingBody"][] | null;
@@ -2660,6 +2664,11 @@ export interface components {
              * @description Published estimate that this will be exploited, 0 to 1
              */
             likelihood?: number;
+            /**
+             * @description How the scanner reached this
+             * @enum {string}
+             */
+            matched?: "advisory" | "identifier";
             /**
              * Format: int64
              * @description How many steps sit between those two
@@ -5861,6 +5870,8 @@ export interface operations {
                 assigned?: "me" | "somebody" | "nobody";
                 /** @description Keep only groups whose issue we rated differently from the world — what has been re-prioritized here */
                 reassessed?: boolean;
+                /** @description Keep only groups a scanner reached by comparing a published identifier against an upstream version range, never against an advisory for the package in its own ecosystem. A distribution backports fixes without moving the upstream version, so these are neither confirmed nor refuted — somebody has to look, and finding them one at a time is not a thing anybody does */
+                unconfirmed?: boolean;
                 /** @description Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows */
                 exclude?: string[] | null;
                 /** @description How many to return */

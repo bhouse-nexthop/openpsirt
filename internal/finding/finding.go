@@ -153,6 +153,15 @@ type Finding struct {
 	// the statement that somebody bumped this and the bump did not resolve it;
 	// its value is what they bumped from, so saying so needs no second query.
 	ArrivedFrom string `bun:"arrived_from"`
+	// Matched says how the scanner reached this finding, and it is the
+	// difference between "the people who package this said so" and "the
+	// upstream version looks vulnerable and nobody has said otherwise".
+	Matched Matched `bun:"matched"`
+	// MatchedFrom is where this match came from, which is not always where the
+	// issue is written up: one issue reached through two ecosystems has two
+	// answers and the issue can hold only one. Empty where the scanner said
+	// nothing.
+	MatchedFrom string `bun:"matched_from"`
 	// DiscloseAt is when the embargo on this ends, on a finding nobody has
 	// announced. Nil on a disclosed one, which is already public.
 	//
@@ -188,6 +197,11 @@ type Reported struct {
 	// from "fixed in 0.17.0", and it is the one that decides whether an
 	// upgrade is overdue or fresh.
 	FixedAt *time.Time
+	// Matched is how the scanner reached this, and MatchedFrom is where that
+	// match came from. Kept because the two ways of reaching a finding mean
+	// different things about a distribution's package.
+	Matched     Matched
+	MatchedFrom string
 }
 
 // Applied describes what a run changed.

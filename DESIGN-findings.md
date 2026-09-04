@@ -2,7 +2,7 @@
 
 What a scan run found, and where.
 
-Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, MDL-22 to MDL-25,
+Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, MDL-22 to MDL-26,
 ING-02, ING-21,
 ING-29, ING-30, ING-39, ING-40, STA-03, STA-04, STA-05, STA-08, STA-17,
 RNK-01 to RNK-07, MDL-09, STA-01, STA-02, STA-06, STA-07, STA-09, STA-10,
@@ -113,6 +113,46 @@ their judgment with one nobody made.
 nothing puts it on the root, which is the honest answer where the flaw is in
 how the pieces fit together rather than in one of them. Naming something the
 build does not hold is refused: that is a claim about somebody else's software.
+
+## How a finding was reached, and why it decides what to do about it
+
+A scanner reaches a finding one of two ways, and on a distribution's package
+they mean very different things (MDL-26).
+
+**By advisory**: the people who package it published one for this package in
+this ecosystem. It counts the packaging — "fixed in 1.37.0-r15" — so what it
+says about a fix is about the version actually installed.
+
+**By identifier**: a published identifier compared against an upstream version
+range. It knows nothing about packaging. A distribution backports fixes without
+moving the upstream version, so `busybox 1.37.0-r14` and `1.37.0-r15` are the
+same release to an upstream range, and the match fires whether or not the patch
+is already in. Neither confirmed nor refuted — somebody has to look.
+
+That distinction is the first question anybody asks about a distribution's
+packages, and the scanner answers it in every result. It was being discarded,
+which left a finding nobody had confirmed looking exactly like one the people
+who package it had.
+
+**Unrecognized reads as the weaker of the two.** A word this does not know is a
+word whose strength nobody has checked, and reading it as authoritative is the
+direction that hides something.
+
+**Unknown is not unconfirmed.** Where a scanner said nothing, nothing is
+claimed — and the working list of "somebody has to look at this" excludes it. A
+list of that kind that quietly holds everything nobody classified is a list
+nobody can work down.
+
+**Where the match came from is kept on the finding, not on the issue.** One
+issue reached through two ecosystems has two answers and the issue can hold
+only one, so an issue first seen in a Debian image and later matched in an
+Alpine one showed Debian's tracker against the Alpine package. The issue still
+carries where it is written up; the finding carries where *its* match came
+from.
+
+**One answer per group.** Every place of an issue at a component comes from the
+same line of a scanner's report, and the applier writes that line to all of
+them, so there is nothing to reconcile.
 
 ## A scan governs what a scan found, and nothing else
 

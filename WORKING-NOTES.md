@@ -2755,3 +2755,50 @@ repair, and the tests caught it on the first run.
 behind, and the pinned checksums were verified against upstream's published
 list. Nothing watches these for us, which is worth noticing given what this
 tool is for.
+
+## How a match was made is now kept (2026-09-04)
+
+Reported: busybox findings on an Alpine package linking to Debian's security
+tracker, and "can we tell whether Alpine already patched it?". Both answered by
+the same thing, which the scanner was telling us and we were throwing away.
+
+**What the evidence showed.** Grype reported that busybox match as
+`matcher: apk-matcher, type: cpe-match, namespace: nvd:cpe`, constraint
+`<= 1.37.0`. It tried Alpine's security database, found no entry, and fell
+through to comparing the CPE against an upstream range — which reads
+`1.37.0-r14` as "1.37.0 or earlier" and would fire just the same if Alpine
+shipped the fix as `-r15`. So: neither confirmed nor refuted.
+
+That distinction is now on the finding (MDL-26), on the list, on the finding
+screen, and as a filter — because finding these one at a time is not a thing
+anybody does.
+
+**And the Debian link.** The advisory lives on the issue, and the issue is
+shared across products: the SONiC (Debian) scan saw CVE-2025-60876 first and
+wrote Debian's tracker, and the Alpine finding inherited it. Where a match came
+from is per finding now. The issue still says where it is written up.
+
+Three things I got wrong on the way, each caught by mutation testing:
+
+- **A guard for a case that cannot arise.** I wrote MIN/MAX aggregates to
+  handle a group whose places were "reached different ways", and a mutant
+  loosening it changed nothing — because every place of a group comes from one
+  line of a report, which the applier writes to all of them. Removed, and the
+  comment now states the real reason rather than defending an impossibility.
+- **A test that could not tell the filter from a looser one**, until it had a
+  finding the scanner said nothing about. That case also settled a real
+  question: unknown is not unconfirmed. A working list of "somebody has to
+  look" that quietly holds everything nobody classified is one nobody can work
+  down.
+- **A mutation harness that mangled its own arguments** and ran `git checkout`
+  over real edits. Recovered from backups taken before the run. Worth the note:
+  a harness that reverts with git will revert uncommitted work, so it should
+  restore from a copy.
+
+**Not done, and worth saying:** osv.dev was considered as an alternative
+scanner. It aggregates ecosystem-native advisories including Alpine's, so for
+this CVE it holds nothing either — the difference is that OSV-based scanners
+generally do not fall back to identifier matching, so the answer would be
+silence rather than a weak match. Fewer false positives, more false negatives.
+Recording the match kind gets the signal and the honesty about it, which is
+strictly more than either scanner alone.
