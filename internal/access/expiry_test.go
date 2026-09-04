@@ -191,3 +191,45 @@ func reread(t *testing.T, store *Store, ctx context.Context, identity string) *A
 	}
 	return got
 }
+
+func TestAskingForWhatNobodyOwnsWithoutAskingForADigestIsRefused(t *testing.T) {
+	// Every setting offered is one something reads. A person who asked for the
+	// unowned list and not for a digest has set a value that changes nothing,
+	// and a switch that changes nothing is worse than not offering it: they
+	// believe they have asked for something.
+	dbtest.Each(t, func(t *testing.T, db *database.DB) {
+		ctx := t.Context()
+		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+		if err := schema.Up(ctx, db, quiet); err != nil {
+			t.Fatal(err)
+		}
+		dbtest.Reset(t, db)
+		store := NewStore(db.DB)
+		person, err := store.Ensure(ctx, "ana", "Ana", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Off until asked for (NTF-03).
+		if got := reread(t, store, ctx, "ana"); got.Digest || got.DigestUnassigned {
+			t.Fatalf("a new person is subscribed to something: %+v", got)
+		}
+		if err := store.SetDigest(ctx, person.ID, false, true); err == nil {
+			t.Error("the unowned list was asked for without a digest to carry it")
+		}
+		if err := store.SetDigest(ctx, person.ID, true, true); err != nil {
+			t.Fatal(err)
+		}
+		if got := reread(t, store, ctx, "ana"); !got.Digest || !got.DigestUnassigned {
+			t.Errorf("what they asked for was not recorded: %+v", got)
+		}
+		// And turning the digest off takes the second with it, because the
+		// second is part of the first.
+		if err := store.SetDigest(ctx, person.ID, false, false); err != nil {
+			t.Fatal(err)
+		}
+		if got := reread(t, store, ctx, "ana"); got.Digest || got.DigestUnassigned {
+			t.Errorf("turning it off left something on: %+v", got)
+		}
+	})
+}

@@ -64,6 +64,18 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 			-- may never overwrite what somebody here decided.
 			"email"        ` + t.free + ` NULL,
 			"email_derived" ` + t.boolean + ` NOT NULL,
+			-- Whether they get a digest, and whether it lists what nobody
+			-- owns. Two switches rather than one because they answer
+			-- different questions — "remind me what is mine" and "tell me
+			-- what arrived" — and both are off by default: a digest nobody
+			-- asked for is mail somebody filters, and a filtered channel is
+			-- worse than none because it looks like it is working.
+			"digest"           ` + t.boolean + ` NOT NULL,
+			"digest_unassigned" ` + t.boolean + ` NOT NULL,
+			-- When the last one went, which is what "since the last digest"
+			-- means. Null until the first, and a first digest reports what is
+			-- outstanding rather than everything that ever arrived.
+			"digest_sent_at"   ` + t.timestamp + ` NULL,
 			"created_at"   ` + t.timestamp + ` NOT NULL,
 			"last_seen_at" ` + t.timestamp + ` NULL,
 			CONSTRAINT "person_identity_unique" UNIQUE ("identity")

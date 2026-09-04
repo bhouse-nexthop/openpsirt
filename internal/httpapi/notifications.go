@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/notify"
 )
 
@@ -144,6 +145,43 @@ func registerNotifications(api huma.API, in Ingest) {
 //
 // Spelled once here rather than at each producer: it is the address the
 // interface routes on, and three copies of it drift the moment a route moves.
+// registerDigest is the two switches a person sets for themselves.
+func registerDigest(api huma.API, in Ingest) {
+	huma.Register(api, requiring(huma.Operation{
+		OperationID: "set-digest", Method: http.MethodPut, Path: "/v1/session/me/digest",
+		Summary: "Choose what is sent to you daily",
+		Description: "Turns the daily digest on or off, and says whether it lists findings " +
+			"nobody owns as well as your own outstanding work.\n\n" +
+			"Both are off until asked for. The digest carries what nothing else told you: " +
+			"work that became yours without a message, and — where asked for — findings " +
+			"that opened since the last one and nobody has picked up.\n\n" +
+			"Asking for the second without the first is refused: a digest listing what " +
+			"nobody owns is still a digest.\n\n" +
+			"Nothing is sent anywhere without an address recorded against you, which " +
+			"`GET /v1/session/me` reports as `reachable`.",
+		Tags: []string{"Notifications"}, DefaultStatus: http.StatusNoContent,
+	}, ownSubject, ""), func(ctx context.Context, input *struct {
+		Body struct {
+			Digest     bool `json:"digest" doc:"Send a daily digest"`
+			Unassigned bool `json:"unassigned,omitempty" doc:"Include findings nobody owns"`
+		}
+	}) (*struct{}, error) {
+		subject, err := reading(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if subject.Kind != access.Person || in.DB == nil {
+			// A credential is not sent mail, so it has nothing to choose.
+			return nil, huma.Error403Forbidden("only a person chooses what is sent to them")
+		}
+		if err := access.NewStore(in.DB.DB).SetDigest(ctx, subject.ID,
+			input.Body.Digest, input.Body.Unassigned); err != nil {
+			return nil, huma.Error422UnprocessableEntity(err.Error())
+		}
+		return &struct{}{}, nil
+	})
+}
+
 func findingPath(product, stream, variant, vulnerability, component string) string {
 	return "/products/" + url.PathEscape(product) +
 		"/streams/" + url.PathEscape(stream) +

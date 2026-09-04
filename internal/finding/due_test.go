@@ -527,8 +527,8 @@ func (f *fixture) recorded(t *testing.T, id int64, identity string) {
 		Model(&map[string]interface{}{
 			"id": id, "identity": identity, "display_name": identity,
 			"is_admin": false, "is_bootstrap": false, "admin_derived": false,
-			"email_derived": false,
-			"created_at":    time.Now().UTC().Truncate(time.Microsecond),
+			"email_derived": false, "digest": false, "digest_unassigned": false,
+			"created_at": time.Now().UTC().Truncate(time.Microsecond),
 		}).
 		TableExpr("person").
 		Exec(t.Context())

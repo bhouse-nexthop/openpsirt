@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -40,6 +41,15 @@ type WhoBody struct {
 	Admin    bool      `json:"admin" doc:"Administers this deployment"`
 	Kind     string    `json:"kind" enum:"person,key" doc:"A person who signed in, or a credential"`
 	Reach    []CanBody `json:"reach" doc:"The products they can reach, and what they may do in each"`
+	// What they asked to be sent. Answered here because a screen offering the
+	// switches has to know their state, and because a person is the only one
+	// who decides them.
+	Digest           bool `json:"digest,omitempty" doc:"They asked for a daily digest"`
+	DigestUnassigned bool `json:"digest_unassigned,omitempty" doc:"Their digest lists findings nobody owns as well as their own outstanding work"`
+	// Reachable says there is somewhere to send it. Without an address a
+	// digest is a switch that changes nothing, and a screen should say so
+	// rather than offer it.
+	Reachable bool `json:"reachable,omitempty" doc:"An address is recorded for them, so anything can be sent at all"`
 }
 
 func registerWhoAmI(api huma.API, in Ingest) {
@@ -64,6 +74,16 @@ func registerWhoAmI(api huma.API, in Ingest) {
 		body := WhoBody{
 			Identity: subject.Identity, Admin: subject.Admin,
 			Kind: string(subject.Kind), Reach: []CanBody{},
+		}
+		// What they asked to be sent, where they are a person and this
+		// process has somewhere to read it from. A credential asks for
+		// nothing and is sent nothing.
+		if in.DB != nil && subject.Kind == access.Person {
+			if me, err := access.NewStore(in.DB.DB).ByIdentity(ctx, subject.Identity); err == nil {
+				body.Digest = me.Digest
+				body.DigestUnassigned = me.DigestUnassigned
+				body.Reachable = strings.TrimSpace(me.Email) != ""
+			}
 		}
 
 		if in.DB == nil {

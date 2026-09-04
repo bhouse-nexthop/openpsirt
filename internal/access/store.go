@@ -38,10 +38,16 @@ type Account struct {
 	//
 	// Empty is ordinary. An address is optional, and somebody without one is
 	// told nothing outside the application and keeps the area inside it.
-	Email        string     `bun:"email"`
-	EmailDerived bool       `bun:"email_derived,notnull"`
-	CreatedAt    time.Time  `bun:"created_at,notnull"`
-	LastSeenAt   *time.Time `bun:"last_seen_at"`
+	Email        string `bun:"email"`
+	EmailDerived bool   `bun:"email_derived,notnull"`
+	// Digest says they asked for one, and DigestUnassigned that it lists what
+	// nobody owns as well as what is theirs (NTF-03, NTF-17). Both off by
+	// default: a digest nobody asked for is mail somebody filters.
+	Digest           bool       `bun:"digest,notnull"`
+	DigestUnassigned bool       `bun:"digest_unassigned,notnull"`
+	DigestSentAt     *time.Time `bun:"digest_sent_at"`
+	CreatedAt        time.Time  `bun:"created_at,notnull"`
+	LastSeenAt       *time.Time `bun:"last_seen_at"`
 }
 
 // Grant is one role held against one product.
@@ -179,6 +185,29 @@ func (s *Store) SetEmail(ctx context.Context, personID int64, address string, de
 	}
 	if _, err := update.Exec(ctx); err != nil {
 		return fmt.Errorf("record where to reach person %d: %w", personID, err)
+	}
+	return nil
+}
+
+// SetDigest records what somebody asked to be sent.
+//
+// Both switches are theirs rather than an administrator's: what somebody wants
+// to read is not something to be decided for them, and a channel they cannot
+// turn off is one they route to a folder.
+func (s *Store) SetDigest(ctx context.Context, personID int64, wanted, unowned bool) error {
+	if personID == 0 {
+		return errors.New("a preference needs somebody to belong to")
+	}
+	// Asking for what nobody owns without asking for a digest at all is a
+	// setting that changes nothing, which is worse than not offering it.
+	if unowned && !wanted {
+		return errors.New("a digest listing what nobody owns is still a digest: ask for one")
+	}
+	if _, err := s.db.NewUpdate().Model((*Account)(nil)).
+		Set("digest = ?", wanted).
+		Set("digest_unassigned = ?", unowned).
+		Where("id = ?", personID).Exec(ctx); err != nil {
+		return fmt.Errorf("record what person %d asked to be sent: %w", personID, err)
 	}
 	return nil
 }

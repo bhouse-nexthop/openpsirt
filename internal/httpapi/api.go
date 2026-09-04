@@ -220,6 +220,7 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	registerCoverage(api, in)
 	registerAudit(api, in)
 	registerNotifications(api, in)
+	registerDigest(api, in)
 	registerSession(api, in)
 	registerTokens(api, in)
 	registerFindingDetail(api, in)

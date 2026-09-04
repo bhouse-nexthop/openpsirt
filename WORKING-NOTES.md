@@ -3039,3 +3039,43 @@ was edited in place, which is what the pre-release rule says to do.
 Also this stretch: the finding screen's evidence grid was `auto-fit` with a
 300px minimum, which took a wide screen to three and sometimes four columns.
 Capped at two, collapsing to one under 900px like the other grids.
+
+## The SBOM producer now names the program, and what that does here (2026-09-04)
+
+`sonic-buildimage` at `cc3accc73` attributes code compiled into a program to
+the program rather than to the filesystem it sits in. The mellanox fixture is
+from a real build of it; the broadcom one is being rebuilt.
+
+**What it fixed.** A Go runtime read as something the switch's filesystem
+depends on. Four different runtimes ship in that image and all four hung off
+`host-image` or a container, with nothing saying which program each belonged
+to. Now `stdlib go1.24.9` is under `/usr/bin/containerd`, `go1.25.6` under
+`/usr/bin/otelcol-contrib`, and so on.
+
+**A property worth knowing rather than a defect.** The document carries
+thirteen program components and this reads nine of them. The synthesized
+programs state no package identifier and no version, so identity falls back to
+name — and `/usr/bin/containerd` in the host filesystem and in the otel
+container are one component here. Four paths appear in two scopes each, which
+is exactly the four that merge.
+
+It collapses only what is genuinely alike. A place is the component and its
+direct consumer, so two modules under those two containerds are one place only
+when both ship the same module at the same version — a different version is a
+different package identifier and cannot merge. Treating that as one piece of
+work is defensible: same code, one judgment.
+
+Not worth changing the producer for. The only field available to distinguish
+them is `version`, and putting a scope name there is a lie in the document that
+every consumer has to know to ignore. If it ever matters — somebody wants to
+decide about the host's containerd and not the container's — the honest fix is
+a hash on the program component.
+
+**What the broadcom rebuild should do to the full-size test**, written before
+it lands so the check means something. Three constants are pinned:
+`packages = 6845`, `upstreams = 551`, `cpes = 6567`. The programs state neither
+an upstream nor a CPE, so the prediction is that **packages rises by the number
+of programs and the other two do not move at all** — the same shape as the last
+producer change, where 190 components went and the two constants stayed put
+because none of them stated either. If `upstreams` or `cpes` moves, something
+other than this change did it and is worth finding before the fixture is taken.

@@ -1850,6 +1850,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/session/me/digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Choose what is sent to you daily
+         * @description Turns the daily digest on or off, and says whether it lists findings nobody owns as well as your own outstanding work.
+         *
+         *     Both are off until asked for. The digest carries what nothing else told you: work that became yours without a message, and — where asked for — findings that opened since the last one and nobody has picked up.
+         *
+         *     Asking for the second without the first is refused: a digest listing what nobody owns is still a digest.
+         *
+         *     Nothing is sent anywhere without an address recorded against you, which `GET /v1/session/me` reports as `reachable`.
+         *
+         *     **Requires:** your own credential
+         */
+        put: operations["set-digest"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/settings": {
         parameters: {
             query?: never;
@@ -4091,6 +4119,18 @@ export interface components {
              */
             size_bytes: number;
         };
+        "Set-digestRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Set-digestRequest.json
+             */
+            readonly $schema?: string;
+            /** @description Send a daily digest */
+            digest: boolean;
+            /** @description Include findings nobody owns */
+            unassigned?: boolean;
+        };
         "Set-fix-targetsRequest": {
             /**
              * Format: uri
@@ -4434,6 +4474,10 @@ export interface components {
             readonly $schema?: string;
             /** @description Administers this deployment */
             admin: boolean;
+            /** @description They asked for a daily digest */
+            digest?: boolean;
+            /** @description Their digest lists findings nobody owns as well as their own outstanding work */
+            digest_unassigned?: boolean;
             /** @description What this deployment calls them */
             identity: string;
             /**
@@ -4445,6 +4489,8 @@ export interface components {
             name: string;
             /** @description The products they can reach, and what they may do in each */
             reach: components["schemas"]["CanBody"][] | null;
+            /** @description An address is recorded for them, so anything can be sent at all */
+            reachable?: boolean;
         };
         "Withdraw-roleResponse": {
             /**
@@ -7347,6 +7393,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["WhoBody"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Set-digestRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

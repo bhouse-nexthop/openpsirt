@@ -100,6 +100,7 @@ About whoever is asking. No role is needed and none helps.
 | DELETE | `/v1/notifications/{id}` | — |  |
 | DELETE | `/v1/session` | — |  |
 | GET | `/v1/session/me` | — |  |
+| PUT | `/v1/session/me/digest` | — |  |
 | GET | `/v1/tokens` | — |  |
 | POST | `/v1/tokens` | — |  |
 | DELETE | `/v1/tokens/{name}` | — |  |

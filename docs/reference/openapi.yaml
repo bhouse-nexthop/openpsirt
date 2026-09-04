@@ -3613,6 +3613,25 @@ components:
         - hash
         - held
       type: object
+    Set-digestRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Set-digestRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        digest:
+          description: Send a daily digest
+          type: boolean
+        unassigned:
+          description: Include findings nobody owns
+          type: boolean
+      required:
+        - digest
+      type: object
     Set-fix-targetsRequest:
       additionalProperties: false
       properties:
@@ -4219,6 +4238,12 @@ components:
         admin:
           description: Administers this deployment
           type: boolean
+        digest:
+          description: They asked for a daily digest
+          type: boolean
+        digest_unassigned:
+          description: Their digest lists findings nobody owns as well as their own outstanding work
+          type: boolean
         identity:
           description: What this deployment calls them
           type: string
@@ -4238,6 +4263,9 @@ components:
           type:
             - array
             - "null"
+        reachable:
+          description: An address is recorded for them, so anything can be sent at all
+          type: boolean
       required:
         - identity
         - name
@@ -8421,6 +8449,39 @@ paths:
       summary: Describe whoever is asking
       tags:
         - Access
+      x-openpsirt-requires:
+        scope: self
+  /v1/session/me/digest:
+    put:
+      description: |-
+        Turns the daily digest on or off, and says whether it lists findings nobody owns as well as your own outstanding work.
+
+        Both are off until asked for. The digest carries what nothing else told you: work that became yours without a message, and — where asked for — findings that opened since the last one and nobody has picked up.
+
+        Asking for the second without the first is refused: a digest listing what nobody owns is still a digest.
+
+        Nothing is sent anywhere without an address recorded against you, which `GET /v1/session/me` reports as `reachable`.
+
+        **Requires:** your own credential
+      operationId: set-digest
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Set-digestRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Choose what is sent to you daily
+      tags:
+        - Notifications
       x-openpsirt-requires:
         scope: self
   /v1/settings:
