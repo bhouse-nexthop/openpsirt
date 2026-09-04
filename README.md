@@ -16,21 +16,32 @@ place to triage what it finds and track it through to a fix.
 > What exists: the build and validation pipeline; the database layer across all
 > four supported engines; the catalog and dependency graph; inventory upload
 > and the reader behind it; scanning, run here, with findings tracked over
-> intervals; sign-in through OIDC, GitHub or a trusted header, with sessions,
-> API keys and personal tokens; roles and visibility enforced in the data
-> layer; and triage — decisions, approval, revision history, comments and the
-> review queue.
+> intervals and everything tracked scanned again on a schedule; sign-in through
+> OIDC, GitHub or a trusted header, with sessions, API keys and personal
+> tokens; roles and visibility enforced in the data layer; and triage —
+> decisions, approval, revision history, comments, bulk claims and the review
+> queue.
 >
-> Reporting has begun: release-to-release comparison, trends, deadlines and
-> what a new line would inherit.
+> Reporting: release-to-release comparison, trends, deadlines, release
+> readiness and what a new line would inherit. A fix is declared rather than
+> completed — somebody says which releases it is meant to reach, and the next
+> scan of each answers whether it arrived. What people are told about is an
+> area inside the application; nothing leaves it yet.
 >
-> The web interface: sign-in, products, findings, finding detail, the
+> Private findings have begun, which is where the work is. A flaw in what a
+> build ships can be recorded by hand; it starts undisclosed, its embargo has
+> an end, moving that end costs a reason and past a threshold a second person,
+> and the date arriving tells somebody.
+>
+> The web interface: sign-in, home, the catalog, findings, finding detail, the
 > dependency tree, decisions with their history, the review queue, assignment,
-> bulk triage and a home page — embedded into the binary and served from it.
+> bulk triage, inventory upload, release comparison, people and roles, and
+> settings — embedded into the binary and served from it.
 >
-> What does not: the administration screens, remediation tracking,
-> notifications, private findings and attachments. The design record is in
-> [DECISIONS.md](DECISIONS.md).
+> What does not: advisory publication and attachments, mail and the digest,
+> remediation metrics, export, findings from a static analyzer, and a screen
+> for recording a flaw — that last one is an endpoint with nothing calling it.
+> The design record is in [DECISIONS.md](DECISIONS.md).
 
 ## What it does
 
