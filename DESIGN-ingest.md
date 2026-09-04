@@ -462,21 +462,27 @@ The same walk answers the question a large document otherwise hides: how many
 structures carried by a single component are the ones a small document does
 not have and a hand-written one does not think of.
 
-### The reader accepts a minor version nothing has been tested against
+### A minor revision of the format is read, and now shown to be
 
 The reader checks the major version and refuses what it has not been written
 against; anything within that major version parses. That is deliberate — a
-minor revision of the format adds fields rather than moving the ones read —
-but it means a revision is **accepted by construction rather than by
-evidence**, and every fixture here states 1.6.
+minor revision adds fields rather than moving the ones read — but it made every
+revision **accepted by construction rather than by evidence**, and for a while
+that gap was live: the reference producer moved to 1.7 while every fixture
+stated 1.6, so the inventory this deployment's own image carries and the one
+the demo ingests were both revisions nothing had been tested against.
 
-That stopped being theoretical. The reference producer now emits **1.7**, so
-the inventory this deployment's own image carries and the one the demo ingests
-are both 1.7 documents going through a reader whose fixtures are all 1.6. It
-demonstrably works — the components are placed and the findings are the same
-shape — and nothing would notice if a later revision moved something the reader
-depends on. A fixture at the newer revision through the existing reader tests
-is what turns the first sentence of this section into a checked claim.
+A fixture at the newer revision closed it. It is the document the image ships,
+read through the same reader, asserting the parts a revision could move: the
+root, the component count, the edges, and the package identifiers the graph is
+keyed on. A later revision that moved any of them fails here rather than in a
+deployment.
+
+It also brought eight key paths nothing had decided about — a component's
+licenses, description, publisher and SWID tag — each now recorded as seen and
+left alone. That is the check working as intended: a producer filling in a
+field it did not fill before is something somebody answers, rather than
+something that quietly goes nowhere.
 
 ### What the scanner says that is not kept
 

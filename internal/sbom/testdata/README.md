@@ -9,7 +9,20 @@ nobody can tell a producer quirk from a typo in.
 | `build-fragment.cdx.json` | Real output. One artifact a build step produced, on its way into an inventory. It names no component of its own, which is why it is refused |
 | `suppression-from-patch.openvex.json` | Real output. One claim a build extracted from a patch of its own. It names a source tree rather than a package, which is what makes matching a claim to a component something that can fail |
 | `image.cdx.json` | Written by hand, in the shape of the aggregate inventory a switch operating-system build emits: an image at the root, containers under it, packages under those, a shared library reached from several of them, and a forked component whose pedigree carries the version it was forked from. Not a producer's output, and not a substitute for one |
+| `openpsirt-image.cdx.json` | Real output, and the only fixture at **CycloneDX 1.7**. The inventory this deployment's own image carries of itself: the scanner's description of the container, composed from its parts by the tool that builds it. It is what the image ships and what the demo ingests, so the revision every shipped inventory now states is read here by evidence rather than by construction |
 | `switch-image.cdx.json.xz` | Real output, and the full-size one. The public SONiC network operating-system image, 6,845 components and 18,561 edges over 17 MB, from a build of sonic-buildimage#29237. Compressed because the shape is the point and 18 MB of it is not. See below |
+
+The 1.7 document is deliberately uncompressed, unlike the full-size one. That
+fixture skips where `xz` is missing, which is the right trade for something
+kept for its scale; a fixture kept to prove a format revision is read has to
+run wherever the suite does.
+
+It brought eight paths with it, all recorded as skipped and all for the same
+reason: a component's licenses, description, publisher and SWID tag are things
+the scanner fills in and nothing here acts on. Identity comes from the package
+identifier, the national database keys on the CPE, and neither of those is any
+of these. They are named so that reading one later is a decision rather than a
+discovery.
 
 `producer-paths.txt` records every key path these documents contain and what
 the reader does with it. Regenerate with `go test ./internal/sbom -update`,

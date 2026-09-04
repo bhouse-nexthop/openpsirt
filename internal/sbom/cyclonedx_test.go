@@ -561,3 +561,43 @@ func TestOneHugeDependencyListIsRefusedWhileItIsRead(t *testing.T) {
 		t.Errorf("refusal does not name the limit: %v", err)
 	}
 }
+
+func TestReadsTheRevisionEveryShippedInventoryStates(t *testing.T) {
+	// The reader checks the major version and accepts any minor revision,
+	// which is deliberate: a revision of the format adds fields rather than
+	// moving the ones read. What that leaves is a revision accepted by
+	// construction rather than by evidence, and the one every inventory this
+	// deployment ships now states was exactly that — the producer moved to
+	// 1.7 while every fixture here said 1.6.
+	//
+	// So this is the same document the image carries and the demo ingests,
+	// read through the same reader, asserting the parts a revision could move:
+	// the root, the components, the edges, and the identifiers the graph is
+	// built from.
+	doc, err := sbom.Read(fixture(t, "openpsirt-image.cdx.json"), sbom.Limits{})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if doc.Root.Name != "openpsirt-image" {
+		t.Errorf("root is %q", doc.Root.Name)
+	}
+	if len(doc.Components) != 347 {
+		t.Errorf("%d components, want 347", len(doc.Components))
+	}
+	if len(doc.Dependencies) == 0 {
+		t.Fatal("no edges resolved, so the document describes a pile rather than a graph")
+	}
+	// Every component the graph is keyed on has to arrive with something to
+	// key it on. A revision that moved where the package identifier sits would
+	// leave these empty and the reader would report a document that parsed.
+	var identified int
+	for _, c := range doc.Components {
+		if c.Purl != "" {
+			identified++
+		}
+	}
+	if identified < len(doc.Components)-1 {
+		t.Errorf("%d of %d components carry a package identifier",
+			identified, len(doc.Components))
+	}
+}
