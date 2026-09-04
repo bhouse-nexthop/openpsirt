@@ -487,15 +487,31 @@ something that quietly goes nowhere.
 ### What the scanner says while succeeding is kept
 
 Its warnings were read only when it failed, which discarded the case that
-matters: a run that answers and says its answer is coarse. Told to match Go
-binaries carrying no function symbols it says so and falls back to module
-granularity, which can report a component as affected when the vulnerable
-function is not linked in — a qualification on every finding that run produced.
+matters: a run that answers and says its answer is coarse.
 
 It is recorded on the run and kept apart from the failure. A run that warned
 and a run that failed are different things, and one column holding either makes
 them one. It travels with the receipt, because what became of an upload is
 where somebody reads it, and a warning shown to nobody is a warning discarded.
+
+**Today it captures nothing, for a reason worth stating.** A scan is run over
+an inventory written here from the components held, not over the document that
+arrived: name, version, package identifier and CPE, and nothing else. So the
+scanner is told far less than the producer said, and the warnings it would
+raise about a producer's document are warnings it has no grounds to raise about
+ours.
+
+The one that prompted this is exactly that case. Given the document the
+producer emitted, the scanner says Go binaries carry no function symbols and it
+is falling back to module granularity, which can report a component as affected
+when the vulnerable function is not linked in. Given ours it says nothing,
+because ours carries no notion of a binary at all — and the findings are the
+same either way, which is the point: the coarseness is real and the sentence
+that would have disclosed it is unreachable.
+
+Recorded rather than fixed. Carrying a producer's metadata as far as the
+scanner is a change to what an inventory is here, and it is worth making
+deliberately or not at all.
 
 Two things reported per match are kept for the same reason, and both are
 evidence for the question MDL-26 asks rather than a second way of answering it:
