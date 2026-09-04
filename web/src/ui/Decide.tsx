@@ -39,6 +39,7 @@ const OUTCOMES = [
   { value: "not-applicable", label: "Not applicable" },
   { value: "deferred", label: "Deferred" },
   { value: "wont-fix", label: "Won't fix" },
+  { value: "already-fixed", label: "Already fixed" },
 ] as const;
 
 // How many covered places the reach is merged from. One request per place,
@@ -71,6 +72,7 @@ export function Decide({
   const queries = useQueryClient();
   const draftKey = `decide:${at.product}:${at.stream}:${at.variant}:${at.vulnerability}:${at.component}`;
   const [outcome, setOutcome] = useState(prefill?.outcome ?? "not-applicable");
+  const [fixedVersion, setFixedVersion] = useState("");
   const [justification, setJustification] = useState<Justification>(
     (prefill?.justification as Justification | undefined) ?? "vulnerable_code_not_in_execute_path",
   );
@@ -92,6 +94,11 @@ export function Decide({
   const covering = open.filter((p) => !excluded.has(p.place ?? ""));
   const needsJustification = outcome === "not-applicable";
   const needsDate = outcome === "deferred";
+  // A claim that the fix is already here is a fact somebody can check against
+  // whoever packages the component, and it is required for that reason
+  // (TRI-51). The server refuses it empty; asking here means the person finds
+  // out while they are still looking at the tracker.
+  const needsFixedVersion = outcome === "already-fixed";
   const needsMitigation = needsJustification && justification === "inline_mitigations_already_exist";
 
   // Where a judgment here lands beyond this build, merged across a sample of
@@ -160,14 +167,16 @@ export function Decide({
     covering.length > 0 &&
     reasoning.trim() !== "" &&
     (!needsDate || until !== "") &&
+    (!needsFixedVersion || fixedVersion.trim() !== "") &&
     (!needsMitigation || mitigation.trim() !== "");
 
   function body(narrow: boolean) {
     return {
-      outcome: outcome as "affected" | "not-applicable" | "deferred" | "wont-fix",
+      outcome: outcome as "affected" | "not-applicable" | "deferred" | "wont-fix" | "already-fixed",
       ...(needsJustification ? { justification } : {}),
       ...(needsMitigation ? { mitigation } : {}),
       ...(needsDate ? { deferred_until: until } : {}),
+      ...(needsFixedVersion ? { fixed_version: fixedVersion.trim() } : {}),
       reasoning,
       ...(narrow && excluded.size > 0 ? { places: covering.map((p) => p.place ?? "") } : {}),
       ...(extending ? { extends: extending.claimId } : {}),
@@ -258,6 +267,10 @@ export function Decide({
       setRefused("Reasoning is required.");
       return;
     }
+    if (needsFixedVersion && !fixedVersion.trim()) {
+      setRefused("Say which package version the fix arrived in, so somebody can check it.");
+      return;
+    }
     if (needsDate && !until) {
       setRefused("A deferral needs a date.");
       return;
@@ -288,7 +301,7 @@ export function Decide({
         return;
       }
       if (inField) return;
-      if ("1234".includes(event.key) && event.key !== "") {
+      if ("12345".includes(event.key) && event.key !== "") {
         const chosen = OUTCOMES[Number(event.key) - 1];
         if (chosen) {
           event.preventDefault();
@@ -404,6 +417,24 @@ export function Decide({
           <span className="hint">
             Nothing here watches configuration, so this claim will not lapse when the thing that
             stops it is removed. Say what to go and check.
+          </span>
+        </div>
+      )}
+
+      {needsFixedVersion && (
+        <div className="field">
+          <label htmlFor={`${draftKey}-fixed`}>Fixed in</label>
+          <input
+            id={`${draftKey}-fixed`}
+            type="text"
+            value={fixedVersion}
+            placeholder="the package version the fix arrived in, as the packager writes it"
+            onChange={(event) => setFixedVersion(event.target.value)}
+          />
+          <span className="hint">
+            A backported fix does not move the upstream version, so nothing here can see it. This is
+            what the next person checks against the packager's own record — it is recorded and never
+            compared against the version shipping.
           </span>
         </div>
       )}

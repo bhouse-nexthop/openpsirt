@@ -74,7 +74,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 		Tags: []string{"Triage"},
 	}, func(ctx context.Context, input *struct {
 		Product string `query:"product" doc:"Limit to one product, by name"`
-		Outcome string `query:"outcome" enum:"affected,not-applicable,deferred,wont-fix" doc:"Limit to one outcome"`
+		Outcome string `query:"outcome" enum:"affected,not-applicable,deferred,wont-fix,already-fixed" doc:"Limit to one outcome"`
 		State   string `query:"state" enum:"proposed,approved,withdrawn,lapsed" doc:"Limit to one state"`
 		Expired bool   `query:"expired" doc:"Only deferrals whose date has passed"`
 		Limit   int    `query:"limit" default:"50" minimum:"1" maximum:"200"`

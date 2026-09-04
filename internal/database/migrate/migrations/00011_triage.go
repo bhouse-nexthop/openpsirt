@@ -105,6 +105,17 @@ func upTriage(ctx context.Context, tx *sql.Tx) error {
 			-- Set only for a deferral, which is the one outcome that expires
 			-- on a date rather than on the code changing.
 			"deferred_until"             ` + t.date + ` NULL,
+			-- Set only where the claim is that the fix is already here: the
+			-- package version whoever packages this states it arrived in.
+			-- Required there, because that outcome asserts a fact somebody can
+			-- check against the packager's own record rather than a judgment,
+			-- and one with nothing to check is the one to be most careful of.
+			--
+			-- Free text rather than one of the version columns above. Those
+			-- two are part of the index every "does this decision apply here"
+			-- lookup takes and are bounded for that reason; this is never
+			-- matched on and never compared, only read by a person.
+			"fixed_version"              ` + t.free + ` NULL,
 			-- How bad this was judged to be when the claim was made, in
 			-- hundredths. Kept with the decision rather than read from the
 			-- issue later, because the question a re-affirmation asks is

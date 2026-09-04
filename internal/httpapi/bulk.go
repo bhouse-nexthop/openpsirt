@@ -130,9 +130,10 @@ func registerBulk(api huma.API, in Ingest) {
 		Body      struct {
 			Vulnerabilities []string `json:"vulnerabilities" minItems:"1" maxItems:"2000" doc:"The issues this claim covers, by name"`
 			SelectedBy      string   `json:"selected_by" minLength:"1" maxLength:"500" doc:"How you narrowed this set. Recorded, and never part of the claim"`
-			Outcome         string   `json:"outcome" enum:"affected,not-applicable,deferred,wont-fix"`
+			Outcome         string   `json:"outcome" enum:"affected,not-applicable,deferred,wont-fix,already-fixed"`
 			Justification   string   `json:"justification,omitempty" doc:"Required when it does not apply"`
 			DeferredUntil   string   `json:"deferred_until,omitempty" doc:"Required when it is deferred. A date, as 2026-03-31"`
+			FixedVersion    string   `json:"fixed_version,omitempty" doc:"Required when the outcome is already-fixed. The package version whoever packages this states the fix arrived in — which must be one release carrying the fix for every issue named, since the claim has to hold for all of them"`
 			Reasoning       string   `json:"reasoning" minLength:"1" doc:"Why this holds for every issue named"`
 		}
 	}) (*struct {
@@ -207,6 +208,7 @@ func registerBulk(api huma.API, in Ingest) {
 			Outcome:       triage.Outcome(input.Body.Outcome),
 			Justification: triage.Justification(input.Body.Justification),
 			DeferredUntil: until,
+			FixedVersion:  input.Body.FixedVersion,
 			Reasoning:     input.Body.Reasoning,
 			SelectedBy:    input.Body.SelectedBy,
 			By:            subject.ID,

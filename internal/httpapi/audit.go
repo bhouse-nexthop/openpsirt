@@ -33,10 +33,11 @@ type JudgedBody struct {
 	Version   string `json:"version,omitempty"`
 	Consumer  string `json:"consumer,omitempty" doc:"What pulls the component in. Absent where the build holds it directly"`
 
-	Outcome       string `json:"outcome" enum:"affected,not-applicable,deferred,wont-fix"`
+	Outcome       string `json:"outcome" enum:"affected,not-applicable,deferred,wont-fix,already-fixed"`
 	Justification string `json:"justification,omitempty" doc:"The recognized reason it does not apply"`
 	Mitigation    string `json:"mitigation,omitempty" doc:"What stops it, where the reason is that a control already does. Nothing here notices that control being removed, so this is the record somebody checks"`
 	DeferredUntil string `json:"deferred_until,omitempty"`
+	FixedVersion  string `json:"fixed_version,omitempty" doc:"The package version the claim says the fix arrived in, where it claims one has. What somebody auditing an already-fixed claim checks against the packager's own record"`
 	Reasoning     string `json:"reasoning" doc:"The words the standing agreement was given for. Editing them withdraws the agreement, so this and what was agreed to cannot drift apart"`
 
 	State    string `json:"state" enum:"proposed,approved,withdrawn,lapsed"`
@@ -69,7 +70,7 @@ func registerAudit(api huma.API, in Ingest) {
 		Tags: []string{"Reports"},
 	}, func(ctx context.Context, input *struct {
 		Product string `query:"product" doc:"Limit to one product, by name"`
-		Outcome string `query:"outcome" enum:"affected,not-applicable,deferred,wont-fix" doc:"Limit to one kind of judgment"`
+		Outcome string `query:"outcome" enum:"affected,not-applicable,deferred,wont-fix,already-fixed" doc:"Limit to one kind of judgment"`
 		State   string `query:"state" enum:"proposed,approved,withdrawn,lapsed" doc:"Limit to one state"`
 		From    string `query:"from" doc:"Only judgments proposed on or after this date, as YYYY-MM-DD"`
 		To      string `query:"to" doc:"Only judgments proposed before this date, as YYYY-MM-DD"`
@@ -141,6 +142,9 @@ func registerAudit(api huma.API, in Ingest) {
 			}
 			if row.DeferredUntil != nil {
 				body.DeferredUntil = row.DeferredUntil.UTC().Format(time.DateOnly)
+			}
+			if row.FixedVersion != nil {
+				body.FixedVersion = *row.FixedVersion
 			}
 			if row.EndedAt != nil {
 				body.EndedAt = stamp(*row.EndedAt)

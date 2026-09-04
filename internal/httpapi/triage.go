@@ -26,7 +26,7 @@ type DecisionBody struct {
 	// ClaimID is the action this row was written by. The review queue lists
 	// claims and approval works on them; a decision is one row of one.
 	ClaimID int64  `json:"claim_id,omitempty" doc:"The claim this decision is one row of: the action that wrote it, which is what the review queue lists and what is approved"`
-	Outcome string `json:"outcome" enum:"affected,not-applicable,deferred,wont-fix" doc:"What was decided"`
+	Outcome string `json:"outcome" enum:"affected,not-applicable,deferred,wont-fix,already-fixed" doc:"What was decided"`
 	// Justification is required for not-applicable and meaningless elsewhere:
 	// the claim that something does not affect us is which of the recognized
 	// reasons applies.
@@ -36,8 +36,12 @@ type DecisionBody struct {
 	// Naming it does not fix that; it makes the claim checkable (TRI-39).
 	Mitigation    string `json:"mitigation,omitempty" doc:"What actually stops it — the rule, the setting, the service that is not exposed. Required when the reason is that mitigations already exist, and refused with any other"`
 	DeferredUntil string `json:"deferred_until,omitempty" doc:"When a deferral returns, as a date. Required for a deferral"`
-	Reasoning     string `json:"reasoning" minLength:"1" doc:"Why, in markdown. Somebody else has to agree with this"`
-	State         string `json:"state,omitempty" enum:"proposed,approved,withdrawn,lapsed" doc:"Where it has got to"`
+	// FixedVersion is what makes the already-fixed claim checkable against
+	// whoever packages the component, rather than something to be taken on
+	// trust (TRI-51).
+	FixedVersion string `json:"fixed_version,omitempty" doc:"The package version whoever packages this states the fix arrived in. Required when the outcome is already-fixed, and refused with any other. Recorded and never compared against the version shipping"`
+	Reasoning    string `json:"reasoning" minLength:"1" doc:"Why, in markdown. Somebody else has to agree with this"`
+	State        string `json:"state,omitempty" enum:"proposed,approved,withdrawn,lapsed" doc:"Where it has got to"`
 	// NeedsApproval says whether this is waiting for a second person. A short
 	// deferral is not.
 	NeedsApproval bool `json:"needs_approval,omitempty" doc:"Whether a second person has to agree before it takes effect"`
@@ -394,10 +398,12 @@ func registerProposing(api huma.API, in Ingest) {
 		OperationID: "decide", Method: http.MethodPost,
 		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision",
 		Summary: "Record a triage decision for a finding",
-		Description: "Records how a finding was triaged: `affected`, `not-applicable`, `deferred` " +
-			"or `wont-fix`.\n\n" +
+		Description: "Records how a finding was triaged: `affected`, `not-applicable`, `deferred`, " +
+			"`wont-fix` or `already-fixed`.\n\n" +
 			"`not-applicable` requires a `justification` from the standard VEX vocabulary. " +
-			"`deferred` requires `deferred_until` as a date.\n\n" +
+			"`deferred` requires `deferred_until` as a date. `already-fixed` requires " +
+			"`fixed_version`, the version whoever packages the component states the fix " +
+			"arrived in — it is recorded for a reader and never compared against what ships.\n\n" +
 			"The decision applies to every build running the same component and consumer upstream " +
 			"versions, including future releases — it is matched by code, not copied between " +
 			"releases. It stops applying automatically when either upstream version changes.\n\n" +
@@ -435,6 +441,7 @@ func registerProposing(api huma.API, in Ingest) {
 			Outcome:       triage.Outcome(input.Body.Outcome),
 			Justification: triage.Justification(input.Body.Justification),
 			Mitigation:    input.Body.Mitigation,
+			FixedVersion:  input.Body.FixedVersion,
 			Reasoning:     input.Body.Reasoning,
 			By:            subject.ID,
 			SeverityCenti: at.SeverityCenti,
@@ -483,7 +490,7 @@ func registerProposing(api huma.API, in Ingest) {
 // FindingDecisionBody is one judgment about a finding, and which of its places
 // it covers.
 type FindingDecisionBody struct {
-	Outcome       string `json:"outcome" enum:"affected,not-applicable,deferred,wont-fix"`
+	Outcome       string `json:"outcome" enum:"affected,not-applicable,deferred,wont-fix,already-fixed"`
 	Justification string `json:"justification,omitempty" enum:"component_not_present,vulnerable_code_not_present,vulnerable_code_not_in_execute_path,vulnerable_code_cannot_be_controlled_by_adversary,inline_mitigations_already_exist" doc:"Why it does not apply. Required when it does not"`
 	Mitigation    string `json:"mitigation,omitempty" doc:"What actually stops it — the rule, the setting, the service that is not exposed. Required when the reason is that mitigations already exist, and refused with any other"`
 	DeferredUntil string `json:"deferred_until,omitempty" doc:"Required when it is deferred. A date, as 2026-03-31"`
@@ -900,6 +907,9 @@ func decisionBody(d triage.Decision) DecisionBody {
 	}
 	if d.Justification != nil {
 		body.Justification = *d.Justification
+	}
+	if d.FixedVersion != nil {
+		body.FixedVersion = *d.FixedVersion
 	}
 	if d.DeferredUntil != nil {
 		body.DeferredUntil = d.DeferredUntil.Format(time.DateOnly)

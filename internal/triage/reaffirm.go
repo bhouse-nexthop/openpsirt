@@ -138,6 +138,21 @@ func (s *Store) reaffirm(ctx context.Context, subject access.Subject, r Reaffirm
 	if previous.Justification != nil {
 		justification = *previous.Justification
 	}
+	// Everything the claim rests on comes with it. A re-affirmation says the
+	// same claim still holds, so a field the outcome requires is as required
+	// here as it was the first time — and dropping one does not produce a
+	// weaker claim, it produces a refusal: what stops it is required with the
+	// mitigations reason and the version is required with the already-fixed
+	// outcome, so a re-affirmation of either was refused by its own validation
+	// for want of a value nobody had removed.
+	mitigation := ""
+	if previous.Mitigation != nil {
+		mitigation = *previous.Mitigation
+	}
+	fixedVersion := ""
+	if previous.FixedVersion != nil {
+		fixedVersion = *previous.FixedVersion
+	}
 
 	// Whether this needs a second person is decided before it is written, and
 	// recorded on the claim. Without it the claim was stored as needing
@@ -150,7 +165,9 @@ func (s *Store) reaffirm(ctx context.Context, subject access.Subject, r Reaffirm
 	proposal := Proposal{
 		Place: place, Outcome: previous.Outcome,
 		Justification: Justification(justification),
+		Mitigation:    mitigation,
 		DeferredUntil: previous.DeferredUntil,
+		FixedVersion:  fixedVersion,
 		Reasoning:     r.Reasoning, By: r.By,
 		SeverityCenti: severityNow,
 		NeedsApproval: full,

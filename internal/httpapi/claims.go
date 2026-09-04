@@ -213,13 +213,17 @@ type EarlierBody struct {
 	Outcome       string `json:"outcome"`
 	Justification string `json:"justification,omitempty"`
 	DeferredUntil string `json:"deferred_until,omitempty"`
-	ProposedBy    string `json:"proposed_by"`
-	ProposedAt    string `json:"proposed_at"`
-	Ended         string `json:"ended" enum:"lapsed,withdrawn" doc:"Why it stopped applying"`
-	EndedAt       string `json:"ended_at,omitempty"`
-	About         string `json:"about,omitempty" doc:"The component upstream version it was a claim about"`
-	Reasoning     string `json:"reasoning" doc:"The reasoning as it last stood, in markdown, offered back rather than thrown away"`
-	ApprovedBy    string `json:"approved_by,omitempty" doc:"Who last agreed to it, where anybody did"`
+	// FixedVersion is what an approver checks the already-fixed claim
+	// against. Agreeing to a claim of fact without being shown the fact is
+	// the failure this outcome is most exposed to (TRI-51).
+	FixedVersion string `json:"fixed_version,omitempty" doc:"The package version the claim says the fix arrived in, where it claims one has"`
+	ProposedBy   string `json:"proposed_by"`
+	ProposedAt   string `json:"proposed_at"`
+	Ended        string `json:"ended" enum:"lapsed,withdrawn" doc:"Why it stopped applying"`
+	EndedAt      string `json:"ended_at,omitempty"`
+	About        string `json:"about,omitempty" doc:"The component upstream version it was a claim about"`
+	Reasoning    string `json:"reasoning" doc:"The reasoning as it last stood, in markdown, offered back rather than thrown away"`
+	ApprovedBy   string `json:"approved_by,omitempty" doc:"Who last agreed to it, where anybody did"`
 }
 
 // SimilarBody is an approved claim at the same places about another issue,
@@ -317,6 +321,9 @@ func decidedAbout(ctx context.Context, in Ingest, subject access.Subject, produc
 			Ended:     string(d.State),
 			About:     orBlank(d.ComponentUpstreamVersion),
 			Reasoning: one.Reasoning,
+		}
+		if d.FixedVersion != nil {
+			body.FixedVersion = *d.FixedVersion
 		}
 		if d.DeferredUntil != nil {
 			body.DeferredUntil = d.DeferredUntil.Format(time.DateOnly)

@@ -42,6 +42,15 @@ type Decision struct {
 	// other (TRI-39).
 	Mitigation    *string    `bun:"mitigation"`
 	DeferredUntil *time.Time `bun:"deferred_until"`
+	// FixedVersion is the package version whoever packages this states the fix
+	// arrived in. Required for the outcome that claims the fix is already here
+	// and meaningless with any other, the way a date is for a deferral.
+	//
+	// Stored beside the scanner's own answer rather than instead of it: that
+	// one is what the vulnerability data says about the upstream project, and
+	// this one is what a distribution says about its own package. The two
+	// disagree exactly when this outcome is the right one.
+	FixedVersion *string `bun:"fixed_version"`
 	// SeverityCenti is how bad this was judged to be when the claim was made,
 	// in hundredths. Kept with the decision rather than read from the issue
 	// later, because what a re-affirmation asks is whether severity has risen
@@ -209,8 +218,14 @@ type Proposal struct {
 	// moving and nothing asking again (TRI-39).
 	Mitigation    string
 	DeferredUntil *time.Time
-	Reasoning     string
-	By            int64
+	// FixedVersion is the package version whoever packages this states the fix
+	// arrived in. Required where the claim is that the fix is already here,
+	// because that claim is a fact somebody can check against the packager's
+	// own record rather than a judgment — and a claim of that kind with
+	// nothing to check is the one to be most careful of (TRI-51).
+	FixedVersion string
+	Reasoning    string
+	By           int64
 	// SeverityCenti is how bad this is judged to be right now, in hundredths.
 	// Recorded with the claim so that a later re-affirmation can ask whether
 	// it has risen since.
@@ -377,6 +392,13 @@ func (s *Store) propose(ctx context.Context, claimID int64, p Proposal) (*Decisi
 		stated := string(p.Justification)
 		decision.Justification = &stated
 	}
+	if p.Outcome == AlreadyFixed {
+		// Read through the same normalization as every other version here, so
+		// that a value stored with surrounding space and one typed without it
+		// do not read as two different claims.
+		arrived := version(p.FixedVersion)
+		decision.FixedVersion = &arrived
+	}
 	if p.SeverityCenti > 0 {
 		judged := p.SeverityCenti
 		decision.SeverityCenti = &judged
@@ -470,6 +492,20 @@ func (p Proposal) valid() error {
 	}
 	if p.Outcome != Deferred && p.DeferredUntil != nil {
 		return fmt.Errorf("%q does not return on a date", p.Outcome)
+	}
+	// The version the fix arrived in is what makes this claim checkable
+	// against whoever packages it. Without it the claim is "trust me", which
+	// is the one thing this outcome must not be able to say (TRI-51).
+	//
+	// It is recorded and never compared against what ships. Deciding whether
+	// one version is at or past another needs an ordering per ecosystem —
+	// Debian epochs, RPM release segments, and the ecosystems that follow
+	// neither — which is a different project entirely (STA-18).
+	if p.Outcome == AlreadyFixed && strings.TrimSpace(p.FixedVersion) == "" {
+		return errors.New("a claim that the fix is already here needs the version it arrived in, so somebody can check it")
+	}
+	if p.Outcome != AlreadyFixed && strings.TrimSpace(p.FixedVersion) != "" {
+		return fmt.Errorf("%q does not claim a fix has arrived", p.Outcome)
 	}
 	return nil
 }

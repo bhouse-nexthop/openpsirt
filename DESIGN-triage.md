@@ -2,7 +2,7 @@
 
 What people decide about findings, and when a decision stops applying.
 
-Satisfies TRI-01 to TRI-03, TRI-05 to TRI-08, TRI-10 to TRI-50, REM-25,
+Satisfies TRI-01 to TRI-03, TRI-05 to TRI-08, TRI-10 to TRI-51, REM-25,
 REM-27, RNK-07, UIX-35, UIX-46, REL-02 to REL-07, REL-09, MDL-08, MDL-19,
 ACC-09. The text rules themselves are in `DESIGN-text.md`, and the reports
 these numbers feed are in `DESIGN-reporting.md`. TRI-04 and TRI-19 wait for the
@@ -68,7 +68,7 @@ applicability. When the date passes the deferral stops standing and the finding
 returns to the queue — marked as something that was deferred rather than as
 something new.
 
-## Four outcomes
+## The outcomes
 
 | | |
 |---|---|
@@ -76,6 +76,7 @@ something new.
 | **Not applicable** | It does not affect this product here |
 | **Deferred** | It affects us, and is not being worked on until a date |
 | **Won't fix** | It affects us, and will not be addressed |
+| **Already fixed** | The version shipping here carries the fix, and nothing here can see that it does |
 
 Two would not be enough. A vocabulary with only "affects us" and "does not" has
 nowhere to put the most common real answer — *yes, but not now* — and the
@@ -85,6 +86,50 @@ report can tell the difference.
 **A deferral publishes as affected, never as not-affected.** Deferring is an
 internal scheduling judgment; publishing it as not-affected would tell the
 outside world we assessed something as harmless when we had only put it off.
+
+### The fix is already here, and nothing can see it
+
+The last one is for a distribution's package (TRI-51). A backported patch does
+not move the upstream version, so a scanner comparing a published identifier
+against an upstream range fires whether or not whoever packages the component
+has already dealt with it — and a package that has been fixed looks exactly
+like one that has not (MDL-26).
+
+None of the other four says this. It is not "does not affect us": the code is
+present and it *was* affected, and somebody auditing a claim that the
+vulnerable code is absent would find it sitting there. The exchange format
+keeps the two apart the same way — this is a status of its own rather than a
+reason under "not affected".
+
+It cannot be left to computed resolution either. Closure is derived from what a
+scan reports, and this scan keeps reporting it at every later revision, so a
+finding closed on these grounds is open again by morning. That is the shape of
+gap a person closing a recorded finding already fills for a different class.
+
+**It requires the package version the fix arrived in**, the way a deferral
+requires a date. Alone among the outcomes this one asserts a fact rather than a
+judgment — the packager's own record either names the release or it does not —
+and an outcome that hides risk on a matter of fact, with nothing to check it
+against, is the one most worth being careful of. The version is recorded, shown
+to whoever is asked to agree, and **never compared against what ships**:
+deciding whether one version is at or past another needs an ordering per
+ecosystem, which is a different project entirely.
+
+It expires like every other claim about code — when the upstream version moves,
+and not when the packaging revision does. That is exactly right here rather
+than merely consistent: a later revision of the same upstream version still
+carries the patch, so nothing has stopped being true.
+
+**The vocabulary already existed, on the way in and only on the way in.** A
+build's suppressions may already say `fixed`, and that suppresses the finding
+the same way — the claim is one this deployment accepts from a document while
+having no way for a person to make it. For a distribution's package there is
+nobody upstream to make it either: our build did not apply the patch, so it has
+nothing to declare and no honest way to declare it. That is the gap this fills,
+and it is why the word is the same word.
+
+**There is no export yet, and this is the rule it arrives with**: it publishes
+as fixed.
 
 Only "not applicable" carries a reason, and it is required there: the claim
 that something does not affect us *is* which of the recognized reasons applies.

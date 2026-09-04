@@ -12,9 +12,9 @@ package triage
 
 // Outcome is what somebody decided about a finding.
 //
-// Four rather than two. A vocabulary with only "affects us" and "does not"
-// has nowhere to put the most common real answer, which is "yes, but not now"
-// — and the absence shows up as people recording it as one of the other two,
+// More than two. A vocabulary with only "affects us" and "does not" has
+// nowhere to put the most common real answer, which is "yes, but not now" —
+// and the absence shows up as people recording it as one of the other two,
 // after which no report can tell the difference.
 type Outcome string
 
@@ -27,10 +27,23 @@ const (
 	Deferred Outcome = "deferred"
 	// WontFix means it affects us and will not be addressed.
 	WontFix Outcome = "wont-fix"
+	// AlreadyFixed means the version shipping here carries the fix, although
+	// nothing here can see that it does.
+	//
+	// The case is a distribution's package: a backported patch does not move
+	// the upstream version, so a scanner comparing a published identifier
+	// against an upstream range fires whether or not whoever packages it has
+	// already dealt with it (MDL-26). None of the other four says this. It is
+	// not "does not affect us" — the code is there and it was affected — and
+	// the exchange format keeps the two apart as well, with a status of its
+	// own rather than a reason under "not affected".
+	AlreadyFixed Outcome = "already-fixed"
 )
 
-// Outcomes are the four, in the order a person meets them.
-func Outcomes() []Outcome { return []Outcome{Affected, NotApplicable, Deferred, WontFix} }
+// Outcomes are all of them, in the order a person meets them.
+func Outcomes() []Outcome {
+	return []Outcome{Affected, NotApplicable, Deferred, WontFix, AlreadyFixed}
+}
 
 // Valid reports whether o is one we recognize.
 func (o Outcome) Valid() bool {
@@ -46,8 +59,8 @@ func (o Outcome) Valid() bool {
 // queue.
 //
 // The distinction the review queue is built on: hiding risk needs a second
-// person, and putting it back does not. "Affected" is the only one of the four
-// that leaves the issue visible as an issue.
+// person, and putting it back does not. "Affected" is the only one that leaves
+// the issue visible as an issue.
 func (o Outcome) HidesRisk() bool { return o != Affected }
 
 // Justification is why something does not affect us.

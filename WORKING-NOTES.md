@@ -2987,3 +2987,54 @@ answered. Both would need a column and an API field each. Measured against a rea
 document produced by the demo's own scanner (grype 0.118.0) over the container
 inventory: 25 matches, of which 22 were reached through Go module advisories
 and 3 by comparing identifiers.
+
+## A fifth outcome: the fix is already here (2026-09-04)
+
+The question that produced it: for a distribution's package, what do you record
+when the packager has already backported the fix? The four outcomes had nowhere
+to put it, and both candidates were wrong.
+
+**`vulnerable_code_not_present` was the near-miss.** It says the code was left
+out of the build — a claim about our build configuration — and anybody auditing
+it would find the code sitting right there. The five VEX justifications all
+attach to `not_affected`, and this is not that: the code is present and it was
+affected. The exchange format has a **status** for it instead, `fixed`.
+
+**Computed resolution cannot reach it.** Closure is derived from what a scan
+reports (STA-03, STA-04, REM-09), and an identifier match keeps firing at every
+later revision forever, so a finding closed on these grounds is open again by
+morning. Same shape as the hole REM-28 closed for recorded findings. So it had
+to be a decision that suppresses, which meant the existing machinery carried
+almost all of it: carried forward across scans, keyed structurally, lapsing on
+the upstream version moving and **not** on a packaging revision — which is
+exactly right here rather than merely consistent, since a later revision of the
+same upstream version still carries the patch.
+
+**The strongest argument was already in the tree.** `internal/sbom/
+suppression.go` has had `AlreadyFixed Status = "fixed"` since the ingest work:
+a build's own OpenVEX may say it and it suppresses (ING-02). So this deployment
+already accepted the claim from a document and had no way for a person to make
+it — and for a distribution's package there is nobody upstream to make it,
+because our build did not apply the patch and cannot honestly declare it. The
+word is the same word on purpose.
+
+**It requires the version the fix arrived in**, the way a deferral requires a
+date. Alone among the five this outcome asserts a fact rather than a judgment,
+so it is the one that must not be able to say "trust me". Recorded, shown on
+the queue card and in the audit trail, and **never compared against what
+ships** — that would need an ordering per ecosystem, which STA-18 warns is a
+different project. It always needs a second person: it hides risk, and the
+short-deferral exemption in `queue.go` reaches only deferrals.
+
+**It found a defect beside it.** `reaffirm.go` rebuilt a proposal without
+`Mitigation`, so re-affirming a dismissal that rests on mitigations was refused
+by the rule requiring it — for want of a value nobody had removed. Pre-existing
+and invisible, and the new field would have had the identical bug. Both carry
+now; both are pinned by tests that were watched failing.
+
+**The demo database must be recreated** (`make demo-reset`): migration `00011`
+was edited in place, which is what the pre-release rule says to do.
+
+Also this stretch: the finding screen's evidence grid was `auto-fit` with a
+300px minimum, which took a wide screen to three and sometimes four columns.
+Capped at two, collapsing to one under 900px like the other grids.

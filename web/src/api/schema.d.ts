@@ -1308,9 +1308,9 @@ export interface paths {
         put?: never;
         /**
          * Record a triage decision for a finding
-         * @description Records how a finding was triaged: `affected`, `not-applicable`, `deferred` or `wont-fix`.
+         * @description Records how a finding was triaged: `affected`, `not-applicable`, `deferred`, `wont-fix` or `already-fixed`.
          *
-         *     `not-applicable` requires a `justification` from the standard VEX vocabulary. `deferred` requires `deferred_until` as a date.
+         *     `not-applicable` requires a `justification` from the standard VEX vocabulary. `deferred` requires `deferred_until` as a date. `already-fixed` requires `fixed_version`, the version whoever packages the component states the fix arrived in — it is recorded for a reader and never compared against what ships.
          *
          *     The decision applies to every build running the same component and consumer upstream versions, including future releases — it is matched by code, not copied between releases. It stops applying automatically when either upstream version changes.
          *
@@ -2273,10 +2273,12 @@ export interface components {
             readonly $schema?: string;
             /** @description Required when it is deferred. A date, as 2026-03-31 */
             deferred_until?: string;
+            /** @description Required when the outcome is already-fixed. The package version whoever packages this states the fix arrived in — which must be one release carrying the fix for every issue named, since the claim has to hold for all of them */
+            fixed_version?: string;
             /** @description Required when it does not apply */
             justification?: string;
             /** @enum {string} */
-            outcome: "affected" | "not-applicable" | "deferred" | "wont-fix";
+            outcome: "affected" | "not-applicable" | "deferred" | "wont-fix" | "already-fixed";
             /** @description Why this holds for every issue named */
             reasoning: string;
             /** @description How you narrowed this set. Recorded, and never part of the claim */
@@ -2345,6 +2347,8 @@ export interface components {
             claim_id?: number;
             /** @description When a deferral returns, as a date. Required for a deferral */
             deferred_until?: string;
+            /** @description The package version whoever packages this states the fix arrived in. Required when the outcome is already-fixed, and refused with any other. Recorded and never compared against the version shipping */
+            fixed_version?: string;
             /**
              * Format: int64
              * @description What to name this decision in a later request
@@ -2363,7 +2367,7 @@ export interface components {
              * @description What was decided
              * @enum {string}
              */
-            outcome: "affected" | "not-applicable" | "deferred" | "wont-fix";
+            outcome: "affected" | "not-applicable" | "deferred" | "wont-fix" | "already-fixed";
             /**
              * Format: int64
              * @description How many findings this decision covers
@@ -2496,6 +2500,8 @@ export interface components {
              */
             ended: "lapsed" | "withdrawn";
             ended_at?: string;
+            /** @description The package version the claim says the fix arrived in, where it claims one has */
+            fixed_version?: string;
             justification?: string;
             outcome: string;
             proposed_at: string;
@@ -2804,7 +2810,7 @@ export interface components {
             /** @description What actually stops it — the rule, the setting, the service that is not exposed. Required when the reason is that mitigations already exist, and refused with any other */
             mitigation?: string;
             /** @enum {string} */
-            outcome: "affected" | "not-applicable" | "deferred" | "wont-fix";
+            outcome: "affected" | "not-applicable" | "deferred" | "wont-fix" | "already-fixed";
             /** @description Which places this covers, as the finding names them. Omit for all of them */
             places?: string[] | null;
             /** @description Why this holds */
@@ -3008,6 +3014,8 @@ export interface components {
             deferred_until?: string;
             /** @description When it stopped applying — withdrawn, or lapsed because the code moved */
             ended_at?: string;
+            /** @description The package version the claim says the fix arrived in, where it claims one has. What somebody auditing an already-fixed claim checks against the packager's own record */
+            fixed_version?: string;
             /** Format: int64 */
             id: number;
             /** @description The vulnerability, under the name it is filed here */
@@ -3017,7 +3025,7 @@ export interface components {
             /** @description What stops it, where the reason is that a control already does. Nothing here notices that control being removed, so this is the record somebody checks */
             mitigation?: string;
             /** @enum {string} */
-            outcome: "affected" | "not-applicable" | "deferred" | "wont-fix";
+            outcome: "affected" | "not-applicable" | "deferred" | "wont-fix" | "already-fixed";
             product: string;
             proposed_at: string;
             proposed_by: string;
@@ -4409,7 +4417,7 @@ export interface operations {
                 /** @description Limit to one product, by name */
                 product?: string;
                 /** @description Limit to one kind of judgment */
-                outcome?: "affected" | "not-applicable" | "deferred" | "wont-fix";
+                outcome?: "affected" | "not-applicable" | "deferred" | "wont-fix" | "already-fixed";
                 /** @description Limit to one state */
                 state?: "proposed" | "approved" | "withdrawn" | "lapsed";
                 /** @description Only judgments proposed on or after this date, as YYYY-MM-DD */
@@ -4552,7 +4560,7 @@ export interface operations {
                 /** @description Limit to one product, by name */
                 product?: string;
                 /** @description Limit to one outcome */
-                outcome?: "affected" | "not-applicable" | "deferred" | "wont-fix";
+                outcome?: "affected" | "not-applicable" | "deferred" | "wont-fix" | "already-fixed";
                 /** @description Limit to one state */
                 state?: "proposed" | "approved" | "withdrawn" | "lapsed";
                 /** @description Only deferrals whose date has passed */
@@ -6074,7 +6082,7 @@ export interface operations {
                 /** @description Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered */
                 state?: "undecided" | "waiting" | "agreed" | "lapsed";
                 /** @description Keep only groups a standing judgment of this kind covers — how to ask what has been dismissed, which state cannot answer: agreed says a judgment stands, not which one. Every place must be answered the same way, and only the claim standing now counts */
-                outcome?: "affected" | "not-applicable" | "deferred" | "wont-fix";
+                outcome?: "affected" | "not-applicable" | "deferred" | "wont-fix" | "already-fixed";
                 /** @description Keep only groups by who is dealing with them. A group whose places are held by different people is none of these */
                 assigned?: "me" | "somebody" | "nobody";
                 /** @description Keep only groups whose issue we rated differently from the world — what has been re-prioritized here */

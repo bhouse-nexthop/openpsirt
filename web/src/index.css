@@ -699,7 +699,12 @@ input[type=checkbox] { accent-color: var(--accent); }
 /* ---------- detail ---------- */
 
 .detail { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 18px; }
-.evidence { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px 22px; align-items: start; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 16px 18px; box-shadow: var(--shadow); }
+/* Two columns at most. auto-fit took a wide screen to three and sometimes
+   four, and the blocks are read rather than scanned: at that width the eye has
+   to find where each one starts, and a long description sat beside two short
+   panels with nothing lining up. */
+.evidence { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 22px; align-items: start; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 16px 18px; box-shadow: var(--shadow); }
+@media (max-width: 900px) { .evidence { grid-template-columns: 1fr; } }
 .evblock { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
 .evblock h4 { margin: 0; font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; color: var(--faint); font-weight: 600; }
 .evblock p { margin: 0; }
