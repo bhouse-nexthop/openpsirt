@@ -704,6 +704,9 @@ components:
         deferred_until:
           description: Required when it is deferred. A date, as 2026-03-31
           type: string
+        fixed_version:
+          description: Required when the outcome is already-fixed. The package version whoever packages this states the fix arrived in — which must be one release carrying the fix for every issue named, since the claim has to hold for all of them
+          type: string
         justification:
           description: Required when it does not apply
           type: string
@@ -713,6 +716,7 @@ components:
             - not-applicable
             - deferred
             - wont-fix
+            - already-fixed
           type: string
         reasoning:
           description: Why this holds for every issue named
@@ -828,6 +832,9 @@ components:
         deferred_until:
           description: When a deferral returns, as a date. Required for a deferral
           type: string
+        fixed_version:
+          description: The package version whoever packages this states the fix arrived in. Required when the outcome is already-fixed, and refused with any other. Recorded and never compared against the version shipping
+          type: string
         id:
           description: What to name this decision in a later request
           format: int64
@@ -854,6 +861,7 @@ components:
             - not-applicable
             - deferred
             - wont-fix
+            - already-fixed
           type: string
         places:
           description: How many findings this decision covers
@@ -1084,6 +1092,9 @@ components:
             - withdrawn
           type: string
         ended_at:
+          type: string
+        fixed_version:
+          description: The package version the claim says the fix arrived in, where it claims one has
           type: string
         justification:
           type: string
@@ -1605,6 +1616,7 @@ components:
             - not-applicable
             - deferred
             - wont-fix
+            - already-fixed
           type: string
         places:
           description: Which places this covers, as the finding names them. Omit for all of them
@@ -1979,6 +1991,9 @@ components:
         ended_at:
           description: When it stopped applying — withdrawn, or lapsed because the code moved
           type: string
+        fixed_version:
+          description: The package version the claim says the fix arrived in, where it claims one has. What somebody auditing an already-fixed claim checks against the packager's own record
+          type: string
         id:
           format: int64
           type: integer
@@ -1997,6 +2012,7 @@ components:
             - not-applicable
             - deferred
             - wont-fix
+            - already-fixed
           type: string
         product:
           type: string
@@ -4392,6 +4408,7 @@ paths:
               - not-applicable
               - deferred
               - wont-fix
+              - already-fixed
             type: string
         - description: Limit to one state
           explode: false
@@ -4583,6 +4600,7 @@ paths:
               - not-applicable
               - deferred
               - wont-fix
+              - already-fixed
             type: string
         - description: Limit to one state
           explode: false
@@ -6400,6 +6418,7 @@ paths:
               - not-applicable
               - deferred
               - wont-fix
+              - already-fixed
             type: string
         - description: Keep only groups by who is dealing with them. A group whose places are held by different people is none of these
           explode: false
@@ -7040,9 +7059,9 @@ paths:
         - Triage
     post:
       description: |-
-        Records how a finding was triaged: `affected`, `not-applicable`, `deferred` or `wont-fix`.
+        Records how a finding was triaged: `affected`, `not-applicable`, `deferred`, `wont-fix` or `already-fixed`.
 
-        `not-applicable` requires a `justification` from the standard VEX vocabulary. `deferred` requires `deferred_until` as a date.
+        `not-applicable` requires a `justification` from the standard VEX vocabulary. `deferred` requires `deferred_until` as a date. `already-fixed` requires `fixed_version`, the version whoever packages the component states the fix arrived in — it is recorded for a reader and never compared against what ships.
 
         The decision applies to every build running the same component and consumer upstream versions, including future releases — it is matched by code, not copied between releases. It stops applying automatically when either upstream version changes.
 
