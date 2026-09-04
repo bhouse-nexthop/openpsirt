@@ -18,19 +18,48 @@ record and should be read only when it is cited.*
 Phase 1 is essentially built. **Phase 2 is the current thrust**, at the user's
 direction and for a good reason: the reports and channels still to build would
 grow hooks into private findings, and retrofitting disclosure into them
-afterwards is the expensive order. Of Phase 2, **manual entry, disclosure
-dates, extension of a date, and the alert when one arrives are built**;
-publication and attachments are not.
+afterwards is the expensive order. Of Phase 2, **manual entry with its own
+screen, disclosure dates, extension of a date, the alert when one arrives,
+resolving a recorded flaw, and the CSAF advisory document are built**. What is
+not: every adapter that would send an advisory anywhere, the VEX profile of
+that document, and attachments.
 
 ### Do this first on a fresh checkout
 
-**`make demo-reset` before `make demo`.** Migrations `00003` and `00009` were
-edited in place — which is what the pre-release rule says to do (DAT-29) — so
+**`make demo-reset` before `make demo`.** Migrations `00003`, `00009`, `00012`
+and `00013` have all been edited in place — which is what the pre-release rule
+says to do (DAT-29) — so
 an existing `.demo` database is missing columns and the application will not
 start against it. The same applies to a development database against the four
 engines: `make engines-down && make engines-up`.
 
-### What was built in the stretch ending 2026-09-04
+### The later stretch on 2026-09-04, after the notes below were written
+
+Everything here is committed and pushed; `main` is at `4e16d77`. The demo was
+rebuilt on it and its numbers were checked rather than assumed.
+
+| | |
+|---|---|
+| **A recorded flaw cannot be filed against a version nobody named** | `Enter` resolved a component name with a query of its own that took the first row it matched — the guess measured wrong elsewhere the same week. It goes through the one resolver now, and an ambiguous name is refused with the choices. Three refusals stopped arriving as faults at our end: a name reaching nothing, a summary of nothing but whitespace, and a build with no contents |
+| **A screen records a flaw** | The endpoint had existed with nothing calling it. An action and a drawer on the findings list of the build, gated on what the server actually enforces. No default severity, undisclosed as one of two stated options rather than a checkbox, the component searched against what the build holds |
+| **The CSAF advisory document** | Generated for one issue in one product from what is already held (REM-21), and generated is all: nothing is sent anywhere and nothing records that it went out (REM-18). Publisher identity is deployment configuration. An issue a scanner reported is refused by name (REM-23). The adapters and the VEX profile are not built and `DESIGN-remediation.md` says so |
+| **Nothing could resolve a recorded flaw; now a person can** | REM-28, the narrow exception to REM-09 — computed resolution needs evidence, and for this one class there is none and never will be, so the finding stayed open forever. Closure became a fact on the row (`closed_at`) with the run or the person beside it as provenance, which is the change `opened_at` already got. The trend was still reaching the run for the closing moment, so a person-closed finding would have been missing from the chart exactly as a person-opened one used to be |
+| **The dependency tree, from use** | Clicking a name toggles rather than only opening; a leaf is selected and never opened, which was drawing a "Loading" row that then vanished; and the marker distinguishes a row with something under it from one without, which it did not at the same size in the same faint colour |
+| **The base moved, and the packages inside it** | Alpine 3.21 was three releases behind and eight weeks from end-of-life. Now 3.24, pinned once above the first stage with the dates written down. And the image now upgrades what it inherits (SCP-17): it was shipping OpenSSL `3.5.7-r0` with `3.5.8-r0` published |
+
+**What the demo says about us now**, which is the check that matters: the
+container variant is 24 open, down from 44 — the upgrade closed 20 and opened
+none, 347 components described and 347 placed. The two Alpine findings left are
+busybox `CVE-2025-60876`, matched by identifier with no fix, which is exactly
+the case the match kind exists to mark. The other 22 are the Go modules inside
+the bundled scanner.
+
+**The count going up before it went down was the point.** Moving 3.21 → 3.24
+took the container from 24 to 44, and the twenty new ones were OpenSSL with a
+fix already published. The newer base did not cause them; the older base had
+the same shape and was less legible about it.
+
+### What was built in the earlier stretch ending 2026-09-04
 
 Each has its own section further down with the reasoning and what was found.
 
@@ -45,9 +74,19 @@ Each has its own section further down with the reasoning and what was found.
 
 ### What is left
 
-**Phase 2**: a screen for recording a flaw (the endpoint exists and nothing
-calls it), advisory publication (REM-17 to REM-24), attachments (ATT-01 to
-ATT-12, and `DESIGN-attachments.md` says what is settled).
+**Phase 2**: attachments (ATT-01 to ATT-12, and `DESIGN-attachments.md` says
+what is settled) — the last large one, and it needs an S3-compatible client,
+which is a new dependency under SCP-06. Then the adapters that would send an
+advisory somewhere (REM-17, REM-22), and the VEX profile of the document, which
+needs the mapping from a decision to the releases it covers rather than any new
+vocabulary — the dismissal words were aligned to VEX from the start.
+
+**A test gap that is now live rather than theoretical**: syft 1.51.1 emits
+**CycloneDX 1.7**, so the inventory the image ships and the one the demo
+ingests as the `container` variant are both 1.7 documents going through a
+reader whose only fixtures are 1.6. It demonstrably works. Nothing pins it, and
+a 1.7 fixture through the existing reader tests would turn "accepted by
+construction" into something checked.
 
 **Phase 1 leftovers**: remediation metrics (RPT-03), mail and the digest
 (NTF-03, NTF-14), mentions that link (UIX-24, which blocks NTF-12), the
@@ -2860,3 +2899,43 @@ generally do not fall back to identifier matching, so the answer would be
 silence rather than a weak match. Fewer false positives, more false negatives.
 Recording the match kind gets the signal and the honesty about it, which is
 strictly more than either scanner alone.
+
+## The traps of the later 2026-09-04 stretch
+
+Each of these cost real time, and each would cost it again.
+
+**A foreign key to a table a later migration creates passes on SQLite and
+fails on the other three.** Adding `closed_by` to `finding` with a constraint
+against `person` built fine locally and failed every server engine at once, on
+every test in `internal/access`. The column three lines above it — `assigned_to`
+— carries a comment saying exactly this, written the last time it happened.
+Read the neighbours before adding a constraint.
+
+**Two gates running at once corrupt each other on the server engines.** A
+second `make check` started while the first was still going produced
+`Unknown database 'openpsirt_t_triage_...'` on MySQL and MariaDB: both runs
+used the same per-package database name, and one dropped and recreated it under
+the other. `AGENTS.md` names this as the one collision that remains. Check
+`pgrep -f "make check"` before starting one.
+
+**`gosec` caps what a program may write at 0600, and a file's mode travels.**
+The composer wrote its output 0600, which is correct for a program and was
+wrong for the artifact: a container build copies that file into an image whose
+process runs as somebody else, so the one document describing what the image
+contains could not be read from inside it. Widening belongs in the Dockerfile,
+beside the decision to ship it, which is where the two scanner binaries are
+already chmod'd.
+
+**An `ARG` a `FROM` line reads must be declared before the first `FROM`.**
+Declared anywhere later it belongs to the stage it sits in, and the `FROM`
+resolves it to empty.
+
+**`make demo` prints its status before the scans it queued have finished**, so
+the counts on that last screen are the previous run's. Ask the receipts
+endpoint, or wait for `state: scanned`, before believing a number — twice this
+session a figure looked unchanged when it had in fact moved.
+
+**Two of the gate's steps only pass on a commit**, which is in `AGENTS.md` and
+is still worth restating: `openapi-current` and `web-api` diff a regenerated
+file against the last commit. A change that does not touch the API surface
+passes them on a dirty tree, which makes the failure look intermittent.

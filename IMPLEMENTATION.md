@@ -224,9 +224,19 @@ that release, and raises an alert rather than sitting in a report.
   **Extending a date is built** — with a reason always, a second person past
   a cumulative threshold, and nothing moving until that person agrees.
   **Telling somebody the date arrived is built** — administrators and whoever
-  holds it, as a condition that clears when somebody answers it
-- Advisory publication: CSAF, and GitHub Security Advisories where they apply
-- Attachments: object store, authorized fetch, redaction (`ATT`)
+  holds it, as a condition that clears when somebody answers it.
+  **A screen records one**, and **a person can close one** (REM-28), which
+  nothing else could: computed resolution needs evidence and no scan reports
+  such a finding, so it stayed open forever
+- Advisory publication: **the CSAF document is built** — generated from what is
+  held and handed over, with nothing sent anywhere and nothing recording that
+  it was (REM-18, REM-21, REM-23). **Every adapter that would send it is not**,
+  nor is the VEX profile of the document, which needs the mapping from a
+  decision to the releases it covers. `DESIGN-remediation.md` says which half
+  is which. GitHub Security Advisories (REM-22) is not built
+- Attachments: object store, authorized fetch, redaction (`ATT`). **The last
+  large Phase 2 item**, and the one that needs a new dependency — an
+  S3-compatible client, which SCP-06 says needs a permissive license
 
 Attachments land here rather than earlier because the access rule they need is
 the same one private findings need, and building it twice is how the second one
@@ -298,6 +308,27 @@ Not yet in the review queue, which lists decisions rather than findings.
 It stayed an inequality. **Do not let it become version ordering by accident** —
 that is a different project, with a per-ecosystem comparator and a corpus to
 test it against, and it buys a sharper sentence rather than a new signal.
+
+### REM-28 — closing what nothing else can close
+
+**Built**, and it was not costed at all because nobody had noticed the gap.
+It was found by writing a test for the advisory's `fixed` list and discovering
+that list could never be filled: one path closes a finding, it passes over
+anything a person recorded, and nothing else closed one. So a flaw recorded by
+hand opened and stayed open forever, invisibly — every screen looked right and
+the wrongness was only that it never left.
+
+What it took was wider than the feature: closure had to stop being readable
+only as "a run did this". `closed_at` on the row, the run or the person beside
+it as provenance, and every index that carried the run to answer "is this open"
+moved to the moment. That is the same change `opened_at` had already been
+given, for the same reason plus one — spelled the old way, the column saying a
+finding is over could only be filled in by something that never looks at it.
+
+The lesson worth keeping: **the second half of a symmetry is worth doing when
+the first half is done.** The opening side was fixed alone, and the closing
+side sat there with the identical latent defect — the trend still reached the
+run for the closing moment — until a feature needed it.
 
 ## Decided, and waiting for the stage that carries it
 
