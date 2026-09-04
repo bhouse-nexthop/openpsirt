@@ -3768,6 +3768,9 @@ components:
           description: A representative row of the claim at this finding
           format: int64
           type: integer
+        fixed_version:
+          description: The package version the claim says the fix arrived in, where it claims one has
+          type: string
         justification:
           type: string
         kind:
