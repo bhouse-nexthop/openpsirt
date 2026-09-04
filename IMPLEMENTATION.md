@@ -119,7 +119,7 @@ reads are checked.
 
 ## Stage 4 — Triage
 
-- Findings per place; the four outcomes; VEX justification vocabulary
+- Findings per place; the outcomes; VEX justification vocabulary
 - Decisions keyed structurally, carried forward, expiring on version change
 - Review queue, approval, separation of duties, bulk action, withdrawal
 - Duplicates across variants, branches and tags
@@ -340,12 +340,9 @@ thing rather than a gap somebody rediscovers by auditing.
 | ACC-45 | Somebody being told | Assignment exists now, and so does releasing what an absent person holds. What is missing is the prompt — noticing that somebody has not signed in for a while *and* holds work — which is a notification rather than a screen |
 | ACC-43, second half | Deactivating an account | The half with a trigger today is built: withdrawing somebody's last role on a product hands back what they were dealing with there. The other half needs a way to deactivate somebody, which does not exist — an account is recorded or it is not |
 | ACC-44 | Nothing — it is a statement | That we cannot detect somebody has left is recorded so nobody assumes a cleanup happens that never does |
-| MDL-16 | The tree views | Interface |
-| TRI-04, TRI-09, TRI-19 | Export, the bulk list, and reporting | Each belongs to a stage of its own |
-| REL-07, ING-13 | The interface | What a new line would inherit can be asked for; ticking the ones to carry is a screen |
-| ACC-46 to ACC-49 | Private findings | Whole feature, with disclosure dates and the escalation around them |
+| TRI-04, TRI-19 | Export and reporting | Each belongs to a stage of its own. TRI-09 was the third of these and is built: a queue entry says what it is about |
+| REL-07 | A screen | ING-13 was the other half and is built: what a new line would inherit can be asked for. What is missing is the form — the reach is computed and shown, and ticking the ones to carry is not |
 | ING-24 to ING-27, SCP-11 | Analyzer findings | Intended scope, not built. The finding model carries a kind from the start so a second kind needs no rewrite, which is the part that had to be got right early |
-| REL-01, REL-03, REL-04, SCP-05 | The interface | All are about how findings and exceptions are presented and acted on together. Deciding them against a real screen rather than in the abstract is the point |
 | UIX-24, linking a mention or a finding reference | Resolution the server has to do | The editor offers the right people to mention and writes the text; what nothing does is turn `@name` or a finding reference into a link. That is resolution rather than formatting — it needs to know what the reader may see — so it belongs on the server beside the policy, not in the renderer |
 | The server-side renderer (`internal/markdown.Render`) | An email's HTML part | The interface renders in the browser (UIX-22), so the renderer's only remaining reader is a digest email, which has no client to render for it. It is kept rather than deleted and rebuilt: it carries the sanitizer and a corpus of cross-site-scripting payloads, and a security control rebuilt from memory comes back weaker. Its tests are what keep it exercised until Stage 6 wires it up |
 | MDL-10 | Nothing — it is a limitation | The same version built with different feature flags can use its dependencies differently. Recorded so nobody assumes the graph says more than it does |
@@ -354,7 +351,6 @@ thing rather than a gap somebody rediscovers by auditing.
 
 | | |
 |---|---|
-| Component library | Decided against a real screen in the interface stage, not in the abstract |
+| Component library | The stage this waited for has passed and the interface was built without one, from the mockup's own tokens and hand-written components. So the choice was made by building rather than by deciding, and `DECISIONS.md` §7 still lists it as open — which is the honest state, not a settled one |
 | Partition column and granularity | Needs the schema in front of us — settled during the database stage |
 | External tracker hand-off | Optional, and the seams are built rather than the integration |
-| Markdown renderer and sanitizer | The requirements are settled (`SEC-11` to `SEC-17`); the library pair is picked when the code is written |
