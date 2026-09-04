@@ -1077,6 +1077,43 @@ components:
       required:
         - body
       type: object
+    EmbargoedBody:
+      additionalProperties: false
+      properties:
+        component:
+          type: string
+        disclose_at:
+          description: When the embargo ends. Reaching it discloses nothing
+          type: string
+        passed:
+          description: Whether the date has already arrived
+          type: boolean
+        places:
+          description: How many findings this covers
+          format: int64
+          type: integer
+        product:
+          type: string
+        severity:
+          type: string
+        stream:
+          type: string
+        summary:
+          type: string
+        variant:
+          type: string
+        vulnerability:
+          type: string
+      required:
+        - vulnerability
+        - component
+        - product
+        - stream
+        - variant
+        - disclose_at
+        - passed
+        - places
+      type: object
     EndOfLifeBody:
       additionalProperties: false
       properties:
@@ -2064,6 +2101,25 @@ components:
         items:
           items:
             $ref: "#/components/schemas/CommentBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
+    ListBodyEmbargoedBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListBodyEmbargoedBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/EmbargoedBody"
           type:
             - array
             - "null"
@@ -4448,6 +4504,75 @@ paths:
       summary: Send a decision back for more
       tags:
         - Triage
+  /v1/disclosing:
+    get:
+      description: |-
+        Returns findings nobody has announced whose embargo is running out, soonest first, and the ones whose date has already arrived.
+
+        **Before the date, not on it.** The date arriving is the last moment to act on something rather than the first useful warning, and a list that only ever showed what was already past would be a list of decisions somebody has already failed to make.
+
+        **Nothing here discloses anything.** Reaching the date escalates: the row appears and the people who can act on it are told. Publishing embargoed detail because a timer expired is the wrong default — if the fix is not ready, disclosing anyway is a decision a person makes.
+
+        Every row is undisclosed by definition, so this list is a disclosure in its own right: a product you may not read undisclosed work in contributes nothing to it, not even a count.
+      operationId: list-approaching-disclosure
+      parameters:
+        - description: Limit to one product, by name. Empty means every product you can see
+          explode: false
+          in: query
+          name: product
+          schema:
+            description: Limit to one product, by name. Empty means every product you can see
+            type: string
+        - description: Limit to one branch or tag. Only meaningful with a product
+          explode: false
+          in: query
+          name: stream
+          schema:
+            description: Limit to one branch or tag. Only meaningful with a product
+            type: string
+        - description: Limit to one variant. Only meaningful with a product, and independent of the branch
+          explode: false
+          in: query
+          name: variant
+          schema:
+            description: Limit to one variant. Only meaningful with a product, and independent of the branch
+            type: string
+        - description: How many days ahead to look
+          explode: false
+          in: query
+          name: within
+          schema:
+            default: 30
+            description: How many days ahead to look
+            format: int64
+            maximum: 365
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 100
+            format: int64
+            maximum: 500
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBodyEmbargoedBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List what is approaching disclosure
+      tags:
+        - Findings
   /v1/issues/{vulnerability}/assessment:
     post:
       description: |-

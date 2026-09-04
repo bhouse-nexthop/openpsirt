@@ -4,12 +4,30 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 )
+
+// EmbargoedBody is one finding nobody has announced, and when that ends.
+type EmbargoedBody struct {
+	Vulnerability string `json:"vulnerability"`
+	Summary       string `json:"summary,omitempty"`
+	Component     string `json:"component"`
+	Product       string `json:"product"`
+	Stream        string `json:"stream"`
+	Variant       string `json:"variant"`
+	Severity      string `json:"severity,omitempty"`
+	DiscloseAt    string `json:"disclose_at" doc:"When the embargo ends. Reaching it discloses nothing"`
+	// Passed says the date has arrived. It is a date to answer rather than a
+	// trigger, so this is a row somebody has to act on rather than a record of
+	// something that happened.
+	Passed bool `json:"passed" doc:"Whether the date has already arrived"`
+	Places int  `json:"places" doc:"How many findings this covers"`
+}
 
 // EnteredBody is what came of recording a flaw.
 type EnteredBody struct {
@@ -100,6 +118,65 @@ func registerEntry(api huma.API, in Ingest) {
 		}
 		if row.DueAt != nil {
 			out.Body.DueAt = stamp(*row.DueAt)
+		}
+		return out, nil
+	})
+}
+
+func registerDisclosure(api huma.API, in Ingest) {
+	huma.Register(api, huma.Operation{
+		OperationID: "list-approaching-disclosure", Method: http.MethodGet,
+		Path:    "/v1/disclosing",
+		Summary: "List what is approaching disclosure",
+		Description: "Returns findings nobody has announced whose embargo is running out, " +
+			"soonest first, and the ones whose date has already arrived.\n\n" +
+			"**Before the date, not on it.** The date arriving is the last moment to act on " +
+			"something rather than the first useful warning, and a list that only ever showed " +
+			"what was already past would be a list of decisions somebody has already failed to " +
+			"make.\n\n" +
+			"**Nothing here discloses anything.** Reaching the date escalates: the row appears " +
+			"and the people who can act on it are told. Publishing embargoed detail because a " +
+			"timer expired is the wrong default — if the fix is not ready, disclosing anyway is " +
+			"a decision a person makes.\n\n" +
+			"Every row is undisclosed by definition, so this list is a disclosure in its own " +
+			"right: a product you may not read undisclosed work in contributes nothing to it, " +
+			"not even a count.",
+		Tags: []string{"Findings"},
+	}, func(ctx context.Context, input *struct {
+		ScopeQuery
+		Within int `query:"within" default:"30" minimum:"1" maximum:"365" doc:"How many days ahead to look"`
+		Limit  int `query:"limit" default:"100" minimum:"1" maximum:"500"`
+	}) (*listOutput[EmbargoedBody], error) {
+		subject, err := reading(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if in.DB == nil {
+			return nil, huma.Error500InternalServerError("this process cannot read findings")
+		}
+		scope, err := scoped(ctx, in, subject, input.ScopeQuery)
+		if err != nil {
+			return nil, err
+		}
+
+		store := finding.NewStore(in.DB.DB)
+		rows, err := store.Disclosing(ctx, subject, scope,
+			time.Duration(input.Within)*24*time.Hour, input.Limit)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "what is approaching disclosure could not be read", err)
+		}
+
+		now := time.Now().UTC()
+		out := &listOutput[EmbargoedBody]{}
+		out.Body.Items = make([]EmbargoedBody, 0, len(rows))
+		for _, row := range rows {
+			out.Body.Items = append(out.Body.Items, EmbargoedBody{
+				Vulnerability: row.Vulnerability, Summary: row.Summary,
+				Component: row.Component, Product: row.Product,
+				Stream: row.Stream, Variant: row.Variant, Severity: row.Severity,
+				DiscloseAt: stamp(row.DiscloseAt), Passed: row.Passed(now),
+				Places: row.Places,
+			})
 		}
 		return out, nil
 	})

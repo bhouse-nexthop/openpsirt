@@ -624,20 +624,37 @@ that has already happened. Ninety days is what coordinated disclosure practice
 converges on, and the point of having one at all is that it gives the embargo
 an end somebody outside could hold us to.
 
-**Reaching the date discloses nothing** (ACC-47). It escalates: the finding is
-flagged, and administrators and whoever owns it are told. Publishing embargoed
-detail because a timer expired is the wrong default in both directions — if the
-fix is not ready, disclosing anyway is a decision a person makes, and automatic
-publication eventually publishes something nobody was ready for.
+**Reaching the date discloses nothing** (ACC-47). It escalates. Publishing
+embargoed detail because a timer expired is the wrong default in both
+directions — if the fix is not ready, disclosing anyway is a decision a person
+makes, and automatic publication eventually publishes something nobody was
+ready for. So the date is answered rather than acted on: what has reached it
+appears on the list below, marked as passed, and stays there until somebody
+decides something.
+
+**What is approaching disclosure is surfaced before the date** (ACC-49), on a
+list ordered soonest first. The date arriving is the last moment to act on it
+rather than the first useful warning, and a list that only ever showed what was
+already past would be a list of decisions somebody has already failed to make.
+
+**That list is itself a disclosure.** Every row on it is a finding nobody has
+announced, so a product somebody may not read undisclosed work in contributes
+nothing to their copy of it — not a row and not a count, because a count says
+as much as a row. What that costs them is a shorter list; what the alternative
+costs is the thing the whole public and private split exists to prevent.
 
 **Extending the date needs a reason, and past a configured threshold, a second
 person** (ACC-48) — the same shape as a deferral, because it is the same act:
 keeping risk hidden for longer. Without that the date is decoration, and the
 indefinite secrecy the disclosure frameworks warn about arrives one quiet
-extension at a time.
+extension at a time. **This half is not built.** The date exists and is
+surfaced; nothing yet moves it.
 
-**What is approaching disclosure is surfaced before the date** (ACC-49). The
-date arriving is the last moment to act on it, not the first useful warning.
+**Telling somebody is not built either.** ACC-47 says administrators and
+whoever owns it are told when the date arrives, and what exists is the list.
+The mechanism a condition uses to become something somebody is told is already
+there — it is what reports a build that stopped being scanned — so this is
+wiring rather than design.
 
 ## Somebody who has stopped coming in
 

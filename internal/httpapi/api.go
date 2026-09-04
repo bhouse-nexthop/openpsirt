@@ -227,6 +227,7 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	registerFixTargets(api, in)
 	registerReadiness(api, in)
 	registerEntry(api, in)
+	registerDisclosure(api, in)
 	registerDue(api, in)
 	registerGraph(api, in)
 	registerSettings(api, in)

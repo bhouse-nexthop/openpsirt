@@ -11,6 +11,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
+	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 )
 
 // Entering is a flaw somebody is recording in what this deployment ships.
@@ -78,12 +79,15 @@ func (s *Store) Enter(ctx context.Context, subject access.Subject, in Entering) 
 	// is not enough: somebody who may argue about known issues in shipped
 	// components has not been given the undisclosed ones.
 	visibility := access.Private
-	needs := access.PrivateTriage
 	if in.Disclosed {
 		visibility = access.Public
-		needs = access.PublicTriage
 	}
-	if !subject.Holds(needs, productID) {
+	// The same composition every other triage decision uses: an undisclosed
+	// finding asks for the private right, and a public one is covered by
+	// either. Somebody trusted with what nobody has announced is certainly
+	// trusted with what everybody has, and spelling that a second way here
+	// would be a second rule to keep in step with the first.
+	if !mayRecord(subject, productID, visibility) {
 		return nil, "", access.Denied(
 			fmt.Sprintf("record a finding in product %d", productID))
 	}
@@ -140,6 +144,11 @@ func (s *Store) Enter(ctx context.Context, subject access.Subject, in Entering) 
 		if err != nil {
 			return err
 		}
+		embargo, err := setting.NewStore(tx).Duration(ctx,
+			setting.DiscloseAfter, setting.DefaultDiscloseAfter)
+		if err != nil {
+			return err
+		}
 		floor, err := FloorFor(ctx, tx, productID)
 		if err != nil {
 			return err
@@ -152,6 +161,13 @@ func (s *Store) Enter(ctx context.Context, subject access.Subject, in Entering) 
 			PlaceIdentity:   PlaceIdentity(componentName, ""),
 			LastChangedAt:   now,
 			OpenedAt:        now,
+		}
+		// An embargo gets an end. A public finding gets none — it is already
+		// disclosed, and a date on it would be a deadline for something that
+		// has already happened (ACC-46).
+		if visibility == access.Private {
+			at := now.Add(embargo)
+			row.DiscloseAt = &at
 		}
 		// Ranked and clocked exactly as a scanned finding is, from the same
 		// signals. A finding that sorted or expired differently because a
@@ -170,6 +186,22 @@ func (s *Store) Enter(ctx context.Context, subject access.Subject, in Entering) 
 		return nil, "", err
 	}
 	return row, identifier, nil
+}
+
+// mayRecord reports whether a subject may record a finding of this visibility
+// on this product.
+//
+// Recording is triage work — it creates the thing everything else argues about
+// — so it asks the triage right rather than the right to read.
+func mayRecord(subject access.Subject, productID int64, visibility access.Visibility) bool {
+	if subject.Kind != access.Person {
+		return false
+	}
+	if visibility == access.Private {
+		return subject.Holds(access.PrivateTriage, productID)
+	}
+	return subject.Holds(access.PublicTriage, productID) ||
+		subject.Holds(access.PrivateTriage, productID)
 }
 
 // carrying resolves what in the build holds the flaw, defaulting to the build

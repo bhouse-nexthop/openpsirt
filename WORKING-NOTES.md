@@ -2549,3 +2549,37 @@ first time it has earned its keep on new work rather than on old.
 
 **Next:** disclosure dates, the escalation when one arrives, and extension
 needing a reason and a second person past a threshold (ACC-46 to ACC-49).
+
+## An embargo gets an end (2026-09-04)
+
+ACC-46 and ACC-49. A finding nobody has announced now carries a disclosure
+date — ninety days by default, a setting — and what is approaching one is a
+list, soonest first, with what has already passed marked as passed.
+
+Ninety days is the number coordinated disclosure converges on, and it matters
+less than there being one at all: an embargo with no end is the indefinite
+secrecy the frameworks warn about, arrived at by nobody deciding anything.
+
+**Before the date, not on it.** A list that only ever showed what was already
+past would be a list of decisions somebody has already failed to make.
+
+**Reaching it discloses nothing.** The row appears, marked, and stays until a
+person decides something. Publishing on a timer eventually publishes something
+nobody was ready for.
+
+**The list is itself a disclosure**, which is the part worth being careful
+about: every row is a finding nobody has announced, so a product somebody
+cannot read undisclosed work in contributes nothing to their copy — not a row
+and not a count. Verified by widening it to everything the subject can see:
+a public reader is shown the undisclosed finding.
+
+One thing corrected while writing it. Recording a *disclosed* finding asked for
+the public triage right specifically, so somebody holding private triage and
+not public could record an undisclosed finding and not a public one. The rest
+of triage already composes those the other way — private covers public — and
+spelling it a second way here would have been a second rule to keep in step.
+
+**Still not built, and now said so in `DESIGN-access.md`:** extending a date,
+which needs a reason and a second person past a threshold (ACC-48), and telling
+somebody when a date arrives (the other half of ACC-47). The mechanism for the
+second already exists — it is what reports a build that stopped being scanned.

@@ -219,7 +219,9 @@ that release, and raises an alert rather than sitting in a report.
 - **Manual entry is built** — a flaw in what a build ships, recorded by hand,
   filed under an identifier this deployment mints, starting undisclosed and
   behaving like any other finding from there. Visibility handling shipped in
-  Phase 1. **Disclosure dates and escalation are not built**
+  Phase 1. **A disclosure date is built** — an embargo gets an end, and what
+  is approaching one is a list, before the date rather than on it.
+  **Extending a date, and telling somebody the date arrived, are not**
 - Advisory publication: CSAF, and GitHub Security Advisories where they apply
 - Attachments: object store, authorized fetch, redaction (`ATT`)
 

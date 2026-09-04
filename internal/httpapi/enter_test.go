@@ -81,3 +81,50 @@ func TestAFlawInOurOwnProductIsRecordedAndReadBackLikeAnyOther(t *testing.T) {
 		}
 	})
 }
+
+func TestWhatIsApproachingDisclosureIsAnsweredOnlyToWhoMaySeeIt(t *testing.T) {
+	// Every row is a finding nobody has announced, so the list is a disclosure
+	// in its own right. A product somebody may not read undisclosed work in
+	// contributes nothing to it — not even a count, because a count says as
+	// much as a row.
+	twoReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+		const at = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		got := asPerson(t, r, "private-triage", http.MethodPost, at,
+			`{"summary":"Not announced anywhere.","severity":"critical"}`)
+		if got.Code != http.StatusCreated {
+			t.Fatalf("recording answered %d: %s", got.Code, got.Body.String())
+		}
+
+		var listed struct {
+			Items []struct {
+				Vulnerability string `json:"vulnerability"`
+				DiscloseAt    string `json:"disclose_at"`
+				Passed        bool   `json:"passed"`
+			} `json:"items"`
+		}
+		read(t, r, "private-triage", "/v1/disclosing?within=365", &listed)
+		if len(listed.Items) != 1 {
+			t.Fatalf("%d findings are approaching disclosure for somebody who may see them",
+				len(listed.Items))
+		}
+		if listed.Items[0].DiscloseAt == "" {
+			t.Error("the row does not say when the embargo ends")
+		}
+		if listed.Items[0].Passed {
+			t.Error("an embargo ninety days out reads as passed")
+		}
+
+		for _, who := range []string{"reader", "triager"} {
+			var theirs struct {
+				Items []struct {
+					Vulnerability string `json:"vulnerability"`
+				} `json:"items"`
+			}
+			read(t, r, who, "/v1/disclosing?within=365", &theirs)
+			if len(theirs.Items) != 0 {
+				t.Errorf("%s was shown %d undisclosed findings", who, len(theirs.Items))
+			}
+		}
+	})
+}

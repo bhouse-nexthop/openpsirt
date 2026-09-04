@@ -227,6 +227,15 @@ func upFinding(ctx context.Context, tx *sql.Tx) error {
 			"assigned_to"      ` + t.refNull + ` NULL,
 			"assigned_at"      ` + t.timestamp + ` NULL,
 			"last_changed_at"  ` + t.timestamp + ` NOT NULL,
+			-- When this stops being an embargo, on a finding nobody has
+			-- announced. Null on a public one: it is already disclosed, and a
+			-- date on it would be a deadline for something that has happened.
+			--
+			-- Reaching it discloses nothing. It escalates — the finding is
+			-- flagged and the people who can act are told — because
+			-- publishing embargoed detail on a timer eventually publishes
+			-- something nobody was ready for (ACC-47).
+			"disclose_at"      ` + t.timestamp + ` NULL,
 			-- When this became true, carried on the row rather than reached
 			-- through the run that opened it. Not every finding has one: a
 			-- flaw somebody recorded by hand was opened by a person. Three

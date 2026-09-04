@@ -42,6 +42,10 @@ const (
 	// MaxTokenLifetime is the longest a person's own credential may last.
 	// Expiry is mandatory; this is how far out it may be set.
 	MaxTokenLifetime = "token.max-lifetime"
+	// DiscloseAfter is how long a finding nobody has announced stays that way
+	// before the date arrives. It gives the embargo an end somebody outside
+	// could hold us to, which is the point of having one at all.
+	DiscloseAfter = "disclosure.after"
 	// DeferralThreshold is how long something may be put off before a second
 	// person has to agree. It ships with a starting point rather than a fixed
 	// rule, because how long is too long is a judgment about a product.
@@ -119,6 +123,18 @@ const DefaultQuietAfter = 7 * 24 * time.Hour
 // advisory published this morning waits for the difference before anybody sees
 // it against a release that has not been rebuilt in a year.
 const DefaultScanEvery = 24 * time.Hour
+
+// DefaultDiscloseAfter is how long an undisclosed finding has before its date
+// arrives, where a deployment has not said otherwise.
+//
+// Ninety days is what coordinated disclosure practice converges on, and the
+// number matters less than there being one: an embargo with no end is the
+// indefinite secrecy the disclosure frameworks warn about, arrived at by
+// nobody deciding anything.
+//
+// Reaching the date discloses nothing on its own (ACC-47). It is a date to
+// answer, not a trigger.
+const DefaultDiscloseAfter = 90 * 24 * time.Hour
 
 // On and Off are what a setting that is a switch may be set to.
 //

@@ -153,6 +153,15 @@ type Finding struct {
 	// the statement that somebody bumped this and the bump did not resolve it;
 	// its value is what they bumped from, so saying so needs no second query.
 	ArrivedFrom string `bun:"arrived_from"`
+	// DiscloseAt is when the embargo on this ends, on a finding nobody has
+	// announced. Nil on a disclosed one, which is already public.
+	//
+	// Reaching it discloses nothing (ACC-47). Publishing embargoed detail
+	// because a timer expired is the wrong default in both directions: if the
+	// fix is not ready, disclosing anyway is a decision a person makes, and
+	// automatic publication eventually publishes something nobody was ready
+	// for. What the date does is escalate.
+	DiscloseAt *time.Time `bun:"disclose_at"`
 	// OpenedAt is when this became true. Carried here rather than reached
 	// through the run, because not every finding has a run: one somebody
 	// recorded by hand was opened by a person, and everything that asks when a
