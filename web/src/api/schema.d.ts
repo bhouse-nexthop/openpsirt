@@ -1112,7 +1112,7 @@ export interface paths {
          *
          *     **It is filed under an identifier this deployment mints** — the product's name, the year and a number, which is the shape a vendor advisory takes. When a CVE is assigned later it becomes another name for the same issue and nothing about the finding, the decisions or the approvals moves.
          *
-         *     `component` names what in the build carries it, as the build calls it. Leave it out for the build itself, which is the honest answer where the flaw is in how the pieces fit together rather than in one of them.
+         *     `component` names what in the build carries it, as the build calls it. Leave it out for the build itself, which is the honest answer where the flaw is in how the pieces fit together rather than in one of them. A name the build holds at more than one version is refused with the choices rather than resolved to one of them; send `version`, and `ecosystem` where two share a version.
          *
          *     From here it behaves like any other finding: triaged, assigned, decided, on the same clock and in the same reports. No scan will close it — a run is the authority on what it found, and it found none of this.
          */
@@ -3555,6 +3555,8 @@ export interface components {
             component?: string;
             /** @description Whether this is already public. Undisclosed by default */
             disclosed?: boolean;
+            /** @description Which one, where two share a name and a version */
+            ecosystem?: string;
             /**
              * @description How bad it is
              * @enum {string}
@@ -3562,6 +3564,8 @@ export interface components {
             severity: "critical" | "high" | "medium" | "low" | "negligible" | "none";
             /** @description What the flaw is, in your own words */
             summary: string;
+            /** @description Which one, where the build holds that name at several versions */
+            version?: string;
         };
         RecordBody: {
             /**

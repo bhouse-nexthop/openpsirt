@@ -95,20 +95,29 @@ func ambiguousOrMissing(err error) error {
 	// to the same refusal.
 	var several *graph.Ambiguous
 	if errors.As(err, &several) {
-		detail := make([]error, 0, len(several.Choices))
-		for _, choice := range several.Choices {
-			detail = append(detail, &huma.ErrorDetail{
-				// Every component of that name, *not* narrowed to the issue —
-				// which is why the location differs from the narrowed list
-				// above. Some of these may not carry it at all.
-				Location: "component", Message: choice.Version,
-				Value: map[string]string{"ecosystem": choice.Ecosystem},
-			})
-		}
-		return huma.Error409Conflict(fmt.Sprintf(
-			"this build ships %q as %d different components — say which one with "+
-				"?version= and, where two share a version, &ecosystem=",
-			several.Name, len(several.Choices)), detail...)
+		return severalComponents(several, "?version= and, where two share a version, &ecosystem=")
 	}
 	return noSuchFinding()
+}
+
+// severalComponents offers every way a name could be meant, and says how to
+// pick one.
+//
+// How to say which differs by where the name arrived — a query parameter for a
+// lookup, a body field for something being recorded — so the caller supplies
+// that sentence and the list is built once.
+func severalComponents(several *graph.Ambiguous, sayWith string) error {
+	detail := make([]error, 0, len(several.Choices))
+	for _, choice := range several.Choices {
+		detail = append(detail, &huma.ErrorDetail{
+			// Every component of that name, *not* narrowed to an issue —
+			// which is why the location differs from the narrowed list above.
+			// Some of these may not carry it at all.
+			Location: "component", Message: choice.Version,
+			Value: map[string]string{"ecosystem": choice.Ecosystem},
+		})
+	}
+	return huma.Error409Conflict(fmt.Sprintf(
+		"this build ships %q as %d different components — say which one with %s",
+		several.Name, len(several.Choices), sayWith), detail...)
 }

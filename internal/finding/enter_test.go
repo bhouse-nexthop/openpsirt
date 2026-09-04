@@ -6,6 +6,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 )
 
 func TestAFlawInWhatWeShipIsRecordedAndSurvivesTheNextScan(t *testing.T) {
@@ -118,10 +119,14 @@ func TestARecordedFlawSaysWhatItIsAndWhereItIs(t *testing.T) {
 		f.shipped(t, twoConsumers())
 		who := f.planner(t, access.PrivateTriage)
 
+		// Whitespace passes a minimum length and is not a summary, so this
+		// arrives from a request rather than only from inside this process —
+		// which is why it is a sentinel rather than a sentence, and why the
+		// caller is told to fix it rather than that something went wrong here.
 		if _, _, err := f.store.Enter(t.Context(), who, finding.Entering{
 			TargetID: f.target, Severity: "high", Summary: "   ",
-		}); err == nil {
-			t.Error("a finding with nothing said about it was recorded")
+		}); !errors.Is(err, finding.ErrNothingSaid) {
+			t.Errorf("a finding with nothing said about it was recorded: %v", err)
 		}
 		if _, _, err := f.store.Enter(t.Context(), who, finding.Entering{
 			TargetID: f.target, Severity: "urgent", Summary: "Something.",
@@ -153,6 +158,60 @@ func TestARecordedFlawSaysWhatItIsAndWhereItIs(t *testing.T) {
 		}
 		if name != root.Name {
 			t.Errorf("a flaw naming no component hangs off %q, want the build itself", name)
+		}
+	})
+}
+
+func TestRecordingAgainstANameTheBuildHoldsTwiceIsRefusedRatherThanGuessed(t *testing.T) {
+	// A name is not unique within a build, and not rarely. This lookup took
+	// the first row a name matched, so a flaw recorded against one of several
+	// vendored versions of a library was filed against whichever had been
+	// interned first, with nothing saying which — the same guess that was
+	// measured wrong when a real image shipped three of one library and two of
+	// the three findings answered about a version nobody asked about.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, graph.Snapshot{
+			Root:       root,
+			Components: []graph.Described{swss, libnl, libnlNew},
+			Dependencies: []graph.Dependency{
+				{Parent: root, Child: swss},
+				{Parent: swss, Child: libnl},
+				{Parent: swss, Child: libnlNew},
+			},
+		})
+		who := f.planner(t, access.PrivateTriage)
+		const said = "The parser accepts a message it should refuse."
+
+		_, _, err := f.store.Enter(t.Context(), who, finding.Entering{
+			TargetID: f.target, Component: libnl.Name, Severity: "high", Summary: said,
+		})
+		var several *graph.Ambiguous
+		if !errors.As(err, &several) {
+			t.Fatalf("a name held at two versions resolved to one of them: %v", err)
+		}
+		// The versions, not only the fact. "Say which one" is not answerable
+		// by somebody who does not know what the choices are.
+		if got := several.Versions(); len(got) != 2 {
+			t.Errorf("the refusal offers %v, want both versions", got)
+		}
+
+		// Naming the version settles it, and it settles it on the one named
+		// rather than on whichever came first.
+		row, _, err := f.store.Enter(t.Context(), who, finding.Entering{
+			TargetID: f.target, Component: libnl.Name, Version: libnlNew.Version,
+			Severity: "high", Summary: said,
+		})
+		if err != nil {
+			t.Fatalf("naming the version: %v", err)
+		}
+		var version string
+		if err := f.db.DB.NewSelect().TableExpr("component AS c").
+			ColumnExpr("c.version").Where("c.id = ?", row.ComponentID).
+			Scan(t.Context(), &version); err != nil {
+			t.Fatal(err)
+		}
+		if version != libnlNew.Version {
+			t.Errorf("recorded against %s, want the version that was named", version)
 		}
 	})
 }

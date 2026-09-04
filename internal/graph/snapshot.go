@@ -222,6 +222,13 @@ func (s *Store) ComponentAt(ctx context.Context, targetID int64, name string) (i
 // given to tell them apart.
 var ErrAmbiguous = errors.New("this build contains that name at more than one version")
 
+// ErrNoComponent says a build holds nothing by that name.
+//
+// A sentinel rather than a sentence, because a name reaching nothing and the
+// lookup failing are different answers and a caller that cannot tell them
+// apart reports a database fault as a typo, or a typo as a fault.
+var ErrNoComponent = errors.New("this build contains no component by that name")
+
 // Ambiguous carries which versions a name matched.
 //
 // The versions rather than only the fact, because "say which version" is not
@@ -322,7 +329,7 @@ func (s *Store) ComponentAs(ctx context.Context, targetID int64,
 		return 0, fmt.Errorf("look up component %q: %w", name, err)
 	}
 	if len(rows) == 0 {
-		return 0, fmt.Errorf("this build contains no component called %q", name)
+		return 0, fmt.Errorf("%w: %q", ErrNoComponent, name)
 	}
 	if len(rows) > 1 {
 		choices := make([]Choice, 0, len(rows))

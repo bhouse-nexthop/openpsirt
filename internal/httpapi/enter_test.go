@@ -5,6 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
+	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
 )
 
 func TestAFlawInOurOwnProductIsRecordedAndReadBackLikeAnyOther(t *testing.T) {
@@ -199,6 +204,119 @@ func TestMovingADisclosureDateIsRecordedAndGatedTheSameWayADeferralIs(t *testing
 		}
 		if history.Items[0].InForce {
 			t.Error("an extension nobody agreed to is reported as in force")
+		}
+	})
+}
+
+// shipsTwice re-applies the build's graph holding one name at two versions,
+// which is the ordinary case rather than a contrived one: a real image ships
+// three vendored copies of one library.
+func (r *reach) shipsTwice(t *testing.T) {
+	t.Helper()
+	ctx := t.Context()
+
+	names := catalog.NewStore(r.db.DB)
+	located, err := names.Locate(ctx, "mine", "master", "broadcom")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := names.TargetFor(ctx, located.StreamID, located.VariantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scan, outcome, err := ingest.NewStore(r.db.DB).Record(ctx, ingest.Arriving{
+		TargetID: target.ID, ContentHash: "two-versions", ParserVersion: "test",
+		// Newer than the first, and not ahead of the clock: a build stamped in
+		// the future is refused, because accepting one means no later scan is
+		// ever newer.
+		BuiltAt: time.Now().UTC(),
+	})
+	if err != nil || outcome != ingest.Accept {
+		t.Fatalf("record scan: %v %v", outcome, err)
+	}
+
+	product := graph.Described{Purl: "pkg:deb/debian/mine@1.0", Name: "mine", Version: "1.0"}
+	consumer := graph.Described{
+		Purl: "pkg:deb/debian/libswsscommon@1.0.0", Name: "libswsscommon", Version: "1.0.0",
+	}
+	older := graph.Described{
+		Purl: "pkg:deb/debian/libnl-3-200@3.7.0", Name: "libnl-3-200", Version: "3.7.0",
+	}
+	newer := graph.Described{
+		Purl: "pkg:deb/debian/libnl-3-200@3.9.0", Name: "libnl-3-200", Version: "3.9.0",
+	}
+	if _, err := graph.NewStore(r.db.DB).Apply(ctx, target.ID, scan.ID, graph.Snapshot{
+		Root:       product,
+		Components: []graph.Described{consumer, older, newer},
+		Dependencies: []graph.Dependency{
+			{Parent: product, Child: consumer},
+			{Parent: consumer, Child: older},
+			{Parent: consumer, Child: newer},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestANameTheBuildHoldsTwiceIsRefusedWithTheChoicesToPickFrom(t *testing.T) {
+	// The screen recording a flaw offers the choices back, so what it needs is
+	// which versions rather than only that it could not tell. Resolving to one
+	// of them would file a flaw against a version nobody named and say nothing.
+	twoReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+		r.shipsTwice(t)
+		const at = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		const said = `"summary":"The parser accepts a message it should refuse.","severity":"high"`
+
+		got := asPerson(t, r, "private-triage", http.MethodPost, at,
+			`{`+said+`,"component":"libnl-3-200"}`)
+		if got.Code != http.StatusConflict {
+			t.Fatalf("an ambiguous name answered %d: %s", got.Code, got.Body.String())
+		}
+		var refused struct {
+			Errors []struct {
+				Location string            `json:"location"`
+				Message  string            `json:"message"`
+				Value    map[string]string `json:"value"`
+			} `json:"errors"`
+		}
+		if err := json.Unmarshal(got.Body.Bytes(), &refused); err != nil {
+			t.Fatalf("decode: %v (%s)", err, got.Body.String())
+		}
+		if len(refused.Errors) != 2 {
+			t.Fatalf("the refusal offers %d choices, want both: %s", len(refused.Errors),
+				got.Body.String())
+		}
+		// The ecosystem travels with each, because a version alone does not
+		// always resolve one — a source repository and the package built from
+		// it share both a name and a version.
+		for _, choice := range refused.Errors {
+			if choice.Value["ecosystem"] == "" {
+				t.Errorf("choice %q offers no ecosystem", choice.Message)
+			}
+		}
+
+		// Named, it is recorded against that one.
+		made := asPerson(t, r, "private-triage", http.MethodPost, at,
+			`{`+said+`,"component":"libnl-3-200","version":"3.9.0"}`)
+		if made.Code != http.StatusCreated {
+			t.Fatalf("naming the version answered %d: %s", made.Code, made.Body.String())
+		}
+	})
+}
+
+func TestASummaryOfNothingButSpacesIsTheCallersToFix(t *testing.T) {
+	// Whitespace passes a minimum length, so this reaches the store, and the
+	// store refusing it used to arrive as a 500 saying something went wrong
+	// here. Nothing went wrong here.
+	twoReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+		got := asPerson(t, r, "private-triage", http.MethodPost,
+			"/v1/products/mine/streams/master/variants/broadcom/findings",
+			`{"summary":"   ","severity":"high"}`)
+		if got.Code != http.StatusUnprocessableEntity {
+			t.Errorf("a summary of spaces answered %d, want it named as the caller's to fix: %s",
+				got.Code, got.Body.String())
 		}
 	})
 }

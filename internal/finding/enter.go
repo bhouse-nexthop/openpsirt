@@ -11,6 +11,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 )
 
@@ -28,6 +29,14 @@ type Entering struct {
 	// Empty is the build itself, which is the honest answer where the flaw is
 	// in how the pieces are put together rather than in one of them.
 	Component string
+	// Version and Ecosystem narrow a name that reaches more than one
+	// component. A name is not unique within a build — a real switch image
+	// ships three vendored versions of one library, and thirteen names in it
+	// are held at one version by two components — so a name alone is a
+	// question rather than an answer, and the answer to an ambiguous one is a
+	// refusal that says which choices there are.
+	Version   string
+	Ecosystem string
 	// Summary is what the flaw is, in the words of whoever found it. It is
 	// what a triager reads first and often all they read.
 	Summary string
@@ -51,6 +60,17 @@ var rated = map[string]bool{
 
 // ErrNoSuchComponent says the build holds nothing by that name.
 var ErrNoSuchComponent = errors.New("this build holds nothing by that name")
+
+// ErrNothingSaid says a recorded finding arrived without a summary.
+//
+// A sentinel because it is the caller's to fix. Whitespace passes a minimum
+// length and is not a summary, so this is reachable from a request rather than
+// only from a caller inside this process.
+var ErrNothingSaid = errors.New("a recorded finding has to say what the flaw is")
+
+// ErrNothingScanned says the build holds no contents to record against.
+var ErrNothingScanned = errors.New(
+	"nothing has been scanned into this build, so there is nothing to record against")
 
 // Enter records a flaw in what a build ships, and returns the finding and the
 // identifier it was filed under.
@@ -95,7 +115,7 @@ func (s *Store) Enter(ctx context.Context, subject access.Subject, in Entering) 
 		return nil, "", access.Denied("record a finding without being anybody")
 	}
 	if strings.TrimSpace(in.Summary) == "" {
-		return nil, "", fmt.Errorf("a recorded finding has to say what the flaw is")
+		return nil, "", ErrNothingSaid
 	}
 	severity := strings.ToLower(strings.TrimSpace(in.Severity))
 	if !rated[severity] {
@@ -108,7 +128,7 @@ func (s *Store) Enter(ctx context.Context, subject access.Subject, in Entering) 
 		return nil, "", fmt.Errorf("%q is not a severity", in.Severity)
 	}
 
-	componentID, componentName, err := s.carrying(ctx, in.TargetID, in.Component)
+	componentID, componentName, err := s.carrying(ctx, in.TargetID, in)
 	if err != nil {
 		return nil, "", err
 	}
@@ -206,24 +226,23 @@ func mayRecord(subject access.Subject, productID int64, visibility access.Visibi
 
 // carrying resolves what in the build holds the flaw, defaulting to the build
 // itself.
-func (s *Store) carrying(ctx context.Context, targetID int64, name string) (int64, string, error) {
-	name = strings.TrimSpace(name)
+func (s *Store) carrying(ctx context.Context, targetID int64, in Entering) (int64, string, error) {
+	name := strings.TrimSpace(in.Component)
 	if name != "" {
-		var id int64
-		err := s.db.NewSelect().
-			TableExpr("graph_node AS n").
-			Join("JOIN component AS c ON c.id = n.component_id").
-			ColumnExpr("c.id").
-			Where("n.target_id = ?", targetID).
-			Where("n.closed_scan_id IS NULL").
-			Where("c.name = ?", name).
-			Limit(1).
-			Scan(ctx, &id)
-		if database.IsNoRows(err) {
+		// The resolver every other component lookup already goes through,
+		// rather than a second one here. This took the first row a name
+		// matched, which is the guess that was measured wrong elsewhere: three
+		// vendored versions of one library all resolved to the same component,
+		// so a flaw recorded against one of them was filed against whichever
+		// had been interned first and nothing said so. An ambiguous name is
+		// now a refusal carrying the choices.
+		id, err := graph.NewStore(s.db).ComponentAs(ctx, targetID, name,
+			strings.TrimSpace(in.Version), strings.TrimSpace(in.Ecosystem))
+		switch {
+		case errors.Is(err, graph.ErrNoComponent):
 			return 0, "", ErrNoSuchComponent
-		}
-		if err != nil {
-			return 0, "", fmt.Errorf("look up what carries this: %w", err)
+		case err != nil:
+			return 0, "", err
 		}
 		return id, name, nil
 	}
@@ -246,8 +265,7 @@ func (s *Store) carrying(ctx context.Context, targetID int64, name string) (int6
 		Limit(1).
 		Scan(ctx, &root)
 	if database.IsNoRows(err) {
-		return 0, "", fmt.Errorf(
-			"nothing has been scanned into this build, so there is nothing to record against")
+		return 0, "", ErrNothingScanned
 	}
 	if err != nil {
 		return 0, "", fmt.Errorf("look up what this build is: %w", err)

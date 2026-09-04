@@ -114,6 +114,27 @@ nothing puts it on the root, which is the honest answer where the flaw is in
 how the pieces fit together rather than in one of them. Naming something the
 build does not hold is refused: that is a claim about somebody else's software.
 
+**A name the build holds more than once is refused with the choices**, and the
+version — with the ecosystem where two components share one — settles it. A
+name is not unique within a build and not rarely: a real switch image ships
+three vendored copies of one library, and thirteen names in it are held at one
+version by two components, a source repository and the package built from it.
+
+This resolution goes through the same lookup every other component reference
+takes, rather than a second one beside it. It did not, and the one here took
+the first row a name matched — the guess that was already measured wrong
+elsewhere, where two of three findings answered about a version nobody asked
+about. Recording is where that guess costs most: a lookup that picks wrongly
+answers the wrong question and can be asked again, and a flaw filed against the
+wrong version of three is a record that reads as deliberate.
+
+**Each refusal is the caller's to fix, and says so.** A name that reaches
+nothing, a name that reaches several, a summary of nothing but whitespace, and
+a build with no contents to record against are four different answers. The
+third is the one worth naming: a minimum length passes whitespace, so it
+arrives from a request rather than only from inside this process, and it used
+to be answered as something having gone wrong at our end.
+
 ## How a finding was reached, and why it decides what to do about it
 
 A scanner reaches a finding one of two ways, and on a distribution's package

@@ -11,6 +11,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 )
 
 // EmbargoedBody is one finding nobody has announced, and when that ends.
@@ -57,7 +58,9 @@ func registerEntry(api huma.API, in Ingest) {
 			"finding, the decisions or the approvals moves.\n\n" +
 			"`component` names what in the build carries it, as the build calls it. Leave it " +
 			"out for the build itself, which is the honest answer where the flaw is in how " +
-			"the pieces fit together rather than in one of them.\n\n" +
+			"the pieces fit together rather than in one of them. A name the build holds at " +
+			"more than one version is refused with the choices rather than resolved to one " +
+			"of them; send `version`, and `ecosystem` where two share a version.\n\n" +
 			"From here it behaves like any other finding: triaged, assigned, decided, on the " +
 			"same clock and in the same reports. No scan will close it — a run is the " +
 			"authority on what it found, and it found none of this.",
@@ -70,6 +73,8 @@ func registerEntry(api huma.API, in Ingest) {
 			Summary   string `json:"summary" minLength:"1" doc:"What the flaw is, in your own words"`
 			Severity  string `json:"severity" enum:"critical,high,medium,low,negligible,none" doc:"How bad it is"`
 			Component string `json:"component,omitempty" doc:"What carries it. Omit for the build itself"`
+			Version   string `json:"version,omitempty" doc:"Which one, where the build holds that name at several versions"`
+			Ecosystem string `json:"ecosystem,omitempty" doc:"Which one, where two share a name and a version"`
 			Disclosed bool   `json:"disclosed,omitempty" doc:"Whether this is already public. Undisclosed by default"`
 		}
 	}) (*struct {
@@ -95,11 +100,24 @@ func registerEntry(api huma.API, in Ingest) {
 
 		row, identifier, err := finding.NewStore(in.DB.DB).Enter(ctx, subject, finding.Entering{
 			TargetID: target.ID, Component: input.Body.Component,
+			Version: input.Body.Version, Ecosystem: input.Body.Ecosystem,
 			Summary: input.Body.Summary, Severity: input.Body.Severity,
 			Disclosed: input.Body.Disclosed,
 		})
 		if err != nil {
-			if errors.Is(err, finding.ErrNoSuchComponent) {
+			// Each of these is the caller's to fix, and says which. Falling
+			// through to the generic refusal would answer a name the build
+			// holds twice, and a summary of nothing but spaces, with a 500
+			// that says the request went wrong at our end.
+			var several *graph.Ambiguous
+			switch {
+			case errors.As(err, &several):
+				return nil, severalComponents(several, "version, and ecosystem where two share one")
+			case errors.Is(err, finding.ErrNoSuchComponent):
+				return nil, huma.Error404NotFound(err.Error())
+			case errors.Is(err, finding.ErrNothingSaid):
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			case errors.Is(err, finding.ErrNothingScanned):
 				return nil, huma.Error404NotFound(err.Error())
 			}
 			return nil, refusedFinding(in, err)
