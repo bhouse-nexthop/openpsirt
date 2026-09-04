@@ -136,6 +136,9 @@ func registerAssignment(api huma.API, in Ingest) {
 					", in " + input.Product + " " + input.Stream + " " + input.Variant,
 				Link: findingPath(input.Product, input.Stream, input.Variant,
 					input.Vulnerability, input.Component),
+				// What it is about, so a digest can tell later that this
+				// person was told about this work and leave it out.
+				Concerns: notify.Concerning(input.Product, input.Vulnerability, input.Component),
 				// The body above names the product, the build and the issue.
 				// Inside the application that is right — reaching it is
 				// already the visibility check — and outside it is the

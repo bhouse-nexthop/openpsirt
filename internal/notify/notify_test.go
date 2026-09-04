@@ -374,3 +374,37 @@ func (r *recorder) Send(_ context.Context, to string, m notify.Message) error {
 	}{to, m})
 	return r.fail
 }
+
+func TestADigestCarriesOnlyWhatNothingElseSaid(t *testing.T) {
+	// The whole of NTF-16. Two pieces of work are assigned; one produced a
+	// message of its own and one did not, which is what happens when somebody
+	// assigns something to themselves or when nothing could send at the time.
+	// The digest is for the second.
+	eachWithDB(t, func(t *testing.T, db *database.DB, s *notify.Store, me, _ access.Subject) {
+		ctx := t.Context()
+		rights := access.NewStore(db.DB)
+		if err := rights.SetEmail(ctx, me.ID, "ana@example", false); err != nil {
+			t.Fatal(err)
+		}
+
+		// Told about one of them, the way assigning to somebody else does.
+		if err := s.Tell(ctx, notify.Telling{
+			PersonID: me.ID, Kind: notify.Assigned,
+			Body:     "CVE-2026-1 in libfoo",
+			Concerns: notify.Concerning("mine", "CVE-2026-1", "libfoo"),
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		told, err := notify.ToldAbout(ctx, db.DB, me.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !told[notify.Concerning("mine", "CVE-2026-1", "libfoo")] {
+			t.Error("what somebody was told about was not recorded")
+		}
+		if told[notify.Concerning("mine", "CVE-2026-2", "libfoo")] {
+			t.Error("something nobody was told about reads as told")
+		}
+	})
+}

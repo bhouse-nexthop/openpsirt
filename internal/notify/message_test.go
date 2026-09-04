@@ -96,3 +96,53 @@ func TestASubjectSaysWhatKindOfThingAndNeverWhichOne(t *testing.T) {
 		t.Error("a message with no subject is one a reader cannot triage in a list")
 	}
 }
+
+func TestADigestNamesWhatIsDisclosedAndCountsWhatIsNot(t *testing.T) {
+	// NTF-18. A digest is a message, so it cannot name an undisclosed finding
+	// — and dropping those rows would be the opposite failure: somebody reads
+	// "nothing to report" while an embargoed item sits unowned.
+	//
+	// So they become numbers. Severity and lateness, because "three
+	// undisclosed" does not say whether to open the tool now or after coffee,
+	// and a channel that cannot answer that is one people stop reading.
+	d := Digest{
+		Mine: []Item{{
+			Issue: "CVE-2025-60876", Component: "busybox-binsh", Version: "1.37.0-r31",
+			Severity: "medium", Product: "openpsirt", Build: "main container",
+		}},
+		Withheld: Withheld{
+			Count: 3, BySeverity: map[string]int{"critical": 1, "high": 2},
+			Exploited: 1, Unowned: 2,
+		},
+	}
+	got := d.Message("https://psirt.example")
+
+	// What is public is named, because that is what makes it worth opening.
+	for _, wanted := range []string{"CVE-2025-60876", "busybox-binsh", "openpsirt"} {
+		if !strings.Contains(got.Text, wanted) {
+			t.Errorf("the digest does not name %q:\n%s", wanted, got.Text)
+		}
+	}
+	// What is not disclosed is counted, and the numbers say how urgent.
+	for _, wanted := range []string{"3 findings", "1 critical", "2 high", "1 known to be exploited", "2 that nobody owns"} {
+		if !strings.Contains(got.Text, wanted) {
+			t.Errorf("the digest does not say %q:\n%s", wanted, got.Text)
+		}
+	}
+	// And the subject says nothing about any of it, because a preview shows a
+	// subject without anybody opening anything.
+	if strings.Contains(got.Subject, "CVE") || strings.Contains(got.Subject, "openpsirt") {
+		t.Errorf("the subject names what it is about: %q", got.Subject)
+	}
+}
+
+func TestADigestWithNothingToSayIsNotAMessage(t *testing.T) {
+	// A daily "nothing" is how somebody learns to stop opening the daily
+	// message, and then the ones that say something go unread with it.
+	if !(Digest{}).Empty() {
+		t.Error("an empty digest does not read as empty")
+	}
+	if (Digest{Withheld: Withheld{Count: 1}}).Empty() {
+		t.Error("a digest with something withheld reads as empty, so nobody is told it exists")
+	}
+}

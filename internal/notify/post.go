@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/uptrace/bun"
+
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 )
 
 // betweenPosts is how often what is unsent is carried out of the application.
@@ -64,6 +66,11 @@ func (p *Post) Run(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-timer.C:
+		}
+		if sent, err := p.Digests(ctx); err != nil {
+			p.logger.Error("sending digests", "error", err)
+		} else if sent > 0 {
+			p.logger.Info("digests sent", "channel", p.channel.Name(), "sent", sent)
 		}
 		if sent, failed, err := p.Once(ctx); err != nil {
 			// Logged and carried on, like every other background pass here.
@@ -137,3 +144,65 @@ func (p *Post) Once(ctx context.Context) (sent, failed int, err error) {
 	}
 	return sent, failed, nil
 }
+
+// atMostInADigest bounds one message.
+//
+// A person who has never opened the tool holds however much has accumulated,
+// and a mail listing eight hundred things is one nobody reads to the end. What
+// is over the bound is still in the application, which is where somebody works
+// through it.
+const atMostInADigest = 50
+
+// Digests sends one message to each person who asked for one.
+//
+// Daily rather than per event: that is what makes it a digest, and what
+// separates it from the categories NTF-02 says are worth interrupting somebody
+// for. A person is sent nothing where there is nothing to say.
+func (p *Post) Digests(ctx context.Context) (sent int, err error) {
+	var people []access.Account
+	if err := p.db.NewSelect().Model(&people).
+		Where("digest = ?", true).
+		// Somebody with no address asked for something this cannot deliver.
+		// Narrowed here so a deployment where nobody has one does no work.
+		Where("email IS NOT NULL AND email <> ?", "").
+		// One a day. The sweep runs far more often than that, because it
+		// carries the immediate messages too.
+		Where("digest_sent_at IS NULL OR digest_sent_at < ?", p.now().Add(-aDay)).
+		Scan(ctx, &people); err != nil {
+		return 0, fmt.Errorf("read who asked for a digest: %w", err)
+	}
+
+	for i := range people {
+		person := &people[i]
+		digest, err := Assemble(ctx, p.db, person, atMostInADigest)
+		if err != nil {
+			p.logger.Warn("could not assemble a digest",
+				"person", person.Identity, "error", err)
+			continue
+		}
+		// Nothing to say is not a message. A daily "nothing" is how somebody
+		// learns to stop opening the daily message, and the ones that say
+		// something go unread with it.
+		//
+		// The stamp still moves. Otherwise a quiet week means the next digest
+		// reports the whole week as new, and "since the last digest" stops
+		// meaning what it says.
+		if !digest.Empty() {
+			if err := p.channel.Send(ctx, person.Email, digest.Message(p.baseURL)); err != nil {
+				p.logger.Warn("could not send a digest",
+					"channel", p.channel.Name(), "person", person.Identity, "error", err)
+				continue
+			}
+			sent++
+		}
+		if _, err := p.db.NewUpdate().Model((*access.Account)(nil)).
+			Set("digest_sent_at = ?", p.now()).
+			Where("id = ?", person.ID).Exec(ctx); err != nil {
+			return sent, fmt.Errorf("record that a digest went: %w", err)
+		}
+	}
+	return sent, nil
+}
+
+// aDay is how long between digests.
+const aDay = 24 * time.Hour

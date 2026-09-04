@@ -84,6 +84,15 @@ func upNotification(ctx context.Context, tx *sql.Tx) error {
 			-- but a link (NTF-15); the area inside it is unaffected, because
 			-- reaching that is already the visibility check.
 			"private"   ` + t.boolean + ` NOT NULL,
+			-- What an event was about, where it was about a finding.
+			--
+			-- Not "about" above, which carries a condition's identity and its
+			-- uniqueness: an event that named one would be deduplicated
+			-- against an unrelated row, which is why that column refuses one.
+			-- This one is never matched on for uniqueness. It exists so the
+			-- digest can answer "was this person already told about this",
+			-- which is the whole of what a digest carries.
+			"concerns"  ` + t.name + ` NULL,
 			-- When this was carried outside the application, and how many
 			-- times that has been tried.
 			--

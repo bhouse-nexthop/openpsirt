@@ -77,9 +77,7 @@ not the same thing to the person waiting — which is what the queue's own
 
 ## What is not built, and what it will be
 
-**A daily digest** carrying everything that is not urgent, opt-in and off by
-default (NTF-03). Not built, and what it will carry is settled (NTF-16 to
-NTF-18) — see below. Off by default because a digest nobody asked for is mail
+**A chat adapter**, behind the same interface mail uses (NTF-01). Not built. Off by default because a digest nobody asked for is mail
 somebody filters, and a filtered channel is worse than no channel: it looks
 like it is working.
 
@@ -134,7 +132,9 @@ what was left would carry nothing, and a channel that arrives empty is the one
 people stop opening — which takes the rest of the channel with it.
 
 **So the digest carries what nothing else told you** (NTF-16), and there are
-exactly two of those.
+exactly two of those. It is built, and it is assembled as its reader: every
+query narrows by the subject it is handed, so a digest cannot contain something
+the person it is for could not open. The sweep holds no rights of its own.
 
 **Work that became yours without a message.** The immediate one is not sent
 when somebody assigns something to themselves, when nothing could send at that
@@ -152,7 +152,22 @@ people route to a folder.
 
 **Nothing is repeated.** A thing already sent immediately is not in the digest,
 which is what makes "carries what nothing else told you" a rule rather than a
-description.
+description. An event records what it was about for exactly this — kept apart
+from the name a condition clears against, which is a uniqueness key and would
+deduplicate two unrelated events into one.
+
+**A digest with nothing in it is not sent**, and the clock still moves. A daily
+message that says "nothing" is how somebody learns to stop opening the daily
+message, and the ones that say something go unread with it; but leaving the
+mark unmoved would make a quiet week report itself as new the following
+Monday.
+
+**A first digest reports nothing under "nobody owns".** There is no "since" to
+measure against, and arriving to a list of everything ever opened is the same
+as arriving to no channel at all.
+
+**One message is bounded.** What is over the bound stays in the application,
+which is where somebody works through it rather than in a mail client.
 
 **It names what has been disclosed and gives numbers for what has not**
 (NTF-18). A public finding is listed with its issue, component and build. The

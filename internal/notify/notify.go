@@ -88,6 +88,11 @@ type Notification struct {
 	// leaves this deployment carries a link and nothing else for one of these
 	// (NTF-15); the area inside it is unaffected.
 	Private bool `bun:"private,notnull"`
+	// Concerns is what an event was about, where it was about a finding. Not
+	// About above, which carries a condition's identity and deduplicates on
+	// it; this is never matched on for uniqueness, and exists so a digest can
+	// answer whether somebody was already told.
+	Concerns string `bun:"concerns"`
 	// SentAt says this has been carried outside the application, and Attempts
 	// how many times that has been tried. Unsent is the whole of the work
 	// list, so a failure needs no state of its own — it is simply still
@@ -121,6 +126,10 @@ type Telling struct {
 	About string
 	Body  string
 	Link  string
+	// Concerns is what this is about, where it is about a finding. Built by
+	// Concerning so that whoever tells and whoever asks later agree on the
+	// shape without either of them writing it out.
+	Concerns string
 	// Private says what this is about is a finding nobody has announced. It
 	// travels with the telling rather than being worked out later: what is
 	// said outside this deployment depends on what was true when there was
@@ -143,7 +152,8 @@ func (s *Store) Tell(ctx context.Context, t Telling) error {
 	}
 	row := &Notification{
 		PersonID: t.PersonID, Kind: t.Kind, Lifetime: Event,
-		Body: t.Body, Link: t.Link, Private: t.Private, CreatedAt: s.now(),
+		Body: t.Body, Link: t.Link, Private: t.Private,
+		Concerns: t.Concerns, CreatedAt: s.now(),
 	}
 	if _, err := s.db.NewInsert().Model(row).Exec(ctx); err != nil {
 		return fmt.Errorf("record what happened: %w", err)
@@ -358,4 +368,19 @@ func (s *Store) AcknowledgeAll(ctx context.Context, subject access.Subject) (int
 		return 0, nil
 	}
 	return int(n), nil
+}
+
+// Concerning names the finding a notification is about.
+//
+// One function so that whoever records a telling and whoever asks later
+// whether somebody was told agree on the shape without either writing it out.
+// Assignment covers every build of a product holding the same component
+// (REL-01), so the build is deliberately not part of it: being told about one
+// build and asked about another is the same piece of work.
+//
+// The separator is a unit separator rather than a punctuation character,
+// because a component name may contain any punctuation somebody chose and two
+// different findings must not produce one key.
+func Concerning(product, vulnerability, component string) string {
+	return product + "\x1f" + vulnerability + "\x1f" + component
 }

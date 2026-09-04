@@ -383,6 +383,14 @@ type Owned struct {
 	Stream  string `bun:"stream"`
 	Variant string `bun:"variant"`
 	Urgency int64  `bun:"urgency"`
+	// Undisclosed says at least one of the findings behind this row is one
+	// nobody has announced. Any is enough: what may be said about a group
+	// outside this deployment is decided by the most careful row in it
+	// (NTF-15).
+	Undisclosed bool `bun:"undisclosed"`
+	// OpenedAt is when the newest of them opened, which is what "since the
+	// last digest" is measured against.
+	OpenedAt time.Time `bun:"opened_at"`
 	// Places is how many findings this covers, across every build it is in.
 	// It is what a judgment here would be recorded against.
 	Places int `bun:"places"`
@@ -433,9 +441,31 @@ func (s *Store) AssignedTo(ctx context.Context, subject access.Subject, personID
 	return s.work(ctx, subject, scope, &personID, limit, offset)
 }
 
+// UnassignedSince is what nobody owns that arrived after a moment.
+//
+// The digest's half of Unassigned: what a person is told about daily is what
+// has appeared since they were last told, rather than everything open, which
+// after a month is a list nobody reads (NTF-16).
+func (s *Store) UnassignedSince(ctx context.Context, subject access.Subject, scope Scope,
+	since time.Time, limit int) ([]Owned, int, error) {
+
+	return s.workSince(ctx, subject, scope, nil, &since, limit, 0)
+}
+
 // work is what somebody holds, or what nobody does.
 func (s *Store) work(ctx context.Context, subject access.Subject, scope Scope,
 	holder *int64, limit, offset int) ([]Owned, int, error) {
+
+	return s.workSince(ctx, subject, scope, holder, nil, limit, offset)
+}
+
+// workSince is the same, bounded to what opened after a moment.
+//
+// Only the digest passes one, and it passes the moment the last digest went:
+// what it carries is what has arrived since, rather than everything that is
+// open, which after a month is a list nobody reads.
+func (s *Store) workSince(ctx context.Context, subject access.Subject, scope Scope,
+	holder *int64, since *time.Time, limit, offset int) ([]Owned, int, error) {
 
 	products, all := subject.Products()
 	if subject.Kind != access.Person || (!all && len(products) == 0) {
@@ -450,6 +480,9 @@ func (s *Store) work(ctx context.Context, subject access.Subject, scope Scope,
 			Join("JOIN target AS tg ON tg.id = f.target_id").
 			Join("JOIN stream AS st ON st.id = tg.stream_id").
 			Where("f.closed_at IS NULL")
+		if since != nil {
+			q = q.Where("f.opened_at > ?", *since)
+		}
 		if holder == nil {
 			q = q.Where("f.assigned_to IS NULL")
 		} else {
@@ -484,14 +517,16 @@ func (s *Store) work(ctx context.Context, subject access.Subject, scope Scope,
 	// aggregate, which is what the first version did — a text column reduced
 	// with MIN once per row of the grouping to read fifty names.
 	var heads []struct {
-		VulnerabilityID int64 `bun:"vulnerability_id"`
-		ComponentID     int64 `bun:"component_id"`
-		ProductID       int64 `bun:"product_id"`
-		TargetID        int64 `bun:"target_id"`
-		Builds          int   `bun:"builds"`
-		Urgency         int64 `bun:"urgency"`
-		Places          int   `bun:"places"`
-		Total           int   `bun:"total"`
+		VulnerabilityID int64     `bun:"vulnerability_id"`
+		ComponentID     int64     `bun:"component_id"`
+		ProductID       int64     `bun:"product_id"`
+		TargetID        int64     `bun:"target_id"`
+		Builds          int       `bun:"builds"`
+		Urgency         int64     `bun:"urgency"`
+		Places          int       `bun:"places"`
+		Total           int       `bun:"total"`
+		Undisclosed     bool      `bun:"undisclosed"`
+		OpenedAt        time.Time `bun:"opened_at"`
 	}
 	err := narrow(s.db.NewSelect()).
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
@@ -505,6 +540,12 @@ func (s *Store) work(ctx context.Context, subject access.Subject, scope Scope,
 		ColumnExpr("MIN(f.target_id) AS target_id").
 		ColumnExpr("COUNT(DISTINCT f.target_id) AS builds").
 		ColumnExpr("MAX(f.urgency) AS urgency").
+		ColumnExpr("MAX(f.opened_at) AS opened_at").
+		// Any undisclosed row makes the group undisclosed. Written as a sum
+		// rather than a boolean aggregate: the four engines do not agree on
+		// one, and counting is the same question asked portably.
+		ColumnExpr("SUM(CASE WHEN f.visibility = ? THEN 1 ELSE 0 END) > 0 AS undisclosed",
+			access.Private).
 		ColumnExpr("COUNT(*) AS places").
 		// The total rides on the page, as the findings list's does: the
 		// groups the narrowing admits, counted after the grouping and before
@@ -556,6 +597,7 @@ func (s *Store) work(ctx context.Context, subject access.Subject, scope Scope,
 		row := Owned{
 			VulnerabilityID: head.VulnerabilityID, ComponentID: head.ComponentID,
 			Urgency: head.Urgency, Places: head.Places, Builds: head.Builds,
+			Undisclosed: head.Undisclosed, OpenedAt: head.OpenedAt,
 			Exploited: Rank(head.Urgency).Exploited(),
 		}
 		if issue, held := named[head.VulnerabilityID]; held {
