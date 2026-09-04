@@ -378,6 +378,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#publishing-advisories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Publishing advisories
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#who-may-sign-in" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -515,6 +526,17 @@
     <span class="md-ellipsis">
       
         Scanning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#publishing-advisories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Publishing advisories
       
     </span>
   </a>
@@ -703,6 +725,42 @@ taken.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="publishing-advisories">Publishing advisories<a class="headerlink" href="#publishing-advisories" title="Permanent link">&para;</a></h2>
+<p>An advisory is a document about a flaw in your own product. It is generated
+from what this deployment already holds and handed to you; nothing is sent
+anywhere, and nothing records that you published it.</p>
+<p>Both a name and a namespace are needed for either to do anything. A CSAF
+document requires a publisher, so with one missing no advisory is generated and
+the refusal says which — rather than handing you a document that fails
+validation after you have sent it.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Meaning</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OPENPSIRT_PUBLISHER_NAME</code></td>
+<td>The organization advisories say issued them. Set it and the namespace together, or neither</td>
+<td>unset</td>
+</tr>
+<tr>
+<td><code>OPENPSIRT_PUBLISHER_NAMESPACE</code></td>
+<td>A URL identifying that organization, which is what a reader of a CSAF document matches on</td>
+<td>unset</td>
+</tr>
+<tr>
+<td><code>OPENPSIRT_PUBLISHER_CATEGORY</code></td>
+<td>What the standard calls the kind of publisher. A deployment publishing about its own product is a vendor</td>
+<td><code>vendor</code></td>
+</tr>
+</tbody>
+</table>
+<p>On the Helm chart these go through <code>extraEnv</code>, since a deployment that does not
+publish needs none of them.</p>
 <h2 id="who-may-sign-in">Who may sign in<a class="headerlink" href="#who-may-sign-in" title="Permanent link">&para;</a></h2>
 <p>The process refuses to start until somebody can administer it, and naming
 somebody grants a role — it does not let anybody in without signing in. At
