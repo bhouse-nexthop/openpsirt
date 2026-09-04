@@ -2,7 +2,7 @@
 
 Who is asking, and what they may reach.
 
-Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-44 to ACC-60, SEC-03,
+Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-44 to ACC-61, SEC-03,
 SEC-07 to SEC-09, SEC-20, UIX-32's server half, and the half of ACC-43 that has
 a trigger today. What is not built is named at the foot.
 
@@ -28,6 +28,31 @@ between an embarrassment and an incident.
 
 Anything unrecognized reads as **not disclosed**. A column added later would
 otherwise default every row that predates it to visible.
+
+## Who may hand work to whom
+
+**Deciding who deals with something is a different act from deciding what it
+is**, so it asks for a different right (ACC-61). Taking work nobody owns, and
+handing back your own, are part of triaging. Giving work to somebody else, or
+taking what they are holding, is the assigner's.
+
+The exception is what keeps the ordinary case working. Findings arriving under
+an already-assigned component start unowned, so there is a constant stream of
+work to pick up; if starting on something needed somebody else's attention
+first, working the queue would be a full-time job for whoever held the right.
+
+**Taking work off a colleague is the act the right names, and doing it to
+yourself is still doing it.** A triager may take what nobody owns and may not
+take what somebody has.
+
+**Moving everything one person holds stays administrative.** That is about a
+person rather than a finding — somebody has left, or their last role on a
+product was withdrawn — and it spans every product at once, which is not a
+per-product judgment at all.
+
+Who may *be* assigned is not a grant of its own: it is visibility. Somebody is
+told about work only where they can see the product it is in, which is checked
+where the telling happens.
 
 ## Work is assigned, and comes back when somebody goes
 

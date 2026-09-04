@@ -25,6 +25,11 @@ const (
 	// hand them everything there is to approve.
 	Reporting Role = "reporting"
 	Approver  Role = "approver"
+	// Assigner is deciding who deals with something, which is a different act
+	// from deciding what it is. Taking unowned work, and handing back your
+	// own, are triage; giving work to somebody else, or taking what they
+	// hold, is this (ACC-61).
+	Assigner Role = "assigner"
 
 	// The reading and triage roles, per visibility.
 	PublicRead    Role = "public-read"
@@ -35,7 +40,10 @@ const (
 
 // Roles are the baseline set. It is a floor, not a ceiling.
 func Roles() []Role {
-	return []Role{Reporting, Approver, PublicRead, PrivateRead, PublicTriage, PrivateTriage}
+	return []Role{
+		Reporting, Approver, Assigner,
+		PublicRead, PrivateRead, PublicTriage, PrivateTriage,
+	}
 }
 
 // Valid reports whether r is a role we recognize.

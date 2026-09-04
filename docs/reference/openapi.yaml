@@ -223,6 +223,7 @@ components:
           enum:
             - reporting
             - approver
+            - assigner
             - public-read
             - private-read
             - public-triage
@@ -309,6 +310,9 @@ components:
         may_agree:
           description: Agree to somebody else's claim
           type: boolean
+        may_assign:
+          description: Give work to somebody else, or take what they hold. Taking work nobody owns, and handing back your own, need only may_triage
+          type: boolean
         may_hide:
           description: Argue about a finding nobody has disclosed
           type: boolean
@@ -335,6 +339,7 @@ components:
         - may_see
         - sees_all
         - may_triage
+        - may_assign
         - may_hide
         - may_agree
         - may_report
@@ -1828,6 +1833,7 @@ components:
           enum:
             - reporting
             - approver
+            - assigner
             - public-read
             - private-read
             - public-triage
@@ -1852,6 +1858,7 @@ components:
           enum:
             - reporting
             - approver
+            - assigner
             - public-read
             - private-read
             - public-triage

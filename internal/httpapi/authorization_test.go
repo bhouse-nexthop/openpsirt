@@ -212,13 +212,19 @@ func reachOn(t *testing.T, on engines, fn func(t *testing.T, r *reach)) {
 		if err := rights.Claim(ctx, administrator.ID, access.ProxyProvider, "admin"); err != nil {
 			t.Fatal(err)
 		}
-		for who, role := range map[string]access.Role{
-			"reader":         access.PublicRead,
-			"private":        access.PrivateRead,
-			"triager":        access.PublicTriage,
-			"private-triage": access.PrivateTriage,
-			"approver":       access.Approver,
-			"reporter":       access.Reporting,
+		// One entry per identity, and more than one role where the point of
+		// the identity is what holding both allows. "triager" deliberately
+		// holds triage alone: taking unowned work is theirs and giving work
+		// to somebody else is not, and a cast where everybody could do both
+		// would test neither (ACC-61).
+		for who, roles := range map[string][]access.Role{
+			"reader":         {access.PublicRead},
+			"private":        {access.PrivateRead},
+			"triager":        {access.PublicTriage},
+			"assigner":       {access.PublicTriage, access.Assigner},
+			"private-triage": {access.PrivateTriage},
+			"approver":       {access.Approver},
+			"reporter":       {access.Reporting},
 		} {
 			person, err := rights.Ensure(ctx, who, "", false)
 			if err != nil {
@@ -231,8 +237,10 @@ func reachOn(t *testing.T, on engines, fn func(t *testing.T, r *reach)) {
 			if err := rights.Claim(ctx, person.ID, access.ProxyProvider, who); err != nil {
 				t.Fatal(err)
 			}
-			if err := rights.GrantRole(ctx, person.ID, mine.ID, role); err != nil {
-				t.Fatal(err)
+			for _, role := range roles {
+				if err := rights.GrantRole(ctx, person.ID, mine.ID, role); err != nil {
+					t.Fatal(err)
+				}
 			}
 		}
 		// A capability plus the visibility it acts on, which is what an

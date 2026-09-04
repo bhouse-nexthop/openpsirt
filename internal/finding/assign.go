@@ -45,14 +45,32 @@ func (s *Store) Assign(ctx context.Context, subject access.Subject, targetID, vu
 	if err != nil {
 		return 0, false, err
 	}
-	// Deciding who deals with something is a write, so it asks for the right
-	// that names it. Being able to *see* a finding is not being able to hand
-	// it around, and narrowing by visibility is not an authorization check —
-	// it stops somebody assigning what they cannot see, not somebody
-	// assigning.
-	if !subject.Holds(access.PublicTriage, productID) &&
-		!subject.Holds(access.PrivateTriage, productID) {
+	// Deciding who deals with something is a write, so it asks for a right.
+	// Being able to *see* a finding is not being able to hand it around, and
+	// narrowing by visibility is not an authorization check — it stops
+	// somebody assigning what they cannot see, not somebody assigning.
+	//
+	// Which right depends on who it lands on (ACC-61). Taking work nobody
+	// owns, and handing back your own, are part of triaging: the constant
+	// stream of unowned findings ACC-54 produces would otherwise need
+	// somebody's attention before anybody could start. Putting work on
+	// somebody else, or taking what they are holding, is a different act and
+	// asks for the right that names it.
+	triages := subject.Holds(access.PublicTriage, productID) ||
+		subject.Holds(access.PrivateTriage, productID)
+	if !triages {
 		return 0, false, access.Denied(fmt.Sprintf("decide who deals with findings in product %d", productID))
+	}
+	if !subject.Holds(access.Assigner, productID) {
+		mine, err := onlyMine(ctx, s.db, subject, productID, vulnerabilityID, componentID, to)
+		if err != nil {
+			return 0, false, err
+		}
+		if !mine {
+			return 0, false, access.Denied(fmt.Sprintf(
+				"give work to somebody else in product %d — you may take what nobody owns, "+
+					"and hand back your own", productID))
+		}
 	}
 	visible := access.Visible(subject, productID)
 	if len(visible) == 0 {
@@ -618,4 +636,44 @@ func onlyVisible(q *bun.SelectQuery, subject access.Subject, products []int64, a
 	}
 	return q.Where("(f.visibility = ? OR st.product_id IN (?))",
 		access.Public, bun.List(held))
+}
+
+// onlyMine reports whether an assignment is one triage alone may make: taking
+// something nobody owns, or handing back something already yours.
+//
+// Both halves are about who holds it now rather than about who is asking, so
+// they are read from the rows rather than inferred. A finding somebody else
+// holds is refused even when the caller is putting it on themselves — taking
+// work off a colleague is the act the right exists to name, and doing it to
+// yourself is still doing it.
+func onlyMine(ctx context.Context, db bun.IDB, subject access.Subject,
+	productID, vulnerabilityID, componentID int64, to *int64,
+) (bool, error) {
+	// Assigning to anybody but yourself is giving work away, whatever is
+	// there now. Assigning to nobody is only ever handing back.
+	if to != nil && *to != subject.ID {
+		return false, nil
+	}
+
+	// Asked as "is any of this held by somebody else", rather than by reading
+	// the holders and comparing them here. Scanning a nullable column into
+	// pointers hands back a pointer to zero where the row is null, which reads
+	// as "held by nobody at all" only if you remember that — and once it is a
+	// comparison in the query, the engine answers it and there is nothing to
+	// remember.
+	somebodyElse, err := db.NewSelect().Model((*Finding)(nil)).
+		Column("id").
+		Where(`target_id IN (SELECT tg.id FROM "target" AS tg
+			WHERE tg.stream_id IN (SELECT st.id FROM "stream" AS st
+				WHERE st.product_id = ?))`, productID).
+		Where("vulnerability_id = ?", vulnerabilityID).
+		Where("component_id = ?", componentID).
+		Where("closed_at IS NULL").
+		Where("assigned_to IS NOT NULL").
+		Where("assigned_to <> ?", subject.ID).
+		Exists(ctx)
+	if err != nil {
+		return false, fmt.Errorf("read who is dealing with this: %w", err)
+	}
+	return !somebodyElse, nil
 }

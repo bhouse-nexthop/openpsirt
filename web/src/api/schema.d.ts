@@ -2017,7 +2017,7 @@ export interface components {
              * @description What membership of this group grants
              * @enum {string}
              */
-            role: "reporting" | "approver" | "public-read" | "private-read" | "public-triage" | "private-triage" | "admin";
+            role: "reporting" | "approver" | "assigner" | "public-read" | "private-read" | "public-triage" | "private-triage" | "admin";
         };
         Branch: {
             branches?: components["schemas"]["Branch"][] | null;
@@ -2049,6 +2049,8 @@ export interface components {
         CanBody: {
             /** @description Agree to somebody else's claim */
             may_agree: boolean;
+            /** @description Give work to somebody else, or take what they hold. Taking work nobody owns, and handing back your own, need only may_triage */
+            may_assign: boolean;
             /** @description Argue about a finding nobody has disclosed */
             may_hide: boolean;
             /** @description Read the reports */
@@ -2931,7 +2933,7 @@ export interface components {
              * @description What they may do with it
              * @enum {string}
              */
-            role: "reporting" | "approver" | "public-read" | "private-read" | "public-triage" | "private-triage";
+            role: "reporting" | "approver" | "assigner" | "public-read" | "private-read" | "public-triage" | "private-triage";
         };
         HeldBody: {
             /** @description Whether this grants anything right now */
@@ -2942,7 +2944,7 @@ export interface components {
              * @description What they may do with it
              * @enum {string}
              */
-            role: "reporting" | "approver" | "public-read" | "private-read" | "public-triage" | "private-triage";
+            role: "reporting" | "approver" | "assigner" | "public-read" | "private-read" | "public-triage" | "private-triage";
             /**
              * @description Whether an administrator assigned this or a group derived it
              * @enum {string}

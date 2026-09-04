@@ -21,7 +21,7 @@ type BindingBody struct {
 	// Product is absent where the binding carries administration, which is
 	// global rather than held against a product.
 	Product string `json:"product,omitempty" doc:"The product the role is held against"`
-	Role    string `json:"role" enum:"reporting,approver,public-read,private-read,public-triage,private-triage,admin" doc:"What membership of this group grants"`
+	Role    string `json:"role" enum:"reporting,approver,assigner,public-read,private-read,public-triage,private-triage,admin" doc:"What membership of this group grants"`
 }
 
 func registerBindings(api huma.API, a Administering, settings func() *setting.Store) {

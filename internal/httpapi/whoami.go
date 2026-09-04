@@ -27,6 +27,7 @@ type CanBody struct {
 	MaySee    bool   `json:"may_see" doc:"Read findings that have been disclosed"`
 	SeesAll   bool   `json:"sees_all" doc:"Read findings nobody has disclosed yet"`
 	MayTriage bool   `json:"may_triage" doc:"Argue about a finding"`
+	MayAssign bool   `json:"may_assign" doc:"Give work to somebody else, or take what they hold. Taking work nobody owns, and handing back your own, need only may_triage"`
 	MayHide   bool   `json:"may_hide" doc:"Argue about a finding nobody has disclosed"`
 	MayAgree  bool   `json:"may_agree" doc:"Agree to somebody else's claim"`
 	MayReport bool   `json:"may_report" doc:"Read the reports"`
@@ -92,8 +93,9 @@ func registerWhoAmI(api huma.API, in Ingest) {
 		for _, product := range products {
 			body.Reach = append(body.Reach, CanBody{
 				Product: product.Name, Name: product.DisplayName,
-				MaySee:  subject.Reads(access.Public, product.ID),
-				SeesAll: subject.Reads(access.Private, product.ID),
+				MaySee:    subject.Reads(access.Public, product.ID),
+				SeesAll:   subject.Reads(access.Private, product.ID),
+				MayAssign: subject.Holds(access.Assigner, product.ID),
 				MayTriage: subject.Holds(access.PublicTriage, product.ID) ||
 					subject.Holds(access.PrivateTriage, product.ID),
 				MayHide:   subject.Holds(access.PrivateTriage, product.ID),

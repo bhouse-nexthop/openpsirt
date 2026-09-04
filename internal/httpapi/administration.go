@@ -117,7 +117,7 @@ type RecordBody struct {
 // GrantBody is one role against one product, as a request states it.
 type GrantBody struct {
 	Product string `json:"product" minLength:"1" doc:"The product the role is held against"`
-	Role    string `json:"role" enum:"reporting,approver,public-read,private-read,public-triage,private-triage" doc:"What they may do with it"`
+	Role    string `json:"role" enum:"reporting,approver,assigner,public-read,private-read,public-triage,private-triage" doc:"What they may do with it"`
 }
 
 // SignInBody is one way somebody may arrive.
@@ -133,7 +133,7 @@ type SignInBody struct {
 // HeldBody is one role against one product.
 type HeldBody struct {
 	Product string `json:"product" minLength:"1" doc:"The product the role is held against"`
-	Role    string `json:"role" enum:"reporting,approver,public-read,private-read,public-triage,private-triage" doc:"What they may do with it"`
+	Role    string `json:"role" enum:"reporting,approver,assigner,public-read,private-read,public-triage,private-triage" doc:"What they may do with it"`
 	// Effective says whether this grants anything right now. An assignment set
 	// aside by a change of role-assignment mode is kept so the change can be
 	// undone, and it grants nothing while it sits there — so it is shown, and

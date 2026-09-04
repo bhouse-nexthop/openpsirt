@@ -11,6 +11,7 @@ const ROLES = [
   "private-read",
   "public-triage",
   "private-triage",
+  "assigner",
   "approver",
   "reporting",
 ] as const;

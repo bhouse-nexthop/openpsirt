@@ -565,7 +565,7 @@ func TestWorkNobodyOwnsCanBeFoundAndGivenToSomebody(t *testing.T) {
 			t.Errorf("the unassigned row does not say what it is: %+v", waiting.Items[0])
 		}
 
-		if got := asPerson(t, r, "triager", http.MethodPut, at,
+		if got := asPerson(t, r, "assigner", http.MethodPut, at,
 			`{"person":"reader"}`); got.Code != http.StatusNoContent {
 			t.Fatalf("assigning answered %d: %s", got.Code, got.Body.String())
 		}
@@ -586,8 +586,11 @@ func TestWorkNobodyOwnsCanBeFoundAndGivenToSomebody(t *testing.T) {
 			t.Fatalf("who is holding what reads as %+v", holdings.Items)
 		}
 
-		// Handing it back is the same action, not a different one.
-		if got := asPerson(t, r, "triager", http.MethodPut, at,
+		// Handing it back is the same action, not a different one — and it is
+		// somebody else's work here, so it is the assigner's to hand back.
+		// A triager hands back their own; taking something off a colleague,
+		// including to leave it unowned, is what the other right names.
+		if got := asPerson(t, r, "assigner", http.MethodPut, at,
 			`{"person":""}`); got.Code != http.StatusNoContent {
 			t.Fatalf("handing it back answered %d: %s", got.Code, got.Body.String())
 		}
@@ -606,7 +609,7 @@ func TestOnlyAnAdministratorMovesSomebodyElsesWork(t *testing.T) {
 		r.scannedWithEvidence(t)
 		const at = "/v1/products/mine/streams/master/variants/broadcom" +
 			"/findings/CVE-2026-9999/components/libnl-3-200/assignment"
-		if got := asPerson(t, r, "triager", http.MethodPut, at,
+		if got := asPerson(t, r, "assigner", http.MethodPut, at,
 			`{"person":"reader"}`); got.Code != http.StatusNoContent {
 			t.Fatal(got.Body.String())
 		}

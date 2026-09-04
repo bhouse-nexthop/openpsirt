@@ -1,6 +1,7 @@
 package finding_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
@@ -35,7 +36,7 @@ func TestAssigningCoversEveryPlaceOfOneIssue(t *testing.T) {
 			t.Fatalf("expected one issue at two places, got %d", len(open))
 		}
 
-		moved, _, err := f.store.Assign(t.Context(), f.holding(t, access.PublicTriage),
+		moved, _, err := f.store.Assign(t.Context(), f.holding(t, access.PublicTriage, access.Assigner),
 			f.target, open[0].VulnerabilityID, open[0].ComponentID, ptr(int64(7)))
 		if err != nil {
 			t.Fatal(err)
@@ -61,7 +62,7 @@ func TestHandingSomethingBackIsTheSameActionAsGivingItOut(t *testing.T) {
 			t.Fatal(err)
 		}
 		open := f.open(t)
-		who := f.holding(t, access.PublicTriage)
+		who := f.holding(t, access.PublicTriage, access.Assigner)
 
 		if _, _, err := f.store.Assign(t.Context(), who, f.target,
 			open[0].VulnerabilityID, open[0].ComponentID, ptr(int64(7))); err != nil {
@@ -87,7 +88,7 @@ func TestWhenSomebodyGoesTheirWorkComesBack(t *testing.T) {
 			[]finding.Reported{found("CVE-2026-1", libnl), found("CVE-2026-2", swss)}); err != nil {
 			t.Fatal(err)
 		}
-		triager := f.holding(t, access.PublicTriage)
+		triager := f.holding(t, access.PublicTriage, access.Assigner)
 		for _, row := range f.open(t) {
 			if _, _, err := f.store.Assign(t.Context(), triager, f.target,
 				row.VulnerabilityID, row.ComponentID, ptr(int64(7))); err != nil {
@@ -127,7 +128,7 @@ func TestWorkCanBeHandedToSomebodyElse(t *testing.T) {
 			t.Fatal(err)
 		}
 		open := f.open(t)
-		if _, _, err := f.store.Assign(t.Context(), f.holding(t, access.PublicTriage), f.target,
+		if _, _, err := f.store.Assign(t.Context(), f.holding(t, access.PublicTriage, access.Assigner), f.target,
 			open[0].VulnerabilityID, open[0].ComponentID, ptr(int64(7))); err != nil {
 			t.Fatal(err)
 		}
@@ -179,7 +180,7 @@ func TestWorkComesBackWhenTheirLastRoleOnAProductGoes(t *testing.T) {
 			t.Fatal(err)
 		}
 		open := f.open(t)
-		triager := f.holding(t, access.PublicTriage)
+		triager := f.holding(t, access.PublicTriage, access.Assigner)
 		if _, _, err := f.store.Assign(t.Context(), triager, f.target,
 			open[0].VulnerabilityID, open[0].ComponentID, ptr(int64(7))); err != nil {
 			t.Fatal(err)
@@ -231,7 +232,7 @@ func TestTheCountsBesideTheseListsAreAskedForOnEveryEngine(t *testing.T) {
 			[]finding.Reported{found("CVE-2026-1", libnl), found("CVE-2026-2", swss)}); err != nil {
 			t.Fatal(err)
 		}
-		who := f.holding(t, access.PublicTriage)
+		who := f.holding(t, access.PublicTriage, access.Assigner)
 
 		nobodys, total, err := f.store.Unassigned(t.Context(), who, finding.Scope{}, 50, 0)
 		if err != nil {
@@ -279,7 +280,7 @@ func TestTheSameWorkInTwoVariantsIsOneItemToDealWith(t *testing.T) {
 			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
 			t.Fatal(err)
 		}
-		who := f.holding(t, access.PublicTriage)
+		who := f.holding(t, access.PublicTriage, access.Assigner)
 
 		alone, one, err := f.store.Unassigned(ctx, who, finding.Scope{}, 50, 0)
 		if err != nil {
@@ -343,7 +344,7 @@ func TestVariantsAtDifferentVersionsAreDifferentWork(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		who := f.holding(t, access.PublicTriage)
+		who := f.holding(t, access.PublicTriage, access.Assigner)
 		rows, total, err := f.store.Unassigned(ctx, who, finding.Scope{}, 50, 0)
 		if err != nil {
 			t.Fatal(err)
@@ -430,7 +431,7 @@ func TestAssigningCoversEveryBuildOfTheProductHoldingIt(t *testing.T) {
 		}
 
 		f.recorded(t, 7, "somebody")
-		who := f.holding(t, access.PublicTriage)
+		who := f.holding(t, access.PublicTriage, access.Assigner)
 		issue := f.issue(t, "CVE-2026-1")
 		component := f.componentID(t, libnl.Name)
 		person := int64(7)
@@ -450,6 +451,58 @@ func TestAssigningCoversEveryBuildOfTheProductHoldingIt(t *testing.T) {
 		}
 		if total != 0 || len(rows) != 0 {
 			t.Errorf("%d items are still unassigned after one assignment: %+v", total, rows)
+		}
+	})
+}
+
+func TestTakingUnownedWorkIsTriageAndGivingItAwayIsNot(t *testing.T) {
+	// ACC-61. Deciding who deals with something is a different act from
+	// deciding what it is, so it asks for a different right — with the
+	// exception that keeps the common case unblocked: findings arriving under
+	// an already-assigned component start unowned (ACC-54), so there is a
+	// constant stream of work to pick up, and needing somebody's attention
+	// before anybody can start would make the queue somebody's full-time job.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(ctx, f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+		issue, component := f.issue(t, "CVE-2026-1"), f.componentID(t, libnl.Name)
+		f.recorded(t, 1, "someone")
+		f.recorded(t, 2, "somebody-else")
+
+		triager := f.holding(t, access.PublicTriage)
+		other := int64(2)
+
+		// Taking what nobody owns, for yourself: triage is enough.
+		if _, _, err := f.store.Assign(ctx, triager, f.target, issue, component, &triager.ID); err != nil {
+			t.Fatalf("a triager could not pick up unowned work: %v", err)
+		}
+		// And handing their own back.
+		if _, _, err := f.store.Assign(ctx, triager, f.target, issue, component, nil); err != nil {
+			t.Fatalf("a triager could not hand back their own work: %v", err)
+		}
+
+		// Giving it to somebody else is the other right.
+		_, _, err := f.store.Assign(ctx, triager, f.target, issue, component, &other)
+		if !errors.Is(err, access.ErrDenied) {
+			t.Errorf("a triager gave work to somebody else: %v", err)
+		}
+
+		// And so is taking what somebody else is holding, even for yourself:
+		// taking work off a colleague is the act the right exists to name,
+		// and doing it to yourself is still doing it.
+		dispatcher := f.holding(t, access.PublicTriage, access.Assigner)
+		if _, _, err := f.store.Assign(ctx, dispatcher, f.target, issue, component, &other); err != nil {
+			t.Fatalf("an assigner could not give work away: %v", err)
+		}
+		if _, _, err := f.store.Assign(ctx, triager, f.target, issue, component, &triager.ID); !errors.Is(err, access.ErrDenied) {
+			t.Errorf("a triager took work off somebody else: %v", err)
+		}
+		if _, _, err := f.store.Assign(ctx, dispatcher, f.target, issue, component, &dispatcher.ID); err != nil {
+			t.Errorf("an assigner could not take work off somebody else: %v", err)
 		}
 	})
 }
