@@ -1896,6 +1896,25 @@ components:
         - engine
         - date
       type: object
+    Get-release-trendResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Get-release-trendResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/ReleasePointBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
     GrantBody:
       additionalProperties: false
       properties:
@@ -3536,6 +3555,28 @@ components:
         - stream
         - kind
         - variant
+        - open
+      type: object
+    ReleasePointBody:
+      additionalProperties: false
+      properties:
+        by_severity:
+          additionalProperties:
+            format: int64
+            type: integer
+          type: object
+        cut:
+          description: When the release was declared. It orders them and labels them; the axis is the sequence
+          type: string
+        open:
+          description: Distinct issues open against it now, against today's vulnerability data rather than the day it was cut
+          format: int64
+          type: integer
+        stream:
+          type: string
+      required:
+        - stream
+        - cut
         - open
       type: object
     RemediationOutputBody:
@@ -9308,6 +9349,71 @@ paths:
       summary: Show new, resolved and open over time
       tags:
         - Findings
+      x-openpsirt-requires:
+        scope: any
+        note: Answers only what you may see.
+  /v1/trend/releases:
+    get:
+      description: |-
+        One point per tagged release of one product, oldest first, with what is open against it now.
+
+        **The axis follows what is being viewed.** A branch is scanned nightly and has continuous data, so a calendar reads correctly on it. A tag never moves again, and releases months apart make a calendar count read as slow drift rather than the step change it was — the gaps are the chart's whole shape and they are gaps in nothing.
+
+        **Answered against today's vulnerability data**, not as of the day each was cut. That is what re-scanning a shipped release is for.
+
+        **No rates here.** How many appeared and were resolved between two releases is an artifact of how far apart somebody cut them; rates always plot on calendar. And a product must be named: two products' tags interleave by date and mean nothing side by side.
+
+        **Requires:** any recognized credential. Answers only what you may see.
+      operationId: get-release-trend
+      parameters:
+        - description: Limit to one product, by name. Empty means every product you can see
+          explode: false
+          in: query
+          name: product
+          schema:
+            description: Limit to one product, by name. Empty means every product you can see
+            type: string
+        - description: Limit to one branch or tag. Only meaningful with a product
+          explode: false
+          in: query
+          name: stream
+          schema:
+            description: Limit to one branch or tag. Only meaningful with a product
+            type: string
+        - description: Limit to one variant. Only meaningful with a product, and independent of the branch
+          explode: false
+          in: query
+          name: variant
+          schema:
+            description: Limit to one variant. Only meaningful with a product, and independent of the branch
+            type: string
+        - description: How many releases, most recent kept
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 12
+            description: How many releases, most recent kept
+            format: int64
+            maximum: 50
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Get-release-trendResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Show what each release shipped with
+      tags:
+        - Reports
       x-openpsirt-requires:
         scope: any
         note: Answers only what you may see.
