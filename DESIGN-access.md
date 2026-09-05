@@ -124,7 +124,7 @@ reach answering as one that is not there, applied to people.
 | | |
 |---|---|
 | **Read and triage, per visibility** | `public-read`, `private-read`, `public-triage`, `private-triage` |
-| **Capabilities** | `reporting`, `approver` |
+| **Capabilities** | `assigner`, `approver`, `reporting` |
 | **Global** | `admin` |
 
 Triage implies reading at the same visibility. Somebody who may decide about a

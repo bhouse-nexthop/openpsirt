@@ -169,10 +169,14 @@ Once ingest exists, this file is the project's own first test fixture.
 `/healthz` and `/readyz` answer without authentication and report nothing beyond
 whether the process is up.
 
-This is the one exception to every request being authenticated (ACC-03), and it
-is unavoidable: a container probe has no way to sign in. They are deliberately
+Unavoidable: a container probe has no way to sign in. They are deliberately
 outside the documented API, and must never grow a response body that says
 anything about the system's contents.
+
+They are not the only routes that answer without a credential — the sign-in
+paths and the interface's own assets do too, for reasons `DESIGN-api.md` sets
+out. What is true of all of them is that none reads anything from the database
+about what this deployment holds (ACC-03).
 
 ## Documentation
 

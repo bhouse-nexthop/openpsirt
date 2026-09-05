@@ -82,10 +82,11 @@ It seeds two products: a real switch image, and OpenPSIRT itself, from the
 inventory the image carries of what it ships — so the screens that compare
 across products have something to compare.
 
-**Docker is the only thing you need installed.** The image builds the interface
-and the binary inside itself and carries the scanner, so there is nothing to
-set up first — and it builds from your working tree, so what comes up is your
-change.
+**Docker is all you need to build and run it**, plus `curl` and `xz`, which
+seed it from the compressed fixtures and are already on most machines. The
+image builds the interface and the binary inside itself and carries the
+scanner, so there is nothing else to set up first — and it builds from your
+working tree, so what comes up is your change.
 
 **One person cannot demonstrate this tool.** A judgment is proposed by one
 person and agreed to by another, and approving your own is refused — so a

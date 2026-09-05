@@ -235,9 +235,11 @@ line is named beside the number (RPT-14).
 **Dismissals are a reportable dataset in their own right** (RPT-01) —
 everything decided not to be fixed, and why. That is the core of the reporting
 role, and it is the question an auditor asks first. It is answered two ways:
-the findings list filters on outcome, justification and whether a rating was
-changed, and the record screen lists every judgment with its reasoning, both
-approvals and the dates they happened on.
+the findings list filters on outcome and on whether a rating was changed, and
+the record screen lists every judgment with its reasoning, its approvals and
+the dates they happened on — where the justification is shown. It is not a
+filter: the outcome is the question an auditor asks the list, and which of the
+five reasons applied is what they read on the row they stopped at.
 
 **What is being scanned, and when each build was last seen, is its own view**
 (RPT-02) — the shape of it is in `DESIGN-ingest.md`, and the reason it matters
@@ -321,6 +323,10 @@ generally not that person.
 | The session lifetime | Also the window in which somebody who moved out of a team still holds what the team gave them |
 | The token ceiling | The longest a personal token may be set to last |
 | The limit on one action | How many findings a single judgment may cover |
+| The triage floor | The severity below which findings are still recorded and counted but kept off the working list. A product may state its own instead |
+| Quiet after | How long a build may go without a scan arriving before it is reported as having gone quiet |
+| Scan every | How often everything tracked is scanned again against the day's vulnerability data — what finds an advisory published after a release shipped |
+| Upstream currency | Whether to ask public package indexes what the newest version of a component is. Off unless turned on: the only thing here that reaches the network |
 
 **The shipped numbers are a starting point rather than a recommendation.** What
 a deployment can hold to is a question about that deployment, and a deadline
@@ -334,8 +340,11 @@ refused, because storing it would create a setting nothing ever reads.
 
 Every reader falls back to the shipped default where a setting is unset or
 unparseable, which means a stored value nobody can read is a policy that
-quietly stopped applying. So the value is checked before it is written — as a
-duration for the durations, and as a whole number for the one that is a count.
+quietly stopped applying. So the value is checked before it is written, against
+the kind the name is: a **duration** for the windows, the threshold and the two
+lifetimes; a **whole number above zero** for the limit on one action; a
+**severity word** for the triage floor; and **on or off** for upstream
+currency.
 
 **Zero and negative are refused too.** Every reader treats them as unset, so
 storing one produces a setting that looks set on the administration screen and

@@ -1156,9 +1156,11 @@ deferral is an internal scheduling decision; publishing it as not-affected
 would tell the outside world we assessed something as harmless when we had only
 postponed it. There is no export yet, and this is the rule it arrives with.
 
-**Repeat and long-running deferrals are reported** (TRI-19). A cumulative cap
-already exists on how long one thing may be deferred for, and what is missing
-is the report that makes the pattern visible across everything — one item
+**Repeat and long-running deferrals are reported** (TRI-19). A cumulative
+*threshold* already exists — put something off for longer than it in total and
+a second person has to agree — but nothing refuses a deferral for being long,
+and what is missing is the report that makes the pattern visible across
+everything — one item
 deferred three times is a judgment, and forty of them is a policy nobody wrote
 down.
 

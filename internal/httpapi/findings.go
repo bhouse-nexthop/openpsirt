@@ -110,7 +110,7 @@ func registerFindings(api huma.API, in Ingest) {
 			"Grouping matters at real scale: one switch image produced 335,021 individual " +
 			"findings, which collapse to 7,906 rows here.\n\n" +
 			"Ordered by urgency — known-exploited first, then whether the build ships to " +
-			"customers, then likelihood, then severity. Supports limit and offset.\n\n" +
+			"customers, then severity, then likelihood. Supports limit and offset.\n\n" +
 			"Narrowing happens here rather than in the client, and `total` counts what the " +
 			"filter admits. A filter applied to a page already fetched answers a different " +
 			"question from the one it appears to: `exploited` over fifty rows means exploited " +

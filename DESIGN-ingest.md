@@ -76,9 +76,14 @@ producer running its own scanner measures each product with whatever version its
 pipeline installed, so a difference between two products may only be a
 difference in their build images.
 
-A producer-supplied vulnerability report is still accepted. Findings from one
-carry their scan provenance, so a portfolio report never silently averages two
-scanners.
+**The model keeps room for a producer-supplied vulnerability report, and
+nothing reads one today.** A run records which scanner produced it and whether
+we ran it, so findings from a producer's own scan would carry their provenance
+and a portfolio report would never silently average two scanners. But the
+upload takes an inventory and suppressions and nothing else, the reader skips a
+`vulnerabilities` array where a document carries one, and every run is recorded
+as ours. Stated as room rather than as a feature: reading one is a decision
+about trusting somebody else's scanner, and it has not been made.
 
 ### The join is on package identifier, and it carries no path
 
@@ -163,8 +168,8 @@ that might refuse it.
 
 | Order | Step | Why here |
 |---|---|---|
-| 1 | Is the backlog already too deep? | The cheapest refusal there is. Deciding afterwards means storing tens of megabytes and discarding them, on a deployment that is by definition already behind |
-| 2 | Is the target declared? | One query, and the answer names which of product, stream or variant is missing so whoever sees the failed upload knows what to declare |
+| 1 | Is the target declared, and may this sender file against it? | One query, and the answer names which of product, stream or variant is missing so whoever sees the failed upload knows what to declare. First, because how far behind we are is not something an unauthorized sender may measure — asking the backlog before this would answer that with a status code |
+| 2 | Is the backlog already too deep? | The cheapest refusal there is once the sender is known. Deciding afterwards means storing tens of megabytes and discarding them, on a deployment that is by definition already behind |
 | 3 | What does the inventory say about itself, and what is its hash? | One pass over the file answers both. The hash is over the bytes that arrived, not a value the sender supplied |
 | 4 | The arrival decision | Future, already held, not newer — in that order, for the reasons above |
 | 5 | Store the documents and leave the work behind | One transaction. A scan row without documents is unreadable, documents without a job are work nobody picks up, and a job without either is a worker failing on something that was never there |

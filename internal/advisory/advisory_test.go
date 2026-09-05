@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -232,11 +233,22 @@ func TestAnAdvisoryIsRefusedWhereNobodyHasSaidWhoPublishesIt(t *testing.T) {
 		if !errors.Is(err, advisory.ErrNoPublisher) {
 			t.Errorf("an unconfigured deployment generated a document: %v", err)
 		}
+		if !strings.Contains(err.Error(), "PUBLISHER_NAME") ||
+			!strings.Contains(err.Error(), "PUBLISHER_NAMESPACE") {
+			t.Errorf("the refusal does not say what to set: %v", err)
+		}
 		// A name with no namespace is the same gap: both fields are required.
+		// The message names the half that is missing, and only that half —
+		// whoever reads it cannot fix it, and the operator who can is reading
+		// it relayed rather than sitting at the process.
 		_, err = f.store.For(t.Context(), f.who,
 			advisory.Publisher{Name: "Example Networks"}, "sonic", identifier)
 		if !errors.Is(err, advisory.ErrNoPublisher) {
 			t.Errorf("a publisher with no namespace was accepted: %v", err)
+		}
+		if !strings.Contains(err.Error(), "PUBLISHER_NAMESPACE") ||
+			strings.Contains(err.Error(), "PUBLISHER_NAME ") {
+			t.Errorf("the refusal does not name the missing half: %v", err)
 		}
 	})
 }

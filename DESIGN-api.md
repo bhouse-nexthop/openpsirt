@@ -31,9 +31,16 @@ somebody skips.
 
 The application serves no documentation of its own. Documentation is published
 separately, which keeps the application to one job and leaves it with **no
-unauthenticated route that reads anything** — the two health endpoints answer
-without a credential and say nothing but whether the process is up and whether
-it can reach its database.
+unauthenticated route that reads anything from the database**. Four surfaces
+answer without a credential, and the list is written out rather than inferred
+from a rule, so adding a route never quietly adds an exception:
+
+| | |
+|---|---|
+| `/healthz`, `/readyz` | Whether the process is up and whether it can reach its database, and nothing else |
+| `/v1/sign-in` | The providers an operator configured. A sign-in page draws a button per provider and cannot ask for that list while holding nothing |
+| `/v1/sign-in/…` | Redirects to a provider, or refuses. Nothing under it reads anything, so a route added here by mistake leaks a redirect rather than data |
+| The interface itself | The built assets. They contain no data; everything drawn in them is fetched with a credential |
 
 ## Descriptions are reference material
 

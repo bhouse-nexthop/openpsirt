@@ -89,8 +89,12 @@ publish needs none of them.
 ## Who may sign in
 
 The process refuses to start until somebody can administer it, and naming
-somebody grants a role — it does not let anybody in without signing in. At
-least one of the sign-in methods below has to be configured.
+somebody grants a role — it does not let anybody in without signing in.
+
+Configure at least one of the sign-in methods below, or nobody can reach it.
+**The Helm chart refuses to render an install with none; the binary does not
+check**, because a deployment being brought up in pieces is an ordinary state
+for a process and not for an install.
 
 | Variable | Meaning | Default |
 |---|---|---|

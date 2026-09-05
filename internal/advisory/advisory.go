@@ -56,7 +56,29 @@ var ErrNotOurs = errors.New(
 	"an advisory is about a flaw in what we ship, and this issue was reported by a scanner")
 
 // ErrNoPublisher says the deployment has not been told who it publishes as.
+//
+// Wrapped by missingPublisher, which names the variable that is not set: the
+// person who sees this cannot fix it, and the operator who can is reading a
+// relayed message rather than sitting at the process.
 var ErrNoPublisher = errors.New("this deployment has not been configured with a publisher")
+
+// missingPublisher says which half of the publisher is missing.
+func missingPublisher(p Publisher) error {
+	switch {
+	case p.Name == "" && p.Namespace == "":
+		return fmt.Errorf("%w: set %sPUBLISHER_NAME and %sPUBLISHER_NAMESPACE",
+			ErrNoPublisher, envPrefix, envPrefix)
+	case p.Name == "":
+		return fmt.Errorf("%w: %sPUBLISHER_NAME is not set", ErrNoPublisher, envPrefix)
+	default:
+		return fmt.Errorf("%w: %sPUBLISHER_NAMESPACE is not set", ErrNoPublisher, envPrefix)
+	}
+}
+
+// envPrefix is how the settings are spelled in the environment, repeated here
+// rather than imported: the configuration package reads this one, and a cycle
+// for the sake of a five-character string is a worse trade than the string.
+const envPrefix = "OPENPSIRT_"
 
 // ErrNoSuchIssue says the product holds nothing under that identifier.
 var ErrNoSuchIssue = errors.New("this product holds no issue by that name")
@@ -210,7 +232,7 @@ func (s *Store) For(ctx context.Context, subject access.Subject, publisher Publi
 	product, identifier string) (*Document, error) {
 
 	if !publisher.Stated() {
-		return nil, ErrNoPublisher
+		return nil, missingPublisher(publisher)
 	}
 	named, err := catalog.NewStore(s.db).ProductByName(ctx, product)
 	if err != nil {

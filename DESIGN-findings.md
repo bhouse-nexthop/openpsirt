@@ -61,9 +61,14 @@ rather than done quietly as a side effect of reading a scan.
 
 ## Severity is a word
 
-A rating, not a score, and often with the method given as unspecified. Numeric
-scores come from the ranking feeds instead — there is nothing in a report to
-normalize.
+What is filed against a finding is the **word**, and often with the method
+given as unspecified. That is what ranks and what sets a deadline.
+
+A number is taken as well where the report carries one: the first rating
+stating both a score and the vector it assumed, kept beside the word with the
+worst anybody claimed winning (RNK-05, which reversed the premise that a
+scanner supplies no scores). The vector travels with the number so that what
+the number assumed is readable rather than lost.
 
 ## Fix state is kept
 
@@ -595,8 +600,20 @@ Four signals, in this order:
 |---|---|
 | **Known to be exploited** | The difference between a risk and an incident |
 | **Reaches customers** | A critical in something only the build system runs matters less than a medium in what people install |
-| **Likelihood of exploitation** | Whether it is going to happen |
-| **Severity** | How bad it would be if it did |
+| **Severity** | How bad it would be if it happened |
+| **Likelihood of exploitation** | Which of two equally severe things to look at first |
+
+**Severity above likelihood, measured rather than assumed.** The original order
+had them the other way, and on a real image that put a 2004 negligible with no
+score at all above every one of 379 criticals: its likelihood was 0.80 where
+theirs topped out at 0.073, and any difference in a higher signal wins
+outright. Multiplying the two — the published practice where these scores are
+well spread — was tried next and reversed on the same image: 95% of its open
+issues sit between 0.001 and 0.01 likelihood, so multiplying mostly amplifies
+what is inside that spike and mediums jump criticals on noise. Severity leads
+and likelihood orders what is equally severe. What that gives up is letting a
+very likely medium jump a high; the case that actually matters, something known
+to be used, is a fact rather than a forecast and ranks above both.
 
 The number is **packed rather than weighted**: each signal owns a range of
 digits, so a signal never trades against a lower one. That is deliberate, and
