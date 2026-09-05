@@ -1609,6 +1609,9 @@ components:
           description: An approved claim at the same component and consumer to carry to this issue. The outcome and justification must match it; the new claim is recorded as an extension of it and still needs a second person
           format: int64
           type: integer
+        fixed_version:
+          description: The package version whoever packages this states the fix arrived in. Required when the outcome is already-fixed, and refused with any other
+          type: string
         justification:
           description: Why it does not apply. Required when it does not
           enum:
