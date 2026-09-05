@@ -74,6 +74,7 @@ Granted per product. Any one of the roles listed is enough — a dash means any 
 | GET | `/v1/disclosing` | private-read, private-triage | Only where you may read undisclosed work. |
 | POST | `/v1/disclosure-extensions/{id}/approval` | private-triage | Not the person who asked for it. |
 | POST | `/v1/products/{product}/findings` | public-triage, private-triage | private-triage where the finding is undisclosed. |
+| PUT | `/v1/products/{product}/issues/{vulnerability}/builds` | public-triage, private-triage | private-triage where the finding is undisclosed. |
 | GET | `/v1/products/{product}/issues/{vulnerability}/disclosure` | private-read, private-triage | Only where you may read undisclosed work. |
 | POST | `/v1/products/{product}/issues/{vulnerability}/disclosure` | private-triage | A second person agrees past the threshold. |
 | GET | `/v1/products/{product}/mentionable` | — | Asking about undisclosed findings needs private-read or private-triage. |

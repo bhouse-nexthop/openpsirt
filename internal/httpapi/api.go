@@ -237,6 +237,7 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	registerReleaseTrend(api, in)
 	registerCarrying(api, in)
 	registerScoring(api, in)
+	registerAffects(api, in)
 	registerExtensions(api, in)
 	registerDue(api, in)
 	registerGraph(api, in)

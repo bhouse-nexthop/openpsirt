@@ -2,7 +2,7 @@
 
 What a scan run found, and where.
 
-Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, MDL-22 to MDL-30,
+Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, MDL-22 to MDL-31,
 ING-02, ING-21,
 ING-29, ING-30, ING-39, ING-40, STA-03, STA-04, STA-05, STA-08, STA-17,
 RNK-01 to RNK-07, MDL-09, STA-01, STA-02, STA-06, STA-07, STA-09, STA-10,
@@ -194,7 +194,42 @@ resolved by taking the first.
 
 **Every row gets the same embargo, rank and deadline.** They are the same flaw;
 a deadline that differed per build would be the tool deciding that one release
-matters more than another.
+matters more than another. A build added later copies them rather than working
+them out again, or the newest build would get a later deadline for the same
+flaw.
+
+### The set is corrected as research goes
+
+It is stated as a whole — this is the list — and what changed is worked out
+(MDL-31). A set somebody can read back and check is not the same thing as a
+stream of additions and removals.
+
+**Widening opens findings. Narrowing closes them as `invalid`**, which is the
+sixth closure and the only one on a different axis from the rest: every other
+answers "why did this stop being present" and this one says it was never
+present. So it counts as no fix — the fix rate would otherwise improve every
+time somebody corrected a filing mistake — and it appears in no release note,
+because there is nothing to tell a customer about a build that was never
+affected. It leaves the affected list rather than moving within it.
+
+**A reason is required whenever a build is taken out**, and no second person
+is. Removing a build with no explanation is the state a history exists to
+prevent; requiring review to correct a filing mistake is how wrong records stay
+in place, and this narrows our own claim about our own product rather than
+dismissing a live finding.
+
+**`invalid` never means the finding exists but does not apply here.** That is
+`not-applicable` with the justification that fits — reviewed, agreed to by a
+second person, and exported as VEX. Letting this absorb that case would route
+dismissals around approval entirely.
+
+**Only a flaw recorded here.** Which builds hold an issue a scanner reported is
+what the scans found, and setting it by hand would overwrite what was found
+with what somebody thinks.
+
+**Every build being added is resolved before anything is written**, so a
+component one of them does not hold is a refusal naming that build rather than
+a build listed as affected with nothing there.
 
 **A severity may be left unstated** (MDL-28). Somebody recording what they have
 just found has not decided it is mild, and making them choose a word to get the
@@ -389,8 +424,14 @@ whole reason current state holds its own summary.
 | Superseded | The upstream version moved and the issue came with it: this row closed and the same issue is open against the new version. Told apart from Upgraded because they are opposite answers to "was this fixed", and conflating them put one issue in a release comparison as both fixed and newly present |
 | Fixed | Somebody said a flaw they recorded by hand is fixed here. The only closure a person writes, because a run is the authority on what it found and it never found this (REM-28) |
 | Unexplained | The component is present and unchanged, and the scanner stopped reporting it |
+| Invalid | The record should not have existed: this build never shipped it, the entry named the wrong product, or it duplicates an issue already tracked. **The one closure on a different axis from the others** — every one above answers "why did this stop being present" and this says it was never present, so it is neither a resolution nor a disappearance (MDL-31) |
 
-**The last one is always reported and never suppressed.** There is no volume at
+**Invalid never means the finding exists but does not apply here.** That is a
+triage decision of `not-applicable` with the justification that fits, which a
+second person agrees to and which exports as VEX. Letting the closure absorb
+that case would route dismissals around approval.
+
+**Unexplained is always reported and never suppressed.** There is no volume at
 which "we cannot account for this" stops mattering, and folding it into the
 others is how a scanner fault or a silently changed database becomes invisible.
 

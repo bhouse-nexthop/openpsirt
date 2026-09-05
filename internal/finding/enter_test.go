@@ -2,6 +2,7 @@ package finding_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
@@ -313,4 +314,123 @@ func TestRecordingNeedsAtLeastOneBuild(t *testing.T) {
 			t.Error("a flaw was recorded against no build at all")
 		}
 	})
+}
+
+func TestWhichBuildsAFlawAffectsIsCorrectedAsResearchGoes(t *testing.T) {
+	// The first belief is written down before the analysis is finished — that
+	// is the point of recording one early — so the set is editable. Widening
+	// opens findings; narrowing closes them as never having been affected.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		f.shipped(t, through(libnl))
+		other := f.anotherVariant(t, "mellanox")
+		f.shippedTo(t, other, through(libnl))
+		who := f.planner(t, access.PrivateTriage)
+
+		// Recorded against one build to begin with.
+		rows, identifier, err := f.store.Enter(ctx, who, finding.Entering{
+			TargetIDs: []int64{f.target}, Component: libnl.Name, Severity: "high",
+			Summary: "The parser accepts a message it should refuse.",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		issue := rows[0].VulnerabilityID
+
+		// Research says the other variant ships it too.
+		changed, err := f.store.Affects(ctx, who, f.productID, issue,
+			[]int64{f.target, other}, "")
+		if err != nil {
+			t.Fatalf("widening: %v", err)
+		}
+		if changed.Added != 1 || changed.Closed != 0 {
+			t.Errorf("widening added %d and closed %d, want 1 and 0", changed.Added, changed.Closed)
+		}
+
+		// And then that the first one was never affected after all.
+		changed, err = f.store.Affects(ctx, who, f.productID, issue,
+			[]int64{other}, "the management socket is not built on broadcom")
+		if err != nil {
+			t.Fatalf("narrowing: %v", err)
+		}
+		if changed.Added != 0 || changed.Closed != 1 {
+			t.Errorf("narrowing added %d and closed %d, want 0 and 1", changed.Added, changed.Closed)
+		}
+
+		// The record of it stays, saying what happened and why.
+		var closed finding.Finding
+		if err := f.db.DB.NewSelect().Model(&closed).
+			Where("vulnerability_id = ?", issue).
+			Where("target_id = ?", f.target).
+			Where("closed_at IS NOT NULL").Scan(ctx); err != nil {
+			t.Fatalf("the record went with the build: %v", err)
+		}
+		if closed.ClosedBecause != finding.Invalid {
+			t.Errorf("it was closed as %q, want invalid", closed.ClosedBecause)
+		}
+		if strings.TrimSpace(closed.ClosedNote) == "" {
+			t.Error("a build was taken out with no reason on record")
+		}
+		_ = identifier
+	})
+}
+
+func TestTakingABuildOutNeedsAReasonAndAddingOneDoesNot(t *testing.T) {
+	// Removing a build from an advisory's affected list with no explanation is
+	// the state a history exists to prevent. Adding one explains itself.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		f.shipped(t, through(libnl))
+		other := f.anotherVariant(t, "mellanox")
+		f.shippedTo(t, other, through(libnl))
+		who := f.planner(t, access.PrivateTriage)
+
+		rows, _, err := f.store.Enter(ctx, who, finding.Entering{
+			TargetIDs: []int64{f.target, other}, Component: libnl.Name, Severity: "high",
+			Summary: "The parser accepts a message it should refuse.",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.store.Affects(ctx, who, f.productID, rows[0].VulnerabilityID,
+			[]int64{other}, "  "); err == nil {
+			t.Error("a build was taken out with no reason")
+		}
+	})
+}
+
+func TestWhichBuildsAScannedIssueIsInIsNotOursToSet(t *testing.T) {
+	// That is what the scans found. Setting it here would overwrite what was
+	// found with what somebody thinks.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		f.shipped(t, through(libnl))
+		if _, err := f.store.Apply(ctx, f.target, f.run(t), []finding.Reported{
+			found("CVE-2026-1", libnl),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.store.Affects(ctx, f.planner(t, access.PrivateTriage), f.productID,
+			f.issueID(t, "CVE-2026-1"), []int64{f.target}, "because"); err == nil {
+			t.Error("a scanned issue's builds were set by hand")
+		}
+	})
+}
+
+func TestABuildTakenBackOutIsNeitherAFixNorANote(t *testing.T) {
+	// It did not get fixed and it did not move: it leaves the affected list
+	// rather than moving within it, so a release note mentioning it would be
+	// describing a mistake of ours as news about somebody's software.
+	notes := finding.Notes("2.4.0", &finding.Comparison{
+		Fixed: []finding.Changed{
+			{Vulnerability: "SONIC-2026-0001", Component: "libnl", Because: finding.Invalid},
+			{Vulnerability: "CVE-2026-2", Component: "zlib", Because: finding.Upgraded},
+		},
+	})
+	if strings.Contains(notes, "SONIC-2026-0001") {
+		t.Errorf("a record taken back is in the release note:\n%s", notes)
+	}
+	if !strings.Contains(notes, "CVE-2026-2") {
+		t.Errorf("a real fix went missing:\n%s", notes)
+	}
 }

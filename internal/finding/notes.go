@@ -61,9 +61,19 @@ func Notes(title string, c *Comparison) string {
 	return out.String()
 }
 
-// split separates what was actually fixed from what merely moved.
+// split separates what was actually fixed from what merely moved, and drops
+// what was never there.
+//
+// **A record taken back appears in neither section.** There is nothing to tell
+// a customer about a build that was never affected: it did not get fixed, and
+// it did not move — it leaves the affected list rather than moving within it,
+// and a release note mentioning it would be describing a mistake of ours as
+// though it were news about their software.
 func split(rows []Changed) (fixed, carried []Changed) {
 	for _, row := range rows {
+		if row.Because == Invalid {
+			continue
+		}
 		if row.Because == Superseded || row.Because == Unexplained {
 			carried = append(carried, row)
 			continue

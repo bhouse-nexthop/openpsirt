@@ -56,6 +56,24 @@ const (
 	// Unexplained means the component is present and unchanged and the scanner
 	// stopped reporting it. It is always flagged and never suppressed.
 	Unexplained Closure = "unexplained"
+	// Invalid means the record should not have existed: this build never
+	// shipped the thing, the entry named the wrong product, or it duplicates
+	// an issue already tracked. The record is taken back rather than the world
+	// having changed.
+	//
+	// **It is the one closure on a different axis from the rest.** Every other
+	// answers "why did this stop being present"; this one says it was never
+	// present, so it is neither a resolution nor a disappearance — it does not
+	// count toward how fast things are fixed and it appears in no release
+	// note, because there is nothing to tell a customer about a build that was
+	// never affected.
+	//
+	// **It never means the finding exists but does not apply here.** That is
+	// sayable already and properly: a triage decision of `not-applicable` with
+	// the justification that fits, which a second person agrees to and which
+	// exports as VEX. Letting this absorb that case would route dismissals
+	// around approval entirely.
+	Invalid Closure = "invalid"
 	// Fixed means somebody said a flaw they recorded is fixed in this build.
 	//
 	// The only closure a person writes, and it exists because nothing else

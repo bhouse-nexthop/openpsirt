@@ -1114,6 +1114,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product}/issues/{vulnerability}/builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set which builds a recorded flaw affects
+         * @description Makes the builds this flaw is filed against exactly the ones named. Research narrows and widens what somebody first believed, and the first belief is written down before the analysis is finished — which is the point of being able to record one early.
+         *
+         *     **Widening opens findings; narrowing closes them as `invalid`** — a build taken out was never affected rather than having stopped being affected, so it counts as no fix and appears in no release note. The record of it stays, with the reason.
+         *
+         *     **A reason is required whenever anything is taken out.** Removing a build from an advisory's affected list with no explanation is the state a history exists to prevent.
+         *
+         *     **Only a flaw recorded here.** Which builds hold an issue a scanner reported is what the scans found, and setting it here would overwrite what was found with what somebody thinks.
+         *
+         *     `invalid` never means the finding exists but does not apply. That is a triage decision of `not-applicable` with the justification that fits, which a second person agrees to and which exports as VEX.
+         *
+         *     **Requires:** public-triage or private-triage on the product. private-triage where the finding is undisclosed.
+         */
+        put: operations["set-affected-builds"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product}/issues/{vulnerability}/disclosure": {
         parameters: {
             query?: never;
@@ -2318,6 +2348,24 @@ export interface components {
              * @description How many were waiting
              */
             acknowledged: number;
+        };
+        AffectsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AffectsBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Builds it is now filed against that it was not
+             */
+            added: number;
+            /**
+             * Format: int64
+             * @description Builds taken back out, closed as invalid because they were never affected
+             */
+            closed: number;
         };
         AgreedBody: {
             /** @description When they agreed */
@@ -3538,6 +3586,10 @@ export interface components {
             /** @description How that line is built */
             variant: string;
         };
+        Item1: {
+            stream: string;
+            variant: string;
+        };
         JudgedBody: {
             approvals: components["schemas"]["AgreedBody"][] | null;
             component: string;
@@ -4544,6 +4596,18 @@ export interface components {
              * @description How large it was
              */
             size_bytes: number;
+        };
+        "Set-affected-buildsRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Set-affected-buildsRequest.json
+             */
+            readonly $schema?: string;
+            /** @description Every build it affects, as the whole answer rather than a change to it */
+            builds: components["schemas"]["Item1"][] | null;
+            /** @description Why any build is being taken out. Required whenever one is */
+            reason?: string;
         };
         "Set-digestRequest": {
             /**
@@ -6646,6 +6710,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AttachmentBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-affected-builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+                /** @description The identifier it was filed under */
+                vulnerability: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Set-affected-buildsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AffectsBody"];
                 };
             };
             /** @description Error */

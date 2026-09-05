@@ -487,3 +487,99 @@ func extensionBody(ctx context.Context, in Ingest, rows []finding.Extension) ([]
 	}
 	return out, nil
 }
+
+// AffectsBody is what setting the builds did.
+type AffectsBody struct {
+	Added  int `json:"added" doc:"Builds it is now filed against that it was not"`
+	Closed int `json:"closed" doc:"Builds taken back out, closed as invalid because they were never affected"`
+}
+
+func registerAffects(api huma.API, in Ingest) {
+	huma.Register(api, requiring(huma.Operation{
+		OperationID: "set-affected-builds", Method: http.MethodPut,
+		Path:    "/v1/products/{product}/issues/{vulnerability}/builds",
+		Summary: "Set which builds a recorded flaw affects",
+		Description: "Makes the builds this flaw is filed against exactly the ones named. " +
+			"Research narrows and widens what somebody first believed, and the first belief is " +
+			"written down before the analysis is finished — which is the point of being able to " +
+			"record one early.\n\n" +
+			"**Widening opens findings; narrowing closes them as `invalid`** — a build taken " +
+			"out was never affected rather than having stopped being affected, so it counts as " +
+			"no fix and appears in no release note. The record of it stays, with the reason.\n\n" +
+			"**A reason is required whenever anything is taken out.** Removing a build from an " +
+			"advisory's affected list with no explanation is the state a history exists to " +
+			"prevent.\n\n" +
+			"**Only a flaw recorded here.** Which builds hold an issue a scanner reported is " +
+			"what the scans found, and setting it here would overwrite what was found with what " +
+			"somebody thinks.\n\n" +
+			"`invalid` never means the finding exists but does not apply. That is a triage " +
+			"decision of `not-applicable` with the justification that fits, which a second " +
+			"person agrees to and which exports as VEX.",
+		Tags: []string{"Findings"},
+	}, perProduct, "private-triage where the finding is undisclosed.",
+		triageRights()...), func(ctx context.Context, input *struct {
+		Product       string `path:"product"`
+		Vulnerability string `path:"vulnerability" doc:"The identifier it was filed under"`
+		Body          struct {
+			Builds []struct {
+				Stream  string `json:"stream" minLength:"1"`
+				Variant string `json:"variant" minLength:"1"`
+			} `json:"builds" minItems:"1" doc:"Every build it affects, as the whole answer rather than a change to it"`
+			Reason string `json:"reason,omitempty" doc:"Why any build is being taken out. Required whenever one is"`
+		}
+	}) (*struct{ Body AffectsBody }, error) {
+		subject, err := reading(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if in.DB == nil {
+			return nil, huma.Error500InternalServerError("this process cannot record findings")
+		}
+		names := catalog.NewStore(in.DB.DB)
+		product, err := names.ProductByName(ctx, input.Product)
+		if err != nil || !subject.Sees(product.ID) {
+			return nil, noSuchProduct()
+		}
+		// The resolver everything else uses, so an issue found by a CVE it was
+		// later given answers the same as one found by what we filed it under.
+		issue, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, input.Vulnerability)
+		if err != nil {
+			return nil, huma.Error404NotFound("no issue here goes by that name")
+		}
+
+		targets := make([]int64, 0, len(input.Body.Builds))
+		for _, build := range input.Body.Builds {
+			at, err := names.LocateVisible(ctx, subject, input.Product, build.Stream, build.Variant)
+			if err != nil {
+				return nil, huma.Error404NotFound(err.Error())
+			}
+			target, err := names.ExistingTarget(ctx, at.StreamID, at.VariantID)
+			if err != nil {
+				return nil, nothingScannedThere()
+			}
+			targets = append(targets, target.ID)
+		}
+
+		changed, err := finding.NewStore(in.DB.DB).Affects(ctx, subject,
+			product.ID, issue, targets, input.Body.Reason)
+		if err != nil {
+			var several *graph.Ambiguous
+			switch {
+			case errors.As(err, &several):
+				return nil, severalComponents(several, "version, and ecosystem where two share one")
+			case errors.Is(err, finding.ErrNotOursToSay),
+				errors.Is(err, finding.ErrNoReason),
+				errors.Is(err, finding.ErrNoBuild),
+				errors.Is(err, finding.ErrSeveralProducts):
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			case errors.Is(err, finding.ErrNoSuchComponent),
+				errors.Is(err, finding.ErrNothingOpenThere):
+				return nil, huma.Error404NotFound(err.Error())
+			}
+			return nil, refusedFinding(in, err)
+		}
+		return &struct{ Body AffectsBody }{
+			Body: AffectsBody{Added: changed.Added, Closed: changed.Closed},
+		}, nil
+	})
+}

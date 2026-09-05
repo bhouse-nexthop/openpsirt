@@ -61,6 +61,11 @@ var agingBuckets = []struct {
 // something closed a row and explained nothing. Counting either as a fix
 // measures churn and reports it as progress, which is worse than reporting
 // nothing: the number moves in the right direction while nothing improves.
+//
+// **`invalid` is not here either, and for a different reason from the other
+// two.** A record taken back was never a finding, so it is not churn being
+// counted as progress — it is nothing at all, and counting it would make the
+// fix rate improve every time somebody corrected a filing mistake.
 const resolvedExpr = `f.closed_because IN ('removed', 'upgraded', 'revised', 'fixed')`
 
 // Remediation reports how fast issues are being closed and what is aging.

@@ -17,6 +17,28 @@ components:
       required:
         - acknowledged
       type: object
+    AffectsBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/AffectsBody.json
+          format: uri
+          readOnly: true
+          type: string
+        added:
+          description: Builds it is now filed against that it was not
+          format: int64
+          type: integer
+        closed:
+          description: Builds taken back out, closed as invalid because they were never affected
+          format: int64
+          type: integer
+      required:
+        - added
+        - closed
+      type: object
     AgreedBody:
       additionalProperties: false
       properties:
@@ -2138,6 +2160,19 @@ components:
         - stream
         - variant
       type: object
+    Item1:
+      additionalProperties: false
+      properties:
+        stream:
+          minLength: 1
+          type: string
+        variant:
+          minLength: 1
+          type: string
+      required:
+        - stream
+        - variant
+      type: object
     JudgedBody:
       additionalProperties: false
       properties:
@@ -3967,6 +4002,30 @@ components:
         - size_bytes
         - hash
         - held
+      type: object
+    Set-affected-buildsRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Set-affected-buildsRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        builds:
+          description: Every build it affects, as the whole answer rather than a change to it
+          items:
+            $ref: "#/components/schemas/Item1"
+          minItems: 1
+          type:
+            - array
+            - "null"
+        reason:
+          description: Why any build is being taken out. Required whenever one is
+          type: string
+      required:
+        - builds
       type: object
     Set-digestRequest:
       additionalProperties: false
@@ -7082,6 +7141,62 @@ paths:
       x-openpsirt-requires:
         scope: any
         note: Answers only what you may see.
+  /v1/products/{product}/issues/{vulnerability}/builds:
+    put:
+      description: |-
+        Makes the builds this flaw is filed against exactly the ones named. Research narrows and widens what somebody first believed, and the first belief is written down before the analysis is finished — which is the point of being able to record one early.
+
+        **Widening opens findings; narrowing closes them as `invalid`** — a build taken out was never affected rather than having stopped being affected, so it counts as no fix and appears in no release note. The record of it stays, with the reason.
+
+        **A reason is required whenever anything is taken out.** Removing a build from an advisory's affected list with no explanation is the state a history exists to prevent.
+
+        **Only a flaw recorded here.** Which builds hold an issue a scanner reported is what the scans found, and setting it here would overwrite what was found with what somebody thinks.
+
+        `invalid` never means the finding exists but does not apply. That is a triage decision of `not-applicable` with the justification that fits, which a second person agrees to and which exports as VEX.
+
+        **Requires:** public-triage or private-triage on the product. private-triage where the finding is undisclosed.
+      operationId: set-affected-builds
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - description: The identifier it was filed under
+          in: path
+          name: vulnerability
+          required: true
+          schema:
+            description: The identifier it was filed under
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Set-affected-buildsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AffectsBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Set which builds a recorded flaw affects
+      tags:
+        - Findings
+      x-openpsirt-requires:
+        scope: product
+        any_of:
+          - public-triage
+          - private-triage
+        note: private-triage where the finding is undisclosed.
   /v1/products/{product}/issues/{vulnerability}/disclosure:
     get:
       description: |-
