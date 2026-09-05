@@ -227,8 +227,18 @@ export function Finding() {
         {it.description && (
           <div className="evblock">
             <h4>Description</h4>
-            {/* What a scan file said is shown, never rendered (SEC-16). */}
-            <p style={{ whiteSpace: "pre-wrap" }}>{it.description}</p>
+            {/* What a **scan file** said is shown and never rendered (SEC-16):
+                it is a third party's text reaching the people who hold the
+                most access here. What somebody recorded *here* is our own
+                prose, written through the same editor and the same submission
+                policy as a justification, and it is rendered like one. The
+                two live in the same column, so which it is decides this —
+                rendering the column would render the scanner's. */}
+            {it.recorded ? (
+              <Markdown source={it.description} />
+            ) : (
+              <p style={{ whiteSpace: "pre-wrap" }}>{it.description}</p>
+            )}
           </div>
         )}
 

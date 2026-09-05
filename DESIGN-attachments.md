@@ -125,6 +125,14 @@ reasoning are written in one transaction, so a file attached while composing
 one is bound to the issue alone until the text referencing it is saved. That is
 the same unattached state the reaper already deals with (ATT-11).
 
+**A file may hang off the issue itself rather than off text.** Evidence for a
+flaw somebody recorded — a test case that proves it — is pointed at by the
+issue the moment it arrives, so it counts as attached at once. Waiting for text
+that will never be written would mean the sweep took it a day later, and a
+screen listing what is attached would never show it. The caller says which it
+is; the default is the other one, because a file uploaded while somebody is
+part way through writing is the case that can be abandoned.
+
 ## How the bytes are reached
 
 **An image displayed inline is served by the application; everything else is

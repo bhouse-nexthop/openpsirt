@@ -69,6 +69,9 @@ func attachmentBody(a *attach.Attachment) AttachmentBody {
 // attachmentParts is what an upload carries.
 type attachmentParts struct {
 	File huma.FormFile `form:"file" required:"true"`
+	// Evidence says the file hangs off the issue itself rather than off text
+	// somebody is part way through writing.
+	Evidence string `form:"evidence"`
 }
 
 func registerAttachments(api huma.API, in Ingest) {
@@ -87,7 +90,10 @@ func registerAttachments(api huma.API, in Ingest) {
 			"room left; both limits are settings. A deployment that has configured no store " +
 			"holds no attachments and says so.\n\n" +
 			"An upload nothing refers to is removed after a day, so a file attached and then " +
-			"abandoned does not accumulate.",
+			"abandoned does not accumulate. Send `evidence=true` where the file hangs off the " +
+			"issue itself — a test case that proves the flaw — rather than off text you are " +
+			"about to write: it is then listed at once and never swept, because the issue is " +
+			"what points at it.",
 		Tags: []string{"Findings"},
 		// The request itself is capped before the form is read. A part larger
 		// than the limit is otherwise spooled to the temporary directory in
@@ -124,8 +130,12 @@ func registerAttachments(api huma.API, in Ingest) {
 		}
 
 		part := input.RawBody.Data().File
+		// Evidence hangs off the issue and is listed at once; anything else is
+		// waiting for the text that will refer to it, and is swept if that
+		// text never arrives.
+		evidence := input.RawBody.Data().Evidence == "true"
 		stored, err := files.Upload(ctx, subject, productID, vulnerabilityID,
-			part.Filename, part, part.Size, maxSize, quota)
+			part.Filename, part, part.Size, maxSize, quota, evidence)
 		switch {
 		case errors.Is(err, attach.ErrTooLarge):
 			return nil, huma.Error413RequestEntityTooLarge(fmt.Sprintf(

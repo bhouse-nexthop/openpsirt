@@ -42,7 +42,28 @@ type Entering struct {
 	Summary string
 	// Severity is how bad it is judged to be, in the same words a report uses,
 	// so that everything ranking and clocking findings treats it the same way.
+	//
+	// **It may be left unstated.** Somebody recording what they have just
+	// found, before anybody has worked out how bad it is, has not decided it
+	// is mild — and making them pick a word to get the record written is how
+	// a guess ends up stored as a judgment.
+	//
+	// An unrated finding is carried, listed, assignable and **on the same
+	// clock every other unrated finding is**: the deadline windows answer
+	// "medium" for a severity they do not recognize, which is what a scanner
+	// that rated nothing already gets. That is a deliberate default rather
+	// than a gap — a finding with no deadline is one that is never late, and
+	// never being late is how something is forgotten.
 	Severity string
+	// Vector is the CVSS base vector, where somebody has worked one out. The
+	// score is derived from it here and never taken alongside it, so the two
+	// cannot say different things — the number is what sorts and the vector is
+	// what somebody can argue with.
+	Vector string
+	// Weaknesses is what kind of flaw it is, by the classification the world
+	// uses. Recorded because it is what makes a set of findings comparable to
+	// anything outside this deployment.
+	Weaknesses []string
 	// Disclosed says this is already public. The default is that it is not:
 	// somebody recording a flaw in their own product before it is announced is
 	// the case this exists for, and defaulting the other way makes the
@@ -117,8 +138,22 @@ func (s *Store) Enter(ctx context.Context, subject access.Subject, in Entering) 
 	if strings.TrimSpace(in.Summary) == "" {
 		return nil, "", ErrNothingSaid
 	}
+	// The vector first, because it can settle the severity. Scored here rather
+	// than taken as a number beside the vector, so that a stated vector and a
+	// stated score cannot disagree with nothing to say which was meant.
+	scored, err := Score(in.Vector)
+	if err != nil {
+		return nil, "", err
+	}
+
 	severity := strings.ToLower(strings.TrimSpace(in.Severity))
-	if !rated[severity] {
+	if severity == "" && scored != nil {
+		// Worked out rather than asked for. Somebody who has done the analysis
+		// has already answered this, and asking again invites a word that
+		// disagrees with the vector beside it.
+		severity = scored.Severity
+	}
+	if severity != "" && !rated[severity] {
 		// Checked against the words rather than folded through Band, which is
 		// what a *report* goes through. Band answers "medium" for anything it
 		// does not recognize, deliberately: a scanner that rated nothing is
@@ -150,11 +185,17 @@ func (s *Store) Enter(ctx context.Context, subject access.Subject, in Entering) 
 		if err != nil {
 			return err
 		}
-		interned, err := NewVulnerabilities(tx).Intern(ctx, []Named{{
+		named := Named{
 			Identifier:  identifier,
 			Severity:    severity,
 			Description: in.Summary,
-		}})
+			Weaknesses:  cleaned(in.Weaknesses),
+		}
+		if scored != nil {
+			named.Vector = scored.Vector
+			named.Score = float64(scored.ScoreCenti) / 100
+		}
+		interned, err := NewVulnerabilities(tx).Intern(ctx, []Named{named})
 		if err != nil {
 			return err
 		}
@@ -341,4 +382,26 @@ func (s *Store) ComponentName(ctx context.Context, componentID int64) (string, e
 		return "", fmt.Errorf("look up what component %d is called: %w", componentID, err)
 	}
 	return name, nil
+}
+
+// cleaned is the weaknesses as they will be stored: trimmed, upper-cased and
+// without repeats or empties.
+//
+// Kept as whatever classification somebody typed rather than checked against a
+// catalogue of them. A list that refused an identifier it had not heard of
+// would refuse next year's, and what this is for is making a set of findings
+// comparable to things outside — which is served by recording what was meant
+// and not by having an opinion about it.
+func cleaned(in []string) []string {
+	out := make([]string, 0, len(in))
+	seen := map[string]bool{}
+	for _, one := range in {
+		one = strings.ToUpper(strings.TrimSpace(one))
+		if one == "" || seen[one] {
+			continue
+		}
+		seen[one] = true
+		out = append(out, one)
+	}
+	return out
 }

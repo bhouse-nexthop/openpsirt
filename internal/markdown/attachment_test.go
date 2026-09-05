@@ -100,6 +100,11 @@ func TestMentionsAreReadFromProseAndNotFromCode(t *testing.T) {
 		{"inside a fenced block", "```\nfrom @ana to @ben\n```\n", nil},
 		{"an email address", "Mail ops@example.com about it", nil},
 		{"trailing punctuation is not part of the name", "Thanks @ana.", []string{"ana"}},
+		// A sign-in through a trusted header mints identities like this, and
+		// the editor writes whatever the identity is. Reading it as a mention
+		// of "proxy" meant the person named was never told.
+		{"an identity with a colon in it", "Asking @proxy:dev to look.", []string{"proxy:dev"}},
+		{"a colon that ends the sentence", "@ana: could you?", []string{"ana"}},
 	} {
 		t.Run(c.what, func(t *testing.T) {
 			got := markdown.Mentions(c.source)

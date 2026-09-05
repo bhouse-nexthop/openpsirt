@@ -323,3 +323,80 @@ func TestASummaryOfNothingButSpacesIsTheCallersToFix(t *testing.T) {
 		}
 	})
 }
+
+func TestAVectorThisCannotScoreIsTheCallersToFix(t *testing.T) {
+	// A caller's input, answered as theirs. Falling through to the generic
+	// refusal tells somebody to report a fault when what they have to do is
+	// send a different vector — and this is the endpoint whose own comment
+	// says so about every other refusal it makes.
+	twoReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+		const at = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		got := asPerson(t, r, "private-triage", http.MethodPost, at,
+			`{"summary":"Something is wrong.",`+
+				`"vector":"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"}`)
+		if got.Code != http.StatusUnprocessableEntity {
+			t.Errorf("a version this cannot score answered %d, want it named as the caller's"+
+				" to fix: %s", got.Code, got.Body.String())
+		}
+	})
+}
+
+func TestAFlawMayBeRecordedBeforeAnybodyHasRatedIt(t *testing.T) {
+	// Early triage. Making somebody pick a severity to get the record written
+	// is how a guess ends up stored as a judgment.
+	twoReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+		const at = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		got := asPerson(t, r, "private-triage", http.MethodPost, at,
+			`{"summary":"Found during early triage; how bad it is comes later."}`)
+		if got.Code != http.StatusCreated {
+			t.Fatalf("an unrated flaw answered %d: %s", got.Code, got.Body.String())
+		}
+	})
+}
+
+func TestAVectorSettlesTheSeverityRatherThanBeingAskedTwice(t *testing.T) {
+	// Somebody who has done the analysis has already answered this, and asking
+	// again invites a word that disagrees with the vector beside it.
+	twoReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+		const at = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		made := asPerson(t, r, "private-triage", http.MethodPost, at,
+			`{"summary":"The management socket answers before anyone authenticated.",`+
+				`"vector":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",`+
+				`"weaknesses":["CWE-306","cwe-306","  "]}`)
+		if made.Code != http.StatusCreated {
+			t.Fatalf("recording answered %d: %s", made.Code, made.Body.String())
+		}
+		var recorded struct {
+			Identifier string `json:"identifier"`
+		}
+		if err := json.Unmarshal(made.Body.Bytes(), &recorded); err != nil {
+			t.Fatal(err)
+		}
+		var listed struct {
+			Items []struct {
+				Vulnerability string  `json:"vulnerability"`
+				Severity      string  `json:"severity"`
+				Score         float64 `json:"score"`
+			} `json:"items"`
+		}
+		read(t, r, "private-triage",
+			"/v1/products/mine/findings?stream=master&variant=broadcom", &listed)
+		for _, item := range listed.Items {
+			if item.Vulnerability != recorded.Identifier {
+				continue
+			}
+			// 9.8 by the published formula, which is "critical".
+			if item.Severity != "critical" {
+				t.Errorf("the vector said critical and the finding reads %q", item.Severity)
+			}
+			if item.Score < 9.7 || item.Score > 9.9 {
+				t.Errorf("the score is %v, want the 9.8 the vector works out to", item.Score)
+			}
+			return
+		}
+		t.Error("what was recorded is not in the list")
+	})
+}

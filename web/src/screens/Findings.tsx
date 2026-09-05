@@ -9,8 +9,6 @@ import { Failed } from "../ui/Failed";
 import { Exploited, Severity } from "../ui/Severity";
 import { Icon } from "../ui/Icons";
 import { Decide, type Recorded } from "../ui/Decide";
-import { RecordButton, RecordDrawer } from "../ui/Record";
-import { useWho } from "../app/session";
 
 const PAGE = 50;
 
@@ -98,11 +96,6 @@ export function Findings() {
   const oneBuild = Boolean(stream && variant);
   // What the server needs to know about the selection, beside the filters.
   const selection = { ...(stream ? { stream } : {}), ...(variant ? { variant } : {}) };
-  const who = useWho();
-  // Recording a flaw belongs to the build this list is of, so the drawer is
-  // opened from here rather than from a screen that would have to ask which
-  // build all over again.
-  const [recording, setRecording] = useState(false);
   const navigate = useNavigate();
   const offset = Number(params.get("offset") ?? 0);
   const floor = params.get("floor") ?? "low";
@@ -563,20 +556,8 @@ export function Findings() {
             {product} · {stream || "every branch"} · {variant || "every variant"} — one row per
             component, so you can see where the weight is before deciding what to read.
           </p>
-          <span style={{ marginLeft: "auto" }}>
-            {oneBuild && (
-              <RecordButton who={who.data} product={product} onClick={() => setRecording(true)} />
-            )}
-          </span>
+
         </div>
-        {oneBuild && (
-          <RecordDrawer
-            open={recording}
-            onClose={() => setRecording(false)}
-            who={who.data}
-            at={{ product, stream, variant }}
-          />
-        )}
         {controls}
         <ByComponent
           at={{ product, stream, variant }}
@@ -665,23 +646,9 @@ export function Findings() {
           {product} · {stream || "every branch"} · {variant || "every variant"} — one row per
           issue and component, however many locations it sits at.
         </p>
-        <span style={{ marginLeft: "auto" }}>
-          {oneBuild && (
-            <RecordButton who={who.data} product={product} onClick={() => setRecording(true)} />
-          )}
-        </span>
+
       </div>
 
-      {/* Recording is about what one build ships, so the form is not there to
-          be opened where the selection is wider than one. */}
-      {oneBuild && (
-        <RecordDrawer
-          open={recording}
-          onClose={() => setRecording(false)}
-          who={who.data}
-          at={{ product, stream, variant }}
-        />
-      )}
 
       {controls}
 

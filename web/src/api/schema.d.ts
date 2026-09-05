@@ -1089,7 +1089,7 @@ export interface paths {
          *
          *     Refused when the file is larger than this deployment accepts, or when it has no room left; both limits are settings. A deployment that has configured no store holds no attachments and says so.
          *
-         *     An upload nothing refers to is removed after a day, so a file attached and then abandoned does not accumulate.
+         *     An upload nothing refers to is removed after a day, so a file attached and then abandoned does not accumulate. Send `evidence=true` where the file hangs off the issue itself — a test case that proves the flaw — rather than off text you are about to write: it is then listed at once and never swept, because the issue is what points at it.
          *
          *     **Requires:** any recognized credential. Answers only what you may see.
          */
@@ -1976,6 +1976,32 @@ export interface paths {
          *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["list-scanning"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/score": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Work out what a CVSS vector scores
+         * @description Returns the base score and the severity band a vector works out to.
+         *
+         *     It exists so that a screen composing a vector can show what it will score without holding a second copy of the formula. One implementation, and what somebody sees while choosing is what gets stored.
+         *
+         *     CVSS 3.0 and 3.1 only. Version 4 has a different base formula and version 2 is a different scheme, and scoring either with this one produces a number nothing downstream could tell apart from a real one.
+         *
+         *     **Requires:** any recognized credential. Answers a calculation, and reads nothing.
+         */
+        get: operations["score-vector"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4222,14 +4248,18 @@ export interface components {
             /** @description Which one, where two share a name and a version */
             ecosystem?: string;
             /**
-             * @description How bad it is
+             * @description How bad it is. May be left out during early triage, before anybody has worked that out — an unrated finding is carried and listed, and what it does not get is a deadline. Worked out from the vector where one is given
              * @enum {string}
              */
-            severity: "critical" | "high" | "medium" | "low" | "negligible" | "none";
+            severity?: "critical" | "high" | "medium" | "low" | "negligible" | "none";
             /** @description What the flaw is, in your own words */
             summary: string;
+            /** @description A CVSS 3.0 or 3.1 base vector. The score and the severity are worked out from it, so a score is never taken alongside it. Anything else is refused rather than scored with the wrong formula */
+            vector?: string;
             /** @description Which one, where the build holds that name at several versions */
             version?: string;
+            /** @description What kind of flaw it is, by the classification the world uses, such as CWE-125. Recorded as given */
+            weaknesses?: string[] | null;
         };
         RecordBody: {
             /**
@@ -4464,6 +4494,23 @@ export interface components {
              * @description Returned to the author for more
              */
             sent_back: number;
+        };
+        "Score-vectorResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Score-vectorResponse.json
+             */
+            readonly $schema?: string;
+            /** Format: double */
+            score: number;
+            /**
+             * @description The band the score falls in
+             * @enum {string}
+             */
+            severity: "none" | "low" | "medium" | "high" | "critical";
+            /** @description As it was read, upper-cased */
+            vector: string;
         };
         "Send-claim-backRequest": {
             /**
@@ -6553,6 +6600,7 @@ export interface operations {
         requestBody?: {
             content: {
                 "multipart/form-data": {
+                    evidence: string;
                     /** Format: binary */
                     file: string;
                 };
@@ -8011,6 +8059,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CoverageOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "score-vector": {
+        parameters: {
+            query: {
+                /** @description A CVSS 3.0 or 3.1 base vector */
+                vector: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Score-vectorResponse"];
                 };
             };
             /** @description Error */

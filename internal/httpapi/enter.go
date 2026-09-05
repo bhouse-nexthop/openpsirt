@@ -70,12 +70,16 @@ func registerEntry(api huma.API, in Ingest) {
 		Stream  string `path:"stream"`
 		Variant string `path:"variant"`
 		Body    struct {
-			Summary   string `json:"summary" minLength:"1" doc:"What the flaw is, in your own words"`
-			Severity  string `json:"severity" enum:"critical,high,medium,low,negligible,none" doc:"How bad it is"`
-			Component string `json:"component,omitempty" doc:"What carries it. Omit for the build itself"`
-			Version   string `json:"version,omitempty" doc:"Which one, where the build holds that name at several versions"`
-			Ecosystem string `json:"ecosystem,omitempty" doc:"Which one, where two share a name and a version"`
-			Disclosed bool   `json:"disclosed,omitempty" doc:"Whether this is already public. Undisclosed by default"`
+			Summary  string `json:"summary" minLength:"1" doc:"What the flaw is, in your own words"`
+			Severity string `json:"severity,omitempty" enum:"critical,high,medium,low,negligible,none" doc:"How bad it is. May be left out during early triage, before anybody has worked that out — an unrated finding is carried and listed, and what it does not get is a deadline. Worked out from the vector where one is given"`
+			// The vector rather than a score. The number is derived from it
+			// here, so the two cannot say different things.
+			Vector     string   `json:"vector,omitempty" doc:"A CVSS 3.0 or 3.1 base vector. The score and the severity are worked out from it, so a score is never taken alongside it. Anything else is refused rather than scored with the wrong formula"`
+			Weaknesses []string `json:"weaknesses,omitempty" doc:"What kind of flaw it is, by the classification the world uses, such as CWE-125. Recorded as given"`
+			Component  string   `json:"component,omitempty" doc:"What carries it. Omit for the build itself"`
+			Version    string   `json:"version,omitempty" doc:"Which one, where the build holds that name at several versions"`
+			Ecosystem  string   `json:"ecosystem,omitempty" doc:"Which one, where two share a name and a version"`
+			Disclosed  bool     `json:"disclosed,omitempty" doc:"Whether this is already public. Undisclosed by default"`
 		}
 	}) (*struct {
 		Status int
@@ -102,6 +106,7 @@ func registerEntry(api huma.API, in Ingest) {
 			TargetID: target.ID, Component: input.Body.Component,
 			Version: input.Body.Version, Ecosystem: input.Body.Ecosystem,
 			Summary: input.Body.Summary, Severity: input.Body.Severity,
+			Vector: input.Body.Vector, Weaknesses: input.Body.Weaknesses,
 			Disclosed: input.Body.Disclosed,
 		})
 		if err != nil {
@@ -116,6 +121,8 @@ func registerEntry(api huma.API, in Ingest) {
 			case errors.Is(err, finding.ErrNoSuchComponent):
 				return nil, huma.Error404NotFound(err.Error())
 			case errors.Is(err, finding.ErrNothingSaid):
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			case errors.Is(err, finding.ErrNotAVector):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			case errors.Is(err, finding.ErrNothingScanned):
 				return nil, huma.Error404NotFound(err.Error())

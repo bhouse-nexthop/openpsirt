@@ -166,6 +166,16 @@ export function Shell({ who, children }: { who: Who; children: ReactNode }) {
           needs={!!product}
           why="Pick a product first"
         />
+        {/* Recording a flaw is an act rather than a place, so it opens a
+            drawer instead of going anywhere — the same shape as Upload. It
+            lives here rather than on the findings list because it is not a
+            sub-action of reading one: a flaw nobody has reported is exactly
+            what is *not* in that list. */}
+        {/* Its own screen rather than an action on the findings list: what is
+            being recorded is precisely what is *not* in that list, and it asks
+            more than a control beside a table has room for. It needs no
+            product picked, because the screen asks for one. */}
+        <Rail to="/record" icon="bug" label="Record a flaw" />
 
         <span className="group">Manage</span>
         <Rail to="/products" end icon="box" label="Products" />
@@ -208,6 +218,7 @@ export function Shell({ who, children }: { who: Who; children: ReactNode }) {
       </nav>
 
       <UploadDrawer open={uploading} onClose={() => setUploading(false)} />
+
     </div>
   );
 }

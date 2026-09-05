@@ -314,11 +314,17 @@ func mintedToken(token string) bool {
 
 // mention is a name written after an @, as the editor writes one.
 //
-// Deliberately narrow: letters, digits and the handful of punctuation an
-// identity uses, and it must follow something that is not a word character so
-// that an email address in the middle of a sentence is not read as a mention
-// of whatever follows the @.
-var mention = regexp.MustCompile(`(^|[^\w@.-])@([A-Za-z0-9][A-Za-z0-9._@-]{0,190})`)
+// **A colon is part of a name here.** A sign-in through a trusted header mints
+// identities like `proxy:dev`, and the editor writes whatever the identity is —
+// so a class that stopped at the colon read `@proxy:dev` as a mention of
+// "proxy", which is nobody, and the person named was never told. That is the
+// ordinary shape of an identity in a self-hosted deployment rather than an
+// unusual one.
+//
+// Otherwise narrow: it must follow something that is not a word character, so
+// an email address in the middle of a sentence is not read as a mention of
+// whatever follows the @.
+var mention = regexp.MustCompile(`(^|[^\w@.:-])@([A-Za-z0-9][A-Za-z0-9._:@-]{0,190})`)
 
 // Mentions lists the identities a piece of text names, without repeats.
 //
@@ -358,7 +364,9 @@ func Mentions(source string) []string {
 			return ast.WalkContinue, nil
 		}
 		for _, match := range mention.FindAllStringSubmatch(string(words.Value([]byte(source))), -1) {
-			name := strings.TrimRight(match[2], ".-_")
+			// Punctuation at the end is the sentence rather than the name:
+			// "thanks @ana." and "@ana: yes" both name ana.
+			name := strings.TrimRight(match[2], ".-_:")
 			if name == "" || seen[name] {
 				continue
 			}

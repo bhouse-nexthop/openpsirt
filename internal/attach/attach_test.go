@@ -139,7 +139,7 @@ func (f *fixture) admin(t *testing.T) access.Subject {
 func (f *fixture) upload(t *testing.T, who access.Subject, name string, body []byte) *attach.Attachment {
 	t.Helper()
 	row, err := f.store.Upload(t.Context(), who, f.product, f.issue, name,
-		strings.NewReader(string(body)), int64(len(body)), roomy, plenty)
+		strings.NewReader(string(body)), int64(len(body)), roomy, plenty, false)
 	if err != nil {
 		t.Fatalf("upload %s: %v", name, err)
 	}
@@ -234,7 +234,7 @@ func TestAFileIsAsReadableAsTheIssueItHangsOff(t *testing.T) {
 
 		public := f.upload(t, reader, "public.log", []byte("open knowledge"))
 		hidden, err := f.store.Upload(ctx, trusted, f.product, undisclosed, "hidden.log",
-			strings.NewReader("not announced"), 13, roomy, plenty)
+			strings.NewReader("not announced"), 13, roomy, plenty, false)
 		if err != nil {
 			t.Fatalf("upload against an undisclosed issue: %v", err)
 		}
@@ -271,7 +271,7 @@ func TestAnEmbargoEndingCarriesTheFileWithTheWords(t *testing.T) {
 		reader := f.who(t, access.PublicRead)
 
 		stored, err := f.store.Upload(ctx, trusted, f.product, undisclosed, "evidence.log",
-			strings.NewReader("embargoed"), 9, roomy, plenty)
+			strings.NewReader("embargoed"), 9, roomy, plenty, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -374,12 +374,12 @@ func TestAnUploadTooBigOrWithNoRoomIsRefused(t *testing.T) {
 		body := strings.Repeat("x", 4096)
 
 		_, err := f.store.Upload(ctx, who, f.product, f.issue, "big.log",
-			strings.NewReader(body), int64(len(body)), 1024, plenty)
+			strings.NewReader(body), int64(len(body)), 1024, plenty, false)
 		if err != attach.ErrTooLarge {
 			t.Errorf("a file over the limit answered %v, want it named as too large", err)
 		}
 		_, err = f.store.Upload(ctx, who, f.product, f.issue, "big.log",
-			strings.NewReader(body), int64(len(body)), roomy, 1024)
+			strings.NewReader(body), int64(len(body)), roomy, 1024, false)
 		if err != attach.ErrNoRoom {
 			t.Errorf("an upload with no room answered %v, want it named as full", err)
 		}
@@ -403,7 +403,7 @@ func TestADeploymentWithNoStoreHoldsNothingAndSaysSo(t *testing.T) {
 			t.Fatal("a store with nowhere to put anything reports itself configured")
 		}
 		_, err := none.Upload(t.Context(), f.who(t, access.PublicRead), f.product, f.issue,
-			"x.log", strings.NewReader("x"), 1, roomy, plenty)
+			"x.log", strings.NewReader("x"), 1, roomy, plenty, false)
 		if err != attach.ErrNotConfigured {
 			t.Errorf("uploading with no store answered %v", err)
 		}

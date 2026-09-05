@@ -102,9 +102,17 @@ func mayReach(ctx context.Context, db bun.IDB, subject access.Subject,
 // The bytes are streamed rather than held (ATT-09 bounds one file; holding
 // each would mean every upload happening at once is resident at once), and
 // hashed on the way through so that a redaction can say later what it removed.
+//
+// **`hangsOffTheIssue` says nothing is going to point at this from text.** A
+// file attached while somebody is composing a justification is pointed at by
+// words that are not saved yet, so it waits, and the sweep collects it if they
+// abandon the form (ATT-11). A file attached to the issue itself — evidence, a
+// test case that proves the flaw — is pointed at by the issue the moment it
+// arrives, and waiting for text that will never be written would mean the
+// sweep took it a day later.
 func (s *Store) Upload(ctx context.Context, subject access.Subject,
 	productID, vulnerabilityID int64, filename string, body io.Reader, size int64,
-	maxSize, quota int64) (*Attachment, error) {
+	maxSize, quota int64, hangsOffTheIssue bool) (*Attachment, error) {
 
 	if !s.Configured() {
 		return nil, ErrNotConfigured
@@ -160,6 +168,9 @@ func (s *Store) Upload(ctx context.Context, subject access.Subject,
 		Filename: SafeName(filename), ContentType: contentType, SizeBytes: size,
 		Digest: hex.EncodeToString(digest.Sum(nil)), ObjectKey: key,
 		UploadedBy: subject.ID, UploadedAt: now,
+	}
+	if hangsOffTheIssue {
+		row.AttachedAt = &now
 	}
 	err = database.InTransaction(ctx, s.db, func(ctx context.Context, tx bun.Tx) error {
 		// Asked again inside the transaction, because the first answer was

@@ -1203,6 +1203,54 @@ who has to take one back out needs to find it without hunting through every
 justification for the reference. A removed file is still listed, saying so and
 why.
 
+## Recording a flaw
+
+A screen of its own, reached from the rail rather than from the findings list.
+What is being recorded is precisely what is **not** in that list, so opening it
+from there asks somebody to start where the answer is absent — and it needs
+more asked of it than a control beside a table has room for.
+
+It asks for the product, the branch and the variant rather than taking them
+from the scope, because a flaw is recorded against what one build ships and
+filing it against a build nobody named is a record that says the wrong thing
+quietly. The scope prefills it and does not constrain it.
+
+**The component is searched against what that build actually holds.** A name
+typed from memory is a name the server refuses, and a name the build holds at
+two versions is a question the refusal asks properly rather than something to
+guess at.
+
+**A severity may be left unset.** Somebody recording what they have just found,
+before anybody has worked out how bad it is, has not decided it is mild —
+making them pick a word to get the record written is how a guess ends up stored
+as a judgment. An unrated finding comes due as a medium, which is what every
+unrated finding already does; a finding with no deadline is one that is never
+late, and never being late is how something is forgotten.
+
+**The score is composed as a vector and worked out on the server.** The metrics
+are offered in words rather than letters, because somebody rating a flaw is
+choosing between "over the network" and "physical access". The formula lives in
+one place, so what somebody sees while choosing is what gets stored — a second
+copy in the browser is one that eventually disagrees with the number in the
+database, invisibly. A vector settles the severity, so it is not asked twice.
+
+**Weaknesses are suggested and never restricted.** The list offered is what
+comes up most; anything may be typed. A picker that refused an identifier it
+had not heard of would refuse next year's.
+
+**The description is written and read as markdown.** It is our own prose, so it
+goes through the same editor and the same submission policy as a justification
+— and it is rendered where it is read back. What a scan file said stays escaped
+and unrendered (SEC-16): the two live in the same column, so which it is
+decides, and rendering the column would render the scanner's text.
+
+**Files that prove it are attached on the same screen.** A test case, a
+capture, a screenshot. They are stored after the finding exists, because an
+attachment hangs off an issue and there is no issue until it is recorded — and
+a file that will not store does not undo the record, because the words are the
+finding and the file is evidence for them. What is reported is which file
+failed.
+
 ## Reports
 
 A screen of its own, under "Across products", for what the tool can say about
