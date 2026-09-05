@@ -430,6 +430,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#a-role-on-any-product" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A role on any product
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#your-own" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -512,6 +523,17 @@
     <span class="md-ellipsis">
       
         A role on the product
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-role-on-any-product" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A role on any product
       
     </span>
   </a>
@@ -766,7 +788,7 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 </tbody>
 </table>
 <h2 id="a-role-on-the-product">A role on the product<a class="headerlink" href="#a-role-on-the-product" title="Permanent link">&para;</a></h2>
-<p>Granted per product. Any one of the roles listed is enough, and what you may see narrows what the answer contains.</p>
+<p>Granted per product. Any one of the roles listed is enough — a dash means any role on that product will do — and what you may see narrows what the answer contains.</p>
 <table>
 <thead>
 <tr>
@@ -780,20 +802,8 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 <tr>
 <td>DELETE</td>
 <td><code>/v1/approval-batches/{batch}</code></td>
-<td>public-triage, private-triage</td>
-<td></td>
-</tr>
-<tr>
-<td>DELETE</td>
-<td><code>/v1/assessments/{id}</code></td>
-<td>public-triage, private-triage</td>
-<td></td>
-</tr>
-<tr>
-<td>POST</td>
-<td><code>/v1/assessments/{id}/agreement</code></td>
 <td>approver, public-triage, private-triage</td>
-<td>The proposer may not approve their own.</td>
+<td></td>
 </tr>
 <tr>
 <td>POST</td>
@@ -810,7 +820,7 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 <tr>
 <td>PUT</td>
 <td><code>/v1/comments/{id}</code></td>
-<td>public-triage, private-triage</td>
+<td>approver, public-triage, private-triage</td>
 <td>Only the author may edit a comment.</td>
 </tr>
 <tr>
@@ -828,7 +838,7 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 <tr>
 <td>POST</td>
 <td><code>/v1/decisions/{id}/comments</code></td>
-<td>public-triage, private-triage</td>
+<td>approver, public-triage, private-triage</td>
 <td></td>
 </tr>
 <tr>
@@ -856,12 +866,6 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 <td>Not the person who asked for it.</td>
 </tr>
 <tr>
-<td>POST</td>
-<td><code>/v1/issues/{vulnerability}/assessment</code></td>
-<td>public-triage, private-triage</td>
-<td></td>
-</tr>
-<tr>
 <td>GET</td>
 <td><code>/v1/products/{product}/issues/{vulnerability}/disclosure</code></td>
 <td>private-read, private-triage</td>
@@ -872,6 +876,12 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 <td><code>/v1/products/{product}/issues/{vulnerability}/disclosure</code></td>
 <td>private-triage</td>
 <td>A second person agrees past the threshold.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/v1/products/{product}/mentionable</code></td>
+<td>—</td>
+<td>Any role on the product. Asking about undisclosed findings needs private-read or private-triage.</td>
 </tr>
 <tr>
 <td>GET</td>
@@ -894,8 +904,8 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 <tr>
 <td>PUT</td>
 <td><code>/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/assignment</code></td>
-<td>assigner</td>
-<td>Taking unowned work, or handing back your own, needs only triage.</td>
+<td>public-triage, private-triage</td>
+<td>Giving work to somebody else also needs assigner. Taking unowned work, or handing back your own, does not.</td>
 </tr>
 <tr>
 <td>POST</td>
@@ -922,12 +932,6 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 <td></td>
 </tr>
 <tr>
-<td>GET</td>
-<td><code>/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/reach</code></td>
-<td>public-triage, private-triage</td>
-<td></td>
-</tr>
-<tr>
 <td>POST</td>
 <td><code>/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/resolve</code></td>
 <td>public-triage, private-triage</td>
@@ -936,6 +940,38 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 <tr>
 <td>POST</td>
 <td><code>/v1/products/{product}/streams/{stream}/variants/{variant}/scans</code></td>
+<td>public-triage, private-triage</td>
+<td>A pipeline key covering this product, branch and variant sends without any of these, and is how a build sends.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="a-role-on-any-product">A role on any product<a class="headerlink" href="#a-role-on-any-product" title="Permanent link">&para;</a></h2>
+<p>Not about a product at all: a rating is a claim about an issue, true wherever it appears, so there is no product to hold a role on. The role is asked for anywhere instead, because being signed in is not a role.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Endpoint</th>
+<th>Roles</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DELETE</td>
+<td><code>/v1/assessments/{id}</code></td>
+<td>public-triage, private-triage</td>
+<td></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/v1/assessments/{id}/agreement</code></td>
+<td>approver, public-triage, private-triage</td>
+<td>The proposer may not approve their own.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/v1/issues/{vulnerability}/assessment</code></td>
 <td>public-triage, private-triage</td>
 <td></td>
 </tr>
@@ -984,6 +1020,12 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 <td></td>
 </tr>
 <tr>
+<td>PUT</td>
+<td><code>/v1/session/me/digest</code></td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
 <td>GET</td>
 <td><code>/v1/tokens</code></td>
 <td>—</td>
@@ -993,13 +1035,13 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 <td>POST</td>
 <td><code>/v1/tokens</code></td>
 <td>—</td>
-<td></td>
+<td>Signed in, not through a token: a token cannot mint another.</td>
 </tr>
 <tr>
 <td>DELETE</td>
 <td><code>/v1/tokens/{name}</code></td>
 <td>—</td>
-<td></td>
+<td>Signed in, not through a token: a token cannot withdraw another.</td>
 </tr>
 </tbody>
 </table>
@@ -1019,7 +1061,7 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 <td>GET</td>
 <td><code>/v1/assessments</code></td>
 <td>—</td>
-<td>Answers only what you may see.</td>
+<td>Every claim, whoever asks: a rating is about an issue, not a product (TRI-40), so there is nothing here to narrow by.</td>
 </tr>
 <tr>
 <td>GET</td>
@@ -1089,12 +1131,6 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 </tr>
 <tr>
 <td>GET</td>
-<td><code>/v1/products/{product}/mentionable</code></td>
-<td>—</td>
-<td>Answers only what you may see.</td>
-</tr>
-<tr>
-<td>GET</td>
 <td><code>/v1/products/{product}/releases</code></td>
 <td>—</td>
 <td>Answers only what you may see.</td>
@@ -1156,6 +1192,12 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 <tr>
 <td>GET</td>
 <td><code>/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision</code></td>
+<td>—</td>
+<td>Answers only what you may see.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/reach</code></td>
 <td>—</td>
 <td>Answers only what you may see.</td>
 </tr>

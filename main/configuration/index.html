@@ -378,6 +378,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#telling-people" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Telling people
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#publishing-advisories" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -553,6 +564,17 @@
     <span class="md-ellipsis">
       
         Scanning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#telling-people" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Telling people
       
     </span>
   </a>
@@ -752,6 +774,51 @@ taken.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="telling-people">Telling people<a class="headerlink" href="#telling-people" title="Permanent link">&para;</a></h2>
+<p>Mail is how anything leaves the application. A deployment that sets none of
+this tells nobody anything outside it, which is an ordinary way to run: the
+notification area in the interface still works.</p>
+<p><code>MAIL_FROM</code> and <code>MAIL_SERVER</code> are both needed for mail to happen at all — a
+server with nobody to send as is half a configuration, and either alone sends
+nothing rather than failing at startup. Credentials are optional, and are
+refused over a connection the server would not secure with STARTTLS.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Meaning</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OPENPSIRT_MAIL_FROM</code></td>
+<td>The address messages are sent as. Set it and the server together, or neither</td>
+<td>unset</td>
+</tr>
+<tr>
+<td><code>OPENPSIRT_MAIL_SERVER</code></td>
+<td>The SMTP server as <code>host:port</code>, e.g. <code>smtp.example.com:587</code></td>
+<td>unset</td>
+</tr>
+<tr>
+<td><code>OPENPSIRT_MAIL_USERNAME</code></td>
+<td>Username, where the server wants one. Sent only after STARTTLS</td>
+<td>unset</td>
+</tr>
+<tr>
+<td><code>OPENPSIRT_MAIL_PASSWORD</code></td>
+<td>Password for that username. Sent only after STARTTLS</td>
+<td>unset</td>
+</tr>
+</tbody>
+</table>
+<p>Who gets what is not configuration: each person chooses in their own settings,
+and the daily digest is off until somebody asks for it. A message about a
+finding nobody has announced carries no detail — only that there is something,
+and a link.</p>
+<p>On the Helm chart these are the <code>mail</code> values, and the password goes in a
+Secret the chart makes or one you name.</p>
 <h2 id="publishing-advisories">Publishing advisories<a class="headerlink" href="#publishing-advisories" title="Permanent link">&para;</a></h2>
 <p>An advisory is a document about a flaw in your own product. It is generated
 from what this deployment already holds and handed to you; nothing is sent
