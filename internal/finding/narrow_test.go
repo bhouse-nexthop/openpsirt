@@ -573,3 +573,56 @@ func claimBy(t *testing.T, db *database.DB, personID int64) int64 {
 	}
 	return id
 }
+
+func TestSearchingFindsAnIssueByNameAndByAlias(t *testing.T) {
+	// The question a PSIRT is asked first when an advisory lands: where is
+	// this in what we ship. The box said it searched issues and matched
+	// component names alone, so it answered an empty list — which reads as
+	// "we do not ship it" rather than as "that is not what this searches".
+	//
+	// Aliases count, because an issue is one thing under several names: the
+	// name a reporter used has to reach the row filed under the name a
+	// scanner used, or the answer depends on which feed arrived first.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		reported := found("CVE-2026-8899", libnl)
+		reported.Issue.Aliases = []string{"GHSA-aaaa-bbbb-cccc"}
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{reported, found("CVE-2026-7000", swss)}); err != nil {
+			t.Fatal(err)
+		}
+		who := f.holding(t, access.PrivateRead)
+
+		for _, term := range []string{"CVE-2026-8899", "cve-2026-8899", "GHSA-aaaa-bbbb-cccc", "8899"} {
+			rows, _, err := f.store.Groups(t.Context(), who, f.scope, 50, 0,
+				finding.Filter{Search: term})
+			if err != nil {
+				t.Fatalf("%s: %v", term, err)
+			}
+			if len(rows) != 1 {
+				t.Errorf("searching %q found %d rows, want the one issue", term, len(rows))
+			}
+		}
+
+		// The component half still works, and the two do not interfere.
+		rows, _, err := f.store.Groups(t.Context(), who, f.scope, 50, 0,
+			finding.Filter{Search: "libnl"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 1 {
+			t.Errorf("searching a component name found %d rows, want 1", len(rows))
+		}
+
+		// And a term matching neither finds nothing, so the widening did not
+		// turn the filter into a pass-through.
+		none, _, err := f.store.Groups(t.Context(), who, f.scope, 50, 0,
+			finding.Filter{Search: "nothing-is-called-this"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(none) != 0 {
+			t.Errorf("a term matching nothing found %d rows", len(none))
+		}
+	})
+}

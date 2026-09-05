@@ -231,10 +231,22 @@ type Filter struct {
 	// TRI-44).
 	Floor      Floor
 	BelowFloor bool
-	// Search keeps components whose name contains this, without regard to
-	// capitals. It is how somebody finds a package in a list of thousands,
-	// where Component above is the exact name and answers a different
-	// question: "show me openssl" against "show me anything ssl-ish".
+	// Search keeps rows whose component name **or issue name** contains this,
+	// without regard to capitals. It is how somebody finds a package in a list
+	// of thousands, where Component above is the exact name and answers a
+	// different question: "show me openssl" against "show me anything
+	// ssl-ish".
+	//
+	// **The issue half is what an advisory landing actually asks for.** The
+	// first question a PSIRT is asked is "where is CVE-2026-9079 in what we
+	// ship", and matching component names alone answered nothing at all for
+	// it — the box said it searched issues and returned an empty list, which
+	// reads as "we do not ship it".
+	//
+	// Aliases count. An issue is one thing under several names (MDL-19), so
+	// searching the name a reporter used has to reach the row filed under the
+	// name a scanner used, or the answer depends on which feed got there
+	// first.
 	//
 	// Matched here rather than in the browser for the reason every other
 	// filter is: a search applied to the fifty rows already fetched searches
@@ -381,8 +393,22 @@ func (f Filter) narrow(q *bun.SelectQuery) *bun.SelectQuery {
 	// do not agree on what a case-insensitive comparison is, and one that is
 	// spelled the same way everywhere behaves the same way everywhere (MDL-21).
 	if term := strings.TrimSpace(f.Search); term != "" {
-		q = q.Where("f.component_id IN (?)",
-			componentsWhere(q, "LOWER(c.name) LIKE ? ESCAPE '#'", "%"+contains(term)+"%"))
+		like := "%" + contains(term) + "%"
+		// Either side matches. A person typing into one box does not say
+		// which of the two they mean, and an identifier cannot be mistaken
+		// for a package name in practice.
+		q = q.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.
+				WhereOr("f.component_id IN (?)",
+					componentsWhere(q, "LOWER(c.name) LIKE ? ESCAPE '#'", like)).
+				WhereOr("f.vulnerability_id IN (?)",
+					q.NewSelect().TableExpr("vulnerability AS v").Column("v.id").
+						Where("LOWER(v.identifier) LIKE ? ESCAPE '#'", like)).
+				WhereOr("f.vulnerability_id IN (?)",
+					q.NewSelect().TableExpr("vulnerability_alias AS va").
+						Column("va.vulnerability_id").
+						Where("LOWER(va.identifier) LIKE ? ESCAPE '#'", like))
+		})
 	}
 	if names := trimmed(f.Exclude); len(names) > 0 {
 		q = q.Where("f.component_id NOT IN (?)",

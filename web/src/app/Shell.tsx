@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { findingsPath, useScope } from "./scope";
+import { findingsPath, useScope, type Scoped } from "./scope";
 import { forgetAll } from "./drafts";
 import { Scope } from "./Scope";
 import { api } from "../api/client";
@@ -101,7 +101,7 @@ export function Shell({ who, children }: { who: Who; children: ReactNode }) {
         </button>
         <Scope />
         <span className="spacer" />
-        <Search build={build} />
+        <Search at={{ product, stream, variant }} />
         <button
           type="button"
           className="topact"
@@ -268,9 +268,17 @@ function Rail({
 }
 
 // Finding a component or an issue from anywhere. It is the findings list's
-// own search, reached without going there first; the list is bound to one
-// build, so without one this says so rather than searching nothing.
-function Search({ build }: { build: string }) {
+// own search, reached without going there first.
+//
+// It asks at whatever scope is chosen, which since the list stopped being one
+// build's is the product as readily as a single build. It used to be disabled
+// unless all three were picked, so the most common question a PSIRT is asked —
+// where is this advisory in what we ship — could not be typed at all without
+// first choosing a variant, and answered nothing when it could, because the
+// term was matched against component names alone.
+//
+// A product is still needed, because no endpoint spans them.
+function Search({ at }: { at: Scoped }) {
   const navigate = useNavigate();
   const [typed, setTyped] = useState("");
   const box = useRef<HTMLInputElement>(null);
@@ -291,11 +299,13 @@ function Search({ build }: { build: string }) {
   return (
     <form
       className="topsearch"
-      title={build ? undefined : "Pick a product, a branch and a variant to search its findings"}
+      title={at.product ? undefined : "Pick a product to search what it ships"}
       onSubmit={(event) => {
         event.preventDefault();
-        if (!build) return;
-        navigate(`${build}/findings?q=${encodeURIComponent(typed.trim())}`);
+        const term = typed.trim();
+        if (!at.product || term === "") return;
+        const path = findingsPath(at);
+        navigate(`${path}${path.includes("?") ? "&" : "?"}q=${encodeURIComponent(term)}`);
       }}
     >
       <Icon name="search" />
@@ -303,7 +313,7 @@ function Search({ build }: { build: string }) {
         ref={box}
         type="text"
         value={typed}
-        disabled={!build}
+        disabled={!at.product}
         placeholder="Find a component or an issue…"
         aria-label="Find a component or an issue"
         onChange={(event) => setTyped(event.target.value)}

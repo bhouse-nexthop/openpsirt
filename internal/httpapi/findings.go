@@ -143,7 +143,7 @@ func registerFindings(api huma.API, in Ingest) {
 		Fixable     bool     `query:"fixable" doc:"Keep only issues where an upstream fixed version is known"`
 		BelowFloor  bool     `query:"below_floor" doc:"Include what this product does not consider worth triaging. Those are always recorded and counted; this asks to see them in the list"`
 		Component   string   `query:"component" doc:"Keep only what is open against components of this name, whatever version"`
-		Search      string   `query:"q" maxLength:"200" doc:"Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name"`
+		Search      string   `query:"q" maxLength:"200" doc:"Keep only rows whose component name or issue name contains this, ignoring capitals. Issue names include every alias, so searching the name a reporter used reaches the row filed under the name a scanner used. A way to find a package, or an advisory, in a list of thousands — where component is the exact package name"`
 		Ecosystem   string   `query:"ecosystem" doc:"Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"`
 		Under       string   `query:"under" doc:"Keep only what sits inside the container of this name"`
 		UnderBuild  bool     `query:"under_build" doc:"Keep only what the build holds directly, which is what has no container above it"`
@@ -267,7 +267,7 @@ func registerFindings(api huma.API, in Ingest) {
 		Exploited  bool     `query:"exploited" doc:"Keep only issues somebody is known to be exploiting"`
 		Fixable    bool     `query:"fixable" doc:"Keep only issues where an upstream fixed version is known"`
 		BelowFloor bool     `query:"below_floor" doc:"Include what this product does not consider worth triaging"`
-		Search     string   `query:"q" maxLength:"200" doc:"Keep only components whose name contains this, ignoring capitals"`
+		Search     string   `query:"q" maxLength:"200" doc:"Keep only rows whose component name or issue name contains this, ignoring capitals. Issue names include every alias, so searching the name a reporter used reaches the row filed under the name a scanner used"`
 		Ecosystem  string   `query:"ecosystem" doc:"Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"`
 		Under      string   `query:"under" doc:"Keep only what sits inside the container of this name"`
 		UnderBuild bool     `query:"under_build" doc:"Keep only what the build holds directly, which is what has no container above it"`

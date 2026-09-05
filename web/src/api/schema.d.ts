@@ -6473,7 +6473,7 @@ export interface operations {
                 below_floor?: boolean;
                 /** @description Keep only what is open against components of this name, whatever version */
                 component?: string;
-                /** @description Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name */
+                /** @description Keep only rows whose component name or issue name contains this, ignoring capitals. Issue names include every alias, so searching the name a reporter used reaches the row filed under the name a scanner used. A way to find a package, or an advisory, in a list of thousands — where component is the exact package name */
                 q?: string;
                 /** @description Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi */
                 ecosystem?: string;
@@ -6578,7 +6578,7 @@ export interface operations {
                 fixable?: boolean;
                 /** @description Include what this product does not consider worth triaging */
                 below_floor?: boolean;
-                /** @description Keep only components whose name contains this, ignoring capitals */
+                /** @description Keep only rows whose component name or issue name contains this, ignoring capitals. Issue names include every alias, so searching the name a reporter used reaches the row filed under the name a scanner used */
                 q?: string;
                 /** @description Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi */
                 ecosystem?: string;

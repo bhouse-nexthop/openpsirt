@@ -2,7 +2,7 @@
 
 The web interface, how it is built, and how it reaches the server.
 
-Satisfies UIX-01 to UIX-27, UIX-30 to UIX-56, SCP-05, API-17, ACC-56 to
+Satisfies UIX-01 to UIX-27, UIX-30 to UIX-57, SCP-05, API-17, ACC-56 to
 ACC-59, the half of ING-41 that is shown rather than collected, and the
 interface half of TRI-45 to TRI-47. UIX-28 is in `DESIGN-text.md` with the rest
 of the rendering, and UIX-29 was withdrawn. What is not built is named at the
@@ -913,6 +913,33 @@ access, which is a more useful thing to steal than the list it is attached to.
 What is being typed after an `@` is read from the text before the cursor rather
 than tracked as state, so it stays right however somebody edits — pasting,
 deleting, or clicking elsewhere in the line.
+
+## The search box asks what it says it asks
+
+One box, matching component names and issue names alike, at whatever scope is
+chosen (UIX-57).
+
+It was labelled "Find a component or an issue" and searched component names
+only. So the question a PSIRT is asked first when an advisory lands — where is
+this in what we ship — returned an empty list, which reads as "we do not ship
+it" rather than as "that is not what this searches". It was also disabled
+unless a product, a branch and a variant were all chosen, which had been true
+while the findings list belonged to one build and stopped being true when it
+stopped (UIX-53).
+
+**Aliases are matched.** An issue is one thing under several names, so the name
+a reporter used has to reach the row filed under the name a scanner used —
+otherwise the answer depends on which feed arrived first, which is not a
+property anybody can reason about.
+
+Both halves are one box rather than two fields. Somebody typing a name does not
+classify it first, and an identifier is not mistakable for a package name in
+practice.
+
+**It stops at a product**, because no endpoint spans them. Asking "wherever we
+have it" across every product is a view of its own with a query behind it, and
+saying so is better than a box that quietly answers about one product while
+looking like it answered about all of them.
 
 ## The same question answers who may be given work
 

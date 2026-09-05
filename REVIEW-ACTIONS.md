@@ -243,7 +243,26 @@ person can be acted as directly:
   "assign everything under this container" or "assign this page"; the
   Unassigned batch bar helps but needs a working picker first.
 
-- [ ] **X4 · Searching a CVE returns nothing.** **M, highest workflow impact**
+- [x] **X4 · Searching a CVE returns nothing.** **M, highest workflow impact**
+
+  **Done**, to the limit the item allows. Recorded as UIX-57.
+
+  `q` now matches component names **and** issue names, including every alias —
+  so the name a reporter used reaches the row filed under the name a scanner
+  used. Both halves in one box: somebody typing a name does not classify it
+  first.
+
+  The box is enabled at product scope rather than requiring all three of
+  product, branch and variant. That restriction had been true while the
+  findings list was one build's and stopped being true with UIX-53.
+
+  Pinned by a test that searches the identifier, its lower-cased form, an
+  alias and a fragment; reverting the widening makes all four report `found 0
+  rows`, which is the review's evidence exactly.
+
+  **Not cross-product.** No endpoint spans products, and that is V9 rather
+  than this item — so the box says a product is needed instead of quietly
+  answering about one while looking like it answered about all.
 
   The top bar is labelled "Find a component or an issue…" but submits
   `findings?q=` (`web/src/app/Shell.tsx` around lines 270–306), and `q` is
