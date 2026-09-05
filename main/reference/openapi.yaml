@@ -3445,7 +3445,7 @@ components:
           description: Which one, where two share a name and a version
           type: string
         severity:
-          description: How bad it is
+          description: How bad it is. May be left out during early triage, before anybody has worked that out — an unrated finding is carried and listed, and what it does not get is a deadline. Worked out from the vector where one is given
           enum:
             - critical
             - high
@@ -3458,12 +3458,21 @@ components:
           description: What the flaw is, in your own words
           minLength: 1
           type: string
+        vector:
+          description: A CVSS 3.0 or 3.1 base vector. The score and the severity are worked out from it, so a score is never taken alongside it. Anything else is refused rather than scored with the wrong formula
+          type: string
         version:
           description: Which one, where the build holds that name at several versions
           type: string
+        weaknesses:
+          description: What kind of flaw it is, by the classification the world uses, such as CWE-125. Recorded as given
+          items:
+            type: string
+          type:
+            - array
+            - "null"
       required:
         - summary
-        - severity
       type: object
     RecordBody:
       additionalProperties: false
@@ -3840,6 +3849,36 @@ components:
         - proposed
         - sent_back
         - approved
+      type: object
+    Score-vectorResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Score-vectorResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        score:
+          format: double
+          type: number
+        severity:
+          description: The band the score falls in
+          enum:
+            - none
+            - low
+            - medium
+            - high
+            - critical
+          type: string
+        vector:
+          description: As it was read, upper-cased
+          type: string
+      required:
+        - vector
+        - score
+        - severity
       type: object
     Send-claim-backRequest:
       additionalProperties: false
@@ -6909,7 +6948,7 @@ paths:
 
         Refused when the file is larger than this deployment accepts, or when it has no room left; both limits are settings. A deployment that has configured no store holds no attachments and says so.
 
-        An upload nothing refers to is removed after a day, so a file attached and then abandoned does not accumulate.
+        An upload nothing refers to is removed after a day, so a file attached and then abandoned does not accumulate. Send `evidence=true` where the file hangs off the issue itself — a test case that proves the flaw — rather than off text you are about to write: it is then listed at once and never swept, because the issue is what points at it.
 
         **Requires:** any recognized credential. Answers only what you may see.
       operationId: upload-attachment
@@ -6930,10 +6969,14 @@ paths:
         content:
           multipart/form-data:
             encoding:
+              evidence:
+                contentType: text/plain
               file:
                 contentType: application/octet-stream
             schema:
               properties:
+                evidence:
+                  type: string
                 file:
                   contentEncoding: binary
                   contentMediaType: application/octet-stream
@@ -6941,6 +6984,7 @@ paths:
                   type: string
               required:
                 - file
+                - evidence
               type: object
       responses:
         "200":
@@ -9132,6 +9176,45 @@ paths:
       x-openpsirt-requires:
         scope: any
         note: Answers only what you may see.
+  /v1/score:
+    get:
+      description: |-
+        Returns the base score and the severity band a vector works out to.
+
+        It exists so that a screen composing a vector can show what it will score without holding a second copy of the formula. One implementation, and what somebody sees while choosing is what gets stored.
+
+        CVSS 3.0 and 3.1 only. Version 4 has a different base formula and version 2 is a different scheme, and scoring either with this one produces a number nothing downstream could tell apart from a real one.
+
+        **Requires:** any recognized credential. Answers a calculation, and reads nothing.
+      operationId: score-vector
+      parameters:
+        - description: A CVSS 3.0 or 3.1 base vector
+          explode: false
+          in: query
+          name: vector
+          required: true
+          schema:
+            description: A CVSS 3.0 or 3.1 base vector
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Score-vectorResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Work out what a CVSS vector scores
+      tags:
+        - Findings
+      x-openpsirt-requires:
+        scope: any
+        note: Answers a calculation, and reads nothing.
   /v1/session:
     delete:
       description: |-
