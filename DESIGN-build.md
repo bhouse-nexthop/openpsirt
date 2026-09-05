@@ -52,9 +52,10 @@ with the same command and the same pinned tool versions — CIG-05.
 | `make licenses` | Licenses of shipped dependencies against the allowlist |
 | `make openapi` | Regenerates the API document from the code |
 | `make sbom` | Generates our own CycloneDX bill of materials |
-| `make web-check` | The interface: its dependencies installed as locked, the type check, its tests, and the generated client diffed against the API document |
+| `make web-check` | The interface: its dependencies installed as locked, the type check, its tests, the class-name collision check, and the generated client diffed against the API document |
 | `make vet` | The compiler's own checks |
 | `make unreachable` | Exported code nothing reaches, which a linter reporting only unexported symbols will not find |
+| `npm run classes` | Class names of ours that Tailwind also defines, where its rule silently wins |
 | `make unclaimed` | Every decision in force is named by a design document |
 | `make openapi-current` | The committed API document and privileges page match what the code generates |
 | `make check` | Everything above. CI runs the last four as their own steps as well |
@@ -64,6 +65,28 @@ with the same command and the same pinned tool versions — CIG-05.
 | `make engines-down` | Removes them |
 | `make engines-status` | What is running, and which engines are unconfigured |
 | `make measure` | Measurements rather than gates. Behind a build tag, so `check` never runs them |
+
+## A class name of ours that Tailwind also defines
+
+Tailwind is imported wholesale into our stylesheet, so it emits a utility rule
+for any class name in the source that it recognizes. Where that name is also
+one of ours, both rules apply and Tailwind's wins for the properties it sets.
+
+Nothing fails. The element still carries our class and most of our rule still
+works — a column with `class="col fixed"` picked up `position: fixed` and left
+the grid, while everything else about it looked right. Three names had already
+been renamed after being noticed by eye, a fourth was found by a review months
+later, and the check found two more the first time it ran, one of which was a
+rule nothing applied at all.
+
+So the set is **derived rather than listed**: every class our own stylesheet
+defines a rule for is put to Tailwind's compiler, and anything it answers for
+is a collision. A utility Tailwind adds in a later version is caught the next
+time this runs, which a hand-kept list of names would not be.
+
+What is checked is the names we define a rule for. Utilities used deliberately
+in markup are not the subject — the collision needs two rules disagreeing, and
+that takes a rule of ours.
 
 ## The engines a developer tests against
 

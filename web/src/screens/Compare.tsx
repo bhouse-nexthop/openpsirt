@@ -291,7 +291,7 @@ function Columns({
   return (
     <div className="cmp">
       <Column
-        kind="fixed"
+        kind="was-fixed"
         title="Fixed"
         rows={fixed}
         note="Each says why it went. Superseded means the version moved and the issue came with it."

@@ -71,10 +71,17 @@ export function Decide({
 }) {
   const queries = useQueryClient();
   const draftKey = `decide:${at.product}:${at.stream}:${at.variant}:${at.vulnerability}:${at.component}`;
-  const [outcome, setOutcome] = useState(prefill?.outcome ?? "not-applicable");
+  // Nothing chosen until somebody chooses. The form used to open on
+  // "not applicable" with a justification already selected, which put every
+  // finding one click from a dismissal — the outcome that hides risk and
+  // needs a second person, offered as the default for the ordinary case.
+  const [outcome, setOutcome] = useState(prefill?.outcome ?? "");
   const [fixedVersion, setFixedVersion] = useState("");
-  const [justification, setJustification] = useState<Justification>(
-    (prefill?.justification as Justification | undefined) ?? "vulnerable_code_not_in_execute_path",
+  // Likewise unchosen. A justification is a claim about our build that a
+  // reader is entitled to take literally, so the first one in the list is not
+  // an answer — it is whichever happened to be written first.
+  const [justification, setJustification] = useState<Justification | "">(
+    (prefill?.justification as Justification | undefined) ?? "",
   );
   const [mitigation, setMitigation] = useState("");
   const [until, setUntil] = useState("");
@@ -164,6 +171,8 @@ export function Decide({
   }, [reach]);
 
   const ready =
+    outcome !== "" &&
+    (!needsJustification || justification !== "") &&
     covering.length > 0 &&
     reasoning.trim() !== "" &&
     (!needsDate || until !== "") &&
@@ -173,7 +182,9 @@ export function Decide({
   function body(narrow: boolean) {
     return {
       outcome: outcome as "affected" | "not-applicable" | "deferred" | "wont-fix" | "already-fixed",
-      ...(needsJustification ? { justification } : {}),
+      // Narrowed rather than asserted: submit is disabled until one is
+      // chosen, so the empty case cannot reach here.
+      ...(needsJustification && justification !== "" ? { justification } : {}),
       ...(needsMitigation ? { mitigation } : {}),
       ...(needsDate ? { deferred_until: until } : {}),
       ...(needsFixedVersion ? { fixed_version: fixedVersion.trim() } : {}),
@@ -395,6 +406,11 @@ export function Decide({
             value={justification}
             onChange={(event) => setJustification(event.target.value as Justification)}
           >
+            {/* An unchosen state, so the first justification in the list is
+                not offered as an answer. Each is a claim about our build that
+                a reader takes literally, and which one was written first says
+                nothing about which is true here. */}
+            <option value="">Say which…</option>
             {JUSTIFICATIONS.map((each) => (
               <option key={each.value} value={each.value}>
                 {each.value}

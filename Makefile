@@ -250,6 +250,7 @@ web-check:
 	$(MAKE) web-deps
 	$(NPM) --prefix web run typecheck
 	$(NPM) --prefix web test
+	$(NPM) --prefix web run classes
 	$(MAKE) web-api
 
 # Exported code nothing reaches. The analysis gate only reports unexported

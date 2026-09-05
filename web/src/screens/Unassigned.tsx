@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, type Body } from "../api/client";
 import { scopeQuery, useScope } from "../app/scope";
+import { useWho } from "../app/session";
 import { unwrap } from "../api/queries";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
@@ -29,9 +30,23 @@ export function Unassigned() {
     queryFn: async () =>
       unwrap(await api.GET("/v1/unassigned", { params: { query: { limit: PAGE, offset, ...scope } } })),
   });
+  const me = useWho();
+  // Who may be offered here, rather than everybody. Listing people asks for
+  // administration, so a triager saw "Assign to…" and nothing else.
+  //
+  // The narrower question is per product, and this list spans every product
+  // somebody can see — so the picker fills once a product is chosen, and
+  // taking work yourself works either way, which is the case that was most
+  // obviously missing.
   const people = useQuery({
-    queryKey: ["people"],
-    queryFn: async () => unwrap(await api.GET("/v1/people", {})),
+    enabled: scope.product != null && scope.product !== "",
+    queryKey: ["mentionable", scope.product],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/products/{product}/mentionable", {
+          params: { path: { product: scope.product as string }, query: { limit: 100 } },
+        }),
+      ),
   });
 
   const assign = useMutation({
@@ -72,11 +87,11 @@ export function Unassigned() {
   // work two keys if the representative ever changed.
   const keyOf = (row: Owned) => `${row.product} ${row.vulnerability} ${row.component} ${row.version}`;
 
-  async function assignPicked() {
+  async function assignTo(to: string) {
     // The same action repeated, not a different one — each finding records
     // who it went to and when.
     for (const row of items.filter((r) => picked.has(keyOf(r)))) {
-      await assign.mutateAsync({ row, person: person.trim() });
+      await assign.mutateAsync({ row, person: to });
     }
     setPicked(new Set());
   }
@@ -104,17 +119,30 @@ export function Unassigned() {
             <span>
               <b>{picked.size === 0 ? "Nothing selected" : `${picked.size} selected`}</b>
             </span>
-            <span className="grow" />
+            <span className="spacer" />
+            {/* Taking unowned work is a triager's own and needs nobody's
+                picker, so it is a button of its own rather than a step
+                through a select that may be empty. */}
+            <button
+              type="button"
+              className="btn"
+              disabled={picked.size === 0 || me.data?.identity == null || assign.isPending}
+              onClick={() => void assignTo(me.data!.identity)}
+            >
+              {picked.size === 0 ? "Take" : `Take ${picked.size}`}
+            </button>
             <select
               aria-label="Assign to"
               style={{ width: "auto" }}
               value={person}
+              disabled={!scope.product}
+              title={scope.product ? undefined : "Choose a product to hand work to somebody else"}
               onChange={(event) => setPerson(event.target.value)}
             >
               <option value="">Assign to…</option>
               {(people.data?.items ?? []).map((each) => (
                 <option key={each.identity} value={each.identity}>
-                  {each.display_name || each.identity}
+                  {each.name || each.identity}
                 </option>
               ))}
             </select>
@@ -122,7 +150,7 @@ export function Unassigned() {
               type="button"
               className="btn"
               disabled={picked.size === 0 || !person || assign.isPending}
-              onClick={() => void assignPicked()}
+              onClick={() => void assignTo(person.trim())}
             >
               {picked.size === 0 ? "Assign" : `Assign ${picked.size}`}
             </button>

@@ -2,7 +2,7 @@
 
 The web interface, how it is built, and how it reaches the server.
 
-Satisfies UIX-01 to UIX-27, UIX-30 to UIX-54, SCP-05, API-17, ACC-56 to
+Satisfies UIX-01 to UIX-27, UIX-30 to UIX-56, SCP-05, API-17, ACC-56 to
 ACC-59, the half of ING-41 that is shown rather than collected, and the
 interface half of TRI-45 to TRI-47. UIX-28 is in `DESIGN-text.md` with the rest
 of the rendering, and UIX-29 was withdrawn. What is not built is named at the
@@ -913,6 +913,49 @@ access, which is a more useful thing to steal than the list it is attached to.
 What is being typed after an `@` is read from the text before the cursor rather
 than tracked as state, so it stays right however somebody edits — pasting,
 deleting, or clicking elsewhere in the line.
+
+## The same question answers who may be given work
+
+The pickers that say who is dealing with a finding ask the **same** endpoint the
+mention candidates do: who can already read findings of this visibility in this
+product (UIX-56).
+
+They used to ask for the list of people, which is administration. So for every
+triager in the deployment both selects were empty — "Nobody" on the finding and
+"Assign to…" on the unassigned list — and the role whose whole job is dealing
+with findings could not say who was dealing with one. Asking who may *read* it
+rather than who *exists* also narrows the offer to people who can open what
+they are handed, which is the same reason the mention list is narrowed.
+
+**Taking unowned work is one action.** A triager may take what nobody owns
+without the assigner right (ACC-61), and the API always allowed it; there was
+no control that asked. So the finding carries "Take this" and the unassigned
+list's batch bar carries "Take", beside the picker rather than through it —
+self-assignment is the common case and it should not require finding yourself
+in a list.
+
+The unassigned list spans every product somebody can see, and who may be
+offered work is a question about one product. So the picker fills once a
+product is chosen and says why it is not otherwise; taking work yourself needs
+no product chosen and is always available.
+
+## Nothing is chosen for you on a decision form
+
+The outcome opens unselected, the justification opens unselected, and submit is
+refused until each question that is being asked has an answer (UIX-55).
+
+It opened on "not applicable" with "vulnerable code not in execute path"
+already selected. Every finding was one click from a dismissal, carrying a
+justification nobody had chosen — and a justification is a claim about our
+build that a reader is entitled to take literally. Reflex dismissal is the
+specific failure this interface is supposed to engineer against, and the form
+was defaulting to it.
+
+There is no neutral default to reach for instead. "Affected" is a claim as
+well, and a form that pre-answers its own question collects the answer it
+suggested. The justification list gains an unchosen entry for the same reason:
+which one happens to be written first says nothing about which is true here, so
+the first entry must not act as an answer.
 
 ## Running it locally
 

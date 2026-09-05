@@ -209,7 +209,24 @@ person can be acted as directly:
   with an `{identity}` parameter and asserts the invariant, rather than a
   fourth point fix.
 
-- [ ] **X5 · Triagers cannot assign or take work, including for themselves.** **S, high impact**
+- [x] **X5 · Triagers cannot assign or take work, including for themselves.** **S, high impact**
+
+  **Done.** Recorded as UIX-56. Both pickers now ask
+  `GET /v1/products/{product}/mentionable` — the same question the mention
+  candidates ask — so they offer the people who can already read findings of
+  that kind, rather than 403ing on the administrator-only people list.
+  Confirmed live: as `ana` the old source answers **403** and the new one
+  returns five people.
+
+  "Take this" on the finding and "Take" on the Unassigned batch bar, beside the
+  picker rather than through it. Confirmed live that a plain triager taking
+  unowned work answers **204** while handing the same finding to somebody else
+  answers **404**, which is ACC-61 working as written — so the button is the
+  right control and the picker is correctly the narrower one.
+
+  The Unassigned list spans every product, and who may be given work is a
+  per-product question, so the picker fills once a product is chosen and says
+  why it is not otherwise. Taking work yourself never needs one.
 
   The holder select on the finding (`web/src/screens/Finding.tsx` around
   lines 1622–1660) and "Assign to…" on Unassigned (`Unassigned.tsx` around
@@ -241,7 +258,17 @@ person can be acted as directly:
   enabled at every scope; the answer is cross-product (see V9 for the view
   and the endpoint it needs).
 
-- [ ] **X6 · The comparison's Fixed column floats over Introduced.** *Rendering bug.* **S**
+- [x] **X6 · The comparison's Fixed column floats over Introduced.** *Rendering bug.* **S**
+
+  **Done**, and the lint the item asked for is the more valuable half.
+
+  `kind="fixed"` is now `was-fixed`. The check is **derived rather than a list
+  of names**: every class our stylesheet defines a rule for is compiled by
+  Tailwind's own compiler, and anything it answers for is a collision — so a
+  utility Tailwind adds in a later version is caught too. It runs in
+  `make web-check`, and it found **two more the first time**: `.grow`, which
+  collides, and `.ring`, which collides *and* was applied to nothing at all.
+  `.grow` is renamed; the dead rule is deleted.
 
   `web/src/screens/Compare.tsx` renders `<Column kind="fixed" …>` and the
   column's class is `` `col ${kind}` `` (line ~325), so the class is `col
@@ -327,7 +354,16 @@ person can be acted as directly:
   makes a `private-read` auditor meaningful: today no reader sees everything
   without also being able to change everything.
 
-- [ ] **V3 · The decision form opens with a dismissal ready to submit.** **S**
+- [x] **V3 · The decision form opens with a dismissal ready to submit.** **S**
+
+  **Done.** Recorded as UIX-55. No outcome selected, no justification selected,
+  and submit disabled until each question being asked has an answer. The
+  justification select gained an unchosen entry, because otherwise the first
+  one written in the list acts as an answer — and a justification is a claim
+  about our build a reader takes literally.
+
+  Not defaulted to "Affected" either: that is a claim too, and a form that
+  pre-answers its own question collects the answer it suggested.
 
   `web/src/ui/Decide.tsx` line 74: `useState(prefill?.outcome ??
   "not-applicable")`, and the justification select lands on

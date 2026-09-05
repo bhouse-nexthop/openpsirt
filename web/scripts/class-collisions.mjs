@@ -1,0 +1,80 @@
+// Class names of ours that Tailwind also defines.
+//
+// Tailwind is imported wholesale into our stylesheet, and it emits a utility
+// for any class name in the source that it recognizes. Where that name is also
+// one of ours, both rules apply and Tailwind's wins for the properties it
+// sets — silently, because the element still has our class and most of our
+// rule still works. A column with `class="col fixed"` left the grid and
+// nothing failed.
+//
+// Three names had already been renamed by hand after being found by eye, and a
+// fourth was found by a review months later. So the set is derived rather than
+// listed: every class our own stylesheet defines is put to Tailwind, and
+// anything it answers for is a collision. A name Tailwind adds in a later
+// version is caught the next time this runs.
+//
+// Utilities used deliberately in markup are not the subject. What is checked
+// is the names we *define a rule for*, which is where the two can disagree.
+import { compile } from "tailwindcss";
+import { readFile, readdir } from "node:fs/promises";
+import path from "node:path";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const here = path.dirname(new URL(import.meta.url).pathname);
+const src = path.join(here, "..", "src");
+
+async function stylesheets(dir) {
+  const found = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) found.push(...(await stylesheets(full)));
+    else if (entry.name.endsWith(".css")) found.push(full);
+  }
+  return found;
+}
+
+// Class selectors we write. Deliberately narrow: a bare `.name`, which is the
+// only shape a single-class utility can collide with.
+const defined = new Map();
+for (const file of await stylesheets(src)) {
+  const css = await readFile(file, "utf8");
+  // Strip declaration blocks so that only selectors are read.
+  for (const selector of css.replace(/\{[^{}]*\}/g, "{}").split(/[{}]/)) {
+    for (const [, name] of selector.matchAll(/\.(-?[A-Za-z_][\w-]*)/g)) {
+      if (!defined.has(name)) defined.set(name, path.relative(src, file));
+    }
+  }
+}
+
+const root = path.dirname(require.resolve("tailwindcss/package.json"));
+const compiler = await compile('@import "tailwindcss";', {
+  base: process.cwd(),
+  async loadStylesheet(id, base) {
+    const file =
+      id === "tailwindcss"
+        ? path.join(root, "index.css")
+        : path.resolve(base, id.replace(/^tailwindcss\//, root + "/"));
+    return { path: file, base: path.dirname(file), content: await readFile(file, "utf8") };
+  },
+  async loadModule() {
+    throw new Error("this check compiles no modules");
+  },
+});
+
+const names = [...defined.keys()].sort();
+const emitted = compiler.build(names);
+const clashing = names.filter((name) =>
+  new RegExp(`\\.${name.replace(/[-[\]{}()*+?.\\^$|]/g, "\\$&")}(?=[\\s,:{>+~])`).test(emitted),
+);
+
+if (clashing.length > 0) {
+  console.error(
+    `${clashing.length} class name(s) we define are also Tailwind utilities, so Tailwind's\n` +
+      `rule wins for the properties it sets and ours silently does not apply:\n`,
+  );
+  for (const name of clashing) console.error(`  .${name}  (${defined.get(name)})`);
+  console.error(`\nRename ours — "was-fixed" rather than "fixed".`);
+  process.exit(1);
+}
+console.log(`no collisions: ${names.length} class names checked against Tailwind`);

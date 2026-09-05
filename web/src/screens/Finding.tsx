@@ -371,7 +371,7 @@ export function Finding() {
         )}
         <Attachments about={{ product, vulnerability }} admin={!!who.data?.admin} />
 
-        <Holder at={at} assigned={it.assigned_to ?? ""} />
+        <Holder at={at} assigned={it.assigned_to ?? ""} undisclosed={!!it.recorded} />
 
         {it.recorded && <Resolve at={at} vulnerability={vulnerability} />}
 
@@ -1622,14 +1622,30 @@ function FixState({ state }: { state: string }) {
 function Holder({
   at,
   assigned,
+  undisclosed,
 }: {
   at: { product: string; stream: string; variant: string; vulnerability: string; component: string };
   assigned: string;
+  undisclosed: boolean;
 }) {
   const queries = useQueryClient();
+  const me = useWho();
+  // Who may be offered, rather than everybody. Listing people asks for
+  // administration, so a triager saw an empty select and could hand work to
+  // nobody — including to themselves, which the API allows and the screen did
+  // not. This answers the narrower and more useful question: the people who
+  // can already read findings of this kind in this product.
   const people = useQuery({
-    queryKey: ["people"],
-    queryFn: async () => unwrap(await api.GET("/v1/people", {})),
+    queryKey: ["mentionable", at.product, undisclosed],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/products/{product}/mentionable", {
+          params: {
+            path: { product: at.product },
+            query: { visibility: undisclosed ? "private" : "public", limit: 100 },
+          },
+        }),
+      ),
   });
   const hand = useMutation({
     mutationFn: async (person: string) =>
@@ -1661,10 +1677,22 @@ function Holder({
           <option value="">Nobody</option>
           {(people.data?.items ?? []).map((each) => (
             <option key={each.identity} value={each.identity}>
-              {each.display_name || each.identity}
+              {each.name || each.identity}
             </option>
           ))}
         </select>
+        {/* Taking unowned work is a triager's own, and it is the common case.
+            The API always allowed it; there was no way to ask. */}
+        {me.data?.identity != null && assigned !== me.data.identity && (
+          <button
+            type="button"
+            className="btn quiet"
+            disabled={hand.isPending}
+            onClick={() => hand.mutate(me.data!.identity)}
+          >
+            Take this
+          </button>
+        )}
         {hand.isPending && <span className="hint">Recording…</span>}
       </div>
       <p className="hint" style={{ margin: "8px 0 0" }}>

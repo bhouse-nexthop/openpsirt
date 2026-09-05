@@ -7,7 +7,8 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
     "api": "openapi-typescript ../docs/reference/openapi.yaml -o src/api/schema.d.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "classes": "node scripts/class-collisions.mjs"
   },
   "dependencies": {
     "@fontsource/hanken-grotesk": "5.3.0",

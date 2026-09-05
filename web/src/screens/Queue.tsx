@@ -182,7 +182,7 @@ export function Queue() {
             <b>{picked.size === 0 ? "Nothing selected" : `${picked.size} selected`}</b>
           </label>
           <span className="hint">Approvals under one batch name can be undone together.</span>
-          <span className="grow" />
+          <span className="spacer" />
           <input
             type="text"
             value={batch}
