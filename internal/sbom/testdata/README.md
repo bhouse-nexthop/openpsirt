@@ -10,7 +10,7 @@ nobody can tell a producer quirk from a typo in.
 | `suppression-from-patch.openvex.json` | Real output. One claim a build extracted from a patch of its own. It names a source tree rather than a package, which is what makes matching a claim to a component something that can fail |
 | `image.cdx.json` | Written by hand, in the shape of the aggregate inventory a switch operating-system build emits: an image at the root, containers under it, packages under those, a shared library reached from several of them, and a forked component whose pedigree carries the version it was forked from. Not a producer's output, and not a substitute for one |
 | `openpsirt-image.cdx.json` | Real output, and the only fixture at **CycloneDX 1.7**. The inventory this deployment's own image carries of itself: the scanner's description of the container, composed from its parts by the tool that builds it. It is what the image ships and what the demo ingests, so the revision every shipped inventory now states is read here by evidence rather than by construction |
-| `switch-image.cdx.json.xz` | Real output, and the full-size one. The public SONiC network operating-system image, 6,845 components and 18,561 edges over 17 MB, from a build of sonic-buildimage#29237. Compressed because the shape is the point and 18 MB of it is not. See below |
+| `switch-image.cdx.json.xz` | Real output, and the full-size one. The public SONiC network operating-system image, 6,858 components and 18,574 edges over 18 MB, from a build of sonic-buildimage#29237. Compressed because the shape is the point and 18 MB of it is not. See below |
 
 The 1.7 document is deliberately uncompressed, unlike the full-size one. That
 fixture skips where `xz` is missing, which is the right trade for something
@@ -67,6 +67,30 @@ passing. The rule is proved by a test that constructs the duplicates instead,
 which is where a rule of this kind belongs: a fixture is somebody else's output
 and can stop exercising a rule without anybody deciding it should.
 
+**It now describes the programs in the image**, which is the second half of
+sonic-buildimage #29237: thirteen `application` components — `/usr/bin/dockerd`,
+`/usr/bin/containerd`, `/usr/sbin/rest_server` and the rest — with the Go
+modules linked into each hanging off the program rather than off the filesystem
+that holds it. Four different Go runtimes appear here, and before that change
+all four were children of a container or of the host with nothing saying which
+program each belonged to.
+
+**Nine of those thirteen survive as components**, and the gap is the finding.
+A program arrives with no version and no package identifier, so identity — a
+name and a version — cannot tell two apart: `/usr/bin/dockerd`,
+`/usr/bin/containerd`, `/usr/bin/runc` and `/usr/sbin/dialout_client_cli` each
+appear in two images and merge into one component apiece. The places stay
+distinct, because each sits under its own container, but what is linked into a
+program is a property of the component — so one image's `dockerd` modules read
+as being in the other's. It collapses only what is genuinely alike, though: a
+place is a component and its direct consumer, so two modules under those two
+`dockerd`s are one place only where both ship the same module at the same
+version, and a different version is a different package identifier that cannot
+merge. Not worth changing the producer for — the only field free to distinguish
+them is `version`, and a scope name there is a lie every consumer has to know
+to ignore. If it ever matters, the honest fix is a hash on the program
+component.
+
 It is stored compressed. The uncompressed document is 18 MB, which is a size
 worth reading once in a test and not a size worth keeping in every checkout.
 
@@ -80,15 +104,10 @@ REL-09), and where a version differs it is the build the guided review walks
 (UIX-45). The demo and the dev loop seed both, as two variants of one branch,
 from `DEMO_BUILDS` in the Makefile.
 
-**It is a build later than the broadcom one beside it**, and deliberately so
-until that is rebuilt: it is the first from a producer that attributes code
-compiled into a program to the program rather than to the filesystem. Thirteen
-of its components are programs — `/usr/bin/containerd`, `/usr/bin/dockerd`,
-`/usr/sbin/rest_server` — synthesized so that the Go modules linked into each
-hang off the thing they were built into. Four different Go runtimes appear in
-this image, and before that change all four were children of the host
-filesystem or of a container, with nothing saying which program each belonged
-to.
+It was a build ahead of the broadcom one beside it for a day — the first from a
+producer that attributes code compiled into a program to the program rather
+than to the filesystem. The broadcom build has caught up, so the two are
+generated the same way again, which is what makes them comparable as variants.
 
 It is not yet read by any test. The full-size test reads the broadcom build,
 and a second full-size read would add its cost to every run; what this one

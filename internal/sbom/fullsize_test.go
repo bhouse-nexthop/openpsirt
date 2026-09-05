@@ -115,8 +115,25 @@ func TestARealImageReadsAsOneComponentPerPackage(t *testing.T) {
 	//
 	// The number is written down rather than expressed as a tolerance: a
 	// change in it is a change in what identity means, and that is something
-	// to look at rather than absorb.
-	const packages = 6845
+	// to look at rather than absorb. It earned that this time: 6,845 became
+	// 6,854 when the generator started describing the programs in the image
+	// (sonic-buildimage #29237), and the prediction written down beforehand
+	// was that it would rise by the number of programs. It rose by the number
+	// of **distinct program names**. The image ships 13 programs and 9 names:
+	// `/usr/bin/dockerd`, `/usr/bin/containerd`, `/usr/bin/runc` and
+	// `/usr/sbin/dialout_client_cli` each appear in two images, and a program
+	// arrives with no version and no package identifier, so identity — a name
+	// and a version — cannot tell one from the other and merges them.
+	//
+	// Recorded rather than adjusted for: the modules compiled into one image's
+	// `dockerd` hang off the merged component, so they read as being in the
+	// other's too. It collapses only what is alike, though — a place is a
+	// component and its direct consumer, so two modules under those two
+	// programs are one place only where both ship the same module at the same
+	// version — and the only field free to tell the programs apart is
+	// `version`, where a scope name would be a lie every consumer has to know
+	// to ignore. If it ever matters, the fix is a hash on the program.
+	const packages = 6854
 	if len(snapshot.Components) != packages {
 		t.Errorf("the image read as %d components, expected %d — has the fixture or the rule changed?",
 			len(snapshot.Components), packages)

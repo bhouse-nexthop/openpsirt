@@ -3079,3 +3079,14 @@ of programs and the other two do not move at all** — the same shape as the las
 producer change, where 190 components went and the two constants stayed put
 because none of them stated either. If `upstreams` or `cpes` moves, something
 other than this change did it and is worth finding before the fixture is taken.
+
+**What happened (2026-09-05).** `upstreams` and `cpes` did not move — 551 and
+6,567 exactly, as predicted. `packages` went 6,845 → 6,854, which is **nine**,
+not the thirteen programs the document carries: the four paths that appear in
+two scopes merged, exactly as the paragraphs above this one describe for the
+mellanox build. The prediction was written badly rather than wrongly — the
+answer to it was four paragraphs up, in the same note, and "the number of
+programs" should have read "the number of distinct program names". Worth
+keeping as written: a prediction is only a check if it is specific, and the way
+this one was loose is the way they usually are — a count taken from the
+document rather than from what the reader makes of it.
