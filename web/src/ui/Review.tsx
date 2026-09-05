@@ -129,7 +129,7 @@ export function Review({
     </div>
   );
 
-  let title = "";
+  let title: string;
   let body: React.ReactNode;
   let foot: React.ReactNode;
 

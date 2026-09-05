@@ -68,6 +68,47 @@ const clashing = names.filter((name) =>
   new RegExp(`\\.${name.replace(/[-[\]{}()*+?.\\^$|]/g, "\\$&")}(?=[\\s,:{>+~])`).test(emitted),
 );
 
+// Class names nothing applies.
+//
+// A rule for a class no element carries is dead weight that reads as working
+// code — `.ring` sat here styling nothing, and was only noticed because
+// Tailwind happened to define the same name.
+//
+// Matched against the whole of the source rather than against `className=`
+// alone, because class names are built as well as written: a template literal
+// puts `col ${kind}` in the markup and the modifier appears nowhere as a
+// literal, so anything stricter reports names that are plainly in use. That
+// makes this deliberately weak — it finds a name mentioned nowhere at all,
+// which is the case worth finding, and stays quiet otherwise.
+const sources = [];
+async function scripts(dir) {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) await scripts(full);
+    else if (/\.(tsx?|html)$/.test(entry.name)) sources.push(await readFile(full, "utf8"));
+  }
+}
+await scripts(src);
+const markup = sources.join("\n");
+
+// Names that come from somewhere other than our own markup, so their absence
+// says nothing: a charting library writes its own, and print rules are matched
+// by the browser rather than by us.
+const foreign = /^(recharts-|markdown-body$)/;
+
+const unused = names.filter(
+  (name) =>
+    !foreign.test(name) &&
+    !new RegExp(`[\\s"'\`.]${name.replace(/[-[\]{}()*+?.\\^$|]/g, "\\$&")}[\\s"'\`:.]`).test(markup),
+);
+
+if (unused.length > 0) {
+  console.error(`${unused.length} class name(s) are styled and never applied:\n`);
+  for (const name of unused) console.error(`  .${name}  (${defined.get(name)})`);
+  console.error(`\nDelete the rule, or apply it.`);
+  process.exit(1);
+}
+
 if (clashing.length > 0) {
   console.error(
     `${clashing.length} class name(s) we define are also Tailwind utilities, so Tailwind's\n` +

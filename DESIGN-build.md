@@ -52,10 +52,10 @@ with the same command and the same pinned tool versions — CIG-05.
 | `make licenses` | Licenses of shipped dependencies against the allowlist |
 | `make openapi` | Regenerates the API document from the code |
 | `make sbom` | Generates our own CycloneDX bill of materials |
-| `make web-check` | The interface: its dependencies installed as locked, the type check, its tests, the class-name collision check, and the generated client diffed against the API document |
+| `make web-check` | The interface: its dependencies installed as locked, the type check, ESLint, Stylelint, its tests, the class-name checks, and the generated client diffed against the API document |
 | `make vet` | The compiler's own checks |
 | `make unreachable` | Exported code nothing reaches, which a linter reporting only unexported symbols will not find |
-| `npm run classes` | Class names of ours that Tailwind also defines, where its rule silently wins |
+| `npm run classes` | Class names of ours that Tailwind also defines, and class names nothing applies |
 | `make unclaimed` | Every decision in force is named by a design document |
 | `make openapi-current` | The committed API document and privileges page match what the code generates |
 | `make check` | Everything above. CI runs the last four as their own steps as well |
@@ -65,6 +65,34 @@ with the same command and the same pinned tool versions — CIG-05.
 | `make engines-down` | Removes them |
 | `make engines-status` | What is running, and which engines are unconfigured |
 | `make measure` | Measurements rather than gates. Behind a build tag, so `check` never runs them |
+
+## What checks the interface, and what each is for
+
+The Go half has `gofmt`, `go vet`, `golangci-lint`, `unreachable` and
+`unclaimed`. The interface had a type check and its tests, and nothing else —
+so CSS was unchecked entirely and the classes of defect a type checker cannot
+see went unreported.
+
+| | |
+|---|---|
+| `tsc` | Strict, with unused locals and parameters, unchecked indexed access and verbatim module syntax. It does most of what a type-aware linter would, which is why the lint rules below are few |
+| ESLint | Only what `tsc` has no view of. The rules of hooks are the reason it is here |
+| Stylelint | CSS correctness — unknown properties, duplicate selectors, notation. Nothing about whitespace, which Prettier owns |
+| `npm run classes` | Two questions about class names: which of ours Tailwind also defines, and which of ours nothing applies |
+
+**ESLint is deliberately narrow.** A second opinion about style is noise beside
+a formatter, and a rule that fires on working code teaches people to read past
+the output. What it carries is the hook rules, which catch defects no type
+checker can see: an impure read during render, a dependency list that makes an
+effect run every time, a value assigned and never used.
+
+**One of its rules reports rather than refuses.** Writing state from an effect
+is flagged nine times, and every instance is the same shape — local state reset
+when a prop changes or a panel opens. The fix is to remount with a key, which
+changes how those components are mounted rather than what they do, so each has
+to be driven in a browser to know it still behaves. Left visible rather than
+switched off: the rule is right, and the count is the honest measure of the
+work. Switching it off would hide the nine and let a tenth join them.
 
 ## A class name of ours that Tailwind also defines
 
@@ -87,6 +115,21 @@ time this runs, which a hand-kept list of names would not be.
 What is checked is the names we define a rule for. Utilities used deliberately
 in markup are not the subject — the collision needs two rules disagreeing, and
 that takes a rule of ours.
+
+## A rule that styles nothing
+
+The same script asks the other question about a class name: whether anything
+applies it. A rule for a class no element carries is dead weight that reads as
+working code — the sign-in screen was rebuilt with utility classes and its
+rule stayed behind, styling nothing, and 32 more were found with it.
+
+Matched against the whole of the source rather than against `className=`,
+because class names are built as well as written: `col ${kind}` puts a modifier
+in the markup that appears nowhere as a literal. So the check is deliberately
+weak. It finds a name mentioned nowhere at all, which is the case worth
+finding, and stays quiet otherwise. Names that come from somewhere else — a
+charting library's own, the markdown renderer's `language-` — are excluded,
+because their absence from our source says nothing.
 
 ## The engines a developer tests against
 

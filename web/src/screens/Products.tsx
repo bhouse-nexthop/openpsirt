@@ -64,6 +64,18 @@ export function Products({ who }: { who: Who }) {
   }
 
   const items = products.data?.items ?? [];
+  // One instant for the whole table rather than a reading per row. Two rows
+  // judged against two different "now"s is a difference nobody would ever see
+  // reported, and a week-old threshold does not need better than this.
+  //
+  // Reading the clock is impure whether it happens here or inside a memo,
+  // because a memo's body still runs during render. There is no pure source
+  // for it: the answer this asks for is what the time is, and the alternatives
+  // are state written from an effect, which is the pattern this same ruleset
+  // argues against, or a field the server does not send. So the rule is
+  // switched off for this line and stays on everywhere else.
+  // eslint-disable-next-line react-hooks/purity
+  const asOf = Date.now();
 
   return (
     <>
@@ -105,7 +117,7 @@ export function Products({ who }: { who: Who }) {
               {items.map((product) => {
                 const stale =
                   !!product.last_scan_at &&
-                  Date.now() - Date.parse(product.last_scan_at) > 7 * 86_400_000;
+                  asOf - Date.parse(product.last_scan_at) > 7 * 86_400_000;
                 return (
                   <tr key={product.name} className="row">
                     <td>

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
@@ -198,7 +198,9 @@ export function Findings() {
     set("hide", hiding.filter((name) => name !== component).join(","));
   }
 
-  const rows = findings.data?.items ?? [];
+  // Memoized because the fallback is a fresh array each render, which made
+  // the effect that lands the cursor depend on something that always changed.
+  const rows = useMemo(() => findings.data?.items ?? [], [findings.data]);
   const total = findings.data?.total ?? 0;
 
   // Once the list has been read again after a decision, land on the row
