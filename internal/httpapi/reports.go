@@ -201,6 +201,72 @@ func registerReports(api huma.API, in Ingest) {
 	})
 }
 
+// ReleasePointBody is what one release shipped with.
+type ReleasePointBody struct {
+	Stream     string         `json:"stream"`
+	Cut        string         `json:"cut" doc:"When the release was declared. It orders them and labels them; the axis is the sequence"`
+	Open       int            `json:"open" doc:"Distinct issues open against it now, against today's vulnerability data rather than the day it was cut"`
+	BySeverity map[string]int `json:"by_severity,omitempty"`
+}
+
+// registerReleaseTrend offers the trend on the other axis (RPT-09).
+func registerReleaseTrend(api huma.API, in Ingest) {
+	huma.Register(api, requiring(huma.Operation{
+		OperationID: "get-release-trend", Method: http.MethodGet, Path: "/v1/trend/releases",
+		Summary: "Show what each release shipped with",
+		Description: "One point per tagged release of one product, oldest first, with what is " +
+			"open against it now.\n\n" +
+			"**The axis follows what is being viewed.** A branch is scanned nightly and has " +
+			"continuous data, so a calendar reads correctly on it. A tag never moves again, and " +
+			"releases months apart make a calendar count read as slow drift rather than the " +
+			"step change it was — the gaps are the chart's whole shape and they are gaps in " +
+			"nothing.\n\n" +
+			"**Answered against today's vulnerability data**, not as of the day each was cut. " +
+			"That is what re-scanning a shipped release is for.\n\n" +
+			"**No rates here.** How many appeared and were resolved between two releases is an " +
+			"artifact of how far apart somebody cut them; rates always plot on calendar. And a " +
+			"product must be named: two products' tags interleave by date and mean nothing side " +
+			"by side.",
+		Tags: []string{"Reports"},
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
+		ScopeQuery
+		Limit int `query:"limit" default:"12" minimum:"1" maximum:"50" doc:"How many releases, most recent kept"`
+	}) (*struct {
+		Body struct {
+			Items []ReleasePointBody `json:"items"`
+		}
+	}, error) {
+		subject, err := reading(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if in.DB == nil {
+			return nil, huma.Error500InternalServerError("this process cannot read findings")
+		}
+		scope, err := scoped(ctx, in, subject, input.ScopeQuery)
+		if err != nil {
+			return nil, err
+		}
+		points, err := finding.NewStore(in.DB.DB).ReleaseTrend(ctx, subject, scope, input.Limit)
+		if err != nil {
+			return nil, refused(in.Logger, err, "cannot read what each release shipped with")
+		}
+		out := &struct {
+			Body struct {
+				Items []ReleasePointBody `json:"items"`
+			}
+		}{}
+		out.Body.Items = make([]ReleasePointBody, 0, len(points))
+		for _, point := range points {
+			out.Body.Items = append(out.Body.Items, ReleasePointBody{
+				Stream: point.Stream, Cut: point.Cut.Format(time.RFC3339),
+				Open: point.Open, BySeverity: point.BySeverity,
+			})
+		}
+		return out, nil
+	})
+}
+
 // registerNotes offers the comparison as prose (RPT-06).
 func registerNotes(api huma.API, in Ingest) {
 	huma.Register(api, requiring(huma.Operation{

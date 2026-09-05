@@ -157,5 +157,6 @@ Any credential this deployment recognizes. The answer is narrowed to what you ma
 | GET | `/v1/scanning` | — | Answers only what you may see. |
 | GET | `/v1/sign-in` | — | Answered without a credential. |
 | GET | `/v1/trend` | — | Answers only what you may see. |
+| GET | `/v1/trend/releases` | — | Answers only what you may see. |
 | GET | `/v1/unassigned` | — | Answers only what you may see. |
 | GET | `/v1/version` | — | Answers only what you may see. |

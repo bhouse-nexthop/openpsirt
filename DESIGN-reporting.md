@@ -62,10 +62,26 @@ declared fixed — are resolutions and are counted.
 Trends plot on calendar time. That is right for a branch, which is scanned
 nightly and has continuous data.
 
-**Release over release is not built.** A tagged release is one frozen point,
-and releases months apart make a calendar count read as slow drift rather than
-the step change it was — so the axis should follow what is being viewed
-(RPT-09). Recorded here because a calendar chart of tags looks like it works.
+**Release over release is built** (RPT-09). A tagged release is one frozen
+point, and releases months apart make a calendar count read as slow drift
+rather than the step change it was — the gaps are the chart's whole shape and
+they are gaps in nothing. So the axis follows what is being viewed: one point
+per tagged release, oldest first, drawn as bars because a line between two
+frozen points draws a path nothing travelled.
+
+**Answered against today's vulnerability data**, not as of the day each was
+cut. That is exactly what re-scanning a shipped release is for, and a chart
+that froze the answer with the release would hide the advisory published after
+it shipped.
+
+**Rates stay on calendar.** How much appeared and was resolved between two
+releases is an artifact of how far apart somebody cut them, so only what is
+open is plotted on this axis.
+
+**A product has to be named, and two releases is the fewest that is a shape.**
+Across products the tags interleave by date and mean nothing side by side; one
+bar reads as broken rather than as sparse, so the calendar stays until there
+are two.
 
 ### Reading only what can be in range
 

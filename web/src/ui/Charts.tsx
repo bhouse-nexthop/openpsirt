@@ -300,3 +300,62 @@ export function Across({ releases }: { releases: Release[] }) {
     </ResponsiveContainer>
   );
 }
+
+
+// What each release shipped with (RPT-09).
+//
+// Bars rather than a line, because a release is a frozen point and a line
+// between two of them draws a path nothing travelled. The gap between two
+// releases is months on a calendar and one step here, which is the whole
+// reason this axis exists.
+export function Releases({
+  points,
+}: {
+  points: { stream?: string; open?: number; cut?: string }[];
+}) {
+  if (points.length === 0) return null;
+  const W = 560, L = 40, R = 10, T = 8, H = 120;
+  const most = Math.max(1, ...points.map((p) => p.open ?? 0));
+  const slot = (W - L - R) / points.length;
+  const bar = Math.min(48, slot * 0.62);
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H + 34}`} className="chart" role="img"
+      aria-label="Open issues in each release">
+      {[0, 0.5, 1].map((f) => (
+        <line key={f} className="gridline" x1={L} x2={W - R}
+          y1={T + H - f * H} y2={T + H - f * H} />
+      ))}
+      {[0, most].map((v, i) => (
+        <text key={v} className="tick" x={L - 6} y={T + H - i * H + 4} textAnchor="end">
+          {v.toLocaleString()}
+        </text>
+      ))}
+      {points.map((point, i) => {
+        const height = ((point.open ?? 0) / most) * H;
+        const x = L + i * slot + (slot - bar) / 2;
+        return (
+          <g key={`${point.stream}-${i}`}>
+            <rect
+              x={x}
+              y={T + H - height}
+              width={bar}
+              height={Math.max(1, height)}
+              fill="var(--accent)"
+              rx={2}
+            >
+              <title>
+                {point.stream}: {(point.open ?? 0).toLocaleString()} open
+              </title>
+            </rect>
+            {/* Every release is named. A tick every other bar would leave
+                somebody counting to work out which one they are looking at. */}
+            <text className="tick" x={x + bar / 2} y={T + H + 16} textAnchor="middle">
+              {point.stream}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}

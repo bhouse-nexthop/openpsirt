@@ -5,7 +5,7 @@ import { findingsPath, scopeQuery, useScope } from "../app/scope";
 import type { Scoped } from "../app/scope";
 import { unwrap } from "../api/queries";
 import { Failed } from "../ui/Failed";
-import { Pace, Mix, Ring } from "../ui/Charts";
+import { Pace, Mix, Ring, Releases } from "../ui/Charts";
 import { claimOf } from "../api/claims";
 import type { Who } from "../app/session";
 
@@ -38,6 +38,19 @@ export function Home({ who }: { who: Who }) {
       unwrap(await api.GET("/v1/trend", { params: { query: { weeks: 12, ...scope } } })),
   });
   const points = trend.data?.items ?? [];
+  // The other axis (RPT-09). Asked for whenever a product is picked, and drawn
+  // instead of the calendar where the product has releases to plot: a tag
+  // never moves again, and releases months apart read on a calendar as slow
+  // drift rather than the step change they were.
+  const releases = useQuery({
+    queryKey: ["home", "release-trend", scope],
+    enabled: !!at.product,
+    queryFn: async () =>
+      unwrap(await api.GET("/v1/trend/releases", { params: { query: { limit: 12, ...scope } } })),
+  });
+  // Two releases is the fewest that is a shape. One bar reads as broken
+  // rather than as sparse, so the calendar stays until there are two.
+  const byRelease = (releases.data?.items ?? []).length >= 2;
 
   return (
     <>
@@ -59,13 +72,25 @@ export function Home({ who }: { who: Who }) {
 
         <div className="panel wide">
           <header>
-            <h3>Trend: open, new and resolved issues</h3>
+            <h3>
+              {byRelease ? "Open issues in each release" : "Trend: open, new and resolved issues"}
+            </h3>
             <span className="eyebrow" style={{ marginLeft: "auto" }}>
-              12 weeks · {counting}
+              {byRelease ? "release over release" : "12 weeks"} · {counting}
             </span>
           </header>
           {trend.isError ? (
             <Failed error={trend.error} what="The trend could not be read." />
+          ) : byRelease ? (
+            <>
+              <Releases points={releases.data?.items ?? []} />
+              <p className="hint">
+                Each release as it stands against today&rsquo;s vulnerability data, not as of the
+                day it was cut &mdash; which is what re-scanning a shipped release is for. Rates
+                are not shown here: how much appeared between two releases is an artifact of how
+                far apart they were cut.
+              </p>
+            </>
           ) : (
             <>
               <Pace points={points} />

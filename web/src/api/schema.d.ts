@@ -2204,6 +2204,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/trend/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show what each release shipped with
+         * @description One point per tagged release of one product, oldest first, with what is open against it now.
+         *
+         *     **The axis follows what is being viewed.** A branch is scanned nightly and has continuous data, so a calendar reads correctly on it. A tag never moves again, and releases months apart make a calendar count read as slow drift rather than the step change it was — the gaps are the chart's whole shape and they are gaps in nothing.
+         *
+         *     **Answered against today's vulnerability data**, not as of the day each was cut. That is what re-scanning a shipped release is for.
+         *
+         *     **No rates here.** How many appeared and were resolved between two releases is an artifact of how far apart somebody cut them; rates always plot on calendar. And a product must be named: two products' tags interleave by date and mean nothing side by side.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
+         */
+        get: operations["get-release-trend"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/unassigned": {
         parameters: {
             query?: never;
@@ -3359,6 +3387,15 @@ export interface components {
             date: string;
             engine: components["schemas"]["Engine"];
         };
+        "Get-release-trendResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Get-release-trendResponse.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ReleasePointBody"][] | null;
+        };
         GrantBody: {
             /** @description The product the role is held against */
             product: string;
@@ -4233,6 +4270,19 @@ export interface components {
             /** @description The branch or tag */
             stream: string;
             variant: string;
+        };
+        ReleasePointBody: {
+            by_severity?: {
+                [key: string]: number;
+            };
+            /** @description When the release was declared. It orders them and labels them; the axis is the sequence */
+            cut: string;
+            /**
+             * Format: int64
+             * @description Distinct issues open against it now, against today's vulnerability data rather than the day it was cut
+             */
+            open: number;
+            stream: string;
         };
         RemediationOutputBody: {
             /**
@@ -8191,6 +8241,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListBodyPointBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-release-trend": {
+        parameters: {
+            query?: {
+                /** @description Limit to one product, by name. Empty means every product you can see */
+                product?: string;
+                /** @description Limit to one branch or tag. Only meaningful with a product */
+                stream?: string;
+                /** @description Limit to one variant. Only meaningful with a product, and independent of the branch */
+                variant?: string;
+                /** @description How many releases, most recent kept */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Get-release-trendResponse"];
                 };
             };
             /** @description Error */
