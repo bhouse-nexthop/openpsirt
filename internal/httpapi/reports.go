@@ -201,6 +201,71 @@ func registerReports(api huma.API, in Ingest) {
 	})
 }
 
+// registerNotes offers the comparison as prose (RPT-06).
+func registerNotes(api huma.API, in Ingest) {
+	huma.Register(api, requiring(huma.Operation{
+		OperationID: "get-release-notes", Method: http.MethodGet,
+		Path:    "/v1/products/{product}/comparison/notes",
+		Summary: "Render a comparison as release notes",
+		Description: "The same comparison as markdown, in the form somebody pastes into a " +
+			"release note. Returned as `text/markdown` rather than as a string in a JSON " +
+			"field, because the point of it is that it goes straight in.\n\n" +
+			"Three sections, worst first within each and stably ordered, so that two runs over " +
+			"the same pair of builds produce the same document.\n\n" +
+			"**A bump that carried the issue with it is listed apart from the fixes.** It is " +
+			"the opposite answer to whether something was fixed, and putting it under Fixed " +
+			"would tell a customer something untrue in a document they keep.\n\n" +
+			"**Public findings only unless you ask otherwise**, as the comparison itself is.",
+		Tags: []string{"Reports"},
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
+		Product        string `path:"product"`
+		From           string `query:"from" required:"true" doc:"The earlier build's stream"`
+		FromVariant    string `query:"from_variant" required:"true" doc:"The earlier build's variant"`
+		To             string `query:"to" required:"true" doc:"The later build's stream"`
+		ToVariant      string `query:"to_variant" required:"true" doc:"The later build's variant"`
+		IncludePrivate bool   `query:"include_undisclosed" doc:"Include findings nobody has disclosed"`
+	}) (*huma.StreamResponse, error) {
+		subject, err := reading(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if in.DB == nil {
+			return nil, huma.Error500InternalServerError("this process cannot read findings")
+		}
+		names := catalog.NewStore(in.DB.DB)
+		locate := func(stream, variant string) (int64, error) {
+			named, err := names.LocateVisible(ctx, subject, input.Product, stream, variant)
+			if err != nil {
+				return 0, noSuchProduct()
+			}
+			target, err := names.ExistingTarget(ctx, named.StreamID, named.VariantID)
+			if err != nil {
+				return 0, nothingScannedThere()
+			}
+			return target.ID, nil
+		}
+		from, err := locate(input.From, input.FromVariant)
+		if err != nil {
+			return nil, err
+		}
+		to, err := locate(input.To, input.ToVariant)
+		if err != nil {
+			return nil, err
+		}
+		comparison, err := finding.NewStore(in.DB.DB).Compare(ctx, subject, from, to,
+			input.IncludePrivate)
+		if err != nil {
+			return nil, refusedFinding(in, err)
+		}
+		notes := finding.Notes(input.To+" "+input.ToVariant, comparison)
+		return &huma.StreamResponse{Body: func(hc huma.Context) {
+			hc.SetHeader("Content-Type", "text/markdown; charset=utf-8")
+			hc.SetStatus(http.StatusOK)
+			_, _ = hc.BodyWriter().Write([]byte(notes))
+		}}, nil
+	})
+}
+
 func changed(rows []finding.Changed, why, bumped bool) []ChangedBody {
 	out := make([]ChangedBody, 0, len(rows))
 	for _, row := range rows {

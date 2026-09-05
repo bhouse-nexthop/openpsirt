@@ -132,6 +132,7 @@ Any credential this deployment recognizes. The answer is narrowed to what you ma
 | GET | `/v1/people/{identity}/assignments` | — | Answers only what you may see. |
 | GET | `/v1/products` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/comparison` | — | Answers only what you may see. |
+| GET | `/v1/products/{product}/comparison/notes` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/findings` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/findings/components` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/issues/{vulnerability}/advisory` | — | Answers only what you may see. |

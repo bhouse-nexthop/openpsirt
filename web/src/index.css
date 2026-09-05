@@ -1361,3 +1361,19 @@ a { color: inherit; }
   display: block;
   margin: 8px 0;
 }
+
+/* Release notes, as the markdown somebody pastes rather than as rendered
+   markup: what is on screen has to be exactly what lands in the document. */
+.notes {
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  max-height: 60vh;
+}

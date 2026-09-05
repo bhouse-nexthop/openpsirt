@@ -96,10 +96,24 @@ public document, so including something undisclosed is a deliberate act rather
 than something pasted in without noticing. Where the two builds differ in what
 the reader may see, the narrower answer governs.
 
-What comes back is JSON. **The other half of RPT-06 — a form that goes straight
-into release notes — is not built**, and turning three lists of issues into
-prose somebody would paste is a formatting decision better made against a real
-release note than in the abstract.
+What comes back is JSON, and **the same comparison is offered as prose**
+(RPT-06): markdown, as `text/markdown` rather than as a string in a JSON field,
+because the point of it is that it goes straight in.
+
+**Rendered on the server, not in the browser.** What an API caller gets and
+what the screen shows have to be the same words; two implementations of how a
+release note reads is one that drifts, and the half that drifts is the one
+nobody is looking at.
+
+**A bump that carried the issue with it is listed apart from the fixes.** It is
+the opposite answer to whether something was fixed, and this document goes to
+customers who keep it — so putting churn under "Fixed" is telling somebody
+something untrue in writing. An empty section is not written at all, because a
+heading with nothing under it is a question about whether something is missing.
+
+**Ordered worst first and stably**, so two runs over the same pair of builds
+produce the same document. A release note that reorders between reads is one
+nobody can diff.
 
 ### Each fixed entry says why
 

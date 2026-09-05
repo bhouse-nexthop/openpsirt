@@ -6248,6 +6248,79 @@ paths:
       x-openpsirt-requires:
         scope: any
         note: Answers only what you may see.
+  /v1/products/{product}/comparison/notes:
+    get:
+      description: |-
+        The same comparison as markdown, in the form somebody pastes into a release note. Returned as `text/markdown` rather than as a string in a JSON field, because the point of it is that it goes straight in.
+
+        Three sections, worst first within each and stably ordered, so that two runs over the same pair of builds produce the same document.
+
+        **A bump that carried the issue with it is listed apart from the fixes.** It is the opposite answer to whether something was fixed, and putting it under Fixed would tell a customer something untrue in a document they keep.
+
+        **Public findings only unless you ask otherwise**, as the comparison itself is.
+
+        **Requires:** any recognized credential. Answers only what you may see.
+      operationId: get-release-notes
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - description: The earlier build's stream
+          explode: false
+          in: query
+          name: from
+          required: true
+          schema:
+            description: The earlier build's stream
+            type: string
+        - description: The earlier build's variant
+          explode: false
+          in: query
+          name: from_variant
+          required: true
+          schema:
+            description: The earlier build's variant
+            type: string
+        - description: The later build's stream
+          explode: false
+          in: query
+          name: to
+          required: true
+          schema:
+            description: The later build's stream
+            type: string
+        - description: The later build's variant
+          explode: false
+          in: query
+          name: to_variant
+          required: true
+          schema:
+            description: The later build's variant
+            type: string
+        - description: Include findings nobody has disclosed
+          explode: false
+          in: query
+          name: include_undisclosed
+          schema:
+            description: Include findings nobody has disclosed
+            type: boolean
+      responses:
+        "200":
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Render a comparison as release notes
+      tags:
+        - Reports
+      x-openpsirt-requires:
+        scope: any
+        note: Answers only what you may see.
   /v1/products/{product}/end-of-life:
     put:
       description: |-

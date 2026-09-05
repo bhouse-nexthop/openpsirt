@@ -920,6 +920,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product}/comparison/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Render a comparison as release notes
+         * @description The same comparison as markdown, in the form somebody pastes into a release note. Returned as `text/markdown` rather than as a string in a JSON field, because the point of it is that it goes straight in.
+         *
+         *     Three sections, worst first within each and stably ordered, so that two runs over the same pair of builds produce the same document.
+         *
+         *     **A bump that carried the issue with it is listed apart from the fixes.** It is the opposite answer to whether something was fixed, and putting it under Fixed would tell a customer something untrue in a document they keep.
+         *
+         *     **Public findings only unless you ask otherwise**, as the comparison itself is.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
+         */
+        get: operations["get-release-notes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product}/end-of-life": {
         parameters: {
             query?: never;
@@ -6142,6 +6170,46 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Compare-releasesResponse"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-release-notes": {
+        parameters: {
+            query: {
+                /** @description The earlier build's stream */
+                from: string;
+                /** @description The earlier build's variant */
+                from_variant: string;
+                /** @description The later build's stream */
+                to: string;
+                /** @description The later build's variant */
+                to_variant: string;
+                /** @description Include findings nobody has disclosed */
+                include_undisclosed?: boolean;
+            };
+            header?: never;
+            path: {
+                product: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

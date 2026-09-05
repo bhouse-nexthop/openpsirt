@@ -38,6 +38,29 @@ export function Compare() {
   });
 
   const ready = from !== "" && fromVariant !== "" && to !== "" && toVariant !== "";
+  // The same comparison as prose, fetched rather than assembled here: what an
+  // API caller gets and what this shows have to be the same words, and two
+  // implementations of "how a release note reads" is one that drifts.
+  const [notes, setNotes] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  async function fetchNotes() {
+    setCopied(false);
+    const answered = await api.GET("/v1/products/{product}/comparison/notes", {
+      params: {
+        path: { product },
+        query: {
+          from,
+          from_variant: fromVariant,
+          to,
+          to_variant: toVariant,
+          ...(undisclosed ? { include_undisclosed: true } : {}),
+        },
+      },
+      parseAs: "text",
+    });
+    setNotes(typeof answered.data === "string" ? answered.data : "");
+  }
+
   const comparison = useQuery({
     queryKey: ["comparison", product, from, fromVariant, to, toVariant, undisclosed],
     queryFn: async () =>
@@ -152,11 +175,38 @@ export function Compare() {
         ) : comparison.isError ? (
           <Failed error={comparison.error} what="Those two could not be compared." />
         ) : (
-          <Columns
-            fixed={comparison.data?.fixed ?? []}
-            newly={comparison.data?.newly_present ?? []}
-            still={comparison.data?.still_present ?? []}
-          />
+          <>
+            <Columns
+              fixed={comparison.data?.fixed ?? []}
+              newly={comparison.data?.newly_present ?? []}
+              still={comparison.data?.still_present ?? []}
+            />
+
+            {/* The same comparison in the form it is actually wanted in
+                (RPT-06). Asked for rather than always shown: most visits are
+                somebody reading the columns, and a wall of markdown above them
+                would be answering a question nobody asked yet. */}
+            <div className="actions" style={{ marginTop: 14 }}>
+              <button type="button" className="btn" onClick={() => void fetchNotes()}>
+                {notes === null ? "Write release notes" : "Write them again"}
+              </button>
+              {notes !== null && (
+                <button
+                  type="button"
+                  className="btn quiet"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(notes);
+                    setCopied(true);
+                  }}
+                >
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              )}
+            </div>
+            {notes !== null && (
+              <pre className="notes">{notes || "Nothing changed between those two."}</pre>
+            )}
+          </>
         )}
       </div>
     </>
