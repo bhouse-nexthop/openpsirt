@@ -638,6 +638,13 @@ components:
         id:
           format: int64
           type: integer
+        not_notified:
+          description: Names written after an @ that reached nobody. Either no such person is recorded, or they cannot read what the text is about — deliberately not said which
+          items:
+            type: string
+          type:
+            - array
+            - "null"
       required:
         - id
       type: object
@@ -2909,6 +2916,24 @@ components:
         - identity
         - name
       type: object
+    MentionsBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/MentionsBody.json
+          format: uri
+          readOnly: true
+          type: string
+        not_notified:
+          description: Names written after an @ that reached nobody. Either no such person is recorded, or they cannot read what the text is about — deliberately not said which
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+      type: object
     Meta:
       additionalProperties: false
       properties:
@@ -3160,6 +3185,9 @@ components:
         provider:
           description: Which sign-in path they will arrive by, such as proxy for a trusted header
           type: string
+        sees_nothing:
+          description: Every role they hold is a capability, so they reach no product. A capability is bounded by what its holder may read, so on its own it grants nothing
+          type: boolean
         signs_in_by:
           items:
             $ref: "#/components/schemas/SignInBody"
@@ -5168,8 +5196,12 @@ paths:
               $ref: "#/components/schemas/Edit-commentRequest"
         required: true
       responses:
-        "204":
-          description: No Content
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MentionsBody"
+          description: OK
         default:
           content:
             application/problem+json:
@@ -5520,8 +5552,12 @@ paths:
               $ref: "#/components/schemas/Revise-decisionRequest"
         required: true
       responses:
-        "204":
-          description: No Content
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MentionsBody"
+          description: OK
         default:
           content:
             application/problem+json:
