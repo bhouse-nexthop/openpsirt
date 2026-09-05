@@ -112,8 +112,11 @@ not permitted at all, because the address is not the problem.
 
 An image fires from the browser of everybody who reads the text, from inside
 the network, telling whoever wrote it who is looking at which finding and when.
-On an undisclosed finding that is a disclosure channel. Files are attached
-instead, and fetched through a path that checks who is asking.
+On an undisclosed finding that is a disclosure channel. Files are to be
+attached instead and fetched through a path that checks who is asking —
+`DESIGN-attachments.md` holds that design, and none of it is built, so today
+the rule is the refusal alone: the submission check tells an author to attach
+the file, and there is nothing yet to attach it to.
 
 ## What a scan file said is shown, never rendered
 

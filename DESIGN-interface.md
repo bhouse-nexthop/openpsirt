@@ -176,7 +176,9 @@ span; a bar across the top carries what you are looking at, a way to find
 things, a way to upload, what is waiting on you, and who you are.
 
 The rail's three groups are the point. "Across products" holds home, the review
-queue, what is unassigned and the assignments. The named build holds the
+queue, what is unassigned, the assignments and the record — the record is here
+because that is how it is asked for: an auditor asks about a period, not about
+a build. The named build holds the
 findings, the dependency tree, the inventories and the comparison — the
 comparison belongs to the product rather than to one build, and is reached
 here because this is where somebody already is. "Manage" holds the catalog,
@@ -284,9 +286,11 @@ the slowest part of the page, so the half that is wanted first is also the half
 that arrives first.
 
 **Home leads with four figures that follow the scope** (UIX-51): open at or
-above the floor — the list's own total where a build is picked, the trend's
-latest point where the scope is wider — known exploited, pending the reader's
-approval, and overdue. Each names what it counts and opens the screen behind
+above the floor, known exploited, pending the reader's approval, and overdue.
+Open is **the trend's latest point at every scope**, which counts distinct
+issues — the findings list counts one row per issue and component, and a tile
+that switched between the two as the picker moved would quote two figures for
+one word (REJ-10). Each names what it counts and opens the screen behind
 it. Then the work panels, then the trends (UIX-42).
 
 **A finding says whether anybody who packages it confirmed it** (MDL-26). A row
@@ -564,10 +568,13 @@ nothing further.
 over a sample of eight, because the builds that match one place of a finding
 match the rest — and the sheet opens on a summary: this build, the builds
 covered automatically by name, the builds at other versions, and any not
-offered. Each build at another version is then walked one at a time with its
-version, how many locations it holds, and the reasoning beside it, applied or
-skipped with a or s, back with the arrow. The last step lists what will be
-written and is confirmed; only then is anything sent. The decision here is
+offered. The builds at other versions are then **one list rather than one sheet each**,
+ticked where the reasoning holds at that version too: unticked to start,
+because a tick is the claim. Walking them individually made a routine decision
+several sheets deep, and what is being weighed is one line apiece. Two steps —
+where it applies, then confirm — with Enter to advance, Escape to leave and the
+arrows to move; the last lists what will be written, and only then is anything
+sent. The decision here is
 recorded first, with the places narrowed where any were excluded; each build
 applied is recorded after it, one at a time, as the same claim against that
 build's finding, so a refusal on one is reported for that one and does not
@@ -1019,7 +1026,7 @@ control or to see what is drawn over what, so both of those connections are
 checked by reading. They are the weakest links in the chains UIX-31 and UIX-32
 describe, and they are written down rather than left to be discovered.
 
-The honest summary: several thousand lines of interface, five test files. Where
+The honest summary: several thousand lines of interface, six test files. Where
 a screen computes something rather than draws it, that computation should come
 out into a function beside them — which is what happened in both of these.
 
@@ -1060,10 +1067,10 @@ release, and it needs a branch, because a tag is one frozen point. On a tag it
 is absent rather than present and explaining itself on every visit.
 
 **The users table grants roles inline.** The mockup's columns are user,
-identity, last sign-in, roles and assigned; here the last two give way to a
-grant control on the row, because granting is what an administrator opens the
-screen to do, and last sign-in and assigned work are read from the person's
-own row rather than listed for everybody.
+identity, last sign-in, roles and assigned; here it is user, identity, roles
+and a grant control on the row. Granting is what an administrator opens the
+screen to do; last sign-in and assigned work are read from the person's own row
+rather than listed for everybody.
 
 **The inventories table omits the product, branch and variant columns.** The
 screen is scoped to one build, so those three are the scope bar rather than a

@@ -322,6 +322,8 @@ whole reason current state holds its own summary.
 | Removed | The component is not in the build any more |
 | Upgraded | Its upstream version moved — the version a vulnerability is matched against |
 | Revised | The shipped version changed while the upstream version did not, which is what a carried patch looks like from outside |
+| Superseded | The upstream version moved and the issue came with it: this row closed and the same issue is open against the new version. Told apart from Upgraded because they are opposite answers to "was this fixed", and conflating them put one issue in a release comparison as both fixed and newly present |
+| Fixed | Somebody said a flaw they recorded by hand is fixed here. The only closure a person writes, because a run is the authority on what it found and it never found this (REM-28) |
 | Unexplained | The component is present and unchanged, and the scanner stopped reporting it |
 
 **The last one is always reported and never suppressed.** There is no volume at

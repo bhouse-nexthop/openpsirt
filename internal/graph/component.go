@@ -146,9 +146,9 @@ func canonicalPurl(purl string) string {
 // place for it — a pedigree naming what a component descends from — and
 // several producers instead hang it off the identifier as a qualifier, which
 // is where a distribution's source package ends up. Measured on a public
-// switch operating-system image: 30 components state it the first way and 535
-// the second, with no overlap at all. Reading only the first captures a
-// twentieth of it.
+// switch operating-system image: 30 components state it the first way and 537
+// the second, 16 of them both, out of 551 that say anything. Reading only the
+// first captures a twentieth of it.
 //
 // It matters more than its size suggests. A shipped package usually carries a
 // version of its own while the vulnerability lives on what it was built from

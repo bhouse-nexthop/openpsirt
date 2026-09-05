@@ -21,6 +21,16 @@ API-13, API-15.
 | `internal/catalog/` | Products, streams and variants. See `DESIGN-data-model.md` |
 | `internal/ingest/` | What happens to an arriving scan. See `DESIGN-ingest.md` |
 | `internal/queue/` | Durable background work. See `DESIGN-queue.md` |
+| `internal/sbom/`, `internal/scanner/` | Reading an inventory, and running the scan over it. See `DESIGN-ingest.md` |
+| `internal/graph/`, `internal/finding/` | The dependency graph, and what a scan found. See `DESIGN-data-model.md`, `DESIGN-findings.md` |
+| `internal/triage/`, `internal/advisory/` | Judgments and their approvals, and the CSAF document generated from them. See `DESIGN-triage.md` |
+| `internal/access/`, `internal/signin/` | Who is asking, and how they arrived. See `DESIGN-access.md` |
+| `internal/notify/` | What people are told about. See `DESIGN-notifications.md` |
+| `internal/markdown/`, `internal/setting/`, `internal/currency/` | What may be written, what an administrator may change, and asking package indexes what is current |
+| `internal/webui/` | The built interface, embedded. See `DESIGN-interface.md` |
+| `internal/docs/`, `internal/tools/` | The checks that read these documents, and the gates that are not linters |
+| `web/` | The interface's source. See `DESIGN-interface.md` |
+| `deploy/helm/openpsirt/` | The chart. See `DESIGN-packaging.md` |
 | `docs/` | The published documentation site |
 | `assets/` | Logo files |
 
@@ -43,7 +53,11 @@ with the same command and the same pinned tool versions — CIG-05.
 | `make openapi` | Regenerates the API document from the code |
 | `make sbom` | Generates our own CycloneDX bill of materials |
 | `make web-check` | The interface: its dependencies installed as locked, the type check, its tests, and the generated client diffed against the API document |
-| `make check` | Everything above |
+| `make vet` | The compiler's own checks |
+| `make unreachable` | Exported code nothing reaches, which a linter reporting only unexported symbols will not find |
+| `make unclaimed` | Every decision in force is named by a design document |
+| `make openapi-current` | The committed API document and privileges page match what the code generates |
+| `make check` | Everything above. CI runs the last four as their own steps as well |
 | `make check-engines` | That all four engines ran, and that each was the engine it claimed |
 | `make check-packaging` | The container image and the Helm chart. Needs docker and helm |
 | `make engines-up` | Starts the four database servers the suite needs, and records their URLs |
@@ -180,10 +194,13 @@ about what this deployment holds (ACC-03).
 
 ## Documentation
 
-Built with mkdocs-material and published to GitHub Pages on every push to `main`
-— API-10. Sets are versioned with `mike` so a reader can tell which release they
-are reading — API-11. Unreleased work publishes as `main`; a tagged release
-publishes under its version and moves the `latest` alias.
+Built with mkdocs-material and published to GitHub Pages on every push to
+`main` — API-10. Sets are versioned with `mike` so a reader can tell which
+release they are reading — API-11. **Today the workflow publishes one set,
+`main`, and is the default**; publishing a tag under its version and moving a
+`latest` alias belongs with a release process, which does not exist yet. The
+versioning machinery is in place so that the first release is a workflow
+trigger rather than a rebuild.
 
 The configuration page lists every environment variable the process reads,
 with its meaning and default. A variable that is set and cannot be read stops

@@ -222,9 +222,9 @@ one.
 
 Producers state that two ways and mean the same thing: the format has a place
 for it, and several hang it off the package identifier instead. Both are read.
-In a measured image the two did not overlap at all — 30 components stated it
-one way and 535 the other — so reading a single place captured a twentieth of
-what was there. It is also the name a build's own suppressions use, because a
+In the measured image 30 components state it the format's way and 537 hang it
+off the identifier, 16 of them both — 551 saying anything at all — so reading
+only the format's own mechanism captures a twentieth of what is there. It is also the name a build's own suppressions use, because a
 patch is written against a source tree rather than against the binaries cut
 from it.
 

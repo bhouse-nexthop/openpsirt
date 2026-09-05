@@ -54,7 +54,8 @@ closure reasons are not resolutions at all:
 | `superseded` | The component's version moved and the issue came with it. Counting this as resolved draws a line saying work was completed while the same chart's new line rises by exactly as much |
 | `unexplained` | The scanner stopped reporting it with the component present and unchanged. That is a fault to investigate, not a fix |
 
-The other three — removed, upgraded, revised — are resolutions and are counted.
+The other four — removed, upgraded, revised, and a flaw somebody recorded being
+declared fixed — are resolutions and are counted.
 
 ### One axis of the two
 
@@ -174,21 +175,23 @@ only until its date. A proposal still waiting for an approver stops nothing.
 "Who is holding what" counts overdue by the same condition, spelled once in
 `finding.OffTheClock`, so the two screens cannot disagree.
 
-### Asked band by band
+### One query, on the stored deadline
 
-The list of what is running out is asked once per window, each with its own
-first-sighting cutoff, and the answers are merged by deadline.
+The list of what is running out is one range scan ordered on `due_at`, which is
+what storing the deadline bought.
 
-One query cannot do it. The deadline is the first sighting plus a window that
-differs per band, so ordering by it means date arithmetic — which has no
-portable spelling across the four engines (DAT-02). Within a band, though, the
-oldest finding *is* the most overdue, so a band answers in the right order by
-ordering on the first sighting alone.
+It was asked band by band before that — once per window, each with its own
+first-sighting cutoff, merged afterwards — because the deadline was the first
+sighting plus a number of days that differs per band, and ordering by it meant
+date arithmetic, which has no portable spelling across the four engines
+(DAT-02). Storing the deadline removes the arithmetic from the read, so the
+bands collapse into one statement.
 
-It was written the other way first, and that list was not the list it claimed
-to be: the statement took the oldest findings and a loop then discarded
+Before *that* it was written the way it should not be, and the lesson is worth
+keeping: the statement took the oldest findings and a loop then discarded
 whatever was not due, so an exploited finding first seen yesterday and due
-tomorrow lost its place to a low from two years ago that filled the buffer.
+tomorrow lost its place to a low from two years ago that filled the buffer. A
+list ordered on a proxy for the answer is not the list it claims to be.
 
 **One row per issue at a component**, not per place. A kernel flaw sitting at
 sixty places is one thing somebody has to answer, and sixty rows of it is a

@@ -6107,7 +6107,7 @@ paths:
 
         `visibility` says which kind of finding the text is about. Asking about undisclosed findings requires being able to read them.
 
-        **Requires:** any recognized credential on the product. Any role on the product. Asking about undisclosed findings needs private-read or private-triage.
+        **Requires:** any recognized credential on the product. Asking about undisclosed findings needs private-read or private-triage.
       operationId: list-mentionable
       parameters:
         - in: path
@@ -6153,7 +6153,7 @@ paths:
         - Triage
       x-openpsirt-requires:
         scope: product
-        note: Any role on the product. Asking about undisclosed findings needs private-read or private-triage.
+        note: Asking about undisclosed findings needs private-read or private-triage.
   /v1/products/{product}/releases:
     get:
       description: |-

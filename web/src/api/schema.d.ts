@@ -18,9 +18,9 @@ export interface paths {
          * Undo a bulk approval
          * @description Withdraws every approval recorded under this batch name, returning those decisions to the review queue. The decisions themselves stand — only the approvals are undone. Returns how many were affected.
          *
-         *     Only decisions on products you may triage are touched.
+         *     Only decisions you may reach are touched.
          *
-         *     **Requires:** public-triage or private-triage on the product
+         *     **Requires:** approver or public-triage or private-triage on the product
          */
         delete: operations["undo-batch"];
         options?: never;
@@ -39,7 +39,7 @@ export interface paths {
          * List what we have said about issues
          * @description Every claim, or those in one state. The ones waiting are milder ratings somebody has proposed and nobody has agreed to yet, which are the ones not yet affecting anything.
          *
-         *     **Requires:** any recognized credential. Answers only what you may see.
+         *     **Requires:** any recognized credential. Every claim, whoever asks: a rating is about an issue, not a product (TRI-40), so there is nothing here to narrow by.
          */
         get: operations["list-assessments"];
         put?: never;
@@ -64,7 +64,7 @@ export interface paths {
          * Withdraw an assessment, and take the published rating back
          * @description The rating in force returns to the published one, and everything that reads it — where a finding sits in the list, how long it has, whether it is above the line a product triages — follows it back.
          *
-         *     **Requires:** public-triage or private-triage on the product
+         *     **Requires:** public-triage or private-triage on any product
          */
         delete: operations["withdraw-assessment"];
         options?: never;
@@ -85,7 +85,7 @@ export interface paths {
          * Agree to a milder rating so it takes effect
          * @description Only a milder rating waits for this. Somebody other than whoever proposed it, for the same reason every other second person here is somebody else: a control one person can complete alone is not a control.
          *
-         *     **Requires:** approver or public-triage or private-triage on the product. The proposer may not approve their own.
+         *     **Requires:** approver or public-triage or private-triage on any product. The proposer may not approve their own.
          */
         post: operations["agree-assessment"];
         delete?: never;
@@ -212,7 +212,7 @@ export interface paths {
          *
          *     The text is markdown and is validated before it is stored; a 422 names the line and the offending text.
          *
-         *     **Requires:** public-triage or private-triage on the product. Only the author may edit a comment.
+         *     **Requires:** approver or public-triage or private-triage on the product. Only the author may edit a comment.
          */
         put: operations["edit-comment"];
         post?: never;
@@ -353,7 +353,7 @@ export interface paths {
          *
          *     A comment may later be edited by its author only, and editing overwrites it rather than keeping revisions.
          *
-         *     **Requires:** public-triage or private-triage on the product
+         *     **Requires:** approver or public-triage or private-triage on the product
          */
         post: operations["comment-on-decision"];
         delete?: never;
@@ -507,7 +507,7 @@ export interface paths {
          *
          *     The published rating is never overwritten. Ours is what ranks; the world's stays beside it, because a rating of ours shown where the world's goes reads as the world's.
          *
-         *     **Requires:** public-triage or private-triage on the product
+         *     **Requires:** public-triage or private-triage on any product
          */
         post: operations["assess-issue"];
         delete?: never;
@@ -969,7 +969,7 @@ export interface paths {
          *
          *     `visibility` says which kind of finding the text is about. Asking about undisclosed findings requires being able to read them.
          *
-         *     **Requires:** any recognized credential. Answers only what you may see.
+         *     **Requires:** any recognized credential on the product. Asking about undisclosed findings needs private-read or private-triage.
          */
         get: operations["list-mentionable"];
         put?: never;
@@ -1233,7 +1233,7 @@ export interface paths {
          *
          *     Grouping matters at real scale: one switch image produced 335,021 individual findings, which collapse to 7,906 rows here.
          *
-         *     Ordered by urgency — known-exploited first, then whether the build ships to customers, then likelihood, then severity. Supports limit and offset.
+         *     Ordered by urgency — known-exploited first, then whether the build ships to customers, then severity, then likelihood. Supports limit and offset.
          *
          *     Narrowing happens here rather than in the client, and `total` counts what the filter admits. A filter applied to a page already fetched answers a different question from the one it appears to: `exploited` over fifty rows means exploited among those fifty.
          *
@@ -1336,7 +1336,7 @@ export interface paths {
          *
          *     Findings arriving later under the same component start unassigned.
          *
-         *     **Requires:** assigner on the product. Taking unowned work, or handing back your own, needs only triage.
+         *     **Requires:** public-triage or private-triage on the product. Giving work to somebody else also needs assigner. Taking unowned work, or handing back your own, does not.
          */
         put: operations["assign-finding"];
         post?: never;
@@ -1497,7 +1497,7 @@ export interface paths {
          *
          *     Only `differing` is a choice. The first two follow from the matching rules and are there to be told, not agreed to — and showing them as one number is how a decision comes to reach builds the person making it never knew about.
          *
-         *     **Requires:** public-triage or private-triage on the product
+         *     **Requires:** any recognized credential. Answers only what you may see.
          */
         get: operations["get-decision-reach"];
         put?: never;
@@ -1589,7 +1589,7 @@ export interface paths {
          *
          *     **Returns 202 before the documents are parsed.** A success here means they were accepted for processing, not that they were valid. Poll `GET .../scans` to find out whether they parsed and what the scan found.
          *
-         *     **Requires:** public-triage or private-triage on the product
+         *     **Requires:** public-triage or private-triage on the product. A pipeline key covering this product, branch and variant sends without any of these, and is how a build sends.
          */
         post: operations["upload-scan"];
         delete?: never;
@@ -1973,7 +1973,7 @@ export interface paths {
          *
          *     Expiry is not optional, and `lifetime` may not exceed the ceiling an administrator has set. A credential that never runs out is one nobody ever revokes, and those are found when somebody leaves and nobody knows what breaks if it is turned off.
          *
-         *     **Requires:** your own credential
+         *     **Requires:** your own credential. Signed in, not through a token: a token cannot mint another.
          */
         post: operations["mint-token"];
         delete?: never;
@@ -1998,7 +1998,7 @@ export interface paths {
          *
          *     Yours alone. An administrator withdraws anybody else's through the administration paths.
          *
-         *     **Requires:** your own credential
+         *     **Requires:** your own credential. Signed in, not through a token: a token cannot withdraw another.
          */
         delete: operations["revoke-my-token"];
         options?: never;
@@ -2263,7 +2263,7 @@ export interface components {
         CanBody: {
             /** @description Agree to somebody else's claim */
             may_agree: boolean;
-            /** @description Give work to somebody else, or take what they hold. Taking work nobody owns, and handing back your own, need only may_triage */
+            /** @description Give work to somebody else, or take what they hold — triage as well as the assigner role. Taking work nobody owns, and handing back your own, need only may_triage */
             may_assign: boolean;
             /** @description Argue about a finding nobody has disclosed */
             may_hide: boolean;
@@ -3022,6 +3022,8 @@ export interface components {
              * @description An approved claim at the same component and consumer to carry to this issue. The outcome and justification must match it; the new claim is recorded as an extension of it and still needs a second person
              */
             extends?: number;
+            /** @description The package version whoever packages this states the fix arrived in. Required when the outcome is already-fixed, and refused with any other */
+            fixed_version?: string;
             /**
              * @description Why it does not apply. Required when it does not
              * @enum {string}
@@ -3695,8 +3697,11 @@ export interface components {
             display_name?: string;
             /** @description Where they are reached outside the application */
             email?: string;
-            /** @description A sign-in provider supplied this address rather than somebody here, so a later sign-in may refresh it */
-            email_derived?: boolean;
+            /**
+             * @description Who last decided it. A provider's may be refreshed by a later sign-in; one recorded here is never overwritten
+             * @enum {string}
+             */
+            email_source?: "provider" | "recorded";
             holds?: components["schemas"]["HeldBody"][] | null;
             /** @description What to call them here */
             identity: string;
@@ -3842,7 +3847,7 @@ export interface components {
         ReceiptBody: {
             /** @description When the producer says the build was made */
             built_at?: string;
-            /** @description What the scanner said while succeeding — a qualification on what it found, such as matching Go binaries at module granularity because they carry no function symbols, which can report a component as affected when the vulnerable function is not linked in */
+            /** @description What the scanner said while still succeeding — a qualification on what it found rather than a failure. Usually empty: the scan runs over an inventory written from what is held here, so most of what a scanner would warn about a producer's document it has no grounds to say about ours */
             caution?: string;
             /**
              * Format: int64
@@ -3930,10 +3935,7 @@ export interface components {
             admin?: boolean;
             /** @description What to show instead of the identity */
             display_name?: string;
-            /**
-             * Format: email
-             * @description Where to reach them outside the application. Optional. A sign-in provider that verifies an address fills this in when it is empty, and never overwrites one recorded here
-             */
+            /** @description Where to reach them outside the application. Optional. Send it empty to clear it; omit it to leave it alone. A sign-in provider that verifies an address fills it in where nobody here has recorded one, and never replaces one that was */
             email?: string;
             holds?: components["schemas"]["GrantBody"][] | null;
             /** @description What to call them here */

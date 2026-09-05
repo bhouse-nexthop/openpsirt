@@ -119,7 +119,7 @@ are. `DESIGN-interface.md` says what that costs.
 |---|---|
 | [DECISIONS.md](DECISIONS.md) | Every decision, with reasoning, organized by area |
 | [AGENTS.md](AGENTS.md) | Conventions for anyone, human or otherwise, working in this repository |
-| [docs/](docs/) | What is published: installing, configuring and the API reference |
+| [docs/](docs/) | What is published: configuring it, the API reference, and who may call what |
 
 `DESIGN-*.md` documents describe how each area actually works, and appear as
 each is built:

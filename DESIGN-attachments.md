@@ -3,11 +3,12 @@
 Files hanging off a finding, and why none of this is built yet.
 
 Satisfies ATT-01 to ATT-12, and carries the phase split (SCP-02) that decides
-when they arrive. **Nothing here runs.** Attachments ship in Phase 2, alongside
-the private findings whose access rule they need. This document
-exists because the seam is what has to be right early: an attachment is
-referred to from text that people are writing today, and a reference format
-chosen later means rewriting what they wrote.
+when they arrive. **Nothing here runs.** They were to arrive with the private
+findings whose access rule they need; those have shipped and these have not, so
+what remains is the work rather than a dependency. This document exists because
+the seam is what has to be right early: an attachment is referred to from text
+that people are writing today, and a reference format chosen later means
+rewriting what they wrote.
 
 ## What each phase is
 

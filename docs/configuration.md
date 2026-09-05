@@ -99,7 +99,7 @@ for a process and not for an install.
 | Variable | Meaning | Default |
 |---|---|---|
 | `OPENPSIRT_BOOTSTRAP_ADMINS` | Identities granted administration at every startup, comma-separated. Applied every time rather than only the first, so it is the way back in for an operator who has locked themselves out: add yourself, restart | unset |
-| `OPENPSIRT_SESSION_LIFETIME` | How long a sign-in lasts. Unset takes the built-in default, which an administrator may change in the settings; a value set here has to be a positive duration | 12 hours |
+| `OPENPSIRT_SESSION_LIFETIME` | How long a sign-in lasts, where nothing has been set in the application. **An administrator's setting wins over this**, because the settings screen offers it and a value somebody sets there that nothing reads is worse than not offering it. A value here has to be a positive duration | 12 hours |
 
 ### An OpenID Connect provider
 
