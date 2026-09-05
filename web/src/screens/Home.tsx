@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
-import { scopeQuery, useScope } from "../app/scope";
+import { findingsPath, scopeQuery, useScope } from "../app/scope";
 import type { Scoped } from "../app/scope";
 import { unwrap } from "../api/queries";
 import { Failed } from "../ui/Failed";
@@ -12,6 +12,13 @@ import type { Who } from "../app/session";
 // The most the server returns of what is overdue. A cap with no total, so a
 // full list is a floor on the figure rather than the figure.
 const OVERDUE_LIMIT = 200;
+
+// The findings list narrowed to one of the tiles. Joined rather than assumed
+// to be the first parameter: the list for anything wider than a build carries
+// the branch and the variant in its address already.
+function withOnly(path: string, only: string): string {
+  return `${path}${path.includes("?") ? "&" : "?"}only=${only}`;
+}
 
 // One home page, assembled from what this person holds. Four figures that
 // follow the scope (UIX-51), then the work — what is pending, what is in
@@ -249,10 +256,6 @@ function Figures({
   const at = useScope();
   const scope = scopeQuery(at);
   const navigate = useNavigate();
-  const whole = !!(at.product && at.stream && at.variant);
-  const build = whole
-    ? `/products/${encodeURIComponent(at.product ?? "")}/streams/${encodeURIComponent(at.stream ?? "")}/variants/${encodeURIComponent(at.variant ?? "")}`
-    : "";
 
   // One definition at every scope: the trend's latest point, which counts
   // distinct issues. The findings list counts one row per issue and
@@ -260,13 +263,22 @@ function Figures({
   // would quote two figures for one word (REJ-10).
   const exploited = useQuery({
     queryKey: ["home", "exploited", scope],
-    enabled: whole,
+    // Answered for whatever is selected, like every other figure here
+    // (UIX-51). It was a whole build's alone while the list behind it was, and
+    // a tile that vanishes when somebody widens the scope reads as a tile that
+    // broke rather than one that declines (UIX-53).
+    enabled: !!at.product,
     queryFn: async () =>
       unwrap(
-        await api.GET("/v1/products/{product}/streams/{stream}/variants/{variant}/findings", {
+        await api.GET("/v1/products/{product}/findings", {
           params: {
-            path: { product: at.product ?? "", stream: at.stream ?? "", variant: at.variant ?? "" },
-            query: { limit: 1, exploited: true },
+            path: { product: at.product ?? "" },
+            query: {
+              limit: 1,
+              exploited: true,
+              ...(at.stream ? { stream: at.stream } : {}),
+              ...(at.variant ? { variant: at.variant } : {}),
+            },
           },
         }),
       ),
@@ -294,17 +306,17 @@ function Figures({
       <button
         type="button"
         className="kpi"
-        onClick={() => navigate(build ? `${build}/findings` : "/products")}
+        onClick={() => navigate(findingsPath(at))}
       >
         <span className="l">Open issues · {counting}</span>
         <span className="n">{openCount === undefined ? "—" : openCount.toLocaleString()}</span>
         <span className="d">one per vulnerability, by any identifier · findings count each issue per component</span>
       </button>
-      {whole && (
+      {!!at.product && (
         <button
           type="button"
           className={`kpi${(exploited.data?.total ?? 0) > 0 ? " urgent" : ""}`}
-          onClick={() => navigate(`${build}/findings?only=exploited`)}
+          onClick={() => navigate(withOnly(findingsPath(at), "exploited"))}
         >
           <span className="l">
             <i style={{ background: "var(--sev-exploited)" }} /> Known exploited

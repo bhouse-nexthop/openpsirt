@@ -323,12 +323,17 @@ func TestWhoMayReachWhat(t *testing.T) {
 			absent     = "/v1/products/nosuch/streams"
 			version    = "/v1/version"
 
-			mineFound  = "/v1/products/mine/streams/master/variants/broadcom/findings"
+			mineFound  = "/v1/products/mine/findings?stream=master&variant=broadcom"
 			mineFloor  = "/v1/products/mine/triage-floor"
 			mineEOL    = "/v1/products/mine/end-of-life"
 			streamEOL  = "/v1/products/mine/streams/master/end-of-life"
 			mineScans  = "/v1/products/mine/streams/master/variants/broadcom/scans"
-			theirFound = "/v1/products/theirs/streams/master/variants/broadcom/findings"
+			theirFound = "/v1/products/theirs/findings?stream=master&variant=broadcom"
+			// The same list with the branch and the variant left at "all"
+			// (UIX-53). Widening the selection is exactly the shape that
+			// leaves a check behind on the narrow path.
+			mineWhole  = "/v1/products/mine/findings"
+			theirWhole = "/v1/products/theirs/findings"
 			people     = "/v1/people"
 			keys       = "/v1/keys"
 			tokens     = "/v1/tokens"
@@ -430,6 +435,15 @@ func TestWhoMayReachWhat(t *testing.T) {
 			{"reader", http.MethodGet, theirFound, http.StatusNotFound},
 			{"approver", http.MethodGet, mineFound, http.StatusNotFound},
 			{"reporter", http.MethodGet, mineFound, http.StatusNotFound},
+			{"", http.MethodGet, mineWhole, http.StatusUnauthorized},
+			{"nothing", http.MethodGet, mineWhole, http.StatusUnauthorized},
+			{"reader", http.MethodGet, mineWhole, http.StatusOK},
+			{"private", http.MethodGet, mineWhole, http.StatusOK},
+			{"triager", http.MethodGet, mineWhole, http.StatusOK},
+			{"admin", http.MethodGet, mineWhole, http.StatusOK},
+			{"reader", http.MethodGet, theirWhole, http.StatusNotFound},
+			{"approver", http.MethodGet, mineWhole, http.StatusNotFound},
+			{"reporter", http.MethodGet, mineWhole, http.StatusNotFound},
 
 			// Receipts are read by whoever may read the build.
 			{"reader", http.MethodGet, mineScans, http.StatusOK},
@@ -543,7 +557,7 @@ func TestAPipelineCanReachNothingButSending(t *testing.T) {
 			"/v1/products/mine/streams",
 			"/v1/products/mine/variants",
 			"/v1/products/mine/streams/master/variants",
-			"/v1/products/mine/streams/master/variants/broadcom/findings",
+			"/v1/products/mine/findings?stream=master&variant=broadcom",
 			"/v1/people",
 			"/v1/keys",
 			// A pipeline has no owner for a token to be a live reference to.

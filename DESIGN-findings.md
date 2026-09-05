@@ -702,6 +702,27 @@ chosen stably so a row does not move between reads, and the count of builds is
 carried beside it so a screen can say "2 builds" rather than presenting one of
 them as the answer.
 
+**The findings list follows this too, and did not used to** (UIX-53). It was
+the one list confined to a single build, so the property this section
+describes could be read everywhere except on the screen where the work is
+actually done: the same component at the same version in two variants was two
+rows, in two visits, and nothing said they were one thing. It now answers for
+whatever is selected — one build when the branch and the variant are named,
+every build under the product when either is not — counting places across all
+of them and naming one build with the count beside it, exactly as the lists
+above it do.
+
+**What it gives up across builds is the way down.** A dependency chain belongs
+to one build's graph, and a row covering three builds is reached three ways, so
+the column that names the two ends of the chain is empty there rather than
+filled from whichever build the row named. That is the one thing in this
+section that genuinely cannot be answered for a product, and it is why the
+screens that are *about* a chain — a finding, the dependency tree, deciding a
+place, deciding several at a component, and the list of inventories — still
+require a whole build. Narrowing the list to a subtree is refused for the same
+reason, rather than answered with the empty list that walking no build would
+produce.
+
 **And acting on it acts on all of it.** Assigning covers every build of the
 product holding the component, not the one named in the path — the path says
 which finding is being looked at, and what is assigned is the work it belongs

@@ -29,7 +29,7 @@ func TestNarrowingByPackageKind(t *testing.T) {
 		}
 		who := f.holding(t, access.PublicTriage)
 
-		all, total, err := f.store.Groups(t.Context(), who, f.target, 50, 0, finding.Filter{})
+		all, total, err := f.store.Groups(t.Context(), who, f.scope, 50, 0, finding.Filter{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -41,7 +41,7 @@ func TestNarrowingByPackageKind(t *testing.T) {
 		// keeps everything and a kind they are not keeps nothing. Both
 		// directions, because a filter that never excludes and a filter that
 		// excludes everything look the same from one of them.
-		kept, keptTotal, err := f.store.Groups(t.Context(), who, f.target, 50, 0,
+		kept, keptTotal, err := f.store.Groups(t.Context(), who, f.scope, 50, 0,
 			finding.Filter{Ecosystem: "deb"})
 		if err != nil {
 			t.Fatal(err)
@@ -51,7 +51,7 @@ func TestNarrowingByPackageKind(t *testing.T) {
 				len(kept), len(all), keptTotal, total)
 		}
 
-		none, noneTotal, err := f.store.Groups(t.Context(), who, f.target, 50, 0,
+		none, noneTotal, err := f.store.Groups(t.Context(), who, f.scope, 50, 0,
 			finding.Filter{Ecosystem: "golang"})
 		if err != nil {
 			t.Fatal(err)
@@ -77,7 +77,7 @@ func TestNarrowingByWhatHoldsIt(t *testing.T) {
 		}
 		who := f.holding(t, access.PublicTriage)
 
-		_, total, err := f.store.Groups(t.Context(), who, f.target, 50, 0, finding.Filter{})
+		_, total, err := f.store.Groups(t.Context(), who, f.scope, 50, 0, finding.Filter{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -87,7 +87,7 @@ func TestNarrowingByWhatHoldsIt(t *testing.T) {
 		// name matched nothing — which passed every assertion below for the
 		// wrong reason, because "narrowed to a subset" and "narrowed to
 		// nothing" are both fewer than everything.
-		inside, insideTotal, err := f.store.Groups(t.Context(), who, f.target, 50, 0,
+		inside, insideTotal, err := f.store.Groups(t.Context(), who, f.scope, 50, 0,
 			finding.Filter{Under: swss.Name})
 		if err != nil {
 			t.Fatal(err)
@@ -103,7 +103,7 @@ func TestNarrowingByWhatHoldsIt(t *testing.T) {
 
 		// A consumer nothing is under keeps nothing rather than everything,
 		// which is the failure a filter silently not applied would look like.
-		_, absent, err := f.store.Groups(t.Context(), who, f.target, 50, 0,
+		_, absent, err := f.store.Groups(t.Context(), who, f.scope, 50, 0,
 			finding.Filter{Under: "no-such-container"})
 		if err != nil {
 			t.Fatal(err)
@@ -115,7 +115,7 @@ func TestNarrowingByWhatHoldsIt(t *testing.T) {
 		// What the build holds directly is the other half. Together they are
 		// every place, which is the assertion worth making: a filter that
 		// quietly kept nothing would satisfy either half alone.
-		_, direct, err := f.store.Groups(t.Context(), who, f.target, 50, 0,
+		_, direct, err := f.store.Groups(t.Context(), who, f.scope, 50, 0,
 			finding.Filter{UnderTheBuild: true})
 		if err != nil {
 			t.Fatal(err)
@@ -193,7 +193,7 @@ func TestAClaimInAnotherProductDoesNotDecideThisOne(t *testing.T) {
 			t.Fatalf("could not record a claim in another product: %v", err)
 		}
 
-		_, waiting, err := f.store.Groups(ctx, who, f.target, 50, 0,
+		_, waiting, err := f.store.Groups(ctx, who, f.scope, 50, 0,
 			finding.Filter{State: "waiting"})
 		if err != nil {
 			t.Fatal(err)
@@ -201,7 +201,7 @@ func TestAClaimInAnotherProductDoesNotDecideThisOne(t *testing.T) {
 		if waiting != 0 {
 			t.Errorf("a claim in another product made %d rows here read as waiting", waiting)
 		}
-		_, undecided, err := f.store.Groups(ctx, who, f.target, 50, 0,
+		_, undecided, err := f.store.Groups(ctx, who, f.scope, 50, 0,
 			finding.Filter{State: "undecided"})
 		if err != nil {
 			t.Fatal(err)
@@ -251,21 +251,21 @@ func TestALapsedPlaceDecidedAgainReadsAsWaiting(t *testing.T) {
 		f.decided(t, somebody.ID, f.issueID(t, "CVE-2026-1"), place, "lapsed", "0.9.0", "")
 		f.decided(t, somebody.ID, f.issueID(t, "CVE-2026-1"), place, "proposed", swss.Version, "again")
 
-		groups, _, err := f.store.Groups(ctx, who, f.target, 50, 0, finding.Filter{})
+		groups, _, err := f.store.Groups(ctx, who, f.scope, 50, 0, finding.Filter{})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if len(groups) != 1 || groups[0].State != "waiting" {
 			t.Fatalf("a lapsed place claimed again reads as %+v, want one row waiting", groups)
 		}
-		_, lapsed, err := f.store.Groups(ctx, who, f.target, 50, 0, finding.Filter{State: "lapsed"})
+		_, lapsed, err := f.store.Groups(ctx, who, f.scope, 50, 0, finding.Filter{State: "lapsed"})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if lapsed != 0 {
 			t.Errorf("lapsed kept %d rows that read as waiting", lapsed)
 		}
-		_, waiting, err := f.store.Groups(ctx, who, f.target, 50, 0, finding.Filter{State: "waiting"})
+		_, waiting, err := f.store.Groups(ctx, who, f.scope, 50, 0, finding.Filter{State: "waiting"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -314,14 +314,14 @@ func TestALiveDecisionCoversOnlyTheVersionsItWasKeyedOn(t *testing.T) {
 
 		reads := func(target int64, want string) {
 			t.Helper()
-			groups, _, err := f.store.Groups(ctx, who, target, 50, 0, finding.Filter{})
+			groups, _, err := f.store.Groups(ctx, who, f.scopeOf(t, target), 50, 0, finding.Filter{})
 			if err != nil {
 				t.Fatal(err)
 			}
 			if len(groups) != 1 || groups[0].State != want {
 				t.Errorf("build %d reads as %+v, want one row %q", target, groups, want)
 			}
-			_, agreed, err := f.store.Groups(ctx, who, target, 50, 0, finding.Filter{State: "agreed"})
+			_, agreed, err := f.store.Groups(ctx, who, f.scopeOf(t, target), 50, 0, finding.Filter{State: "agreed"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -445,7 +445,7 @@ func TestEachDecisionStateSelectsWhatItNames(t *testing.T) {
 		}
 		count := func(state string) int {
 			t.Helper()
-			_, n, err := f.store.Groups(ctx, who, f.target, 50, 0, finding.Filter{State: state})
+			_, n, err := f.store.Groups(ctx, who, f.scope, 50, 0, finding.Filter{State: state})
 			if err != nil {
 				t.Fatalf("%s: %v", state, err)
 			}
@@ -455,7 +455,7 @@ func TestEachDecisionStateSelectsWhatItNames(t *testing.T) {
 		// same counts in the same statement.
 		said := func(want string) {
 			t.Helper()
-			groups, _, err := f.store.Groups(ctx, who, f.target, 50, 0, finding.Filter{})
+			groups, _, err := f.store.Groups(ctx, who, f.scope, 50, 0, finding.Filter{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -525,7 +525,7 @@ func TestNarrowingByHowFarDecided(t *testing.T) {
 		}
 		who := f.holding(t, access.PublicTriage)
 
-		_, total, err := f.store.Groups(t.Context(), who, f.target, 50, 0, finding.Filter{})
+		_, total, err := f.store.Groups(t.Context(), who, f.scope, 50, 0, finding.Filter{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -533,7 +533,7 @@ func TestNarrowingByHowFarDecided(t *testing.T) {
 		// Nothing has been decided, so every group is undecided and none is
 		// answered. Both asserted: "undecided keeps everything" alone is what
 		// a clause that never runs also looks like.
-		_, undecided, err := f.store.Groups(t.Context(), who, f.target, 50, 0,
+		_, undecided, err := f.store.Groups(t.Context(), who, f.scope, 50, 0,
 			finding.Filter{State: "undecided"})
 		if err != nil {
 			t.Fatal(err)
@@ -543,7 +543,7 @@ func TestNarrowingByHowFarDecided(t *testing.T) {
 				total, undecided)
 		}
 		for _, state := range []string{"agreed", "waiting", "lapsed"} {
-			_, n, err := f.store.Groups(t.Context(), who, f.target, 50, 0,
+			_, n, err := f.store.Groups(t.Context(), who, f.scope, 50, 0,
 				finding.Filter{State: state})
 			if err != nil {
 				t.Fatalf("%s: %v", state, err)

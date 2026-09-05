@@ -20,6 +20,9 @@ func TestAFlawInOurOwnProductIsRecordedAndReadBackLikeAnyOther(t *testing.T) {
 	twoReach(t, func(t *testing.T, r *reach) {
 		r.scannedWithEvidence(t)
 		const at = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		// Recording belongs to a build; the list it appears in takes the build
+		// as a selection (UIX-53).
+		const listing = "/v1/products/mine/findings?stream=master&variant=broadcom"
 
 		// A reader cannot, and neither can somebody who may only argue about
 		// known issues in shipped components.
@@ -62,7 +65,7 @@ func TestAFlawInOurOwnProductIsRecordedAndReadBackLikeAnyOther(t *testing.T) {
 			} `json:"items"`
 			Total int `json:"total"`
 		}
-		read(t, r, "private-triage", at, &mine)
+		read(t, r, "private-triage", listing, &mine)
 		var listed bool
 		for _, item := range mine.Items {
 			if item.Vulnerability == recorded.Identifier {
@@ -79,7 +82,7 @@ func TestAFlawInOurOwnProductIsRecordedAndReadBackLikeAnyOther(t *testing.T) {
 				Vulnerability string `json:"vulnerability"`
 			} `json:"items"`
 		}
-		read(t, r, "triager", at, &theirs)
+		read(t, r, "triager", listing, &theirs)
 		for _, item := range theirs.Items {
 			if item.Vulnerability == recorded.Identifier {
 				t.Errorf("an undisclosed finding is listed for somebody who may not see one")

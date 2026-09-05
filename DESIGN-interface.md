@@ -187,9 +187,11 @@ own, scoped to the picked product, rather than being reachable only through a
 product's row.
 
 **A build-only entry declines rather than opening on a scope that means
-nothing.** With a product, a branch or a variant unpicked, the findings, tree
-and inventories entries are disabled and say why (UIX-39); the picker itself
-already refuses "all" on those screens.
+nothing.** With a product, a branch or a variant unpicked, the tree and
+inventories entries are disabled and say why (UIX-39); the picker itself
+already refuses "all" on those screens. **Findings is not one of them**
+(UIX-53): it needs a product and takes whatever else is selected, and the
+count beside it is of what the list it opens will show.
 
 **The search in the bar is the findings list's own search**, reached without
 going there first: it submits to the list's query. Without a build it says so.
@@ -234,9 +236,24 @@ left at "all", the list answers for every build in scope — a row is one issue
 at one component still, its places counted across every build the group is in,
 naming one of those builds and saying how many hold it. The one thing it
 cannot draw there is the way down, because a chain belongs to one build's
-graph, so those columns are absent rather than filled from whichever build the
-row happened to name. **This is not built.** Today the list refuses a partial
-scope with the other five.
+graph, so the Path column becomes the build the row names and the count of
+builds beside it, rather than a route from one of them presented as the route.
+
+**It has two addresses, and they are the same screen.** A whole build keeps
+the address the rest of that build shares, because the finding, the tree and
+the inventories are reached from beside it. Anything wider is the product's
+list carrying the levels that are set, so what is being answered for is in the
+address and can be sent to somebody. Choosing a wider scope while standing on
+either moves to the other — which is not the jump UIX-39 refused, because it
+is the same screen answering the question just asked of it, rather than a
+different screen chosen on somebody's behalf.
+
+**What still needs a build is what needs a build.** Recording a flaw is
+offered only where the selection is one, because a flaw is recorded against
+what a build ships. Narrowing to a subtree is refused across several rather
+than answered emptily, since the walk is over one build's edges. Deciding from
+a row acts in the build the row names and reaches the rest by matching, which
+is the cross-build review this document already describes.
 
 **A narrow screen keeps every entry behind a menu.** The tab bar carries the
 three places somebody reviews and responds from (UIX-17), and a menu control
@@ -1048,8 +1065,11 @@ and compared control for control. What differs is listed so that it is chosen
 rather than inherited.
 
 **The mockup's home carries a known-exploited tile at every scope; here it
-appears only with a build picked.** Nothing counts exploited findings across
-products, and a tile that guessed would be worse than one that is absent.
+needs a product.** It needed a whole build for as long as the list behind it
+did, and follows the selection like the other three figures now that the list
+does (UIX-53). With no product picked it is still absent: nothing counts
+exploited findings without a product to narrow inside, and a tile that guessed
+would be worse than one that is not there.
 
 **The mockup's finding sample carries builds already past the fix, shown and
 not offered.** The reach endpoint does not say whether a build's version sits

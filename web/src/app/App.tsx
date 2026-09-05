@@ -70,6 +70,9 @@ export function App() {
         <Route path="/products/:product/streams" element={<Streams />} />
         <Route path="/products/:product/streams/:stream" element={<Variants />} />
         <Route path="/products/:product/variants" element={<Variants />} />
+        {/* The list at whatever the picker selects, and the same screen at the
+            address a build's other screens share (UIX-53). */}
+        <Route path="/products/:product/findings" element={<Findings />} />
         <Route path={`${build}/findings`} element={<Findings />} />
         <Route path={`${build}/findings/:vulnerability/components/:component`} element={<Finding />} />
         <Route path={`${build}/components`} element={<Tree />} />

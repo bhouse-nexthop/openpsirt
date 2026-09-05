@@ -33,10 +33,13 @@ type fixture struct {
 	graph     *graph.Store
 	target    int64
 	productID int64
-	lastScan  int64
-	scans     *ingest.Store
-	built     time.Time
-	seq       int
+	// scope is the fixture's own build as a selection, which is what the
+	// lists take: one build is a selection with all three levels named.
+	scope    finding.Scope
+	lastScan int64
+	scans    *ingest.Store
+	built    time.Time
+	seq      int
 }
 
 func at(name, version string) graph.Described {
@@ -203,6 +206,9 @@ func each(t *testing.T, fn func(t *testing.T, f *fixture)) {
 		fn(t, &fixture{
 			db: db, store: finding.NewStore(db.DB), graph: graph.NewStore(db.DB),
 			target: target.ID, productID: product.ID, scans: ingest.NewStore(db.DB),
+			scope: finding.Scope{
+				ProductID: &product.ID, StreamID: &stream.ID, VariantID: &variant.ID,
+			},
 			built: time.Now().UTC().Add(-72 * time.Hour),
 		})
 	})
@@ -1102,7 +1108,7 @@ func TestNamingAPageOfFindingsDoesNotCostAQueryPerRow(t *testing.T) {
 			counted := &counter{}
 			f.db.AddQueryHook(counted)
 			groups, _, err := f.store.Groups(t.Context(), f.holding(t, access.PublicRead),
-				f.target, limit, 0, finding.Filter{})
+				f.scope, limit, 0, finding.Filter{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1652,6 +1658,35 @@ func (f *fixture) anotherVariant(t *testing.T, name string) int64 {
 		t.Fatalf("target for %s: %v", name, err)
 	}
 	return target.ID
+}
+
+// scopeOf is one build as a selection, for a build that is not the fixture's
+// own — a second variant, or a second branch.
+func (f *fixture) scopeOf(t *testing.T, targetID int64) finding.Scope {
+	t.Helper()
+	var row struct {
+		ProductID int64 `bun:"product_id"`
+		StreamID  int64 `bun:"stream_id"`
+		VariantID int64 `bun:"variant_id"`
+	}
+	if err := f.db.DB.NewSelect().
+		TableExpr("target AS tg").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		ColumnExpr("st.product_id AS product_id").
+		ColumnExpr("tg.stream_id AS stream_id").
+		ColumnExpr("tg.variant_id AS variant_id").
+		Where("tg.id = ?", targetID).Scan(t.Context(), &row); err != nil {
+		t.Fatalf("look up build %d: %v", targetID, err)
+	}
+	return finding.Scope{
+		ProductID: &row.ProductID, StreamID: &row.StreamID, VariantID: &row.VariantID,
+	}
+}
+
+// wholeProduct is every build of the fixture's product: what the picker
+// selects with the branch and the variant left at "all" (UIX-53).
+func (f *fixture) wholeProduct() finding.Scope {
+	return finding.Scope{ProductID: &f.productID}
 }
 
 // componentID is the component row one name resolves to in the fixture's build.

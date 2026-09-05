@@ -1,6 +1,11 @@
 package finding
 
-import "github.com/uptrace/bun"
+import (
+	"context"
+	"fmt"
+
+	"github.com/uptrace/bun"
+)
 
 // Scope narrows a cross-product answer to what somebody has selected.
 //
@@ -45,4 +50,29 @@ func (s Scope) Narrow(q *bun.SelectQuery) *bun.SelectQuery {
 		q = q.Where("tg.variant_id = ?", *s.VariantID)
 	}
 	return q
+}
+
+// Builds is the identifiers of the builds a scope covers, in a stable order.
+//
+// Resolved once and bound into the queries that follow rather than joined into
+// each of them. The findings list reads its page from an index that leads with
+// the build (`finding_group_idx`), so naming the builds keeps that index usable
+// as one range per build; joining the catalog into the same statement would
+// make the engine reach a row to discover what it already knew from the key.
+//
+// A selection matching nothing is not an error. A product whose releases have
+// never been scanned, or a variant that arrived after the branch it is asked
+// about, is an empty list rather than a failure — the answer is that nothing
+// is open there.
+func (s *Store) Builds(ctx context.Context, scope Scope) ([]int64, error) {
+	var ids []int64
+	q := s.db.NewSelect().
+		TableExpr("target AS tg").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		ColumnExpr("tg.id").
+		OrderExpr("tg.id")
+	if err := scope.Narrow(q).Scan(ctx, &ids); err != nil {
+		return nil, fmt.Errorf("read which builds are in scope: %w", err)
+	}
+	return ids, nil
 }

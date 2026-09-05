@@ -3,7 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
-import { needsBuild, remember, rescoped, useScope, type Scoped } from "./scope";
+import {
+  findingsPath,
+  needsBuild,
+  onFindings,
+  remember,
+  rescoped,
+  useScope,
+  type Scoped,
+} from "./scope";
 
 // What you are looking at, and how to change it.
 //
@@ -104,6 +112,15 @@ export function Scope() {
       }
     }
     remember(chosen);
+    // The findings list answers for whatever is selected rather than declining
+    // a partial one (UIX-53), and its address carries the selection — so it
+    // moves to the wider list rather than leaving the narrower one on screen.
+    // This is not the jump UIX-39 refused: it is the same screen, answering
+    // the question that was just asked of it.
+    if (onFindings(pathname)) {
+      navigate(findingsPath(chosen));
+      return;
+    }
     // A re-render is needed for the bar to catch up with what was remembered.
     navigate(pathname, { replace: true });
   }

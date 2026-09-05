@@ -171,7 +171,9 @@ func TestMeasureAYearOfNightlyScans(t *testing.T) {
 			t.Logf("%s: finding=%d scan_run=%d graph_node=%d graph_edge=%d",
 				label, count("finding"), count("scan_run"),
 				count("graph_node"), count("graph_edge"))
-			timed(t, ctx, store, who, target.ID)
+			timed(t, ctx, store, who, finding.Scope{
+				ProductID: &product.ID, StreamID: &branch.ID, VariantID: &variant.ID,
+			})
 			timedHistory(t, ctx, store, scans, who, target.ID, product.ID)
 		}
 		report("after night 1")
@@ -314,11 +316,11 @@ func timedHistory(t *testing.T, ctx context.Context, store *finding.Store,
 
 // timed runs the queries somebody actually waits for.
 func timed(t *testing.T, ctx context.Context, store *finding.Store,
-	who access.Subject, target int64) {
+	who access.Subject, scope finding.Scope) {
 
 	t.Helper()
 	start := time.Now()
-	_, total, err := store.Groups(ctx, who, target, 50, 0, finding.Filter{})
+	_, total, err := store.Groups(ctx, who, scope, 50, 0, finding.Filter{})
 	if err != nil {
 		t.Fatalf("findings list: %v", err)
 	}

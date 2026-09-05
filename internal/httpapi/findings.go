@@ -40,6 +40,11 @@ type FindingBody struct {
 	Parent string `json:"parent,omitempty" doc:"What directly pulls it in, which is what a decision is about"`
 	Middle int    `json:"middle,omitempty" doc:"How many steps sit between those two"`
 	Chains int    `json:"chains,omitempty" doc:"How many distinct ways down there are. More than one means the pair above is one of them"`
+	// Where the selection is more than one build, the four above are absent —
+	// a chain belongs to one build's graph — and these three take their place.
+	Builds  int    `json:"builds,omitempty" doc:"How many builds in the selection hold this. Absent where the selection is one build"`
+	Stream  string `json:"stream,omitempty" doc:"A branch or tag holding this, for linking to. One of them, not the only one: builds says how many there are. Absent where the selection is one build"`
+	Variant string `json:"variant,omitempty" doc:"The variant of that build"`
 
 	Places   int `json:"places" doc:"How many places this component sits at here"`
 	Answered int `json:"answered,omitempty" doc:"How many of those the build has already argued do not apply"`
@@ -102,7 +107,7 @@ type ComponentFindingsOutput struct {
 func registerFindings(api huma.API, in Ingest) {
 	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-findings", Method: http.MethodGet,
-		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings",
+		Path:    "/v1/products/{product}/findings",
 		Summary: "List vulnerability findings",
 		Description: "Returns one row per vulnerability-and-component pair, not one row per " +
 			"place the component appears. Each row gives the number of places it occupies and " +
@@ -119,12 +124,20 @@ func registerFindings(api huma.API, in Ingest) {
 			"component or anywhere under it, which is what the dependency tree's cumulative " +
 			"count counts. The tree counts distinct issues and this list is one row per issue " +
 			"and component, so a subtree holding one issue at two components is two rows here " +
-			"and one there.",
+			"and one there.\n\n" +
+			"`stream` and `variant` are optional and independent. With both named the list is " +
+			"one build. With either left out it answers for every build under the product " +
+			"that matches the rest: a row is still one issue in one component, its place " +
+			"count is across every build it is in, and `builds` says how many those are. " +
+			"Across more than one build a row carries `stream` and `variant` naming one of " +
+			"them to link to, and carries no `owner`, `parent`, `middle` or `chains` — a " +
+			"chain belongs to one build's graph. `beneath` is a walk over one build's edges " +
+			"and is refused unless both are named.",
 		Tags: []string{"Findings"},
 	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product     string   `path:"product"`
-		Stream      string   `path:"stream"`
-		Variant     string   `path:"variant"`
+		Stream      string   `query:"stream" doc:"Limit to one branch or tag. Left out, every one under the product"`
+		Variant     string   `query:"variant" doc:"Limit to one variant. Left out, every one under the product, and independent of the branch"`
 		Severity    string   `query:"severity" enum:"low,medium,high,critical" doc:"Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating"`
 		Exploited   bool     `query:"exploited" doc:"Keep only issues somebody is known to be exploiting"`
 		Fixable     bool     `query:"fixable" doc:"Keep only issues where an upstream fixed version is known"`
@@ -152,23 +165,18 @@ func registerFindings(api huma.API, in Ingest) {
 			return nil, huma.Error500InternalServerError("this process cannot read findings")
 		}
 
-		// Resolved and authorized together, so a build somebody may not see
-		// reads as one that was never declared.
-		names := catalog.NewStore(in.DB.DB)
-		named, err := names.LocateVisible(ctx, subject, input.Product, input.Stream, input.Variant)
+		// Resolved and authorized together, so a product somebody may not see
+		// reads as one that was never declared. A selection matching no build
+		// — declared and never scanned — comes back empty from the store
+		// rather than as a refusal: nothing is open because nothing has run.
+		scope, err := scoped(ctx, in, subject, ScopeQuery{
+			Product: input.Product, Stream: input.Stream, Variant: input.Variant,
+		})
 		if err != nil {
-			return nil, huma.Error404NotFound(err.Error())
-		}
-		target, err := names.ExistingTarget(ctx, named.StreamID, named.VariantID)
-		if err != nil {
-			// Declared, but nothing was ever filed against it. Nothing is open
-			// because nothing has been scanned.
-			out := &FindingsOutput{}
-			out.Body.Items = []FindingBody{}
-			return out, nil
+			return nil, err
 		}
 
-		floor, err := finding.FloorFor(ctx, in.DB.DB, named.ProductID)
+		floor, err := finding.FloorFor(ctx, in.DB.DB, *scope.ProductID)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "cannot tell what is worth triaging here", err)
 		}
@@ -190,16 +198,16 @@ func registerFindings(api huma.API, in Ingest) {
 			Floor:         floor,
 			BelowFloor:    input.BelowFloor,
 		}
-		if narrowed.Beneath, err = beneath(ctx, in, target.ID, input.Beneath); err != nil {
+		store := finding.NewStore(in.DB.DB)
+		if narrowed.Beneath, err = beneathIn(ctx, in, scope, input.Beneath); err != nil {
 			return nil, err
 		}
-		store := finding.NewStore(in.DB.DB)
-		groups, total, err := store.Groups(ctx, subject, target.ID,
+		groups, total, err := store.Groups(ctx, subject, scope,
 			input.Limit, input.Offset, narrowed)
 		if err != nil {
 			return nil, refused(in.Logger, err, "cannot read what is open")
 		}
-		hidden, err := store.Hidden(ctx, subject, target.ID, narrowed)
+		hidden, err := store.Hidden(ctx, subject, scope, narrowed)
 		if err != nil {
 			return nil, refused(in.Logger, err, "cannot read what is open")
 		}
@@ -220,6 +228,7 @@ func registerFindings(api huma.API, in Ingest) {
 				Matched: string(group.Matched),
 				Owner:   group.Owner, Parent: group.Parent,
 				Middle: group.Middle, Chains: group.Chains,
+				Builds: group.Builds, Stream: group.Stream, Variant: group.Variant,
 				Places: group.Places, Answered: group.Answered,
 				State: group.State, SentBack: group.SentBack,
 				Exploited:  group.Exploited,
@@ -232,7 +241,7 @@ func registerFindings(api huma.API, in Ingest) {
 
 	huma.Register(api, requiring(huma.Operation{
 		OperationID: "list-finding-components", Method: http.MethodGet,
-		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/components",
+		Path:    "/v1/products/{product}/findings/components",
 		Summary: "List what is open, gathered by component",
 		Description: "One row per component and version, with how many distinct issues are " +
 			"open against it and how many places those sit at. The level above the findings " +
@@ -244,12 +253,16 @@ func registerFindings(api huma.API, in Ingest) {
 			"because ordered by urgency it just looks like a long list.\n\n" +
 			"Takes the same filters as the findings list, so the two agree about what is " +
 			"being counted. Ordered by how many issues, not by urgency: ordering by urgency " +
-			"would reproduce the findings list at worse resolution.",
+			"would reproduce the findings list at worse resolution.\n\n" +
+			"`stream` and `variant` are optional and independent, as they are on the findings " +
+			"list: with either left out this counts across every build under the product that " +
+			"matches the rest. `beneath` is a walk over one build's edges and is refused " +
+			"unless both are named.",
 		Tags: []string{"Findings"},
 	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product    string   `path:"product"`
-		Stream     string   `path:"stream"`
-		Variant    string   `path:"variant"`
+		Stream     string   `query:"stream" doc:"Limit to one branch or tag. Left out, every one under the product"`
+		Variant    string   `query:"variant" doc:"Limit to one variant. Left out, every one under the product, and independent of the branch"`
 		Severity   string   `query:"severity" enum:"low,medium,high,critical" doc:"Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating"`
 		Exploited  bool     `query:"exploited" doc:"Keep only issues somebody is known to be exploiting"`
 		Fixable    bool     `query:"fixable" doc:"Keep only issues where an upstream fixed version is known"`
@@ -272,19 +285,14 @@ func registerFindings(api huma.API, in Ingest) {
 			return nil, huma.Error500InternalServerError("this process cannot read findings")
 		}
 
-		names := catalog.NewStore(in.DB.DB)
-		named, err := names.LocateVisible(ctx, subject, input.Product, input.Stream, input.Variant)
+		scope, err := scoped(ctx, in, subject, ScopeQuery{
+			Product: input.Product, Stream: input.Stream, Variant: input.Variant,
+		})
 		if err != nil {
-			return nil, huma.Error404NotFound(err.Error())
-		}
-		target, err := names.ExistingTarget(ctx, named.StreamID, named.VariantID)
-		if err != nil {
-			out := &ComponentFindingsOutput{}
-			out.Body.Items = []ComponentFindingBody{}
-			return out, nil
+			return nil, err
 		}
 
-		floor, err := finding.FloorFor(ctx, in.DB.DB, named.ProductID)
+		floor, err := finding.FloorFor(ctx, in.DB.DB, *scope.ProductID)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "cannot tell what is worth triaging here", err)
 		}
@@ -301,10 +309,10 @@ func registerFindings(api huma.API, in Ingest) {
 			Floor:         floor,
 			BelowFloor:    input.BelowFloor,
 		}
-		if narrowed.Beneath, err = beneath(ctx, in, target.ID, input.Beneath); err != nil {
+		if narrowed.Beneath, err = beneathIn(ctx, in, scope, input.Beneath); err != nil {
 			return nil, err
 		}
-		groups, total, err := finding.NewStore(in.DB.DB).ComponentGroups(ctx, subject, target.ID,
+		groups, total, err := finding.NewStore(in.DB.DB).ComponentGroups(ctx, subject, scope,
 			input.Limit, input.Offset, narrowed)
 		if err != nil {
 			return nil, refused(in.Logger, err, "cannot read what is open")
@@ -324,18 +332,33 @@ func registerFindings(api huma.API, in Ingest) {
 	})
 }
 
-// beneath resolves the component a list is narrowed beneath. Nil where
+// beneathIn resolves the component a list is narrowed beneath. Nil where
 // nothing was asked. The walk under it is the store's, in the statement that
 // lists.
 //
 // A name the build does not hold is refused rather than answered with an
 // empty list: an empty list is also what a subtree with nothing open looks
 // like, and the two mean different things to whoever typed the name.
-func beneath(ctx context.Context, in Ingest, targetID int64, name string) (*int64, error) {
+//
+// The subtree is a walk over one build's edges, so a selection holding several
+// is refused here as well as in the store. Which builds a selection holds is
+// asked of the store rather than inferred from which levels were named — one
+// rule, in one place, so the endpoint cannot come to disagree with the
+// statement it is narrowing.
+func beneathIn(ctx context.Context, in Ingest, scope finding.Scope, name string) (*int64, error) {
 	if name == "" {
 		return nil, nil
 	}
-	componentID, err := graph.NewStore(in.DB.DB).ComponentAt(ctx, targetID, name)
+	targets, err := finding.NewStore(in.DB.DB).Builds(ctx, scope)
+	if err != nil {
+		return nil, wentWrong(in.Logger, "cannot tell which builds are in scope", err)
+	}
+	if len(targets) != 1 {
+		return nil, huma.Error422UnprocessableEntity(
+			"a subtree is a walk over one build's edges, so narrowing beneath a component" +
+				" needs a branch and a variant that name exactly one build")
+	}
+	componentID, err := graph.NewStore(in.DB.DB).ComponentAt(ctx, targets[0], name)
 	if err != nil {
 		if errors.Is(err, graph.ErrAmbiguous) {
 			return nil, huma.Error422UnprocessableEntity(

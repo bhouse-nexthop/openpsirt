@@ -38,7 +38,7 @@ func TestHowAMatchWasMadeIsKeptAndCanBeAskedFor(t *testing.T) {
 		}
 
 		who := f.holding(t, access.PublicRead)
-		groups, total, err := f.store.Groups(t.Context(), who, f.target, 50, 0, finding.Filter{})
+		groups, total, err := f.store.Groups(t.Context(), who, f.scope, 50, 0, finding.Filter{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,7 +61,7 @@ func TestHowAMatchWasMadeIsKeptAndCanBeAskedFor(t *testing.T) {
 
 		// And asked for at scale, which is the point: finding these one at a
 		// time is not a thing anybody does.
-		only, total, err := f.store.Groups(t.Context(), who, f.target, 50, 0,
+		only, total, err := f.store.Groups(t.Context(), who, f.scope, 50, 0,
 			finding.Filter{Unconfirmed: true})
 		if err != nil {
 			t.Fatal(err)

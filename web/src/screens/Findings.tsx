@@ -88,8 +88,16 @@ function identityOf(row: Row): string {
 // Triage mode (UIX-43) opens the decision form inside the row: the list keeps
 // the reader's place, the form keeps its width, and the keys do the walking.
 export function Findings() {
-  const { product = "", stream = "", variant = "" } = useParams();
+  const { product = "", stream: named = "", variant: builtAs = "" } = useParams();
   const [params, setParams] = useSearchParams();
+  // The branch and the variant come from the path on a build's own list and
+  // from the picker's selection otherwise. Either may be "all": the list is
+  // not one of the screens that needs a whole build (UIX-53).
+  const stream = named || params.get("stream") || "";
+  const variant = builtAs || params.get("variant") || "";
+  const oneBuild = Boolean(stream && variant);
+  // What the server needs to know about the selection, beside the filters.
+  const selection = { ...(stream ? { stream } : {}), ...(variant ? { variant } : {}) };
   const who = useWho();
   // Recording a flaw belongs to the build this list is of, so the drawer is
   // opened from here rather than from a screen that would have to ask which
@@ -166,12 +174,20 @@ export function Findings() {
     queryKey: ["findings", product, stream, variant, query],
     queryFn: async () =>
       unwrap(
-        await api.GET("/v1/products/{product}/streams/{stream}/variants/{variant}/findings", {
-          params: { path: { product, stream, variant }, query },
+        await api.GET("/v1/products/{product}/findings", {
+          params: { path: { product }, query: { ...query, ...selection } },
         }),
       ),
     enabled: view === "issues",
   });
+
+  // Which build a row's actions and links are about. Where the selection is
+  // one build that is the selection; across several the row names one of them
+  // and says how many hold it, so the action lands somewhere real and the
+  // decision reaches the rest by matching.
+  function buildOf(row: Row) {
+    return { product, stream: row.stream || stream, variant: row.variant || variant };
+  }
 
   function set(key: string, value: string) {
     const next = new URLSearchParams(params);
@@ -544,11 +560,13 @@ export function Findings() {
         <div className="screen-head">
           <h2>Findings</h2>
           <p>
-            {product} · {stream} · {variant} — one row per component, so you can see where the
-            weight is before deciding what to read.
+            {product} · {stream || "every branch"} · {variant || "every variant"} — one row per
+            component, so you can see where the weight is before deciding what to read.
           </p>
           <span style={{ marginLeft: "auto" }}>
-            <RecordButton who={who.data} product={product} onClick={() => setRecording(true)} />
+            {oneBuild && (
+              <RecordButton who={who.data} product={product} onClick={() => setRecording(true)} />
+            )}
           </span>
         </div>
         <RecordDrawer
@@ -642,11 +660,13 @@ export function Findings() {
           </span>
         </h2>
         <p>
-          {product} · {stream} · {variant} — one row per issue and component, however many
-          locations it sits at.
+          {product} · {stream || "every branch"} · {variant || "every variant"} — one row per
+          issue and component, however many locations it sits at.
         </p>
         <span style={{ marginLeft: "auto" }}>
-          <RecordButton who={who.data} product={product} onClick={() => setRecording(true)} />
+          {oneBuild && (
+            <RecordButton who={who.data} product={product} onClick={() => setRecording(true)} />
+          )}
         </span>
       </div>
 
@@ -732,7 +752,7 @@ export function Findings() {
                   <th>Issue</th>
                   <th>Component</th>
                   {/* Both ends of the way down, middle collapsed (UIX-12). */}
-                  <th>Path</th>
+                  <th>{oneBuild ? "Path" : "Build"}</th>
                   <th className="num" title="EPSS: published probability of exploitation. Orders findings of equal severity">
                     EPSS
                   </th>
@@ -744,7 +764,7 @@ export function Findings() {
               <tbody id="findingRows">
                 {rows.map((row, i) => {
                   const key = `${row.vulnerability} ${row.component} ${row.version} ${row.ecosystem ?? ""}`;
-                  const at = to(product, stream, variant, row);
+                  const at = to(buildOf(row), row);
                   // How far it is decided comes from the server, defined the
                   // way the state filter defines it; a row does not guess from
                   // what the build argued away, which is a different claim by
@@ -881,7 +901,7 @@ export function Findings() {
                         <tr className="places">
                           <td colSpan={9}>
                             <Peek
-                              at={{ product, stream, variant }}
+                              at={buildOf(row)}
                               vulnerability={row.vulnerability ?? ""}
                               component={row.component ?? ""}
                               version={row.version ?? ""}
@@ -894,7 +914,7 @@ export function Findings() {
                         <tr className="decide">
                           <td colSpan={9}>
                             <Inline
-                              at={{ product, stream, variant }}
+                              at={buildOf(row)}
                               row={row}
                               position={{ row: i + 1, of: rows.length }}
                               onDone={(done) => advance(i, done)}
@@ -912,7 +932,7 @@ export function Findings() {
 
           <div className="cards">
             {rows.map((row) => {
-              const at = to(product, stream, variant, row);
+              const at = to(buildOf(row), row);
               return (
                 <article
                   key={`${row.vulnerability} ${row.component} ${row.version} ${row.ecosystem ?? ""}`}
@@ -1031,8 +1051,24 @@ function Inline({
   );
 }
 
-// Where a component sits, as the two ends that differ between sibling rows.
+// Where a component sits, as the two ends that differ between sibling rows —
+// or, where the selection spans builds, which build the row is being read in.
+//
+// A chain belongs to one build's graph, so a row covering three builds is
+// reached three ways and has no single way down. Naming the build is the
+// honest thing to put in the column instead: it is what the row's link and
+// its actions are about, and the count says it is one of several.
 function Sits({ row }: { row: Row }) {
+  if (row.builds) {
+    return (
+      <span className="chain">
+        <span className="hop id">{row.stream}</span>
+        <span className="arrow">/</span>
+        <span className="hop id">{row.variant}</span>
+        {row.builds > 1 && <span className="hint">· one of {row.builds} builds</span>}
+      </span>
+    );
+  }
   if (!row.owner && !row.parent) {
     return <span className="hint">nothing records what pulls this in</span>;
   }
@@ -1070,7 +1106,7 @@ function ByComponent({
   onOnly,
   onPage,
 }: {
-  at: { product: string; stream: string; variant: string };
+  at: { product: string; stream?: string; variant?: string };
   query: Record<string, unknown>;
   offset: number;
   onHide: (component: string) => void;
@@ -1081,10 +1117,16 @@ function ByComponent({
     queryKey: ["findings-by-component", at, query],
     queryFn: async () =>
       unwrap(
-        await api.GET(
-          "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/components",
-          { params: { path: at, query: query as never } },
-        ),
+        await api.GET("/v1/products/{product}/findings/components", {
+          params: {
+            path: { product: at.product },
+            query: {
+              ...(query as Record<string, never>),
+              ...(at.stream ? { stream: at.stream } : {}),
+              ...(at.variant ? { variant: at.variant } : {}),
+            },
+          },
+        }),
       ),
   });
 
@@ -1110,7 +1152,7 @@ function ByComponent({
     <>
       <p className="hint" style={{ margin: "0 0 8px" }}>
         Ordered by issue count. <b>Issues</b> is rows in the by-issue view; <b>locations</b> is how
-        many places in the build those issues occupy.
+        many places those issues occupy in what you are looking at.
       </p>
 
       <div className="tablewrap">
@@ -1247,7 +1289,8 @@ function Peek({
 
 // Where a row opens. The version is part of the address: a component name is
 // not unique within a build.
-function to(product: string, stream: string, variant: string, row: Row): string {
+function to(at: { product: string; stream: string; variant: string }, row: Row): string {
+  const { product, stream, variant } = at;
   const query = row.version ? `?version=${encodeURIComponent(row.version)}` : "";
   return (
     `/products/${encodeURIComponent(product)}` +

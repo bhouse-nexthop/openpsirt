@@ -174,7 +174,7 @@ func TestThePageIsTheGroupsInOrder(t *testing.T) {
 		}
 		for _, c := range cases {
 			want := expect(c.keep)
-			got, total, err := f.store.Groups(t.Context(), who, f.target, 50, 0, c.filter)
+			got, total, err := f.store.Groups(t.Context(), who, f.scope, 50, 0, c.filter)
 			if err != nil {
 				t.Fatalf("%s: %v", c.name, err)
 			}
@@ -191,7 +191,7 @@ func TestThePageIsTheGroupsInOrder(t *testing.T) {
 		want := expect(func(*group) bool { return true })
 		var walked []string
 		for offset := 0; offset < len(want); offset += 2 {
-			got, total, err := f.store.Groups(t.Context(), who, f.target, 2, offset, finding.Filter{})
+			got, total, err := f.store.Groups(t.Context(), who, f.scope, 2, offset, finding.Filter{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -217,7 +217,7 @@ func TestThePageIsTheGroupsInOrder(t *testing.T) {
 			{"everything", finding.Filter{}},
 			{"undecided", finding.Filter{State: "undecided"}},
 		} {
-			got, total, err := f.store.Groups(t.Context(), who, f.target, 2, len(want), c.filter)
+			got, total, err := f.store.Groups(t.Context(), who, f.scope, 2, len(want), c.filter)
 			if err != nil {
 				t.Fatalf("%s past the end: %v", c.name, err)
 			}
@@ -231,7 +231,7 @@ func TestThePageIsTheGroupsInOrder(t *testing.T) {
 
 		// What the page shows about a row comes from the second statement,
 		// keyed on the group. The counts have to be the same group's.
-		got, _, err := f.store.Groups(t.Context(), who, f.target, 50, 0, finding.Filter{})
+		got, _, err := f.store.Groups(t.Context(), who, f.scope, 50, 0, finding.Filter{})
 		if err != nil {
 			t.Fatal(err)
 		}

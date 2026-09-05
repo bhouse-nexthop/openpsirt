@@ -886,6 +886,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products/{product}/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List vulnerability findings
+         * @description Returns one row per vulnerability-and-component pair, not one row per place the component appears. Each row gives the number of places it occupies and how many of those the build's VEX documents already answer.
+         *
+         *     Grouping matters at real scale: one switch image produced 335,021 individual findings, which collapse to 7,906 rows here.
+         *
+         *     Ordered by urgency — known-exploited first, then whether the build ships to customers, then severity, then likelihood. Supports limit and offset.
+         *
+         *     Narrowing happens here rather than in the client, and `total` counts what the filter admits. A filter applied to a page already fetched answers a different question from the one it appears to: `exploited` over fifty rows means exploited among those fifty.
+         *
+         *     `under` keeps what one container holds directly; `beneath` keeps what sits at a component or anywhere under it, which is what the dependency tree's cumulative count counts. The tree counts distinct issues and this list is one row per issue and component, so a subtree holding one issue at two components is two rows here and one there.
+         *
+         *     `stream` and `variant` are optional and independent. With both named the list is one build. With either left out it answers for every build under the product that matches the rest: a row is still one issue in one component, its place count is across every build it is in, and `builds` says how many those are. Across more than one build a row carries `stream` and `variant` naming one of them to link to, and carries no `owner`, `parent`, `middle` or `chains` — a chain belongs to one build's graph. `beneath` is a walk over one build's edges and is refused unless both are named.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
+         */
+        get: operations["list-findings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/products/{product}/findings/components": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List what is open, gathered by component
+         * @description One row per component and version, with how many distinct issues are open against it and how many places those sit at. The level above the findings list: it answers where the weight is rather than what is wrong, which is the question somebody asks before deciding what to read and what to put aside.
+         *
+         *     It is also how a person finds the one package worth hiding. On a switch operating-system image the kernel carried 4,943 of 6,822 findings rows and the next largest contributor carried 58 — a fact no list of issues makes visible, because ordered by urgency it just looks like a long list.
+         *
+         *     Takes the same filters as the findings list, so the two agree about what is being counted. Ordered by how many issues, not by urgency: ordering by urgency would reproduce the findings list at worse resolution.
+         *
+         *     `stream` and `variant` are optional and independent, as they are on the findings list: with either left out this counts across every build under the product that matches the rest. `beneath` is a walk over one build's edges and is refused unless both are named.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
+         */
+        get: operations["list-finding-components"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products/{product}/issues/{vulnerability}/advisory": {
         parameters: {
             query?: never;
@@ -1227,21 +1287,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * List vulnerability findings
-         * @description Returns one row per vulnerability-and-component pair, not one row per place the component appears. Each row gives the number of places it occupies and how many of those the build's VEX documents already answer.
-         *
-         *     Grouping matters at real scale: one switch image produced 335,021 individual findings, which collapse to 7,906 rows here.
-         *
-         *     Ordered by urgency — known-exploited first, then whether the build ships to customers, then severity, then likelihood. Supports limit and offset.
-         *
-         *     Narrowing happens here rather than in the client, and `total` counts what the filter admits. A filter applied to a page already fetched answers a different question from the one it appears to: `exploited` over fifty rows means exploited among those fifty.
-         *
-         *     `under` keeps what one container holds directly; `beneath` keeps what sits at a component or anywhere under it, which is what the dependency tree's cumulative count counts. The tree counts distinct issues and this list is one row per issue and component, so a subtree holding one issue at two components is two rows here and one there.
-         *
-         *     **Requires:** any recognized credential. Answers only what you may see.
-         */
-        get: operations["list-findings"];
+        get?: never;
         put?: never;
         /**
          * Record a flaw in what this build ships
@@ -1258,32 +1304,6 @@ export interface paths {
          *     **Requires:** public-triage or private-triage on the product. private-triage where the finding is undisclosed.
          */
         post: operations["record-finding"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/components": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List what is open, gathered by component
-         * @description One row per component and version, with how many distinct issues are open against it and how many places those sit at. The level above the findings list: it answers where the weight is rather than what is wrong, which is the question somebody asks before deciding what to read and what to put aside.
-         *
-         *     It is also how a person finds the one package worth hiding. On a switch operating-system image the kernel carried 4,943 of 6,822 findings rows and the next largest contributor carried 58 — a fact no list of issues makes visible, because ordered by urgency it just looks like a long list.
-         *
-         *     Takes the same filters as the findings list, so the two agree about what is being counted. Ordered by how many issues, not by urgency: ordering by urgency would reproduce the findings list at worse resolution.
-         *
-         *     **Requires:** any recognized credential. Answers only what you may see.
-         */
-        get: operations["list-finding-components"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2947,6 +2967,11 @@ export interface components {
             answered?: number;
             /**
              * Format: int64
+             * @description How many builds in the selection hold this. Absent where the selection is one build
+             */
+            builds?: number;
+            /**
+             * Format: int64
              * @description How many distinct ways down there are. More than one means the pair above is one of them
              */
             chains?: number;
@@ -3001,8 +3026,12 @@ export interface components {
              * @enum {string}
              */
             state?: "undecided" | "waiting" | "agreed" | "lapsed";
+            /** @description A branch or tag holding this, for linking to. One of them, not the only one: builds says how many there are. Absent where the selection is one build */
+            stream?: string;
             /** @description What a fork was made from, where it is one */
             upstream?: string;
+            /** @description The variant of that build */
+            variant?: string;
             /** @description The version that ships */
             version: string;
             /** @description The issue, under the name it is most widely known by */
@@ -5822,6 +5851,140 @@ export interface operations {
             };
         };
     };
+    "list-findings": {
+        parameters: {
+            query?: {
+                /** @description Limit to one branch or tag. Left out, every one under the product */
+                stream?: string;
+                /** @description Limit to one variant. Left out, every one under the product, and independent of the branch */
+                variant?: string;
+                /** @description Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating */
+                severity?: "low" | "medium" | "high" | "critical";
+                /** @description Keep only issues somebody is known to be exploiting */
+                exploited?: boolean;
+                /** @description Keep only issues where an upstream fixed version is known */
+                fixable?: boolean;
+                /** @description Include what this product does not consider worth triaging. Those are always recorded and counted; this asks to see them in the list */
+                below_floor?: boolean;
+                /** @description Keep only what is open against components of this name, whatever version */
+                component?: string;
+                /** @description Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name */
+                q?: string;
+                /** @description Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi */
+                ecosystem?: string;
+                /** @description Keep only what sits inside the container of this name */
+                under?: string;
+                /** @description Keep only what the build holds directly, which is what has no container above it */
+                under_build?: boolean;
+                /** @description Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused */
+                beneath?: string;
+                /** @description Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered */
+                state?: "undecided" | "waiting" | "agreed" | "lapsed";
+                /** @description Keep only groups a standing judgment of this kind covers — how to ask what has been dismissed, which state cannot answer: agreed says a judgment stands, not which one. Every place must be answered the same way, and only the claim standing now counts */
+                outcome?: "affected" | "not-applicable" | "deferred" | "wont-fix" | "already-fixed";
+                /** @description Keep only groups by who is dealing with them. A group whose places are held by different people is none of these */
+                assigned?: "me" | "somebody" | "nobody";
+                /** @description Keep only groups whose issue we rated differently from the world — what has been re-prioritized here */
+                reassessed?: boolean;
+                /** @description Keep only groups a scanner reached by comparing a published identifier against an upstream version range, never against an advisory for the package in its own ecosystem. A distribution backports fixes without moving the upstream version, so these are neither confirmed nor refuted — somebody has to look, and finding them one at a time is not a thing anybody does */
+                unconfirmed?: boolean;
+                /** @description Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows */
+                exclude?: string[] | null;
+                /** @description How many to return */
+                limit?: number;
+                /** @description How many to skip */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                product: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FindingsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-finding-components": {
+        parameters: {
+            query?: {
+                /** @description Limit to one branch or tag. Left out, every one under the product */
+                stream?: string;
+                /** @description Limit to one variant. Left out, every one under the product, and independent of the branch */
+                variant?: string;
+                /** @description Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating */
+                severity?: "low" | "medium" | "high" | "critical";
+                /** @description Keep only issues somebody is known to be exploiting */
+                exploited?: boolean;
+                /** @description Keep only issues where an upstream fixed version is known */
+                fixable?: boolean;
+                /** @description Include what this product does not consider worth triaging */
+                below_floor?: boolean;
+                /** @description Keep only components whose name contains this, ignoring capitals */
+                q?: string;
+                /** @description Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi */
+                ecosystem?: string;
+                /** @description Keep only what sits inside the container of this name */
+                under?: string;
+                /** @description Keep only what the build holds directly, which is what has no container above it */
+                under_build?: boolean;
+                /** @description Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused */
+                beneath?: string;
+                /** @description Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered */
+                state?: "undecided" | "waiting" | "agreed" | "lapsed";
+                /** @description Drop components of these names */
+                exclude?: string[] | null;
+                /** @description How many to return */
+                limit?: number;
+                /** @description How many to skip */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                product: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentFindingsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "get-advisory": {
         parameters: {
             query?: never;
@@ -6314,76 +6477,6 @@ export interface operations {
             };
         };
     };
-    "list-findings": {
-        parameters: {
-            query?: {
-                /** @description Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating */
-                severity?: "low" | "medium" | "high" | "critical";
-                /** @description Keep only issues somebody is known to be exploiting */
-                exploited?: boolean;
-                /** @description Keep only issues where an upstream fixed version is known */
-                fixable?: boolean;
-                /** @description Include what this product does not consider worth triaging. Those are always recorded and counted; this asks to see them in the list */
-                below_floor?: boolean;
-                /** @description Keep only what is open against components of this name, whatever version */
-                component?: string;
-                /** @description Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name */
-                q?: string;
-                /** @description Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi */
-                ecosystem?: string;
-                /** @description Keep only what sits inside the container of this name */
-                under?: string;
-                /** @description Keep only what the build holds directly, which is what has no container above it */
-                under_build?: boolean;
-                /** @description Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused */
-                beneath?: string;
-                /** @description Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered */
-                state?: "undecided" | "waiting" | "agreed" | "lapsed";
-                /** @description Keep only groups a standing judgment of this kind covers — how to ask what has been dismissed, which state cannot answer: agreed says a judgment stands, not which one. Every place must be answered the same way, and only the claim standing now counts */
-                outcome?: "affected" | "not-applicable" | "deferred" | "wont-fix" | "already-fixed";
-                /** @description Keep only groups by who is dealing with them. A group whose places are held by different people is none of these */
-                assigned?: "me" | "somebody" | "nobody";
-                /** @description Keep only groups whose issue we rated differently from the world — what has been re-prioritized here */
-                reassessed?: boolean;
-                /** @description Keep only groups a scanner reached by comparing a published identifier against an upstream version range, never against an advisory for the package in its own ecosystem. A distribution backports fixes without moving the upstream version, so these are neither confirmed nor refuted — somebody has to look, and finding them one at a time is not a thing anybody does */
-                unconfirmed?: boolean;
-                /** @description Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows */
-                exclude?: string[] | null;
-                /** @description How many to return */
-                limit?: number;
-                /** @description How many to skip */
-                offset?: number;
-            };
-            header?: never;
-            path: {
-                product: string;
-                stream: string;
-                variant: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FindingsOutputBody"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
     "record-finding": {
         parameters: {
             query?: never;
@@ -6408,66 +6501,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnteredBody"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
-    "list-finding-components": {
-        parameters: {
-            query?: {
-                /** @description Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating */
-                severity?: "low" | "medium" | "high" | "critical";
-                /** @description Keep only issues somebody is known to be exploiting */
-                exploited?: boolean;
-                /** @description Keep only issues where an upstream fixed version is known */
-                fixable?: boolean;
-                /** @description Include what this product does not consider worth triaging */
-                below_floor?: boolean;
-                /** @description Keep only components whose name contains this, ignoring capitals */
-                q?: string;
-                /** @description Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi */
-                ecosystem?: string;
-                /** @description Keep only what sits inside the container of this name */
-                under?: string;
-                /** @description Keep only what the build holds directly, which is what has no container above it */
-                under_build?: boolean;
-                /** @description Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused */
-                beneath?: string;
-                /** @description Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered */
-                state?: "undecided" | "waiting" | "agreed" | "lapsed";
-                /** @description Drop components of these names */
-                exclude?: string[] | null;
-                /** @description How many to return */
-                limit?: number;
-                /** @description How many to skip */
-                offset?: number;
-            };
-            header?: never;
-            path: {
-                product: string;
-                stream: string;
-                variant: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ComponentFindingsOutputBody"];
                 };
             };
             /** @description Error */

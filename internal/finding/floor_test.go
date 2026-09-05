@@ -41,7 +41,7 @@ func TestTheLineKeepsThingsOutOfTheListAndSaysHowMany(t *testing.T) {
 		who := f.holding(t, access.PublicTriage)
 		line := finding.Filter{Floor: finding.Floor{Word: "medium"}}
 
-		rows, total, err := f.store.Groups(t.Context(), who, f.target, 50, 0, line)
+		rows, total, err := f.store.Groups(t.Context(), who, f.scope, 50, 0, line)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,7 +61,7 @@ func TestTheLineKeepsThingsOutOfTheListAndSaysHowMany(t *testing.T) {
 			t.Errorf("the total counts %d, want the three the line admits", total)
 		}
 
-		hidden, err := f.store.Hidden(t.Context(), who, f.target, line)
+		hidden, err := f.store.Hidden(t.Context(), who, f.scope, line)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -73,7 +73,7 @@ func TestTheLineKeepsThingsOutOfTheListAndSaysHowMany(t *testing.T) {
 		// changed.
 		open := line
 		open.BelowFloor = true
-		_, all, err := f.store.Groups(t.Context(), who, f.target, 50, 0, open)
+		_, all, err := f.store.Groups(t.Context(), who, f.scope, 50, 0, open)
 		if err != nil {
 			t.Fatal(err)
 		}

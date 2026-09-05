@@ -167,10 +167,25 @@ type Group struct {
 	// come down different ways. Chains says how many distinct ways there are,
 	// so a row can say "one of 4" rather than presenting one route as though
 	// it were the only one.
+	//
+	// All four are empty where the selection spans more than one build
+	// (UIX-53). A chain belongs to one build's graph, and a group that sits in
+	// three builds is reached three ways, so filling these from whichever
+	// build the row happened to name would present one route as the answer —
+	// the thing the paragraph above says not to do, one level up.
 	Owner  string
 	Parent string
 	Middle int
 	Chains int
+	// Builds is how many builds in the selection hold this group, and Stream
+	// and Variant name **one** of them — not the only one. A screen needs
+	// somewhere to link to and an action needs a build to name; what says
+	// there are others is the count, so a screen can show that instead of
+	// reading the named one as the whole answer. Both are empty where the
+	// selection is a single build, since the row would only be repeating it.
+	Builds  int
+	Stream  string
+	Variant string
 	// Matched says how the scanner reached this. One answer for the whole
 	// group: every place of it comes from the same line of a report. Empty
 	// where the scanner said nothing.
@@ -431,32 +446,26 @@ func componentsWhere(q *bun.SelectQuery, condition string, args ...any) *bun.Sel
 // Counted through the rest of the filter, because "hidden by the line" has to
 // mean hidden from *this* list — a number counted against everything would say
 // six thousand on a page showing fifty.
-func (s *Store) Hidden(ctx context.Context, subject access.Subject, targetID int64,
+func (s *Store) Hidden(ctx context.Context, subject access.Subject, scope Scope,
 	filter Filter) (int, error) {
 
 	if !filter.Floor.Hides() || filter.BelowFloor {
 		return 0, nil
 	}
-	productID, err := productOf(ctx, s.db, targetID)
-	if err != nil {
-		return 0, err
-	}
-	visible := access.Visible(subject, productID)
-	if !subject.Sees(productID) || len(visible) == 0 {
-		return 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
-	}
-
 	// The same query, with the line inverted rather than removed.
 	below := filter
 	below.Floor = Floor{}
-	// The same reason as everywhere else this narrows: a place identity
-	// carries no product, so the correlation has to be given one.
-	below.ProductID = productID
-	below.TargetID = targetID
+	_, visible, targets, err := s.inScope(ctx, subject, scope, &below)
+	if err != nil {
+		return 0, err
+	}
+	if len(targets) == 0 {
+		return 0, nil
+	}
 	counted := s.db.NewSelect().
 		TableExpr("finding AS f").
 		ColumnExpr("f.vulnerability_id").
-		Where("f.target_id = ?", targetID).
+		Where("f.target_id IN (?)", bun.List(targets)).
 		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		GroupExpr("f.vulnerability_id, f.component_id")
@@ -673,29 +682,71 @@ func trimmed(names []string) []string {
 	return kept
 }
 
-// Groups returns what is open against a target, as the things somebody decides
-// about rather than as one row per place.
-func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int64, limit, offset int,
-	filter Filter) ([]Group, int, error) {
-	productID, err := productOf(ctx, s.db, targetID)
-	if err != nil {
-		return nil, 0, err
+// inScope authorizes a selection and resolves it to the builds it covers.
+//
+// The three things every list over findings needs before it can read one:
+// which product it is narrowing inside, what the reader may see there, and
+// which builds the selection holds. Done once because two lists resolving them
+// slightly differently would answer slightly different questions side by side.
+func (s *Store) inScope(ctx context.Context, subject access.Subject, scope Scope,
+	filter *Filter) (int64, []access.Visibility, []int64, error) {
+
+	if scope.ProductID == nil {
+		// Every list here correlates a decision by product and a place
+		// identity carries none, so a selection without one would reach
+		// decisions made in every product in the deployment.
+		return 0, nil, nil, fmt.Errorf("read findings: the selection names no product")
 	}
+	productID := *scope.ProductID
 	if !subject.Sees(productID) {
-		return nil, 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
+		return 0, nil, nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
 	visible := access.Visible(subject, productID)
 	if len(visible) == 0 {
-		return nil, 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
+		return 0, nil, nil, access.Denied(fmt.Sprintf("read findings in product %d", productID))
 	}
-	// Which product this is narrowing inside. Set here rather than trusted
-	// from the caller: a place identity carries no product, so a filter that
-	// correlates one to a decision and is handed a zero would match every
-	// product in the deployment.
+	targets, err := s.Builds(ctx, scope)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	// Set here rather than trusted from the caller, for the reason above.
 	filter.ProductID = productID
-	filter.TargetID = targetID
 	// Who "mine" means, from the subject rather than from the request.
 	filter.HeldBy = subject.ID
+	// A subtree is a walk over one build's edges, so it is answerable only
+	// where the selection is one build. Asked across several it is refused
+	// rather than answered from whichever build sorted first — which is what
+	// leaving the identifier at zero would have done, silently and emptily.
+	switch {
+	case len(targets) == 1:
+		filter.TargetID = targets[0]
+	case filter.Beneath != nil:
+		return 0, nil, nil, fmt.Errorf("read findings beneath a component: a subtree is a walk"+
+			" over one build's edges, and %d builds are in scope", len(targets))
+	}
+	return productID, visible, targets, nil
+}
+
+// Groups returns what is open in a selection, as the things somebody decides
+// about rather than as one row per place.
+//
+// The selection is not always one build (UIX-53). With the branch or the
+// variant left at "all" the page answers for every build under the product: a
+// row is one issue at one component still, and its places are counted across
+// every build the group is in. What a row cannot carry there is the way down,
+// because a chain belongs to one build's graph — so those columns are filled
+// only where the selection is a single build, and across several the row names
+// one of them and says how many hold it instead. Naming one as though it were
+// the answer is the thing being avoided.
+func (s *Store) Groups(ctx context.Context, subject access.Subject, scope Scope, limit, offset int,
+	filter Filter) ([]Group, int, error) {
+	productID, visible, targets, err := s.inScope(ctx, subject, scope, &filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(targets) == 0 {
+		return nil, 0, nil
+	}
 
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -713,12 +764,12 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 	// groups on the page. The first version asked all of it in one statement,
 	// and the five correlated decision lookups per row ran against every one
 	// of a build's 240,945 open rows to produce fifty answers.
-	heads, total, err := s.heads(ctx, targetID, visible, limit, offset, filter)
+	heads, total, err := s.heads(ctx, targets, visible, limit, offset, filter)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	known, err := s.decorate(ctx, targetID, productID, visible, heads, filter)
+	known, err := s.decorate(ctx, targets, productID, visible, heads, filter)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -757,17 +808,32 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 	// than a walk per row. A row whose places are pulled in directly by the
 	// build is asked about by the component itself, which lands on the same
 	// answer with one step in it.
-	wanted := make([]int64, 0, len(rows))
-	for _, row := range rows {
-		if row.ConsumerID != nil {
-			wanted = append(wanted, *row.ConsumerID)
-		} else {
-			wanted = append(wanted, row.ComponentID)
+	oneBuild := len(targets) == 1
+	var chains map[int64][]graph.Step
+	var where map[int64]build
+	if oneBuild {
+		wanted := make([]int64, 0, len(rows))
+		for _, row := range rows {
+			if row.ConsumerID != nil {
+				wanted = append(wanted, *row.ConsumerID)
+			} else {
+				wanted = append(wanted, row.ComponentID)
+			}
 		}
-	}
-	chains, err := graph.NewStore(s.db).Chains(ctx, subject, targetID, wanted)
-	if err != nil {
-		return nil, 0, err
+		if chains, err = graph.NewStore(s.db).Chains(ctx, subject, targets[0], wanted); err != nil {
+			return nil, 0, err
+		}
+	} else {
+		// Across builds a row names one of them, so that a screen has
+		// somewhere to link to and an action has a build to name. Read for the
+		// page's builds in one statement rather than per row.
+		at := make([]int64, 0, len(rows))
+		for _, row := range rows {
+			at = append(at, row.TargetID)
+		}
+		if where, err = buildsNamed(ctx, s.db, at); err != nil {
+			return nil, 0, err
+		}
 	}
 
 	groups := make([]Group, 0, len(rows))
@@ -791,20 +857,64 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, targetID int
 				group.Upstream = component.UpstreamName + " " + component.UpstreamVersion
 			}
 		}
-		// How many distinct ways down there are: the consumers this component
-		// has here, plus one for the build pulling it in directly.
-		group.Chains = row.Consumers
-		if row.Direct > 0 {
-			group.Chains++
+		if oneBuild {
+			// How many distinct ways down there are: the consumers this
+			// component has here, plus one for the build pulling it in
+			// directly.
+			group.Chains = row.Consumers
+			if row.Direct > 0 {
+				group.Chains++
+			}
+			down := chains[row.ComponentID]
+			if row.ConsumerID != nil {
+				down = chains[*row.ConsumerID]
+			}
+			group.Owner, group.Parent, group.Middle = Ends(down)
+		} else if at, held := where[row.TargetID]; held {
+			group.Builds = row.Builds
+			// The way down is left empty rather than filled from this one
+			// build: the group sits in every build the count names, and each
+			// of them reaches it its own way.
+			group.Stream, group.Variant = at.Stream, at.Variant
 		}
-		down := chains[row.ComponentID]
-		if row.ConsumerID != nil {
-			down = chains[*row.ConsumerID]
-		}
-		group.Owner, group.Parent, group.Middle = Ends(down)
 		groups = append(groups, group)
 	}
 	return groups, total, nil
+}
+
+// build names one of the places a group sits, for a row that spans several.
+type build struct {
+	ID      int64  `bun:"id"`
+	Stream  string `bun:"stream"`
+	Variant string `bun:"variant"`
+}
+
+// buildsNamed names the builds a page's rows point at.
+//
+// One statement for the page rather than one per row, and the names are the
+// ones somebody declared: a path resolves a name without regard to capitals
+// (MDL-21), so what was typed is both what reads correctly and what routes.
+func buildsNamed(ctx context.Context, db bun.IDB, ids []int64) (map[int64]build, error) {
+	named := make(map[int64]build, len(ids))
+	if len(ids) == 0 {
+		return named, nil
+	}
+	var rows []build
+	if err := db.NewSelect().
+		TableExpr("target AS tg").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		Join("JOIN variant AS va ON va.id = tg.variant_id").
+		ColumnExpr("tg.id AS id").
+		ColumnExpr("st.display_name AS stream").
+		ColumnExpr("va.display_name AS variant").
+		Where("tg.id IN (?)", bun.List(ids)).
+		Scan(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("name the builds a page sits in: %w", err)
+	}
+	for _, row := range rows {
+		named[row.ID] = row
+	}
+	return named, nil
 }
 
 // groupHead is one group of the findings list as the covering index knows it:
@@ -834,6 +944,8 @@ type decorated struct {
 	ConsumerID    *int64 `bun:"consumer_id"`
 	Consumers     int    `bun:"consumers"`
 	Direct        int    `bun:"direct"`
+	Builds        int    `bun:"builds"`
+	TargetID      int64  `bun:"target_id"`
 	AnyClaim      int    `bun:"any_claim"`
 	Waiting       int    `bun:"waiting_here"`
 	Approved      int    `bun:"approved_here"`
@@ -855,7 +967,7 @@ type decorated struct {
 // of them), for the cost of nothing. Where the page comes back empty — an
 // offset past the end — there is no row to carry it and it is counted
 // separately.
-func (s *Store) heads(ctx context.Context, targetID int64, visible []access.Visibility,
+func (s *Store) heads(ctx context.Context, targets []int64, visible []access.Visibility,
 	limit, offset int, filter Filter) ([]groupHead, int, error) {
 
 	var heads []groupHead
@@ -869,7 +981,7 @@ func (s *Store) heads(ctx context.Context, targetID int64, visible []access.Visi
 		// decision appears is the worst of what it covers.
 		ColumnExpr("MAX(f.urgency) AS urgency").
 		ColumnExpr("COUNT(*) OVER () AS total").
-		Where("f.target_id = ?", targetID).
+		Where("f.target_id IN (?)", bun.List(targets)).
 		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		GroupExpr("f.vulnerability_id, f.component_id").
@@ -889,7 +1001,7 @@ func (s *Store) heads(ctx context.Context, targetID int64, visible []access.Visi
 	counted := s.db.NewSelect().
 		TableExpr("finding AS f").
 		ColumnExpr("f.vulnerability_id").
-		Where("f.target_id = ?", targetID).
+		Where("f.target_id IN (?)", bun.List(targets)).
 		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		GroupExpr("f.vulnerability_id, f.component_id")
@@ -909,8 +1021,8 @@ func (s *Store) heads(ctx context.Context, targetID int64, visible []access.Visi
 // number here is over exactly the places the group was counted over: a list
 // narrowed to what sits inside one container reports how many of *those*
 // places are answered, not how many places there are anywhere.
-func (s *Store) decorate(ctx context.Context, targetID, productID int64, visible []access.Visibility,
-	heads []groupHead, filter Filter) (map[groupKey]decorated, error) {
+func (s *Store) decorate(ctx context.Context, targets []int64, productID int64,
+	visible []access.Visibility, heads []groupHead, filter Filter) (map[groupKey]decorated, error) {
 
 	known := make(map[groupKey]decorated, len(heads))
 	if len(heads) == 0 {
@@ -965,6 +1077,11 @@ func (s *Store) decorate(ctx context.Context, targetID, productID int64, visible
 		ColumnExpr("MIN(f.consumer_id) AS consumer_id").
 		ColumnExpr("COUNT(DISTINCT f.consumer_id) AS consumers").
 		ColumnExpr("SUM(CASE WHEN f.consumer_id IS NULL THEN 1 ELSE 0 END) AS direct").
+		// How many builds in the selection hold this group, and one of them to
+		// name. Both are one where the selection is a single build, which is
+		// why the row says nothing about either there.
+		ColumnExpr("COUNT(DISTINCT f.target_id) AS builds").
+		ColumnExpr("MIN(f.target_id) AS target_id").
 		ColumnExpr(decided("any_claim", ""), productID).
 		ColumnExpr(decided("waiting_here", " AND de.state = ? AND de.live_key IS NOT NULL"),
 			productID, "proposed").
@@ -974,7 +1091,7 @@ func (s *Store) decorate(ctx context.Context, targetID, productID int64, visible
 		ColumnExpr(decided("sent_back_here",
 			" AND de.state = ? AND de.live_key IS NOT NULL AND de.sent_back_at IS NOT NULL"),
 			productID, "proposed").
-		Where("f.target_id = ?", targetID).
+		Where("f.target_id IN (?)", bun.List(targets)).
 		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		// The page's issues and the page's components, as two lists. That
@@ -1653,24 +1770,16 @@ type ComponentGroup struct {
 
 // ComponentGroups returns what is open against a target, gathered by the
 // component it is open against rather than by the issue.
-func (s *Store) ComponentGroups(ctx context.Context, subject access.Subject, targetID int64,
+func (s *Store) ComponentGroups(ctx context.Context, subject access.Subject, scope Scope,
 	limit, offset int, filter Filter) ([]ComponentGroup, int, error) {
 
-	productID, err := productOf(ctx, s.db, targetID)
+	_, visible, targets, err := s.inScope(ctx, subject, scope, &filter)
 	if err != nil {
 		return nil, 0, err
 	}
-	if !subject.Sees(productID) {
-		return nil, 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
+	if len(targets) == 0 {
+		return nil, 0, nil
 	}
-	visible := access.Visible(subject, productID)
-	if len(visible) == 0 {
-		return nil, 0, access.Denied(fmt.Sprintf("read findings in product %d", productID))
-	}
-	filter.ProductID = productID
-	filter.TargetID = targetID
-	// Who "mine" means, from the subject rather than from the request.
-	filter.HeldBy = subject.ID
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
@@ -1696,7 +1805,7 @@ func (s *Store) ComponentGroups(ctx context.Context, subject access.Subject, tar
 		ColumnExpr("MAX(f.urgency) AS urgency").
 		// The total rides on the page, as the findings list's does.
 		ColumnExpr("COUNT(*) OVER () AS total").
-		Where("f.target_id = ?", targetID).
+		Where("f.target_id IN (?)", bun.List(targets)).
 		Where("f.closed_at IS NULL").
 		Where("f.visibility IN (?)", bun.List(visible)).
 		GroupExpr("f.component_id").
@@ -1716,7 +1825,7 @@ func (s *Store) ComponentGroups(ctx context.Context, subject access.Subject, tar
 		counted := s.db.NewSelect().
 			TableExpr("finding AS f").
 			ColumnExpr("f.component_id").
-			Where("f.target_id = ?", targetID).
+			Where("f.target_id IN (?)", bun.List(targets)).
 			Where("f.closed_at IS NULL").
 			Where("f.visibility IN (?)", bun.List(visible)).
 			GroupExpr("f.component_id")

@@ -1512,6 +1512,10 @@ components:
           description: How many of those the build has already argued do not apply
           format: int64
           type: integer
+        builds:
+          description: How many builds in the selection hold this. Absent where the selection is one build
+          format: int64
+          type: integer
         chains:
           description: How many distinct ways down there are. More than one means the pair above is one of them
           format: int64
@@ -1577,8 +1581,14 @@ components:
             - agreed
             - lapsed
           type: string
+        stream:
+          description: "A branch or tag holding this, for linking to. One of them, not the only one: builds says how many there are. Absent where the selection is one build"
+          type: string
         upstream:
           description: What a fork was made from, where it is one
+          type: string
+        variant:
+          description: The variant of that build
           type: string
         version:
           description: The version that ships
@@ -5957,6 +5967,383 @@ paths:
         - Catalog
       x-openpsirt-requires:
         scope: deployment
+  /v1/products/{product}/findings:
+    get:
+      description: |-
+        Returns one row per vulnerability-and-component pair, not one row per place the component appears. Each row gives the number of places it occupies and how many of those the build's VEX documents already answer.
+
+        Grouping matters at real scale: one switch image produced 335,021 individual findings, which collapse to 7,906 rows here.
+
+        Ordered by urgency — known-exploited first, then whether the build ships to customers, then severity, then likelihood. Supports limit and offset.
+
+        Narrowing happens here rather than in the client, and `total` counts what the filter admits. A filter applied to a page already fetched answers a different question from the one it appears to: `exploited` over fifty rows means exploited among those fifty.
+
+        `under` keeps what one container holds directly; `beneath` keeps what sits at a component or anywhere under it, which is what the dependency tree's cumulative count counts. The tree counts distinct issues and this list is one row per issue and component, so a subtree holding one issue at two components is two rows here and one there.
+
+        `stream` and `variant` are optional and independent. With both named the list is one build. With either left out it answers for every build under the product that matches the rest: a row is still one issue in one component, its place count is across every build it is in, and `builds` says how many those are. Across more than one build a row carries `stream` and `variant` naming one of them to link to, and carries no `owner`, `parent`, `middle` or `chains` — a chain belongs to one build's graph. `beneath` is a walk over one build's edges and is refused unless both are named.
+
+        **Requires:** any recognized credential. Answers only what you may see.
+      operationId: list-findings
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - description: Limit to one branch or tag. Left out, every one under the product
+          explode: false
+          in: query
+          name: stream
+          schema:
+            description: Limit to one branch or tag. Left out, every one under the product
+            type: string
+        - description: Limit to one variant. Left out, every one under the product, and independent of the branch
+          explode: false
+          in: query
+          name: variant
+          schema:
+            description: Limit to one variant. Left out, every one under the product, and independent of the branch
+            type: string
+        - description: Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating
+          explode: false
+          in: query
+          name: severity
+          schema:
+            description: Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating
+            enum:
+              - low
+              - medium
+              - high
+              - critical
+            type: string
+        - description: Keep only issues somebody is known to be exploiting
+          explode: false
+          in: query
+          name: exploited
+          schema:
+            description: Keep only issues somebody is known to be exploiting
+            type: boolean
+        - description: Keep only issues where an upstream fixed version is known
+          explode: false
+          in: query
+          name: fixable
+          schema:
+            description: Keep only issues where an upstream fixed version is known
+            type: boolean
+        - description: Include what this product does not consider worth triaging. Those are always recorded and counted; this asks to see them in the list
+          explode: false
+          in: query
+          name: below_floor
+          schema:
+            description: Include what this product does not consider worth triaging. Those are always recorded and counted; this asks to see them in the list
+            type: boolean
+        - description: Keep only what is open against components of this name, whatever version
+          explode: false
+          in: query
+          name: component
+          schema:
+            description: Keep only what is open against components of this name, whatever version
+            type: string
+        - description: Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name
+          explode: false
+          in: query
+          name: q
+          schema:
+            description: Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name
+            maxLength: 200
+            type: string
+        - description: "Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"
+          explode: false
+          in: query
+          name: ecosystem
+          schema:
+            description: "Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"
+            type: string
+        - description: Keep only what sits inside the container of this name
+          explode: false
+          in: query
+          name: under
+          schema:
+            description: Keep only what sits inside the container of this name
+            type: string
+        - description: Keep only what the build holds directly, which is what has no container above it
+          explode: false
+          in: query
+          name: under_build
+          schema:
+            description: Keep only what the build holds directly, which is what has no container above it
+            type: boolean
+        - description: Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused
+          explode: false
+          in: query
+          name: beneath
+          schema:
+            description: Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused
+            type: string
+        - description: "Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"
+          explode: false
+          in: query
+          name: state
+          schema:
+            description: "Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"
+            enum:
+              - undecided
+              - waiting
+              - agreed
+              - lapsed
+            type: string
+        - description: "Keep only groups a standing judgment of this kind covers — how to ask what has been dismissed, which state cannot answer: agreed says a judgment stands, not which one. Every place must be answered the same way, and only the claim standing now counts"
+          explode: false
+          in: query
+          name: outcome
+          schema:
+            description: "Keep only groups a standing judgment of this kind covers — how to ask what has been dismissed, which state cannot answer: agreed says a judgment stands, not which one. Every place must be answered the same way, and only the claim standing now counts"
+            enum:
+              - affected
+              - not-applicable
+              - deferred
+              - wont-fix
+              - already-fixed
+            type: string
+        - description: Keep only groups by who is dealing with them. A group whose places are held by different people is none of these
+          explode: false
+          in: query
+          name: assigned
+          schema:
+            description: Keep only groups by who is dealing with them. A group whose places are held by different people is none of these
+            enum:
+              - me
+              - somebody
+              - nobody
+            type: string
+        - description: Keep only groups whose issue we rated differently from the world — what has been re-prioritized here
+          explode: false
+          in: query
+          name: reassessed
+          schema:
+            description: Keep only groups whose issue we rated differently from the world — what has been re-prioritized here
+            type: boolean
+        - description: Keep only groups a scanner reached by comparing a published identifier against an upstream version range, never against an advisory for the package in its own ecosystem. A distribution backports fixes without moving the upstream version, so these are neither confirmed nor refuted — somebody has to look, and finding them one at a time is not a thing anybody does
+          explode: false
+          in: query
+          name: unconfirmed
+          schema:
+            description: Keep only groups a scanner reached by comparing a published identifier against an upstream version range, never against an advisory for the package in its own ecosystem. A distribution backports fixes without moving the upstream version, so these are neither confirmed nor refuted — somebody has to look, and finding them one at a time is not a thing anybody does
+            type: boolean
+        - description: "Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows"
+          explode: false
+          in: query
+          name: exclude
+          schema:
+            description: "Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows"
+            items:
+              type: string
+            type:
+              - array
+              - "null"
+        - description: How many to return
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            description: How many to return
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - description: How many to skip
+          explode: false
+          in: query
+          name: offset
+          schema:
+            description: How many to skip
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FindingsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List vulnerability findings
+      tags:
+        - Findings
+      x-openpsirt-requires:
+        scope: any
+        note: Answers only what you may see.
+  /v1/products/{product}/findings/components:
+    get:
+      description: |-
+        One row per component and version, with how many distinct issues are open against it and how many places those sit at. The level above the findings list: it answers where the weight is rather than what is wrong, which is the question somebody asks before deciding what to read and what to put aside.
+
+        It is also how a person finds the one package worth hiding. On a switch operating-system image the kernel carried 4,943 of 6,822 findings rows and the next largest contributor carried 58 — a fact no list of issues makes visible, because ordered by urgency it just looks like a long list.
+
+        Takes the same filters as the findings list, so the two agree about what is being counted. Ordered by how many issues, not by urgency: ordering by urgency would reproduce the findings list at worse resolution.
+
+        `stream` and `variant` are optional and independent, as they are on the findings list: with either left out this counts across every build under the product that matches the rest. `beneath` is a walk over one build's edges and is refused unless both are named.
+
+        **Requires:** any recognized credential. Answers only what you may see.
+      operationId: list-finding-components
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - description: Limit to one branch or tag. Left out, every one under the product
+          explode: false
+          in: query
+          name: stream
+          schema:
+            description: Limit to one branch or tag. Left out, every one under the product
+            type: string
+        - description: Limit to one variant. Left out, every one under the product, and independent of the branch
+          explode: false
+          in: query
+          name: variant
+          schema:
+            description: Limit to one variant. Left out, every one under the product, and independent of the branch
+            type: string
+        - description: Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating
+          explode: false
+          in: query
+          name: severity
+          schema:
+            description: Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating
+            enum:
+              - low
+              - medium
+              - high
+              - critical
+            type: string
+        - description: Keep only issues somebody is known to be exploiting
+          explode: false
+          in: query
+          name: exploited
+          schema:
+            description: Keep only issues somebody is known to be exploiting
+            type: boolean
+        - description: Keep only issues where an upstream fixed version is known
+          explode: false
+          in: query
+          name: fixable
+          schema:
+            description: Keep only issues where an upstream fixed version is known
+            type: boolean
+        - description: Include what this product does not consider worth triaging
+          explode: false
+          in: query
+          name: below_floor
+          schema:
+            description: Include what this product does not consider worth triaging
+            type: boolean
+        - description: Keep only components whose name contains this, ignoring capitals
+          explode: false
+          in: query
+          name: q
+          schema:
+            description: Keep only components whose name contains this, ignoring capitals
+            maxLength: 200
+            type: string
+        - description: "Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"
+          explode: false
+          in: query
+          name: ecosystem
+          schema:
+            description: "Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"
+            type: string
+        - description: Keep only what sits inside the container of this name
+          explode: false
+          in: query
+          name: under
+          schema:
+            description: Keep only what sits inside the container of this name
+            type: string
+        - description: Keep only what the build holds directly, which is what has no container above it
+          explode: false
+          in: query
+          name: under_build
+          schema:
+            description: Keep only what the build holds directly, which is what has no container above it
+            type: boolean
+        - description: Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused
+          explode: false
+          in: query
+          name: beneath
+          schema:
+            description: Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused
+            type: string
+        - description: "Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"
+          explode: false
+          in: query
+          name: state
+          schema:
+            description: "Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"
+            enum:
+              - undecided
+              - waiting
+              - agreed
+              - lapsed
+            type: string
+        - description: Drop components of these names
+          explode: false
+          in: query
+          name: exclude
+          schema:
+            description: Drop components of these names
+            items:
+              type: string
+            type:
+              - array
+              - "null"
+        - description: How many to return
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            description: How many to return
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - description: How many to skip
+          explode: false
+          in: query
+          name: offset
+          schema:
+            description: How many to skip
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComponentFindingsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List what is open, gathered by component
+      tags:
+        - Findings
+      x-openpsirt-requires:
+        scope: any
+        note: Answers only what you may see.
   /v1/products/{product}/issues/{vulnerability}/advisory:
     get:
       description: |-
@@ -6676,212 +7063,6 @@ paths:
         scope: any
         note: Answers only what you may see.
   /v1/products/{product}/streams/{stream}/variants/{variant}/findings:
-    get:
-      description: |-
-        Returns one row per vulnerability-and-component pair, not one row per place the component appears. Each row gives the number of places it occupies and how many of those the build's VEX documents already answer.
-
-        Grouping matters at real scale: one switch image produced 335,021 individual findings, which collapse to 7,906 rows here.
-
-        Ordered by urgency — known-exploited first, then whether the build ships to customers, then severity, then likelihood. Supports limit and offset.
-
-        Narrowing happens here rather than in the client, and `total` counts what the filter admits. A filter applied to a page already fetched answers a different question from the one it appears to: `exploited` over fifty rows means exploited among those fifty.
-
-        `under` keeps what one container holds directly; `beneath` keeps what sits at a component or anywhere under it, which is what the dependency tree's cumulative count counts. The tree counts distinct issues and this list is one row per issue and component, so a subtree holding one issue at two components is two rows here and one there.
-
-        **Requires:** any recognized credential. Answers only what you may see.
-      operationId: list-findings
-      parameters:
-        - in: path
-          name: product
-          required: true
-          schema:
-            type: string
-        - in: path
-          name: stream
-          required: true
-          schema:
-            type: string
-        - in: path
-          name: variant
-          required: true
-          schema:
-            type: string
-        - description: Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating
-          explode: false
-          in: query
-          name: severity
-          schema:
-            description: Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating
-            enum:
-              - low
-              - medium
-              - high
-              - critical
-            type: string
-        - description: Keep only issues somebody is known to be exploiting
-          explode: false
-          in: query
-          name: exploited
-          schema:
-            description: Keep only issues somebody is known to be exploiting
-            type: boolean
-        - description: Keep only issues where an upstream fixed version is known
-          explode: false
-          in: query
-          name: fixable
-          schema:
-            description: Keep only issues where an upstream fixed version is known
-            type: boolean
-        - description: Include what this product does not consider worth triaging. Those are always recorded and counted; this asks to see them in the list
-          explode: false
-          in: query
-          name: below_floor
-          schema:
-            description: Include what this product does not consider worth triaging. Those are always recorded and counted; this asks to see them in the list
-            type: boolean
-        - description: Keep only what is open against components of this name, whatever version
-          explode: false
-          in: query
-          name: component
-          schema:
-            description: Keep only what is open against components of this name, whatever version
-            type: string
-        - description: Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name
-          explode: false
-          in: query
-          name: q
-          schema:
-            description: Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name
-            maxLength: 200
-            type: string
-        - description: "Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"
-          explode: false
-          in: query
-          name: ecosystem
-          schema:
-            description: "Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"
-            type: string
-        - description: Keep only what sits inside the container of this name
-          explode: false
-          in: query
-          name: under
-          schema:
-            description: Keep only what sits inside the container of this name
-            type: string
-        - description: Keep only what the build holds directly, which is what has no container above it
-          explode: false
-          in: query
-          name: under_build
-          schema:
-            description: Keep only what the build holds directly, which is what has no container above it
-            type: boolean
-        - description: Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused
-          explode: false
-          in: query
-          name: beneath
-          schema:
-            description: Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused
-            type: string
-        - description: "Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"
-          explode: false
-          in: query
-          name: state
-          schema:
-            description: "Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"
-            enum:
-              - undecided
-              - waiting
-              - agreed
-              - lapsed
-            type: string
-        - description: "Keep only groups a standing judgment of this kind covers — how to ask what has been dismissed, which state cannot answer: agreed says a judgment stands, not which one. Every place must be answered the same way, and only the claim standing now counts"
-          explode: false
-          in: query
-          name: outcome
-          schema:
-            description: "Keep only groups a standing judgment of this kind covers — how to ask what has been dismissed, which state cannot answer: agreed says a judgment stands, not which one. Every place must be answered the same way, and only the claim standing now counts"
-            enum:
-              - affected
-              - not-applicable
-              - deferred
-              - wont-fix
-              - already-fixed
-            type: string
-        - description: Keep only groups by who is dealing with them. A group whose places are held by different people is none of these
-          explode: false
-          in: query
-          name: assigned
-          schema:
-            description: Keep only groups by who is dealing with them. A group whose places are held by different people is none of these
-            enum:
-              - me
-              - somebody
-              - nobody
-            type: string
-        - description: Keep only groups whose issue we rated differently from the world — what has been re-prioritized here
-          explode: false
-          in: query
-          name: reassessed
-          schema:
-            description: Keep only groups whose issue we rated differently from the world — what has been re-prioritized here
-            type: boolean
-        - description: Keep only groups a scanner reached by comparing a published identifier against an upstream version range, never against an advisory for the package in its own ecosystem. A distribution backports fixes without moving the upstream version, so these are neither confirmed nor refuted — somebody has to look, and finding them one at a time is not a thing anybody does
-          explode: false
-          in: query
-          name: unconfirmed
-          schema:
-            description: Keep only groups a scanner reached by comparing a published identifier against an upstream version range, never against an advisory for the package in its own ecosystem. A distribution backports fixes without moving the upstream version, so these are neither confirmed nor refuted — somebody has to look, and finding them one at a time is not a thing anybody does
-            type: boolean
-        - description: "Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows"
-          explode: false
-          in: query
-          name: exclude
-          schema:
-            description: "Drop components of these names. One package can drown the list: on a switch image the kernel carried 4,943 of 6,822 rows"
-            items:
-              type: string
-            type:
-              - array
-              - "null"
-        - description: How many to return
-          explode: false
-          in: query
-          name: limit
-          schema:
-            default: 50
-            description: How many to return
-            format: int64
-            maximum: 200
-            minimum: 1
-            type: integer
-        - description: How many to skip
-          explode: false
-          in: query
-          name: offset
-          schema:
-            description: How many to skip
-            format: int64
-            minimum: 0
-            type: integer
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FindingsOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: List vulnerability findings
-      tags:
-        - Findings
-      x-openpsirt-requires:
-        scope: any
-        note: Answers only what you may see.
     post:
       description: |-
         Records a vulnerability in your own product — one no scanner reported, usually because nobody outside knows about it yet.
@@ -6940,164 +7121,6 @@ paths:
           - public-triage
           - private-triage
         note: private-triage where the finding is undisclosed.
-  /v1/products/{product}/streams/{stream}/variants/{variant}/findings/components:
-    get:
-      description: |-
-        One row per component and version, with how many distinct issues are open against it and how many places those sit at. The level above the findings list: it answers where the weight is rather than what is wrong, which is the question somebody asks before deciding what to read and what to put aside.
-
-        It is also how a person finds the one package worth hiding. On a switch operating-system image the kernel carried 4,943 of 6,822 findings rows and the next largest contributor carried 58 — a fact no list of issues makes visible, because ordered by urgency it just looks like a long list.
-
-        Takes the same filters as the findings list, so the two agree about what is being counted. Ordered by how many issues, not by urgency: ordering by urgency would reproduce the findings list at worse resolution.
-
-        **Requires:** any recognized credential. Answers only what you may see.
-      operationId: list-finding-components
-      parameters:
-        - in: path
-          name: product
-          required: true
-          schema:
-            type: string
-        - in: path
-          name: stream
-          required: true
-          schema:
-            type: string
-        - in: path
-          name: variant
-          required: true
-          schema:
-            type: string
-        - description: Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating
-          explode: false
-          in: query
-          name: severity
-          schema:
-            description: Keep only issues rated this badly or worse. 'low' excludes nothing, including issues carrying no rating
-            enum:
-              - low
-              - medium
-              - high
-              - critical
-            type: string
-        - description: Keep only issues somebody is known to be exploiting
-          explode: false
-          in: query
-          name: exploited
-          schema:
-            description: Keep only issues somebody is known to be exploiting
-            type: boolean
-        - description: Keep only issues where an upstream fixed version is known
-          explode: false
-          in: query
-          name: fixable
-          schema:
-            description: Keep only issues where an upstream fixed version is known
-            type: boolean
-        - description: Include what this product does not consider worth triaging
-          explode: false
-          in: query
-          name: below_floor
-          schema:
-            description: Include what this product does not consider worth triaging
-            type: boolean
-        - description: Keep only components whose name contains this, ignoring capitals
-          explode: false
-          in: query
-          name: q
-          schema:
-            description: Keep only components whose name contains this, ignoring capitals
-            maxLength: 200
-            type: string
-        - description: "Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"
-          explode: false
-          in: query
-          name: ecosystem
-          schema:
-            description: "Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"
-            type: string
-        - description: Keep only what sits inside the container of this name
-          explode: false
-          in: query
-          name: under
-          schema:
-            description: Keep only what sits inside the container of this name
-            type: string
-        - description: Keep only what the build holds directly, which is what has no container above it
-          explode: false
-          in: query
-          name: under_build
-          schema:
-            description: Keep only what the build holds directly, which is what has no container above it
-            type: boolean
-        - description: Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused
-          explode: false
-          in: query
-          name: beneath
-          schema:
-            description: Keep only what sits at this component or anywhere under it — what the dependency tree's cumulative count counts. The name must be in the build; a name that is not, or that the build holds at more than one version, is refused
-            type: string
-        - description: "Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"
-          explode: false
-          in: query
-          name: state
-          schema:
-            description: "Keep only groups this far decided. A group covers every place an issue sits at in one component, so this is a statement about all of them: undecided means no place has a decision, agreed means every place is answered"
-            enum:
-              - undecided
-              - waiting
-              - agreed
-              - lapsed
-            type: string
-        - description: Drop components of these names
-          explode: false
-          in: query
-          name: exclude
-          schema:
-            description: Drop components of these names
-            items:
-              type: string
-            type:
-              - array
-              - "null"
-        - description: How many to return
-          explode: false
-          in: query
-          name: limit
-          schema:
-            default: 50
-            description: How many to return
-            format: int64
-            maximum: 200
-            minimum: 1
-            type: integer
-        - description: How many to skip
-          explode: false
-          in: query
-          name: offset
-          schema:
-            description: How many to skip
-            format: int64
-            minimum: 0
-            type: integer
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ComponentFindingsOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: List what is open, gathered by component
-      tags:
-        - Findings
-      x-openpsirt-requires:
-        scope: any
-        note: Answers only what you may see.
   /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}:
     get:
       description: |-

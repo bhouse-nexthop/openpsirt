@@ -442,7 +442,7 @@ func TestAFindingsRowSaysHowFarItIsDecidedAndWhetherItCameBack(t *testing.T) {
 	// definition, and says when a claim is back with its author.
 	eachReach(t, func(t *testing.T, r *reach) {
 		r.scanned(t)
-		const list = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		const list = "/v1/products/mine/findings?stream=master&variant=broadcom"
 		row := func() (state string, sentBack bool) {
 			t.Helper()
 			got := asPerson(t, r, "triager", http.MethodGet, list, "")
@@ -480,8 +480,10 @@ func TestAFindingsRowSaysHowFarItIsDecidedAndWhetherItCameBack(t *testing.T) {
 				DecisionID int64 `json:"decision_id"`
 			} `json:"standing"`
 		}
+		// The finding itself is still a build's, and says so in its path.
 		got := asPerson(t, r, "triager", http.MethodGet,
-			list+"/CVE-2026-9999/components/libnl-3-200", "")
+			"/v1/products/mine/streams/master/variants/broadcom"+
+				"/findings/CVE-2026-9999/components/libnl-3-200", "")
 		if err := json.Unmarshal(got.Body.Bytes(), &ids); err != nil || len(ids.Standing) != 1 {
 			t.Fatalf("the finding reads as %s (%v)", got.Body.String(), err)
 		}
@@ -687,33 +689,37 @@ func TestATreeCountIsPerPathAndTheListItOpensAgrees(t *testing.T) {
 		}
 
 		// The list the number opens: two rows, one per issue and component.
+		// The list is scoped by query rather than by path: with the branch and
+		// the variant named it is this one build (UIX-53).
+		const listing = "/v1/products/mine/findings?stream=master&variant=broadcom"
 		list := func(query string) (total int, code int) {
 			t.Helper()
-			got := asPerson(t, r, "triager", http.MethodGet, build+"/findings"+query, "")
+			got := asPerson(t, r, "triager", http.MethodGet, listing+query, "")
 			var out struct {
 				Total int `json:"total"`
 			}
 			_ = json.Unmarshal(got.Body.Bytes(), &out)
 			return out.Total, got.Code
 		}
-		if total, code := list("?beneath=docker-a"); code != http.StatusOK || total != 2 {
+		if total, code := list("&beneath=docker-a"); code != http.StatusOK || total != 2 {
 			t.Errorf("beneath docker-a answered %d with %d rows, want 2", code, total)
 		}
-		if total, code := list("?beneath=libyang"); code != http.StatusOK || total != 2 {
+		if total, code := list("&beneath=libyang"); code != http.StatusOK || total != 2 {
 			t.Errorf("beneath libyang answered %d with %d rows, want 2", code, total)
 		}
-		if total, code := list("?beneath=mine"); code != http.StatusOK || total != 2 {
+		if total, code := list("&beneath=mine"); code != http.StatusOK || total != 2 {
 			t.Errorf("beneath the root answered %d with %d rows, want 2", code, total)
 		}
 		// under is still the direct consumer, and beneath refuses a name the
 		// build does not hold.
-		if total, code := list("?under=docker-a"); code != http.StatusOK || total != 2 {
+		if total, code := list("&under=docker-a"); code != http.StatusOK || total != 2 {
 			t.Errorf("under docker-a answered %d with %d rows, want 2", code, total)
 		}
-		if _, code := list("?beneath=nothing-here"); code != http.StatusUnprocessableEntity {
+		if _, code := list("&beneath=nothing-here"); code != http.StatusUnprocessableEntity {
 			t.Errorf("beneath a name the build lacks answered %d, want 422", code)
 		}
-		got = asPerson(t, r, "triager", http.MethodGet, build+"/findings/components?beneath=docker-b", "")
+		got = asPerson(t, r, "triager", http.MethodGet,
+			"/v1/products/mine/findings/components?stream=master&variant=broadcom&beneath=docker-b", "")
 		var byComponent struct {
 			Total int `json:"total"`
 		}

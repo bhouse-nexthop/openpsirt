@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { useScope } from "./scope";
+import { findingsPath, useScope } from "./scope";
 import { forgetAll } from "./drafts";
 import { Scope } from "./Scope";
 import { api } from "../api/client";
@@ -63,15 +63,23 @@ export function Shell({ who, children }: { who: Who; children: ReactNode }) {
       ),
     refetchInterval: 60_000,
   });
+  // Counted for whatever is selected rather than only for a whole build
+  // (UIX-53): the entry beside this number opens the list that produced it,
+  // and a rail that goes quiet the moment somebody widens the scope is one
+  // that looks broken rather than one that declines.
   const open = useQuery({
     queryKey: ["findings", "count", product, stream, variant],
-    enabled: whole,
+    enabled: !!product,
     queryFn: async () =>
       unwrap(
-        await api.GET("/v1/products/{product}/streams/{stream}/variants/{variant}/findings", {
+        await api.GET("/v1/products/{product}/findings", {
           params: {
-            path: { product: product ?? "", stream: stream ?? "", variant: variant ?? "" },
-            query: { limit: 1 },
+            path: { product: product ?? "" },
+            query: {
+              limit: 1,
+              ...(stream ? { stream } : {}),
+              ...(variant ? { variant } : {}),
+            },
           },
         }),
       ),
@@ -129,10 +137,20 @@ export function Shell({ who, children }: { who: Who; children: ReactNode }) {
         <span className="group" title={scope}>
           {scope}
         </span>
-        {/* Six screens exist for one build and no other (UIX-39). Without one
+        {/* Five screens exist for one build and no other (UIX-39). Without one
             picked they decline rather than opening on a scope that means
-            nothing, and say why. */}
-        <Rail to={`${build}/findings`} icon="bug" label="Findings" count={open.data?.total} quiet needs={whole} />
+            nothing, and say why. Findings is not one of them any more: it
+            answers for whatever is selected and needs only a product
+            (UIX-53). */}
+        <Rail
+          to={findingsPath({ product, stream, variant })}
+          icon="bug"
+          label="Findings"
+          count={open.data?.total}
+          quiet
+          needs={!!product}
+          why="Pick a product first"
+        />
         <Rail to={`${build}/components`} icon="tree" label="Dependencies" needs={whole} />
         <Rail to={`${build}/scans`} icon="scan" label="Inventories" needs={whole} />
         {/* Comparison belongs to the product rather than to one build — it is
@@ -175,7 +193,7 @@ export function Shell({ who, children }: { who: Who; children: ReactNode }) {
         <NavLink to="/" end>
           Home
         </NavLink>
-        <NavLink to={whole ? `${build}/findings` : "/products"}>
+        <NavLink to={findingsPath({ product, stream, variant })}>
           Findings
         </NavLink>
         <NavLink to="/review-queue">

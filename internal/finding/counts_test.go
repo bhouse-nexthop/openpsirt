@@ -33,7 +33,7 @@ func TestCountingWhatIsOpenAgreesWithTheListAndCarriesVisibility(t *testing.T) {
 			t.Fatal(err)
 		}
 		// The findings list is the number this has to match.
-		_, listed, err := f.store.Groups(ctx, who, f.target, 50, 0, finding.Filter{})
+		_, listed, err := f.store.Groups(ctx, who, f.scope, 50, 0, finding.Filter{})
 		if err != nil {
 			t.Fatal(err)
 		}

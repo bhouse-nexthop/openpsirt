@@ -11,6 +11,7 @@ import (
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/dbtest"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
 	"github.com/bhouse-nexthop/openpsirt/internal/schema"
@@ -22,8 +23,11 @@ type fixture struct {
 	store    *graph.Store
 	scans    *ingest.Store
 	targetID int64
-	built    time.Time
-	seq      int
+	// scope is the same build as a selection, for the findings list, which
+	// takes one rather than a build identifier.
+	scope finding.Scope
+	built time.Time
+	seq   int
 }
 
 // scan records a new scan, each newer than the last, and returns its
@@ -71,7 +75,11 @@ func each(t *testing.T, fn func(t *testing.T, f *fixture)) {
 		}
 		fn(t, &fixture{
 			store: graph.NewStore(db.DB), scans: ingest.NewStore(db.DB),
-			targetID: target.ID, built: time.Now().UTC().Add(-48 * time.Hour),
+			targetID: target.ID,
+			scope: finding.Scope{
+				ProductID: &p.ID, StreamID: &br.ID, VariantID: &v.ID,
+			},
+			built: time.Now().UTC().Add(-48 * time.Hour),
 		})
 	})
 }
