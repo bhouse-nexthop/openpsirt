@@ -34,6 +34,14 @@ export function Decision({ who }: { who: Who }) {
 
   const mine = it.proposed_by === who.identity || it.proposed_by === who.name;
 
+  // What a file would be attached to. Both halves have to be known: the issue
+  // says which, and the product says whose, because the same identifier in two
+  // products is two pieces of work with two sets of readers.
+  const about =
+    it.place?.product && it.place?.vulnerability
+      ? { product: it.place.product, vulnerability: it.place.vulnerability }
+      : undefined;
+
   return (
     <div className="max-w-3xl">
       <header className="mb-4">
@@ -95,11 +103,12 @@ export function Decision({ who }: { who: Who }) {
         current={it.reasoning ?? ""}
         mine={mine}
         state={it.decision?.state}
+        about={about}
       />
 
       <Revisions id={id} />
       <Approvals id={id} />
-      <Comments id={id} />
+      <Comments id={id} about={about} />
     </div>
   );
 }
@@ -112,11 +121,15 @@ function Reasoning({
   current,
   mine,
   state,
+  about,
 }: {
   id: number;
   current: string;
   mine: boolean;
   state?: string;
+  // The issue this decision is about, where the screen knows it. A file is
+  // attached to an issue, so with no issue in hand nothing is offered.
+  about?: { product: string; vulnerability: string };
 }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(current);
@@ -149,7 +162,13 @@ function Reasoning({
             Revising withdraws any approval this has and returns it to the queue, marked as previously
             approved. The earlier words stay readable.
           </p>
-          <Editor value={text} onChange={setText} draftKey={draftKey} label="Reasoning" />
+          <Editor
+            value={text}
+            onChange={setText}
+            draftKey={draftKey}
+            label="Reasoning"
+            attachTo={about}
+          />
           {revise.error != null && <Failed error={revise.error} what="That could not be stored." />}
           <div className="mt-2 flex gap-2">
             <button
@@ -285,7 +304,7 @@ function Approvals({ id }: { id: number }) {
 
 // Comments are separate from the reasoning and never affect an approval, so an
 // approved claim can be annotated at any time without disturbing it.
-function Comments({ id }: { id: number }) {
+function Comments({ id, about }: { id: number; about?: { product: string; vulnerability: string } }) {
   const [text, setText] = useState("");
   const comment = useComment();
   const draftKey = `comment:${id}`;
@@ -325,6 +344,7 @@ function Comments({ id }: { id: number }) {
         rows={4}
         label="Comment"
         placeholder="A question, a note, something worth knowing later."
+        attachTo={about}
       />
       {comment.error != null && <Failed error={comment.error} what="That could not be added." />}
       <button

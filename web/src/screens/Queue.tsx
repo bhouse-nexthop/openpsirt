@@ -601,6 +601,9 @@ function Card({
 
       {asking ? (
         <div>
+          {/* No attach control: a rejection is about what is missing from the
+              reasoning, and a claim may cover many issues, so there is not one
+              a file would hang off. */}
           <Editor
             value={because}
             onChange={setBecause}

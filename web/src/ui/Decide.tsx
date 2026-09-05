@@ -461,6 +461,7 @@ export function Decide({
           draftKey={draftKey}
           label="Reasoning"
           mentions={{ product: at.product }}
+          attachTo={{ product: at.product, vulnerability: at.vulnerability }}
           placeholder="Why this decision holds, and what to re-check later."
         />
       </div>

@@ -272,6 +272,9 @@ function Claim({
           />
         </label>
 
+        {/* No attach control here, deliberately. One judgment covers many
+            issues, and a file hangs off one — so there is nothing this could
+            attach to that would be true of the rest. */}
         <div>
           <span className="mb-1 block text-sm text-[var(--muted)]">Reasoning</span>
           <Editor
