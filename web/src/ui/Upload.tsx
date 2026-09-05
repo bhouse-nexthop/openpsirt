@@ -188,7 +188,9 @@ export function UploadDrawer({ open, onClose }: { open: boolean; onClose: () => 
       <div className="field">
         <label>
           Inventory{" "}
-          <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--sev-high)" }}>required</span>
+          <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--sev-high)" }}>
+            required
+          </span>
         </label>
         <label className={inventory ? "dropzone has" : "dropzone"}>
           <input
@@ -229,7 +231,11 @@ export function UploadDrawer({ open, onClose }: { open: boolean; onClose: () => 
           <span>
             {suppressions.length > 0 ? (
               <>
-                <b>{suppressions.length === 1 ? suppressions[0]?.name : `${suppressions.length} files`}</b>
+                <b>
+                  {suppressions.length === 1
+                    ? suppressions[0]?.name
+                    : `${suppressions.length} files`}
+                </b>
                 {suppressions.length > 1 && <> · {suppressions.map((f) => f.name).join(", ")}</>}
               </>
             ) : (
@@ -246,8 +252,8 @@ export function UploadDrawer({ open, onClose }: { open: boolean; onClose: () => 
         <strong>Accepted, then parsed</strong>
         <span>
           The upload is answered as soon as the files land; parsing and the scan run in the
-          background and the receipt says how far it got. A file older than what already stands
-          for this target is refused rather than replacing it.
+          background and the receipt says how far it got. A file older than what already stands for
+          this target is refused rather than replacing it.
         </span>
       </div>
     </Drawer>

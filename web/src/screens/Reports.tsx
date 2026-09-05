@@ -79,8 +79,8 @@ export function Reports() {
                 <span className="l">Fixed</span>
                 <span className="n">{(pace.data?.fixed ?? 0).toLocaleString()}</span>
                 <span className="d">
-                  issues that actually went away · a version that carried the issue with it is not
-                  a fix
+                  issues that actually went away · a version that carried the issue with it is not a
+                  fix
                 </span>
               </div>
               <div className="kpi">
@@ -101,8 +101,7 @@ export function Reports() {
                   .sort()
                   .map(([band, hours]) => (
                     <li key={band}>
-                      <Severity word={band} />{" "}
-                      <b>{Math.round((hours as number) / 24)}</b> days
+                      <Severity word={band} /> <b>{Math.round((hours as number) / 24)}</b> days
                     </li>
                   ))}
               </ul>
@@ -134,8 +133,8 @@ export function Reports() {
       <section className="panel" style={{ marginTop: 14 }}>
         <h3>What keeps being put off</h3>
         <p className="hint">
-          One item deferred three times is a judgment. Forty of them is a policy nobody wrote
-          down, and that is what this is for.
+          One item deferred three times is a judgment. Forty of them is a policy nobody wrote down,
+          and that is what this is for.
         </p>
         {repeated.isError ? (
           <Failed error={repeated.error} what="Repeat deferrals could not be read." />

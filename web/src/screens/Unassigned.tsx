@@ -28,7 +28,9 @@ export function Unassigned() {
   const rows = useQuery({
     queryKey: ["unassigned", scope, offset],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/unassigned", { params: { query: { limit: PAGE, offset, ...scope } } })),
+      unwrap(
+        await api.GET("/v1/unassigned", { params: { query: { limit: PAGE, offset, ...scope } } }),
+      ),
   });
   const me = useWho();
   // Who may be offered here, rather than everybody. Listing people asks for
@@ -85,7 +87,8 @@ export function Unassigned() {
   // where it happens to be listed. The build is one of several where the code
   // is built more than one way, so including it would give the same piece of
   // work two keys if the representative ever changed.
-  const keyOf = (row: Owned) => `${row.product} ${row.vulnerability} ${row.component} ${row.version}`;
+  const keyOf = (row: Owned) =>
+    `${row.product} ${row.vulnerability} ${row.component} ${row.version}`;
 
   async function assignTo(to: string) {
     // The same action repeated, not a different one — each finding records
@@ -165,7 +168,9 @@ export function Unassigned() {
                       type="checkbox"
                       aria-label="Select every row shown"
                       checked={picked.size > 0 && picked.size === items.length}
-                      onChange={(event) => setPicked(event.target.checked ? new Set(items.map(keyOf)) : new Set())}
+                      onChange={(event) =>
+                        setPicked(event.target.checked ? new Set(items.map(keyOf)) : new Set())
+                      }
                     />
                   </th>
                   <th>Severity</th>

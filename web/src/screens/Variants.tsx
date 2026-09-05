@@ -67,8 +67,8 @@ export function Variants() {
       <div className="screen-head">
         <h2>Variants</h2>
         <p>
-          {stream ? `The ways ${product} · ${stream} is built.` : `The ways ${product} is built.`} The same code, built a
-          different way.
+          {stream ? `The ways ${product} · ${stream} is built.` : `The ways ${product} is built.`}{" "}
+          The same code, built a different way.
         </p>
         {who.data?.admin && <AddButton label="Add variant" onClick={() => setAdding(true)} />}
       </div>
@@ -76,8 +76,8 @@ export function Variants() {
       <div className="alert info" style={{ marginBottom: 14 }}>
         <strong>A variant is a different way of building the same source</strong>
         <span>
-          A different CPU architecture, operating system, chip or board, or a build that exists only for
-          testing. Not a different release — a new version of the product is a branch or a tag.
+          A different CPU architecture, operating system, chip or board, or a build that exists only
+          for testing. Not a different release — a new version of the product is a branch or a tag.
         </span>
       </div>
 
@@ -110,7 +110,9 @@ export function Variants() {
                   {/* Absent reads as yes: an unclassified build ranks as though
                       it ships, so silence must not look like a denial. */}
                   <td>
-                    <span className={variant.customer_facing === false ? "state open" : "state agreed"}>
+                    <span
+                      className={variant.customer_facing === false ? "state open" : "state agreed"}
+                    >
                       {variant.customer_facing === false ? "No — internal only" : "Yes"}
                     </span>
                   </td>
@@ -159,7 +161,11 @@ export function Variants() {
         />
         <div className="field">
           <label htmlFor="declare-facing">Ships to customers</label>
-          <select id="declare-facing" value={facing ? "yes" : "no"} onChange={(event) => setFacing(event.target.value === "yes")}>
+          <select
+            id="declare-facing"
+            value={facing ? "yes" : "no"}
+            onChange={(event) => setFacing(event.target.value === "yes")}
+          >
             <option value="yes">Yes</option>
             <option value="no">No — internal only</option>
           </select>

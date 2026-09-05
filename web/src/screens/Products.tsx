@@ -121,7 +121,10 @@ export function Products({ who }: { who: Who }) {
                 return (
                   <tr key={product.name} className="row">
                     <td>
-                      <Link to={`/products/${encodeURIComponent(product.name)}/streams`} className="id">
+                      <Link
+                        to={`/products/${encodeURIComponent(product.name)}/streams`}
+                        className="id"
+                      >
                         {product.display_name || product.name}
                       </Link>
                       {product.display_name && product.display_name !== product.name && (
@@ -153,11 +156,17 @@ export function Products({ who }: { who: Who }) {
                       />
                     </td>
                     <td className="num">{(product.open ?? 0).toLocaleString()}</td>
-                    <td className={stale ? "" : "hint"} style={stale ? { color: "var(--sev-high)", fontWeight: 600 } : undefined}>
+                    <td
+                      className={stale ? "" : "hint"}
+                      style={stale ? { color: "var(--sev-high)", fontWeight: 600 } : undefined}
+                    >
                       {product.last_scan_at ? product.last_scan_at.slice(0, 10) : "never"}
                     </td>
                     <td>
-                      <Link to={`/products/${encodeURIComponent(product.name)}/streams`} className="linkish">
+                      <Link
+                        to={`/products/${encodeURIComponent(product.name)}/streams`}
+                        className="linkish"
+                      >
                         Manage
                       </Link>
                     </td>
@@ -186,7 +195,13 @@ export function Products({ who }: { who: Who }) {
           placeholder="sonic"
           hint="How scans name it. Matched without regard to capitals; the spelling typed here is what is shown back."
         />
-        <Field label="Display name" value={displayName} onChange={setDisplayName} placeholder="SONiC" hint="Optional. Defaults to the name" />
+        <Field
+          label="Display name"
+          value={displayName}
+          onChange={setDisplayName}
+          placeholder="SONiC"
+          hint="Optional. Defaults to the name"
+        />
       </Declare>
     </>
   );
@@ -218,11 +233,7 @@ function Floor({
   onSet: (floor: Line) => void;
 }) {
   if (!admin) {
-    return stated ? (
-      <span>{stated}</span>
-    ) : (
-      <span className="hint">deployment&rsquo;s</span>
-    );
+    return stated ? <span>{stated}</span> : <span className="hint">deployment&rsquo;s</span>;
   }
   return (
     <select

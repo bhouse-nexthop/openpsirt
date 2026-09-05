@@ -41,7 +41,9 @@ export function Together() {
       unwrap(
         await api.GET(
           "/v1/products/{product}/streams/{stream}/variants/{variant}/components/{component}/issues",
-          { params: { path: at, query: { limit: PAGE, offset, ...(contains ? { contains } : {}) } } },
+          {
+            params: { path: at, query: { limit: PAGE, offset, ...(contains ? { contains } : {}) } },
+          },
         ),
       ),
   });
@@ -78,8 +80,8 @@ export function Together() {
       <div className="screen-head">
         <h2>Bulk decision</h2>
         <p>
-          <span className="id">{component}</span> · {product} · {stream} · {variant} — one outcome, one
-          reasoning, a separate record per issue and per location. Nothing here selects for you.
+          <span className="id">{component}</span> · {product} · {stream} · {variant} — one outcome,
+          one reasoning, a separate record per issue and per location. Nothing here selects for you.
         </p>
       </div>
 
@@ -109,7 +111,10 @@ export function Together() {
       {issues.isError && <Failed error={issues.error} what="The issues could not be read." />}
 
       {issues.data && items.length === 0 && (
-        <Empty title="Nothing matches." detail="Nothing is open against this component under that narrowing." />
+        <Empty
+          title="Nothing matches."
+          detail="Nothing is open against this component under that narrowing."
+        />
       )}
 
       {items.length > 0 && (
@@ -122,7 +127,11 @@ export function Together() {
             >
               Select all {items.length} shown
             </button>
-            <button type="button" onClick={() => setPicked(new Set())} className="text-[var(--muted)] hover:text-[var(--ink)]">
+            <button
+              type="button"
+              onClick={() => setPicked(new Set())}
+              className="text-[var(--muted)] hover:text-[var(--ink)]"
+            >
               Clear
             </button>
             <span className="ml-auto text-[var(--muted)]">
@@ -134,7 +143,10 @@ export function Together() {
             {items.map((issue) => {
               const name = issue.vulnerability ?? "";
               return (
-                <li key={name} className="flex flex-wrap items-center gap-2 bg-[var(--surface)] px-3 py-2 text-sm">
+                <li
+                  key={name}
+                  className="flex flex-wrap items-center gap-2 bg-[var(--surface)] px-3 py-2 text-sm"
+                >
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -225,7 +237,9 @@ function Claim({
 
   return (
     <section className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
-      <h2 className="mb-3 text-sm font-semibold">Decision for {count} {count === 1 ? "issue" : "issues"}</h2>
+      <h2 className="mb-3 text-sm font-semibold">
+        Decision for {count} {count === 1 ? "issue" : "issues"}
+      </h2>
 
       <div className="flex flex-col gap-3">
         <label className="text-sm">
@@ -305,7 +319,7 @@ function Claim({
                 ...(needsJustification ? { justification } : {}),
                 selected_by: selectedBy,
                 reasoning,
-              })
+              });
             }}
             className="rounded bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-[var(--accent-ink)] disabled:opacity-50"
           >

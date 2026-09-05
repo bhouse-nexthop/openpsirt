@@ -44,8 +44,7 @@ export function claimOf(row: QueueRow): Claim {
     key: `claim:${row.claim.id}`,
     id: row.claim.id,
     decisionId: row.decision.id ?? 0,
-    kind:
-      kind === "together" || kind === "extension" || kind === "returned" ? kind : "finding",
+    kind: kind === "together" || kind === "extension" || kind === "returned" ? kind : "finding",
     derivedFrom: row.claim.derived_from ?? null,
     title: row.place.vulnerability ?? "",
     product: row.place.product ?? "",

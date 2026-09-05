@@ -5,7 +5,11 @@ export function Empty({ title, detail }: { title: string; detail?: string }) {
   return (
     <div className="card" style={{ textAlign: "center", padding: "34px 20px" }}>
       <p style={{ margin: 0, fontWeight: 600 }}>{title}</p>
-      {detail && <p className="hint" style={{ margin: "4px 0 0" }}>{detail}</p>}
+      {detail && (
+        <p className="hint" style={{ margin: "4px 0 0" }}>
+          {detail}
+        </p>
+      )}
     </div>
   );
 }

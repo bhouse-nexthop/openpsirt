@@ -195,8 +195,8 @@ export function Record() {
         <p>
           A vulnerability in your own product — one no scanner reported, usually because nobody
           outside knows about it yet. It is filed under an identifier this deployment mints, and
-          from there it is an ordinary finding: triaged, assigned, decided, on the same clock and
-          in the same reports.
+          from there it is an ordinary finding: triaged, assigned, decided, on the same clock and in
+          the same reports.
         </p>
       </div>
 
@@ -293,7 +293,9 @@ export function Record() {
             rows={6}
             label="What the flaw is"
             placeholder="The management socket answers a request before anyone has authenticated."
-            mentions={product ? { product, visibility: disclosed ? "public" : "private" } : undefined}
+            mentions={
+              product ? { product, visibility: disclosed ? "public" : "private" } : undefined
+            }
           />
           <span className="hint">
             In your own words. It is what a triager reads first and often all they read.
@@ -323,8 +325,11 @@ export function Record() {
             {vector !== "" ? (
               <> The vector below settles it, so there is nothing to choose here.</>
             ) : (
-              <> Leave it unset during early triage; it comes due as a medium until somebody
-                rates it, which is what every unrated finding does.</>
+              <>
+                {" "}
+                Leave it unset during early triage; it comes due as a medium until somebody rates
+                it, which is what every unrated finding does.
+              </>
             )}
           </span>
         </div>
@@ -354,8 +359,8 @@ export function Record() {
           </datalist>
           <span className="hint">
             As the build calls it, searched against what that build actually holds. Leave it empty
-            for the build itself, which is the honest answer where the flaw is in how the pieces
-            fit together rather than in one of them.
+            for the build itself, which is the honest answer where the flaw is in how the pieces fit
+            together rather than in one of them.
             {version && (
               <>
                 {" "}
@@ -370,9 +375,8 @@ export function Record() {
           <div className="alert">
             <strong>Which {component}?</strong>
             <span>
-              This build ships that name as more than one component. Pick the one that carries it
-              — recording against whichever came first would file this against a version nobody
-              named.
+              This build ships that name as more than one component. Pick the one that carries it —
+              recording against whichever came first would file this against a version nobody named.
             </span>
             <ul className="refs" style={{ marginTop: 8 }}>
               {choices.map((choice) => (
@@ -470,8 +474,8 @@ export function Record() {
           <div className="alert">
             <strong>The flaw was recorded and some files were not</strong>
             <span>
-              {refused.join(", ")} could not be stored. The record stands — attach them again
-              from the finding.
+              {refused.join(", ")} could not be stored. The record stands — attach them again from
+              the finding.
             </span>
           </div>
         )}
@@ -488,9 +492,9 @@ export function Record() {
           {whole ? (
             <span className="hint">
               Against {streams.length * variants.length}{" "}
-              {streams.length * variants.length === 1 ? "build" : "builds"} — one issue, one
-              finding in each. A build that does not hold the component is refused rather than
-              skipped, so deselect it if research says it is not affected.
+              {streams.length * variants.length === 1 ? "build" : "builds"} — one issue, one finding
+              in each. A build that does not hold the component is refused rather than skipped, so
+              deselect it if research says it is not affected.
             </span>
           ) : (
             <span className="hint">
@@ -502,7 +506,6 @@ export function Record() {
     </>
   );
 }
-
 
 // A set of things, chosen by ticking. Not a multiple-select box: those are
 // famously hard to use with a mouse and impossible to see the state of at a
@@ -550,7 +553,9 @@ function Picked({
         <button
           type="button"
           className="btn quiet"
-          onClick={() => onChange(chosen.length === options.length ? [] : options.map((o) => o.value))}
+          onClick={() =>
+            onChange(chosen.length === options.length ? [] : options.map((o) => o.value))
+          }
         >
           {chosen.length === options.length ? "None" : "All of them"}
         </button>

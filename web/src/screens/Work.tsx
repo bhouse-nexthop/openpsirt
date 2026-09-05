@@ -82,10 +82,20 @@ export function Work() {
       </div>
 
       <div className="tabs2">
-        <button type="button" className="tab2 urgent" aria-selected={tab === "due"} onClick={() => go("due")}>
+        <button
+          type="button"
+          className="tab2 urgent"
+          aria-selected={tab === "due"}
+          onClick={() => go("due")}
+        >
           Assigned to me <span className="n">{(mine.data?.total ?? myCount).toLocaleString()}</span>
         </button>
-        <button type="button" className="tab2" aria-selected={tab === "people"} onClick={() => go("people")}>
+        <button
+          type="button"
+          className="tab2"
+          aria-selected={tab === "people"}
+          onClick={() => go("people")}
+        >
           Assigned to others <span className="n">{others.length}</span>
         </button>
       </div>
@@ -180,7 +190,9 @@ function ByPerson({
 
   return (
     <>
-      {release.error != null && <Failed error={release.error} what="Their work could not be released." />}
+      {release.error != null && (
+        <Failed error={release.error} what="Their work could not be released." />
+      )}
       <div className="tablewrap">
         <table>
           <thead>
@@ -285,7 +297,10 @@ function Held({
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={`${row.product} ${row.vulnerability} ${row.component} ${row.version}`} className="row">
+              <tr
+                key={`${row.product} ${row.vulnerability} ${row.component} ${row.version}`}
+                className="row"
+              >
                 <td>
                   <Severity word={row.severity} />
                 </td>
@@ -340,7 +355,10 @@ function Held({
 // Two letters for the corner. A display name people set is usually a full
 // name; an identity is usually not, and either has to fit in a small circle.
 function initials(name: string): string {
-  const parts = name.replace(/^[a-z]+:/, "").split(/[\s._@-]+/).filter(Boolean);
+  const parts = name
+    .replace(/^[a-z]+:/, "")
+    .split(/[\s._@-]+/)
+    .filter(Boolean);
   if (parts.length === 0) return "?";
   if (parts.length === 1) return (parts[0] ?? "").slice(0, 2).toUpperCase();
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();

@@ -41,16 +41,24 @@ const FLOORS = ["low", "medium", "high", "critical"] as const;
 
 // The package kinds a real image carries, most numerous first.
 const ECOSYSTEMS = [
-  ["", "any kind"], ["generic", "generic"], ["golang", "Go"], ["deb", "Debian"],
-  ["cargo", "Rust"], ["pypi", "Python"], ["oci", "container"],
-  ["github", "GitHub"], ["maven", "Maven"],
+  ["", "any kind"],
+  ["generic", "generic"],
+  ["golang", "Go"],
+  ["deb", "Debian"],
+  ["cargo", "Rust"],
+  ["pypi", "Python"],
+  ["oci", "container"],
+  ["github", "GitHub"],
+  ["maven", "Maven"],
 ] as const;
 
 // How far a group has been decided. A group covers every place an issue sits
 // at in one component, so each of these is a statement about all of them.
 const STATES = [
-  ["", "any"], ["undecided", "undecided"],
-  ["waiting", "pending approval"], ["agreed", "decided"],
+  ["", "any"],
+  ["undecided", "undecided"],
+  ["waiting", "pending approval"],
+  ["agreed", "decided"],
   ["lapsed", "lapsed"],
 ] as const;
 
@@ -135,7 +143,9 @@ export function Findings() {
   // Where triage mode goes once the list has been read again after a
   // decision: the row it was going to, by identity, and the index it was
   // going from should that row be gone as well.
-  const [following, setFollowing] = useState<{ key: string; index: number; since: number } | null>(null);
+  const [following, setFollowing] = useState<{ key: string; index: number; since: number } | null>(
+    null,
+  );
   // What the last decision recorded, kept beside the list so a build that
   // refused it is seen without leaving triage mode.
   const [recorded, setRecorded] = useState<Recorded | null>(null);
@@ -442,7 +452,10 @@ export function Findings() {
             <span>Rated differently by us</span>
           </label>
 
-          <label className="check" title="A distribution backports fixes without moving the upstream version, so these matched an upstream range and may already be fixed here. Nobody has confirmed either way.">
+          <label
+            className="check"
+            title="A distribution backports fixes without moving the upstream version, so these matched an upstream range and may already be fixed here. Nobody has confirmed either way."
+          >
             <input
               type="checkbox"
               checked={unconfirmed}
@@ -551,7 +564,6 @@ export function Findings() {
             {product} · {stream || "every branch"} · {variant || "every variant"} — one row per
             component, so you can see where the weight is before deciding what to read.
           </p>
-
         </div>
         {controls}
         <ByComponent
@@ -565,7 +577,7 @@ export function Findings() {
             ...(searching ? { q: searching } : {}),
             ...(ecosystem ? { ecosystem } : {}),
             ...(under ? { under } : {}),
-    ...(beneath ? { beneath } : {}),
+            ...(beneath ? { beneath } : {}),
             ...(underBuild ? { under_build: true } : {}),
             ...(state ? { state: state as "undecided" | "waiting" | "agreed" | "lapsed" } : {}),
             ...(hiding.length > 0 ? { exclude: hiding } : {}),
@@ -638,12 +650,10 @@ export function Findings() {
           </span>
         </h2>
         <p>
-          {product} · {stream || "every branch"} · {variant || "every variant"} — one row per
-          issue and component, however many locations it sits at.
+          {product} · {stream || "every branch"} · {variant || "every variant"} — one row per issue
+          and component, however many locations it sits at.
         </p>
-
       </div>
-
 
       {controls}
 
@@ -663,8 +673,8 @@ export function Findings() {
         </div>
       ) : (
         <p className="hint" style={{ margin: "0 0 8px" }}>
-          Ordered by urgency: exploited, then customer-facing, then severity, then EPSS. Click a
-          row to open the finding; the arrow previews it in place.
+          Ordered by urgency: exploited, then customer-facing, then severity, then EPSS. Click a row
+          to open the finding; the arrow previews it in place.
         </p>
       )}
 
@@ -675,22 +685,36 @@ export function Findings() {
         <div className="alert info" style={{ marginBottom: 10 }}>
           <strong>Submitted</strong>
           <span>
-            Recorded against {recorded.recorded} {recorded.recorded === 1 ? "location" : "locations"}
+            Recorded against {recorded.recorded}{" "}
+            {recorded.recorded === 1 ? "location" : "locations"}
             {recorded.applied.filter((a) => a.ok).length > 0 && (
-              <>, and in {recorded.applied.filter((a) => a.ok).map((a) => a.build).join(", ")}</>
+              <>
+                , and in{" "}
+                {recorded.applied
+                  .filter((a) => a.ok)
+                  .map((a) => a.build)
+                  .join(", ")}
+              </>
             )}
             .{" "}
             {recorded.needsApproval
               ? "The dismissal takes effect once a second person approves it."
               : "In force now."}
-            {recorded.applied.filter((a) => !a.ok).map((a) => (
-              <Fragment key={a.build}>
-                <br />
-                <b>{a.build}</b>: {a.said}
-              </Fragment>
-            ))}
+            {recorded.applied
+              .filter((a) => !a.ok)
+              .map((a) => (
+                <Fragment key={a.build}>
+                  <br />
+                  <b>{a.build}</b>: {a.said}
+                </Fragment>
+              ))}
           </span>
-          <button type="button" className="linkish" style={{ marginLeft: "auto" }} onClick={() => setRecorded(null)}>
+          <button
+            type="button"
+            className="linkish"
+            style={{ marginLeft: "auto" }}
+            onClick={() => setRecorded(null)}
+          >
             Dismiss
           </button>
         </div>
@@ -721,7 +745,10 @@ export function Findings() {
                   <th>Component</th>
                   {/* Both ends of the way down, middle collapsed (UIX-12). */}
                   <th>{oneBuild ? "Path" : "Build"}</th>
-                  <th className="num" title="EPSS: published probability of exploitation. Orders findings of equal severity">
+                  <th
+                    className="num"
+                    title="EPSS: published probability of exploitation. Orders findings of equal severity"
+                  >
                     EPSS
                   </th>
                   <th>Fixed in</th>
@@ -829,7 +856,9 @@ export function Findings() {
                         <td>
                           <Sits row={row} />
                         </td>
-                        <td className="num hint">{row.likelihood ? row.likelihood.toFixed(3) : "—"}</td>
+                        <td className="num hint">
+                          {row.likelihood ? row.likelihood.toFixed(3) : "—"}
+                        </td>
                         <td>
                           {(() => {
                             const said = upstreamSays(row.fix_state, row.fixed_in);
@@ -837,7 +866,9 @@ export function Findings() {
                               <>
                                 <span
                                   className={said.kind === "id" ? "id" : "hint"}
-                                  style={said.kind === "faint" ? { color: "var(--faint)" } : undefined}
+                                  style={
+                                    said.kind === "faint" ? { color: "var(--faint)" } : undefined
+                                  }
                                 >
                                   {said.text}
                                 </span>
@@ -856,13 +887,17 @@ export function Findings() {
                         <td className="num">
                           {row.places}
                           {(row.answered ?? 0) > 0 && (
-                            <span className="hint" title="Argued away by the build's own VEX, which is a different claim by a different author"> · {row.answered} by the build</span>
+                            <span
+                              className="hint"
+                              title="Argued away by the build's own VEX, which is a different claim by a different author"
+                            >
+                              {" "}
+                              · {row.answered} by the build
+                            </span>
                           )}
                         </td>
                         <td>
-                          <span className={`state ${pill.cls}`}>
-                            {pill.word}
-                          </span>
+                          <span className={`state ${pill.cls}`}>{pill.word}</span>
                         </td>
                       </tr>
                       {peeking === key && (
@@ -904,7 +939,7 @@ export function Findings() {
               return (
                 <article
                   key={`${row.vulnerability} ${row.component} ${row.version} ${row.ecosystem ?? ""}`}
-                  className={`fcard ${row.exploited ? "exploited" : row.severity ?? ""}`}
+                  className={`fcard ${row.exploited ? "exploited" : (row.severity ?? "")}`}
                   onClick={() => navigate(at)}
                 >
                   <header>
@@ -986,7 +1021,11 @@ function Inline({
           "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}",
           {
             params: {
-              path: { ...at, vulnerability: row.vulnerability ?? "", component: row.component ?? "" },
+              path: {
+                ...at,
+                vulnerability: row.vulnerability ?? "",
+                component: row.component ?? "",
+              },
               query: { version: row.version ?? "" },
             },
           },
@@ -1049,7 +1088,10 @@ function Sits({ row }: { row: Row }) {
           <span className="arrow">→</span>
           {row.middle ? (
             <>
-              <span className="gap" title={`${row.middle} step${row.middle > 1 ? "s" : ""} collapsed — open the finding for the full chain`}>
+              <span
+                className="gap"
+                title={`${row.middle} step${row.middle > 1 ? "s" : ""} collapsed — open the finding for the full chain`}
+              >
                 +{row.middle}
               </span>
               <span className="arrow">→</span>
@@ -1161,7 +1203,11 @@ function ByComponent({
                   </td>
                   <td className="num">
                     {(row.issues ?? 0).toLocaleString()}
-                    <span aria-hidden className="share" style={{ width: `${Math.max(share, 2)}%` }} />
+                    <span
+                      aria-hidden
+                      className="share"
+                      style={{ width: `${Math.max(share, 2)}%` }}
+                    />
                   </td>
                   <td className="num">{(row.places ?? 0).toLocaleString()}</td>
                   <td>
@@ -1283,10 +1329,20 @@ function Pager({
   const upto = Math.min(offset + PAGE, total);
   return (
     <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-      <button type="button" className="chip" disabled={offset === 0} onClick={() => onGo(Math.max(0, offset - PAGE))}>
+      <button
+        type="button"
+        className="chip"
+        disabled={offset === 0}
+        onClick={() => onGo(Math.max(0, offset - PAGE))}
+      >
         Previous
       </button>
-      <button type="button" className="chip" disabled={upto >= total} onClick={() => onGo(offset + PAGE)}>
+      <button
+        type="button"
+        className="chip"
+        disabled={upto >= total}
+        onClick={() => onGo(offset + PAGE)}
+      >
         Next
       </button>
     </span>

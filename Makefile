@@ -249,6 +249,7 @@ web-check:
 	  || { echo "npm not found, so the interface is unchecked here"; exit 0; }
 	$(MAKE) web-deps
 	$(NPM) --prefix web run typecheck
+	$(NPM) --prefix web run format
 	$(NPM) --prefix web run lint
 	$(NPM) --prefix web run stylelint
 	$(NPM) --prefix web test

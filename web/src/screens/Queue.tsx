@@ -81,7 +81,9 @@ export function Queue() {
   const ratings = useQuery({
     queryKey: ["queue", "assessments"],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/assessments", { params: { query: { state: "proposed", limit: 50 } } })),
+      unwrap(
+        await api.GET("/v1/assessments", { params: { query: { state: "proposed", limit: 50 } } }),
+      ),
   });
 
   if (queue.isPending) return <p className="hint">Loading…</p>;
@@ -114,7 +116,10 @@ export function Queue() {
         <h2>Review queue</h2>
         <p>
           {(queue.data?.total ?? claims.length).toLocaleString()} pending
-          {records > claims.length && <> · {records.toLocaleString()} records between those shown</>} ·
+          {records > claims.length && (
+            <> · {records.toLocaleString()} records between those shown</>
+          )}{" "}
+          ·
           {mine
             ? " proposed by you, waiting for somebody else"
             : " across every product you may approve on"}
@@ -202,7 +207,9 @@ export function Queue() {
         </div>
       )}
 
-      {approveClaim.error != null && <Failed error={approveClaim.error} what="That could not be approved." />}
+      {approveClaim.error != null && (
+        <Failed error={approveClaim.error} what="That could not be approved." />
+      )}
 
       {claims.length === 0 ? (
         <Empty
@@ -245,9 +252,9 @@ export function Queue() {
       <div className="screen-head" id="lapsed" style={{ marginTop: 22 }}>
         <h2>Lapsed decisions</h2>
         <p>
-          {((lapsed.data?.total ?? 0) + (expired.data?.total ?? 0)).toLocaleString()} · nobody has to
-          agree to these again — two people already did — but each needs a fresh reason, because what
-          it was a claim about has moved.
+          {((lapsed.data?.total ?? 0) + (expired.data?.total ?? 0)).toLocaleString()} · nobody has
+          to agree to these again — two people already did — but each needs a fresh reason, because
+          what it was a claim about has moved.
         </p>
       </div>
       {/* Two lists of fifty, merged. Not paged: a decision can be in both,
@@ -259,7 +266,10 @@ export function Queue() {
         what="shown of each kind"
       />
       {stopped.length === 0 ? (
-        <Empty title="Nothing has lapsed." detail="A decision the code moved out from under, or a deferral whose date has passed, would appear here." />
+        <Empty
+          title="Nothing has lapsed."
+          detail="A decision the code moved out from under, or a deferral whose date has passed, would appear here."
+        />
       ) : (
         <div className="queue">
           {stopped.map((row) => (
@@ -367,7 +377,10 @@ function Card({
     approveClaim.mutate({
       id: claim.id,
       ...(aside.size > 0
-        ? { except: [...aside], because: "Set aside at approval: these do not match the shape of the claim." }
+        ? {
+            except: [...aside],
+            because: "Set aside at approval: these do not match the shape of the claim.",
+          }
         : {}),
     });
   }
@@ -392,7 +405,13 @@ function Card({
       style={marked ? { outline: "2px solid var(--accent)", outlineOffset: 2 } : undefined}
     >
       <header>
-        <input type="checkbox" className="qpick" checked={picked} onChange={(event) => onPick(event.target.checked)} aria-label="Select this claim" />
+        <input
+          type="checkbox"
+          className="qpick"
+          checked={picked}
+          onChange={(event) => onPick(event.target.checked)}
+          aria-label="Select this claim"
+        />
         {bulk && <span className="bulkmark">Bulk claim</span>}
         {f?.severity && <Severity word={f.severity} />}
         {f?.exploited && <Exploited when />}
@@ -415,7 +434,13 @@ function Card({
           {f?.component && (
             <>
               in <span className="id">{f.component}</span>
-              {f.version && <span className="id" style={{ color: "var(--faint)" }}> {f.version}</span>} ·{" "}
+              {f.version && (
+                <span className="id" style={{ color: "var(--faint)" }}>
+                  {" "}
+                  {f.version}
+                </span>
+              )}{" "}
+              ·{" "}
             </>
           )}
           {f ? `${f.product} · ${f.stream} · ${f.variant}` : claim.product}
@@ -443,23 +468,44 @@ function Card({
               {f.description.length >= 400 && !more && "…"}
             </p>
           )}
-          <p className="hint" style={{ margin: "4px 0 0", display: "flex", flexWrap: "wrap", gap: "4px 12px" }}>
+          <p
+            className="hint"
+            style={{ margin: "4px 0 0", display: "flex", flexWrap: "wrap", gap: "4px 12px" }}
+          >
             {(f.owner || f.parent) && (
               <span>
                 <span className="id">{f.owner}</span>
-                {f.parent && f.parent !== f.owner && <> › <span className="id">{f.parent}</span></>}
+                {f.parent && f.parent !== f.owner && (
+                  <>
+                    {" "}
+                    › <span className="id">{f.parent}</span>
+                  </>
+                )}
               </span>
             )}
             {typeof f.places === "number" && (
               <span>
                 {f.places} {f.places === 1 ? "location" : "locations"}
-                {typeof f.decided === "number" && f.decided > 0 && <> · {f.decided} covered by this claim</>}
+                {typeof f.decided === "number" && f.decided > 0 && (
+                  <> · {f.decided} covered by this claim</>
+                )}
               </span>
             )}
-            {f.fixed_in ? <span>fixed in <span className="id">{f.fixed_in}</span></span> : f.fix_state === "wont-fix" ? <span>upstream declined</span> : null}
+            {f.fixed_in ? (
+              <span>
+                fixed in <span className="id">{f.fixed_in}</span>
+              </span>
+            ) : f.fix_state === "wont-fix" ? (
+              <span>upstream declined</span>
+            ) : null}
             {typeof f.score === "number" && <span>CVSS {f.score.toFixed(1)}</span>}
             {f.description && f.description.length >= 200 && (
-              <button type="button" className="linkish" style={{ fontWeight: 500 }} onClick={() => setMore(!more)}>
+              <button
+                type="button"
+                className="linkish"
+                style={{ fontWeight: 500 }}
+                onClick={() => setMore(!more)}
+              >
                 {more ? "less" : "more"}
               </button>
             )}
@@ -498,7 +544,10 @@ function Card({
           </span>
         )}
         <span>
-          Writes <b>{claim.records.toLocaleString()} {claim.records === 1 ? "record" : "records"}</b>
+          Writes{" "}
+          <b>
+            {claim.records.toLocaleString()} {claim.records === 1 ? "record" : "records"}
+          </b>
         </span>
       </div>
 
@@ -509,7 +558,8 @@ function Card({
           </span>
           {claim.builds.length > 0 && (
             <span className="r ask">
-              <b>{claim.builds.length}</b> other {claim.builds.length === 1 ? "build" : "builds"}: {claim.builds.join(", ")}
+              <b>{claim.builds.length}</b> other {claim.builds.length === 1 ? "build" : "builds"}:{" "}
+              {claim.builds.join(", ")}
             </span>
           )}
           <span className="hint">One approval covers every record; undo reverts them all</span>
@@ -568,7 +618,8 @@ function Card({
                         <Severity word={row.severity} />
                       </td>
                       <td>
-                        <span className="id">{row.vulnerability}</span> <Exploited when={row.exploited} />
+                        <span className="id">{row.vulnerability}</span>{" "}
+                        <Exploited when={row.exploited} />
                       </td>
                       <td className="hint">{(row.description ?? "").slice(0, 120)}</td>
                       <td className="hint">{(row.why ?? []).join(", ")}</td>
@@ -579,8 +630,8 @@ function Card({
             </div>
           )}
           <p className="hint" style={{ margin: "8px 0 0" }}>
-            Selected rows are excluded from the approval and rejected back to {claim.proposedBy} as a
-            separate item, with this table as the reason.
+            Selected rows are excluded from the approval and rejected back to {claim.proposedBy} as
+            a separate item, with this table as the reason.
           </p>
         </div>
       )}
@@ -592,8 +643,8 @@ function Card({
 
       {claim.deferredDays > 0 && claim.previouslyApproved && (
         <p style={{ margin: 0, fontSize: "var(--step--1)", color: "var(--sev-high)" }}>
-          Short is measured against everything this has already been put off for, not against the days
-          being asked.
+          Short is measured against everything this has already been put off for, not against the
+          days being asked.
         </p>
       )}
 
@@ -613,7 +664,12 @@ function Card({
             placeholder="What is missing or wrong."
           />
           <div className="actions" style={{ marginTop: 8 }}>
-            <button type="button" className="btn" disabled={!because.trim() || busy} onClick={doReject}>
+            <button
+              type="button"
+              className="btn"
+              disabled={!because.trim() || busy}
+              onClick={doReject}
+            >
               Reject
             </button>
             <button type="button" className="btn quiet" onClick={() => setAsking(false)}>
@@ -648,7 +704,14 @@ function Card({
 }
 
 // Where a claim's finding lives, with the version the build ships it at.
-function findingPath(f: { product?: string; stream?: string; variant?: string; vulnerability?: string; component?: string; version?: string }): string {
+function findingPath(f: {
+  product?: string;
+  stream?: string;
+  variant?: string;
+  vulnerability?: string;
+  component?: string;
+  version?: string;
+}): string {
   return (
     `/products/${encodeURIComponent(f.product ?? "")}` +
     `/streams/${encodeURIComponent(f.stream ?? "")}` +

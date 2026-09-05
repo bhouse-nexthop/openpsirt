@@ -47,13 +47,15 @@ const aroundKey = (at: At, component: string, version = "") =>
 
 // A name is not always enough: a build ships some libraries at several
 // versions, and a finding arriving here says which one it meant.
-const fetchAround = (at: At, component: string, version = "") => async () =>
-  unwrap(
-    await api.GET(
-      "/v1/products/{product}/streams/{stream}/variants/{variant}/components/{component}/around",
-      { params: { path: { ...at, component }, query: version ? { version } : {} } },
-    ),
-  );
+const fetchAround =
+  (at: At, component: string, version = "") =>
+  async () =>
+    unwrap(
+      await api.GET(
+        "/v1/products/{product}/streams/{stream}/variants/{variant}/components/{component}/around",
+        { params: { path: { ...at, component }, query: version ? { version } : {} } },
+      ),
+    );
 
 // The dependency graph, drawn as a tree and expanded a node at a time.
 //
@@ -124,10 +126,7 @@ export function Tree() {
   // the component it was opened for. Each of those rows is kept individually
   // rather than by drawing the whole level: the step here is `host-image`,
   // whose level is 5,157 rows, and widening it renders every one of them.
-  const onPath = useMemo(
-    () => new Set(path.split("\u001f").filter(Boolean)),
-    [path],
-  );
+  const onPath = useMemo(() => new Set(path.split("\u001f").filter(Boolean)), [path]);
 
   // Children are read for each node the reader has opened. The root's own are
   // already in hand from the query above, so it is not asked for twice.
@@ -197,8 +196,8 @@ export function Tree() {
       <div className="screen-head">
         <h2>Dependencies</h2>
         <p>
-          {product} · {stream} · {variant} — {(top.data?.components ?? 0).toLocaleString()} components,{" "}
-          {(top.data?.edges ?? 0).toLocaleString()} edges
+          {product} · {stream} · {variant} — {(top.data?.components ?? 0).toLocaleString()}{" "}
+          components, {(top.data?.edges ?? 0).toLocaleString()} edges
         </p>
       </div>
 
@@ -224,34 +223,46 @@ export function Tree() {
           />
         </form>
         {searching && (
-          <button type="button" className="linkish" onClick={() => { setTyped(""); search(""); }}>
+          <button
+            type="button"
+            className="linkish"
+            onClick={() => {
+              setTyped("");
+              search("");
+            }}
+          >
             Back to the tree
           </button>
         )}
-        <span className="found">counts are cumulative: what is open beneath a node as well as on it</span>
+        <span className="found">
+          counts are cumulative: what is open beneath a node as well as on it
+        </span>
       </div>
 
       <div className="detail">
         <div>
           <div className="card">
             {top.isPending && <p className="hint">Loading…</p>}
-            {top.isError && <Failed error={top.error} what="The build's contents could not be read." />}
+            {top.isError && (
+              <Failed error={top.error} what="The build's contents could not be read." />
+            )}
             {!searching && !top.isPending && !top.isError && !root && (
               <Empty
                 title="This build has no root."
                 detail="Nothing has been scanned here, or the inventory described no component that everything else descends from."
               />
             )}
-            {searching && !top.isPending && !top.isError && (
-              found.length === 0 ? (
+            {searching &&
+              !top.isPending &&
+              !top.isError &&
+              (found.length === 0 ? (
                 <Empty
                   title={`Nothing here is called "${term}".`}
                   detail="Matched on part of a name, ignoring case. A component that is in the inventory but not in this build will not appear."
                 />
               ) : (
                 <Matches found={found} focus={focus} onSelect={select} />
-              )
-            )}
+              ))}
             {!searching && root && (
               <Branches
                 root={root}
@@ -291,7 +302,11 @@ export function Tree() {
 // The node a name refers to, wherever it has already been read. The tree holds
 // every answer the pane needs except the count of what is under a component
 // nothing has opened yet, which is what the pane's own query is for.
-function findNode(name: string, root: Node | null, below: Map<string, Node[] | undefined>): Node | null {
+function findNode(
+  name: string,
+  root: Node | null,
+  below: Map<string, Node[] | undefined>,
+): Node | null {
   if (!name) return null;
   if (root && root.component === name) return root;
   for (const kids of below.values()) {
@@ -482,11 +497,7 @@ function Branches({
     const common = sharedVersion(kids);
     if (common) {
       rows.push(
-        <div
-          key={`${path}/version`}
-          className="node"
-          style={{ paddingLeft: (depth + 1) * 20 }}
-        >
+        <div key={`${path}/version`} className="node" style={{ paddingLeft: (depth + 1) * 20 }}>
           <span className="rule">·</span>
           <span className="hint">
             all at <span className="id">{common}</span>
@@ -609,7 +620,14 @@ function Pane({
 
         <div className="evblock">
           <h4>Open issues</h4>
-          <p style={{ fontSize: "var(--step-2)", fontWeight: 700, margin: 0, letterSpacing: "-0.02em" }}>
+          <p
+            style={{
+              fontSize: "var(--step-2)",
+              fontWeight: 700,
+              margin: 0,
+              letterSpacing: "-0.02em",
+            }}
+          >
             {node ? node.beneath.toLocaleString() : "—"}
           </p>
           {node && node.children > 0 && (

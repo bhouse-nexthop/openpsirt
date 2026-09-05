@@ -18,9 +18,26 @@ function tagsIn(rendered: string): string[] {
 // the allowlist whether it allows something proves only that it agrees with
 // itself.
 const forbidden = [
-  "<script", "javascript:", "onerror", "onload", "onclick", "onmouseover",
-  "onfocus", "<iframe", "<object", "<embed", "<svg", "<img", "data:text/html",
-  "vbscript:", "<style", "<link", "<meta", "<base", "srcdoc", "formaction",
+  "<script",
+  "javascript:",
+  "onerror",
+  "onload",
+  "onclick",
+  "onmouseover",
+  "onfocus",
+  "<iframe",
+  "<object",
+  "<embed",
+  "<svg",
+  "<img",
+  "data:text/html",
+  "vbscript:",
+  "<style",
+  "<link",
+  "<meta",
+  "<base",
+  "srcdoc",
+  "formaction",
 ];
 
 // The same corpus the server's renderer is held to, because the control moved
@@ -95,7 +112,9 @@ describe("the renderer", () => {
   it("keeps the links people actually write", () => {
     // The point of the allowlist is that it lets ordinary writing through.
     // A sanitizer that refuses real links is one people work around.
-    const out = render("See [the advisory](https://example.com/a) or [mail us](mailto:x@example.com).");
+    const out = render(
+      "See [the advisory](https://example.com/a) or [mail us](mailto:x@example.com).",
+    );
     expect(out).toContain('href="https://example.com/a"');
     expect(out).toContain('href="mailto:x@example.com"');
     expect(out).toContain('rel="noreferrer noopener nofollow"');

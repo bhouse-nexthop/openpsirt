@@ -110,7 +110,13 @@ export function Streams() {
                       {stream.kind === "tag" ? "Tag" : "Branch"}
                     </span>
                   </td>
-                  <td>{stream.parent ? <span className="id">{stream.parent}</span> : <span style={{ color: "var(--faint)" }}>—</span>}</td>
+                  <td>
+                    {stream.parent ? (
+                      <span className="id">{stream.parent}</span>
+                    ) : (
+                      <span style={{ color: "var(--faint)" }}>—</span>
+                    )}
+                  </td>
                   <td className="num">{(stream.open ?? 0).toLocaleString()}</td>
                   <td>
                     <EndOfLife
@@ -121,7 +127,9 @@ export function Streams() {
                       onSet={(on) => setEndOfLife.mutate({ stream: stream.name, on })}
                     />
                   </td>
-                  <td className="hint">{stream.last_scan_at ? stream.last_scan_at.slice(0, 10) : "never"}</td>
+                  <td className="hint">
+                    {stream.last_scan_at ? stream.last_scan_at.slice(0, 10) : "never"}
+                  </td>
                   <td>
                     <Link
                       to={`/products/${encodeURIComponent(product)}/streams/${encodeURIComponent(stream.name ?? "")}`}
@@ -151,10 +159,20 @@ export function Streams() {
           <label>Product</label>
           <input type="text" value={product} disabled />
         </div>
-        <Field label="Name" value={name} onChange={setName} placeholder="202411" hint="How scans name it" />
+        <Field
+          label="Name"
+          value={name}
+          onChange={setName}
+          placeholder="202411"
+          hint="How scans name it"
+        />
         <div className="field">
           <label htmlFor="declare-kind">Kind</label>
-          <select id="declare-kind" value={kind} onChange={(event) => setKind(event.target.value as "branch" | "tag")}>
+          <select
+            id="declare-kind"
+            value={kind}
+            onChange={(event) => setKind(event.target.value as "branch" | "tag")}
+          >
             <option value="branch">Branch — moves, scanned nightly</option>
             <option value="tag">Tag — frozen, scanned on a schedule</option>
           </select>
@@ -162,7 +180,11 @@ export function Streams() {
         {kind === "tag" && (
           <div className="field">
             <label htmlFor="declare-cut-from">Cut from</label>
-            <select id="declare-cut-from" value={parent} onChange={(event) => setParent(event.target.value)}>
+            <select
+              id="declare-cut-from"
+              value={parent}
+              onChange={(event) => setParent(event.target.value)}
+            >
               <option value="">nothing — a line of its own</option>
               {branches.map((branch) => (
                 <option key={branch} value={branch}>

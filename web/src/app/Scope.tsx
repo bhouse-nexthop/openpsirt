@@ -84,9 +84,7 @@ export function Scope() {
     queryKey: ["variants", product],
     enabled: open && !!product && !stream,
     queryFn: async () =>
-      unwrap(
-        await api.GET("/v1/products/{product}/variants", { params: { path: { product } } }),
-      ),
+      unwrap(await api.GET("/v1/products/{product}/variants", { params: { path: { product } } })),
   });
 
   // Applied as soon as it is chosen, at whatever level. A partial selection
@@ -269,8 +267,8 @@ export function Scope() {
         </div>
 
         <p className="hint" style={{ gridColumn: "1 / -1" }}>
-          A variant appears once a build has filed a scan against it, so a release that predates
-          one does not list it. Choosing one takes you to its findings.
+          A variant appears once a build has filed a scan against it, so a release that predates one
+          does not list it. Choosing one takes you to its findings.
         </p>
       </div>
     </div>

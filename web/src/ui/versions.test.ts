@@ -4,13 +4,7 @@ import { sharedVersion } from "./versions";
 describe("sharedVersion", () => {
   it("finds the stamp every container carries", () => {
     const stamp = "sbom-consumer-metadata.0-f3811cc13";
-    expect(
-      sharedVersion([
-        { version: stamp },
-        { version: stamp },
-        { version: stamp },
-      ]),
-    ).toBe(stamp);
+    expect(sharedVersion([{ version: stamp }, { version: stamp }, { version: stamp }])).toBe(stamp);
   });
 
   it("ignores a sibling with no version at all", () => {
@@ -19,9 +13,7 @@ describe("sharedVersion", () => {
     // versionless one as disagreement left the stamp on every row, which is
     // the noise this exists to remove.
     const stamp = "sbom-consumer-metadata.0-f3811cc13";
-    expect(
-      sharedVersion([{ version: "" }, { version: stamp }, { version: stamp }]),
-    ).toBe(stamp);
+    expect(sharedVersion([{ version: "" }, { version: stamp }, { version: stamp }])).toBe(stamp);
   });
 
   it("says nothing where the versions differ", () => {

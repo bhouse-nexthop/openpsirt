@@ -52,7 +52,7 @@ with the same command and the same pinned tool versions — CIG-05.
 | `make licenses` | Licenses of shipped dependencies against the allowlist |
 | `make openapi` | Regenerates the API document from the code |
 | `make sbom` | Generates our own CycloneDX bill of materials |
-| `make web-check` | The interface: its dependencies installed as locked, the type check, ESLint, Stylelint, its tests, the class-name checks, and the generated client diffed against the API document |
+| `make web-check` | The interface: its dependencies installed as locked, the type check, Prettier, ESLint, Stylelint, its tests, the class-name checks, and the generated client diffed against the API document |
 | `make vet` | The compiler's own checks |
 | `make unreachable` | Exported code nothing reaches, which a linter reporting only unexported symbols will not find |
 | `npm run classes` | Class names of ours that Tailwind also defines, and class names nothing applies |
@@ -77,8 +77,17 @@ see went unreported.
 |---|---|
 | `tsc` | Strict, with unused locals and parameters, unchecked indexed access and verbatim module syntax. It does most of what a type-aware linter would, which is why the lint rules below are few |
 | ESLint | Only what `tsc` has no view of. The rules of hooks are the reason it is here |
+| Prettier | Formatting, for TypeScript and CSS alike. The counterpart to `gofmt`, which the Go half has had in the gate from the start |
 | Stylelint | CSS correctness — unknown properties, duplicate selectors, notation. Nothing about whitespace, which Prettier owns |
 | `npm run classes` | Two questions about class names: which of ours Tailwind also defines, and which of ours nothing applies |
+
+**Formatting is one tool's job.** Prettier owns it for TypeScript and CSS, and
+Stylelint's whitespace rules are switched off rather than left to disagree with
+it — two tools with an opinion about blank lines will eventually hold different
+ones, and the argument surfaces as a gate nobody can satisfy. The Go half has
+had `gofmt` in the gate from the beginning; this is the same thing for the
+other half, and it arrived with one reformatting commit so the diffs after it
+stay about behavior.
 
 **ESLint is deliberately narrow.** A second opinion about style is noise beside
 a formatter, and a rule that fires on working code teaches people to read past

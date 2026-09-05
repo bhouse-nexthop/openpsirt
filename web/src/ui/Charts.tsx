@@ -68,8 +68,13 @@ function day(at?: string): string {
 // not as a second axis (the one thing a chart must never grow).
 export function Pace({ points }: { points: Point[] }) {
   if (points.length === 0) return null;
-  const W = 560, L = 40, R = 10, T = 8;
-  const topH = 96, gap = 16, botH = 46;
+  const W = 560,
+    L = 40,
+    R = 10,
+    T = 8;
+  const topH = 96,
+    gap = 16,
+    botH = 46;
   const n = points.length;
   const x = (i: number) => (n === 1 ? (L + W - R) / 2 : L + (i * (W - L - R)) / (n - 1));
   const opens = points.map((p) => p.open ?? 0);
@@ -81,7 +86,8 @@ export function Pace({ points }: { points: Point[] }) {
   const hiOpen = Math.max(1, ...opens);
   const loOpen = Math.min(...opens);
   const pad = Math.max(1, (hiOpen - loOpen) * 0.15);
-  const lo = Math.max(0, loOpen - pad), hi = hiOpen + pad;
+  const lo = Math.max(0, loOpen - pad),
+    hi = hiOpen + pad;
   const y = (v: number) => T + topH - ((v - lo) / (hi - lo)) * topH;
   const ticks = niceTicks(lo, hi, 3);
 
@@ -103,7 +109,9 @@ export function Pace({ points }: { points: Point[] }) {
       {ticks.map((v) => (
         <g key={v}>
           <line className="gridline" x1={L} x2={W - R} y1={y(v)} y2={y(v)} />
-          <text className="axis" x={2} y={y(v) + 3}>{brief(v)}</text>
+          <text className="axis" x={2} y={y(v) + 3}>
+            {brief(v)}
+          </text>
         </g>
       ))}
       <polygon className="open-area" points={`${L},${T + topH} ${pts} ${W - R},${T + topH}`} />
@@ -137,7 +145,13 @@ export function Pace({ points }: { points: Point[] }) {
       })}
       {points.map((p, i) =>
         i % 3 === 0 || i === last ? (
-          <text key={p.at ?? i} className="axis" x={x(i)} y={zero + botH / 2 + 12} textAnchor="middle">
+          <text
+            key={p.at ?? i}
+            className="axis"
+            x={x(i)}
+            y={zero + botH / 2 + 12}
+            textAnchor="middle"
+          >
             {day(p.at)}
           </text>
         ) : null,
@@ -183,13 +197,7 @@ export function Mix({ points }: { points: Point[] }) {
       <AreaChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
         <CartesianGrid strokeOpacity={0.14} vertical={false} />
         <XAxis dataKey="at" tick={axis} tickLine={false} axisLine={false} />
-        <YAxis
-          tick={axis}
-          tickLine={false}
-          axisLine={false}
-          width={46}
-          tickFormatter={brief}
-        />
+        <YAxis tick={axis} tickLine={false} axisLine={false} width={46} tickFormatter={brief} />
         <Tooltip contentStyle={tip} />
         {BANDS.map((band) => (
           <Area
@@ -285,13 +293,7 @@ export function Across({ releases }: { releases: Release[] }) {
       <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
         <CartesianGrid strokeOpacity={0.14} vertical={false} />
         <XAxis dataKey="at" tick={axis} tickLine={false} axisLine={false} interval={0} />
-        <YAxis
-          tick={axis}
-          tickLine={false}
-          axisLine={false}
-          width={46}
-          tickFormatter={brief}
-        />
+        <YAxis tick={axis} tickLine={false} axisLine={false} width={46} tickFormatter={brief} />
         <Tooltip contentStyle={tip} />
         {BANDS.map((band) => (
           <Bar key={band.key} dataKey={band.key} stackId="1" fill={band.color} />
@@ -300,7 +302,6 @@ export function Across({ releases }: { releases: Release[] }) {
     </ResponsiveContainer>
   );
 }
-
 
 // What each release shipped with (RPT-09).
 //
@@ -314,17 +315,31 @@ export function Releases({
   points: { stream?: string; open?: number; cut?: string }[];
 }) {
   if (points.length === 0) return null;
-  const W = 560, L = 40, R = 10, T = 8, H = 120;
+  const W = 560,
+    L = 40,
+    R = 10,
+    T = 8,
+    H = 120;
   const most = Math.max(1, ...points.map((p) => p.open ?? 0));
   const slot = (W - L - R) / points.length;
   const bar = Math.min(48, slot * 0.62);
 
   return (
-    <svg viewBox={`0 0 ${W} ${H + 34}`} className="chart" role="img"
-      aria-label="Open issues in each release">
+    <svg
+      viewBox={`0 0 ${W} ${H + 34}`}
+      className="chart"
+      role="img"
+      aria-label="Open issues in each release"
+    >
       {[0, 0.5, 1].map((f) => (
-        <line key={f} className="gridline" x1={L} x2={W - R}
-          y1={T + H - f * H} y2={T + H - f * H} />
+        <line
+          key={f}
+          className="gridline"
+          x1={L}
+          x2={W - R}
+          y1={T + H - f * H}
+          y2={T + H - f * H}
+        />
       ))}
       {[0, most].map((v, i) => (
         <text key={v} className="tick" x={L - 6} y={T + H - i * H + 4} textAnchor="end">

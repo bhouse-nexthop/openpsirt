@@ -17,21 +17,15 @@ import { Variants } from "../screens/Variants";
 const Home = lazy(() => import("../screens/Home").then((m) => ({ default: m.Home })));
 const Finding = lazy(() => import("../screens/Finding").then((m) => ({ default: m.Finding })));
 const Tree = lazy(() => import("../screens/Tree").then((m) => ({ default: m.Tree })));
-const Compare = lazy(() =>
-  import("../screens/Compare").then((m) => ({ default: m.Compare })),
-);
+const Compare = lazy(() => import("../screens/Compare").then((m) => ({ default: m.Compare })));
 const People = lazy(() => import("../screens/People").then((m) => ({ default: m.People })));
 const Work = lazy(() => import("../screens/Work").then((m) => ({ default: m.Work })));
 const Queue = lazy(() => import("../screens/Queue").then((m) => ({ default: m.Queue })));
-const Decision = lazy(() =>
-  import("../screens/Decision").then((m) => ({ default: m.Decision })),
-);
+const Decision = lazy(() => import("../screens/Decision").then((m) => ({ default: m.Decision })));
 const Unassigned = lazy(() =>
   import("../screens/Unassigned").then((m) => ({ default: m.Unassigned })),
 );
-const Together = lazy(() =>
-  import("../screens/Together").then((m) => ({ default: m.Together })),
-);
+const Together = lazy(() => import("../screens/Together").then((m) => ({ default: m.Together })));
 const Inventories = lazy(() =>
   import("../screens/Inventories").then((m) => ({ default: m.Inventories })),
 );
@@ -62,37 +56,40 @@ export function App() {
     <>
       {ended && <Resume />}
       <Shell who={who.data}>
-      <Suspense fallback={<p className="hint">Loading…</p>}>
-      <Routes>
-        <Route path="/" element={<Home who={who.data} />} />
-        <Route path="/review-queue" element={<Queue />} />
-        <Route path="/unassigned" element={<Unassigned />} />
-        <Route path="/decisions/:id" element={<Decision who={who.data} />} />
-        <Route path="/products" element={<Products who={who.data} />} />
-        <Route path="/products/:product/streams" element={<Streams />} />
-        <Route path="/products/:product/streams/:stream" element={<Variants />} />
-        <Route path="/products/:product/variants" element={<Variants />} />
-        {/* The list at whatever the picker selects, and the same screen at the
+        <Suspense fallback={<p className="hint">Loading…</p>}>
+          <Routes>
+            <Route path="/" element={<Home who={who.data} />} />
+            <Route path="/review-queue" element={<Queue />} />
+            <Route path="/unassigned" element={<Unassigned />} />
+            <Route path="/decisions/:id" element={<Decision who={who.data} />} />
+            <Route path="/products" element={<Products who={who.data} />} />
+            <Route path="/products/:product/streams" element={<Streams />} />
+            <Route path="/products/:product/streams/:stream" element={<Variants />} />
+            <Route path="/products/:product/variants" element={<Variants />} />
+            {/* The list at whatever the picker selects, and the same screen at the
             address a build's other screens share (UIX-53). */}
-        <Route path="/products/:product/findings" element={<Findings />} />
-        <Route path={`${build}/findings`} element={<Findings />} />
-        <Route path={`${build}/findings/:vulnerability/components/:component`} element={<Finding />} />
-        <Route path={`${build}/components`} element={<Tree />} />
-        <Route path={`${build}/components/:component/decide`} element={<Together />} />
-        <Route path={`${build}/scans`} element={<Inventories />} />
-        <Route path="/products/:product/comparison" element={<Compare />} />
-        <Route path="/people" element={<People />} />
-        <Route path="/work" element={<Work />} />
-        <Route path="/audit" element={<Audit />} />
-        <Route path="/reports" element={<Reports />} />
-        <Route path="/record" element={<Record />} />
-        <Route path="/settings" element={<Settings />} />
-        {/* A path the page does not know either. Sending somebody home is
+            <Route path="/products/:product/findings" element={<Findings />} />
+            <Route path={`${build}/findings`} element={<Findings />} />
+            <Route
+              path={`${build}/findings/:vulnerability/components/:component`}
+              element={<Finding />}
+            />
+            <Route path={`${build}/components`} element={<Tree />} />
+            <Route path={`${build}/components/:component/decide`} element={<Together />} />
+            <Route path={`${build}/scans`} element={<Inventories />} />
+            <Route path="/products/:product/comparison" element={<Compare />} />
+            <Route path="/people" element={<People />} />
+            <Route path="/work" element={<Work />} />
+            <Route path="/audit" element={<Audit />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/record" element={<Record />} />
+            <Route path="/settings" element={<Settings />} />
+            {/* A path the page does not know either. Sending somebody home is
             better than a dead end, and the address bar already told them
             where they tried to go. */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-      </Suspense>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </Shell>
     </>
   );

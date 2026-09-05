@@ -79,7 +79,9 @@ export function Notices() {
           )}
 
           {items.length === 0 ? (
-            <p className="hint" style={{ margin: 0 }}>Nothing is waiting on you.</p>
+            <p className="hint" style={{ margin: 0 }}>
+              Nothing is waiting on you.
+            </p>
           ) : (
             <ul>
               {items.map((notice) => (
@@ -89,11 +91,15 @@ export function Notices() {
                         rather than resolving it: the thing it is about is
                         still true and will stop being said when that changes,
                         not when somebody clicks. */}
-                    <span className={`noticekind${notice.lifetime === "condition" ? " holds" : ""}`}>
+                    <span
+                      className={`noticekind${notice.lifetime === "condition" ? " holds" : ""}`}
+                    >
                       {label(notice.kind)}
                     </span>
                     {notice.link ? (
-                      <Link to={notice.link} onClick={() => setOpen(false)}>{notice.body}</Link>
+                      <Link to={notice.link} onClick={() => setOpen(false)}>
+                        {notice.body}
+                      </Link>
                     ) : (
                       <span>{notice.body}</span>
                     )}

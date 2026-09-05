@@ -150,14 +150,11 @@ export function Editor({
     try {
       const form = new FormData();
       form.append("file", file);
-      const answered = await api.POST(
-        "/v1/products/{product}/issues/{vulnerability}/attachments",
-        {
-          params: { path: attachTo },
-          body: form as never,
-          bodySerializer: (body: unknown) => body as FormData,
-        },
-      );
+      const answered = await api.POST("/v1/products/{product}/issues/{vulnerability}/attachments", {
+        params: { path: attachTo },
+        body: form as never,
+        bodySerializer: (body: unknown) => body as FormData,
+      });
       const stored = unwrap(answered);
       const written = stored.inline
         ? `![${stored.filename}](${stored.reference})`
@@ -223,7 +220,9 @@ export function Editor({
               onClick={() => setShowing(tab)}
               aria-pressed={showing === tab}
               className={`min-h-8 rounded px-2 text-sm ${
-                showing === tab ? "bg-[var(--raised)] text-[var(--ink)]" : "text-[var(--muted)] hover:text-[var(--ink)]"
+                showing === tab
+                  ? "bg-[var(--raised)] text-[var(--ink)]"
+                  : "text-[var(--muted)] hover:text-[var(--ink)]"
               }`}
             >
               {tab === "write" ? "Write" : "Preview"}

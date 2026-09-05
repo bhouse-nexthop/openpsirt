@@ -39,7 +39,10 @@ export function Paged({
   const from = Math.min(offset + 1, total);
   const upto = Math.min(offset + shown, total);
   return (
-    <div className="hint" style={{ margin: "8px 0 0", display: "flex", alignItems: "center", gap: 6 }}>
+    <div
+      className="hint"
+      style={{ margin: "8px 0 0", display: "flex", alignItems: "center", gap: 6 }}
+    >
       <span>
         Showing {from.toLocaleString()}–{upto.toLocaleString()} of {total.toLocaleString()}
       </span>
@@ -53,7 +56,12 @@ export function Paged({
           >
             Previous
           </button>
-          <button type="button" className="chip" disabled={upto >= total} onClick={() => onGo(offset + limit)}>
+          <button
+            type="button"
+            className="chip"
+            disabled={upto >= total}
+            onClick={() => onGo(offset + limit)}
+          >
             Next
           </button>
         </span>

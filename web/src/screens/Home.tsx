@@ -86,9 +86,9 @@ export function Home({ who }: { who: Who }) {
               <Releases points={releases.data?.items ?? []} />
               <p className="hint">
                 Each release as it stands against today&rsquo;s vulnerability data, not as of the
-                day it was cut &mdash; which is what re-scanning a shipped release is for. Rates
-                are not shown here: how much appeared between two releases is an artifact of how
-                far apart they were cut.
+                day it was cut &mdash; which is what re-scanning a shipped release is for. Rates are
+                not shown here: how much appeared between two releases is an artifact of how far
+                apart they were cut.
               </p>
             </>
           ) : (
@@ -317,7 +317,9 @@ function Figures({
     queryKey: ["home", "overdue", scope],
     queryFn: async () =>
       unwrap(
-        await api.GET("/v1/running-out", { params: { query: { days: 0, limit: OVERDUE_LIMIT, ...scope } } }),
+        await api.GET("/v1/running-out", {
+          params: { query: { days: 0, limit: OVERDUE_LIMIT, ...scope } },
+        }),
       ),
   });
 
@@ -328,14 +330,12 @@ function Figures({
 
   return (
     <div className="kpis">
-      <button
-        type="button"
-        className="kpi"
-        onClick={() => navigate(findingsPath(at))}
-      >
+      <button type="button" className="kpi" onClick={() => navigate(findingsPath(at))}>
         <span className="l">Open issues · {counting}</span>
         <span className="n">{openCount === undefined ? "—" : openCount.toLocaleString()}</span>
-        <span className="d">one per vulnerability, by any identifier · findings count each issue per component</span>
+        <span className="d">
+          one per vulnerability, by any identifier · findings count each issue per component
+        </span>
       </button>
       {!!at.product && (
         <button
@@ -364,10 +364,13 @@ function Figures({
         {/* The list behind this is capped, so a full one is said to be a
             floor rather than passed off as the count. */}
         <span className="n">
-          {overdue.length >= OVERDUE_LIMIT ? `${OVERDUE_LIMIT.toLocaleString()}+` : overdue.length.toLocaleString()}
+          {overdue.length >= OVERDUE_LIMIT
+            ? `${OVERDUE_LIMIT.toLocaleString()}+`
+            : overdue.length.toLocaleString()}
         </span>
         <span className="d">
-          {overdueExploited > 0 ? `${overdueExploited} exploited · ` : ""}undecided, past the deadline
+          {overdueExploited > 0 ? `${overdueExploited} exploited · ` : ""}undecided, past the
+          deadline
           {overdue.length >= OVERDUE_LIMIT ? " · at least" : ""}
         </span>
       </button>
@@ -516,12 +519,20 @@ function Lapsed() {
   const lapsed = useQuery({
     queryKey: ["home", "lapsed", product],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/decisions", { params: { query: { state: "lapsed", limit: 3, ...product } } })),
+      unwrap(
+        await api.GET("/v1/decisions", {
+          params: { query: { state: "lapsed", limit: 3, ...product } },
+        }),
+      ),
   });
   const expired = useQuery({
     queryKey: ["home", "expired", product],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/decisions", { params: { query: { expired: true, limit: 3, ...product } } })),
+      unwrap(
+        await api.GET("/v1/decisions", {
+          params: { query: { expired: true, limit: 3, ...product } },
+        }),
+      ),
   });
 
   const lapsedTotal = lapsed.data?.total ?? 0;

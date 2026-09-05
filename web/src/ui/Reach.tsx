@@ -33,11 +33,12 @@ export function Reach({
       <h2 className="mb-2 font-semibold">Scope</h2>
       <ul className="flex flex-col gap-1">
         <li>
-          <strong>{here}</strong> {here === 1 ? "location" : "locations"} in this build, one decision.
+          <strong>{here}</strong> {here === 1 ? "location" : "locations"} in this build, one
+          decision.
         </li>
         <li>
-          <strong>{automatic.length}</strong> other{" "}
-          {automatic.length === 1 ? "build" : "builds"} already match, so it reaches them automatically.
+          <strong>{automatic.length}</strong> other {automatic.length === 1 ? "build" : "builds"}{" "}
+          already match, so it reaches them automatically.
         </li>
         <li>
           <strong>{differing.length}</strong>{" "}

@@ -140,8 +140,7 @@ export function Scoring({
   const scored = useQuery({
     queryKey: ["score", vector],
     enabled: vector !== "",
-    queryFn: async () =>
-      unwrap(await api.GET("/v1/score", { params: { query: { vector } } })),
+    queryFn: async () => unwrap(await api.GET("/v1/score", { params: { query: { vector } } })),
   });
 
   function pick(metric: string, value: string) {
@@ -182,9 +181,7 @@ export function Scoring({
           </span>
         )}
         {vector === "" && answered > 0 && (
-          <span className="hint">
-            {8 - answered} more to answer — a score needs all eight.
-          </span>
+          <span className="hint">{8 - answered} more to answer — a score needs all eight.</span>
         )}
       </div>
 
@@ -214,8 +211,8 @@ export function Scoring({
 
       {vector !== "" && (
         <p className="hint">
-          <code>{vector}</code> — the vector is what is stored and the score is worked out from
-          it, so the two cannot come to say different things.
+          <code>{vector}</code> — the vector is what is stored and the score is worked out from it,
+          so the two cannot come to say different things.
         </p>
       )}
       {scored.isError && (

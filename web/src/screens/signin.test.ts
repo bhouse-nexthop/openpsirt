@@ -18,7 +18,10 @@ describe("where a sign-in comes back to", () => {
   it("carries the filters that were set with it", () => {
     // A findings list is its filters. Coming back to the same path with none
     // of them is coming back to a different screen.
-    at("/products/sonic/streams/master/variants/broadcom/findings", "?state=undecided&severity=high");
+    at(
+      "/products/sonic/streams/master/variants/broadcom/findings",
+      "?state=undecided&severity=high",
+    );
     expect(returningHere()).toContain("%3Fstate%3Dundecided%26severity%3Dhigh");
   });
 

@@ -19,10 +19,34 @@ import DOMPurify from "dompurify";
 // Refusing to render over a language nobody listed would make the tool argue
 // with people about syntax highlighting.
 const LANGUAGES = new Set([
-  "bash", "c", "cpp", "diff", "dockerfile", "go", "hcl", "ini", "java",
-  "javascript", "json", "makefile", "markdown", "nginx", "none", "patch",
-  "perl", "php", "python", "ruby", "rust", "shell", "sql", "text", "toml",
-  "typescript", "xml", "yaml",
+  "bash",
+  "c",
+  "cpp",
+  "diff",
+  "dockerfile",
+  "go",
+  "hcl",
+  "ini",
+  "java",
+  "javascript",
+  "json",
+  "makefile",
+  "markdown",
+  "nginx",
+  "none",
+  "patch",
+  "perl",
+  "php",
+  "python",
+  "ruby",
+  "rust",
+  "shell",
+  "sql",
+  "text",
+  "toml",
+  "typescript",
+  "xml",
+  "yaml",
 ]);
 
 const md = new MarkdownIt({
@@ -60,9 +84,32 @@ md.renderer.rules.fence = (tokens, index) => {
 // because an img with no src is a broken-image icon in the middle of somebody
 // reasoning.
 const ALLOWED_TAGS = [
-  "p", "br", "hr", "strong", "em", "del", "code", "pre", "blockquote",
-  "ul", "ol", "li", "a", "img", "h1", "h2", "h3", "h4", "h5", "h6",
-  "table", "thead", "tbody", "tr", "th", "td",
+  "p",
+  "br",
+  "hr",
+  "strong",
+  "em",
+  "del",
+  "code",
+  "pre",
+  "blockquote",
+  "ul",
+  "ol",
+  "li",
+  "a",
+  "img",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td",
 ];
 
 const ALLOWED_ATTR = ["href", "title", "class", "src", "alt"];
@@ -84,7 +131,8 @@ const IDENTIFIERS: { pattern: RegExp; where: (id: string) => string }[] = [
     where: (id) => `https://www.cve.org/CVERecord?id=${encodeURIComponent(id)}`,
   },
   {
-    pattern: /\bGHSA-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}\b/g,
+    pattern:
+      /\bGHSA-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}\b/g,
     where: (id) => `https://github.com/advisories/${encodeURIComponent(id)}`,
   },
 ];

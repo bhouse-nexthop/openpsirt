@@ -106,7 +106,8 @@ export function Decide({
   // (TRI-51). The server refuses it empty; asking here means the person finds
   // out while they are still looking at the tracker.
   const needsFixedVersion = outcome === "already-fixed";
-  const needsMitigation = needsJustification && justification === "inline_mitigations_already_exist";
+  const needsMitigation =
+    needsJustification && justification === "inline_mitigations_already_exist";
 
   // Where a judgment here lands beyond this build, merged across a sample of
   // the covered places. Builds already matching are named; builds at other
@@ -160,14 +161,16 @@ export function Decide({
           variant: m.variant ?? "",
           version: m.version ?? "",
           places: (had?.places ?? 0) + (m.places ?? 0),
-          note:
-            "Different code: the same issue at another version. Check that what the reasoning rests on exists there.",
+          note: "Different code: the same issue at another version. Check that what the reasoning rests on exists there.",
           tone: "warn",
         });
       }
     }
     for (const build of differing) auto.delete(build);
-    return { matching: [...auto.keys()].sort(), offered: [...diff.values()].sort((a, b) => a.key.localeCompare(b.key)) };
+    return {
+      matching: [...auto.keys()].sort(),
+      offered: [...diff.values()].sort((a, b) => a.key.localeCompare(b.key)),
+    };
   }, [reach]);
 
   const ready =
@@ -243,7 +246,10 @@ export function Decide({
               },
             ),
           );
-          results.push({ build: other.version ? `${other.build} at ${other.version}` : other.build, ok: true });
+          results.push({
+            build: other.version ? `${other.build} at ${other.version}` : other.build,
+            ok: true,
+          });
         } catch (error) {
           results.push({
             build: other.version ? `${other.build} at ${other.version}` : other.build,
@@ -362,7 +368,8 @@ export function Decide({
     <div>
       {inline && (
         <div className="ihead">
-          <span className="id">{at.vulnerability}</span> in <span className="id">{at.component}</span>
+          <span className="id">{at.vulnerability}</span> in{" "}
+          <span className="id">{at.component}</span>
           <span className="hint" style={{ marginLeft: "auto" }}>
             {open.length} open {open.length === 1 ? "location" : "locations"}
             {answered > 0 ? ` · ${answered} decided` : ""}
@@ -465,7 +472,9 @@ export function Decide({
             style={{ width: 180 }}
             onChange={(event) => setUntil(event.target.value)}
           />
-          <span className="hint">Under the deferral threshold, no approval is needed; over it, a second person.</span>
+          <span className="hint">
+            Under the deferral threshold, no approval is needed; over it, a second person.
+          </span>
         </div>
       )}
 

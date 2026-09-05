@@ -87,9 +87,7 @@ export function Compare() {
   const releases = useQuery({
     queryKey: ["releases", product],
     queryFn: async () =>
-      unwrap(
-        await api.GET("/v1/products/{product}/releases", { params: { path: { product } } }),
-      ),
+      unwrap(await api.GET("/v1/products/{product}/releases", { params: { path: { product } } })),
   });
 
   function set(key: string, value: string) {
@@ -106,7 +104,10 @@ export function Compare() {
     <>
       <div className="screen-head">
         <h2>Release comparison</h2>
-        <p>{product} — what was fixed, what was introduced, and what is unchanged between any two builds</p>
+        <p>
+          {product} — what was fixed, what was introduced, and what is unchanged between any two
+          builds
+        </p>
       </div>
 
       {(releases.data?.items ?? []).length > 1 && (

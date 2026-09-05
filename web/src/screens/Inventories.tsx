@@ -43,7 +43,8 @@ export function Inventories() {
   const retired = (scanning.data?.items ?? []).filter((b) => b.retired && b.quiet_days > 0);
 
   if (scans.isPending) return <p className="hint">Loading…</p>;
-  if (scans.isError) return <Failed error={scans.error} what="The inventories could not be read." />;
+  if (scans.isError)
+    return <Failed error={scans.error} what="The inventories could not be read." />;
 
   const items = scans.data?.items ?? [];
   const measured = scans.data?.measured_against;
@@ -53,8 +54,8 @@ export function Inventories() {
       <div className="screen-head">
         <h2>Inventories</h2>
         <p>
-          {product} · {stream} · {variant} — what each build uploaded and what the scan of it found ·
-          newest first
+          {product} · {stream} · {variant} — what each build uploaded and what the scan of it found
+          · newest first
         </p>
         <span style={{ marginLeft: "auto" }}>
           <button type="button" className="btn" onClick={() => setUploading(true)}>
@@ -64,7 +65,11 @@ export function Inventories() {
       </div>
 
       {quiet.map((build) => (
-        <div className="alert" key={`${build.stream} ${build.variant}`} style={{ marginBottom: 10 }}>
+        <div
+          className="alert"
+          key={`${build.stream} ${build.variant}`}
+          style={{ marginBottom: 10 }}
+        >
           <strong>
             {build.stream} · {build.variant}: no inventory
             {build.last_received_at ? ` for ${build.quiet_days} days` : " ever"}
@@ -112,12 +117,20 @@ export function Inventories() {
                   <td className="hint">{scan.built_at?.replace("T", " ").slice(0, 16)}</td>
                   <td>
                     <State state={scan.state} />
-                    {scan.failure && <div className="hint" style={{ marginTop: 4 }}>{scan.failure}</div>}
+                    {scan.failure && (
+                      <div className="hint" style={{ marginTop: 4 }}>
+                        {scan.failure}
+                      </div>
+                    )}
                     {/* A scanner that answers and warns its answer is coarse
                         is qualifying every finding of that run. Shown beside a
                         run that worked, because that is when it is said. */}
                     {scan.caution && (
-                      <div className="hint" style={{ marginTop: 4 }} title="What the scanner said while succeeding. It qualifies what the run found rather than saying it found nothing">
+                      <div
+                        className="hint"
+                        style={{ marginTop: 4 }}
+                        title="What the scanner said while succeeding. It qualifies what the run found rather than saying it found nothing"
+                      >
                         ⚠ {scan.caution}
                       </div>
                     )}
@@ -190,7 +203,11 @@ export function Inventories() {
 // once — when a build is asked to send a file again and the second copy has to
 // be checked against the first — and a column of hexadecimal on every row for
 // that is a table nobody can read.
-function Sent({ sent }: { sent: { kind?: string; size_bytes?: number; hash?: string; held?: boolean }[] }) {
+function Sent({
+  sent,
+}: {
+  sent: { kind?: string; size_bytes?: number; hash?: string; held?: boolean }[];
+}) {
   if (sent.length === 0) return <span className="hint">—</span>;
   return (
     <span className="sent">

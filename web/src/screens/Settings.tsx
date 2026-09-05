@@ -36,11 +36,17 @@ export function Settings() {
     });
   const deadlines = group((name) => name.startsWith("remediation.due."));
   const floor = group((name) => name === "triage.floor");
-  const threshold = group((name) => name === "triage.deferral-threshold" || name === "triage.together-cap");
+  const threshold = group(
+    (name) => name === "triage.deferral-threshold" || name === "triage.together-cap",
+  );
   const rest = group(() => true);
 
   const field = (each: (typeof items)[number]) => (
-    <Field key={each.name} setting={each} onSet={(value) => set.mutate({ name: each.name ?? "", value })} />
+    <Field
+      key={each.name}
+      setting={each}
+      onSet={(value) => set.mutate({ name: each.name ?? "", value })}
+    />
   );
 
   return (
@@ -59,9 +65,9 @@ export function Settings() {
             {deadlines.map(field)}
           </div>
           <p className="reading" style={{ marginTop: 10 }}>
-            Counted from when a finding was first seen, for what is undecided. Being exploited sets its
-            own clock, whatever the severity says; an unrated finding takes the medium window. Being late
-            is reported, never acted on.
+            Counted from when a finding was first seen, for what is undecided. Being exploited sets
+            its own clock, whatever the severity says; an unrated finding takes the medium window.
+            Being late is reported, never acted on.
           </p>
         </div>
       )}
@@ -73,8 +79,9 @@ export function Settings() {
             {floor.map(field)}
           </div>
           <p className="reading" style={{ marginTop: 10 }}>
-            Every shared figure carries this and says so. A person may narrow their own screen further,
-            and that changes no number anybody else is shown. Below the line, nothing has a deadline.
+            Every shared figure carries this and says so. A person may narrow their own screen
+            further, and that changes no number anybody else is shown. Below the line, nothing has a
+            deadline.
           </p>
         </div>
       )}
@@ -87,8 +94,8 @@ export function Settings() {
           </div>
           <p className="reading" style={{ marginTop: 10 }}>
             A deferral is measured against everything the finding has already been put off for, not
-            against the deferral being asked for. A bulk decision always needs a second person, and is
-            bounded.
+            against the deferral being asked for. A bulk decision always needs a second person, and
+            is bounded.
           </p>
         </div>
       )}
@@ -122,7 +129,13 @@ function title(name?: string): string {
     case "scanning.quiet-after":
       return "Quiet after";
     default:
-      return (name ?? "").split(".").pop()?.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase()) ?? "";
+      return (
+        (name ?? "")
+          .split(".")
+          .pop()
+          ?.replace(/-/g, " ")
+          .replace(/^\w/, (c) => c.toUpperCase()) ?? ""
+      );
   }
 }
 
@@ -176,7 +189,12 @@ function Field({
       </label>
       <div style={{ display: "flex", gap: 6 }}>
         {words ? (
-          <select id={setting.name} value={value} onChange={(event) => setValue(event.target.value)} title={setting.means}>
+          <select
+            id={setting.name}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            title={setting.means}
+          >
             {words.map((word) => (
               <option key={word} value={word}>
                 {word}
@@ -184,7 +202,13 @@ function Field({
             ))}
           </select>
         ) : (
-          <input id={setting.name} type="text" value={value} onChange={(event) => setValue(event.target.value)} title={setting.means} />
+          <input
+            id={setting.name}
+            type="text"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            title={setting.means}
+          />
         )}
         {changed && (
           <button type="button" className="btn" onClick={() => onSet(value)}>
@@ -192,9 +216,7 @@ function Field({
           </button>
         )}
       </div>
-      {!words && humane(value) && (
-        <span className="hint">= {humane(value)}</span>
-      )}
+      {!words && humane(value) && <span className="hint">= {humane(value)}</span>}
     </div>
   );
 }

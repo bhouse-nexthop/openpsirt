@@ -175,12 +175,11 @@ export function Review({
           ) : (
             <>
               <p>
-                Different code — <b>a different version</b>, not a different variant. Your
-                reasoning is about{" "}
-                <span className="id">{plan.versionHere || "the version here"}</span>; tick the ones
-                it also holds for, and the same words are recorded there keyed to that version, so
-                each lapses on its own when it moves. Some of these sit in this same build, which
-                commonly ships one name at several versions.
+                Different code — <b>a different version</b>, not a different variant. Your reasoning
+                is about <span className="id">{plan.versionHere || "the version here"}</span>; tick
+                the ones it also holds for, and the same words are recorded there keyed to that
+                version, so each lapses on its own when it moves. Some of these sit in this same
+                build, which commonly ships one name at several versions.
               </p>
               <ul className="revlist">
                 {plan.offered.map((o) => (
@@ -280,8 +279,8 @@ export function Review({
         <div className="revcard auto">
           <h5>Reached without a record</h5>
           <p>
-            <b>{plan.matching.length}</b> matching {plan.matching.length === 1 ? "build" : "builds"}, by
-            lookup.
+            <b>{plan.matching.length}</b> matching {plan.matching.length === 1 ? "build" : "builds"}
+            , by lookup.
           </p>
         </div>
         {skipped.length > 0 && (
@@ -300,7 +299,9 @@ export function Review({
           </div>
         )}
         {error != null && <Failed error={error} what="That could not be recorded." />}
-        <p className="hint">The approver sees this same summary, and the count is kept with the approval.</p>
+        <p className="hint">
+          The approver sees this same summary, and the count is kept with the approval.
+        </p>
       </>
     );
     foot = (
@@ -319,7 +320,10 @@ export function Review({
   }
 
   return (
-    <div className="backdrop open" onClick={(event) => event.target === event.currentTarget && onCancel()}>
+    <div
+      className="backdrop open"
+      onClick={(event) => event.target === event.currentTarget && onCancel()}
+    >
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title}>
         <header>
           <h3>{title}</h3>

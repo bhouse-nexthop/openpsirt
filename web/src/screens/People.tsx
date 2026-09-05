@@ -67,7 +67,9 @@ export function People() {
 
   const withdraw = useMutation({
     mutationFn: async (who: { identity: string; product: string; role: string }) =>
-      unwrap(await api.DELETE("/v1/people/{identity}/roles/{product}/{role}", { params: { path: who } })),
+      unwrap(
+        await api.DELETE("/v1/people/{identity}/roles/{product}/{role}", { params: { path: who } }),
+      ),
     onSuccess: () => void queries.invalidateQueries({ queryKey: ["people"] }),
   });
 
@@ -94,8 +96,12 @@ export function People() {
       </div>
 
       {grant.error != null && <Failed error={grant.error} what="That role could not be granted." />}
-      {withdraw.error != null && <Failed error={withdraw.error} what="That role could not be withdrawn." />}
-      {endSessions.error != null && <Failed error={endSessions.error} what="Their sessions could not be ended." />}
+      {withdraw.error != null && (
+        <Failed error={withdraw.error} what="That role could not be withdrawn." />
+      )}
+      {endSessions.error != null && (
+        <Failed error={endSessions.error} what="Their sessions could not be ended." />
+      )}
 
       {rows.length === 0 ? (
         <Empty title="Nobody is recorded yet." detail="Add somebody to give them a way in." />
@@ -129,7 +135,8 @@ export function People() {
                     ) : (
                       (person.signs_in_by ?? []).map((door) => (
                         <div key={`${door.provider} ${door.username}`}>
-                          <span className="id">{door.username}</span> <span className="hint">{door.provider}</span>
+                          <span className="id">{door.username}</span>{" "}
+                          <span className="hint">{door.provider}</span>
                         </div>
                       ))
                     )}
@@ -144,7 +151,11 @@ export function People() {
                             key={`${held.product} ${held.role}`}
                             className="vchip"
                             style={{ opacity: held.effective ? 1 : 0.55 }}
-                            title={held.source === "derived" ? "Derived from a group; withdrawn by changing the group" : "Assigned by an administrator"}
+                            title={
+                              held.source === "derived"
+                                ? "Derived from a group; withdrawn by changing the group"
+                                : "Assigned by an administrator"
+                            }
                           >
                             {held.product} · {held.role}
                             {held.source === "assigned" && (
@@ -173,7 +184,12 @@ export function People() {
                     )}
                   </td>
                   <td>
-                    <Grant disabled={derived} onGrant={(product, role) => grant.mutate({ identity: person.identity ?? "", product, role })} />
+                    <Grant
+                      disabled={derived}
+                      onGrant={(product, role) =>
+                        grant.mutate({ identity: person.identity ?? "", product, role })
+                      }
+                    />
                   </td>
                   <td>
                     <button
@@ -197,8 +213,8 @@ export function People() {
         <div className="alert" style={{ marginTop: 12 }}>
           <strong>Roles come from groups in this deployment</strong>
           <span>
-            What somebody holds is derived from the groups their provider reports, so granting one here
-            would be overwritten. Change the bindings below instead.
+            What somebody holds is derived from the groups their provider reports, so granting one
+            here would be overwritten. Change the bindings below instead.
           </span>
         </div>
       )}
@@ -210,11 +226,12 @@ export function People() {
           {(bindings.data?.items ?? []).length > 0 && (
             <>
               {" "}
-              · {(bindings.data?.items ?? []).length} group {(bindings.data?.items ?? []).length === 1 ? "binding" : "bindings"}
+              · {(bindings.data?.items ?? []).length} group{" "}
+              {(bindings.data?.items ?? []).length === 1 ? "binding" : "bindings"}
             </>
           )}
-          . Either an administrator assigns roles directly, or they are derived from the groups a sign-in
-          provider reports. Never both.
+          . Either an administrator assigns roles directly, or they are derived from the groups a
+          sign-in provider reports. Never both.
         </p>
         {(bindings.data?.items ?? []).length > 0 && (
           <div className="tablewrap" style={{ marginTop: 10 }}>
@@ -250,7 +267,9 @@ export function People() {
         title="Add user"
         open={adding}
         onClose={() => setAdding(false)}
-        onSubmit={() => record.mutate({ identity: identity.trim(), provider: provider.trim() || undefined })}
+        onSubmit={() =>
+          record.mutate({ identity: identity.trim(), provider: provider.trim() || undefined })
+        }
         error={record.error}
         busy={identity.trim() === "" || record.isPending}
         ok="Add user"
@@ -263,7 +282,13 @@ export function People() {
           placeholder="ashwin@example.com"
           hint="Exactly as your provider gives it. Capitals matter here."
         />
-        <Field label="Provider" value={provider} onChange={setProvider} placeholder="github" hint="Optional" />
+        <Field
+          label="Provider"
+          value={provider}
+          onChange={setProvider}
+          placeholder="github"
+          hint="Optional"
+        />
       </Declare>
     </>
   );
@@ -271,7 +296,13 @@ export function People() {
 
 // Granting needs a product as well as a role: a role is always held against
 // one, never globally.
-function Grant({ disabled, onGrant }: { disabled: boolean; onGrant: (product: string, role: string) => void }) {
+function Grant({
+  disabled,
+  onGrant,
+}: {
+  disabled: boolean;
+  onGrant: (product: string, role: string) => void;
+}) {
   const [product, setProduct] = useState("");
   const [role, setRole] = useState<string>(ROLES[0]);
   const products = useQuery({
@@ -282,7 +313,12 @@ function Grant({ disabled, onGrant }: { disabled: boolean; onGrant: (product: st
 
   return (
     <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-      <select aria-label="Product" style={{ width: "auto" }} value={product} onChange={(event) => setProduct(event.target.value)}>
+      <select
+        aria-label="Product"
+        style={{ width: "auto" }}
+        value={product}
+        onChange={(event) => setProduct(event.target.value)}
+      >
         <option value="">product</option>
         {names.map((name) => (
           <option key={name} value={name}>
@@ -290,14 +326,24 @@ function Grant({ disabled, onGrant }: { disabled: boolean; onGrant: (product: st
           </option>
         ))}
       </select>
-      <select aria-label="Role" style={{ width: "auto" }} value={role} onChange={(event) => setRole(event.target.value)}>
+      <select
+        aria-label="Role"
+        style={{ width: "auto" }}
+        value={role}
+        onChange={(event) => setRole(event.target.value)}
+      >
         {ROLES.map((each) => (
           <option key={each} value={each}>
             {each}
           </option>
         ))}
       </select>
-      <button type="button" className="linkish" disabled={disabled || product === ""} onClick={() => onGrant(product, role)}>
+      <button
+        type="button"
+        className="linkish"
+        disabled={disabled || product === ""}
+        onClick={() => onGrant(product, role)}
+      >
         Grant
       </button>
     </div>
@@ -319,7 +365,8 @@ function Credentials() {
   });
 
   const revokeKey = useMutation({
-    mutationFn: async (name: string) => unwrap(await api.DELETE("/v1/keys/{name}", { params: { path: { name } } })),
+    mutationFn: async (name: string) =>
+      unwrap(await api.DELETE("/v1/keys/{name}", { params: { path: { name } } })),
     onSuccess: () => void queries.invalidateQueries({ queryKey: ["keys"] }),
   });
   const revokeToken = useMutation({
@@ -335,12 +382,16 @@ function Credentials() {
     <div className="card" style={{ marginTop: 16 }}>
       <h3>API keys and tokens</h3>
       <p className="reading" style={{ margin: "0 0 12px" }}>
-        A build pipeline uploads with a key scoped to what it may send to. A person can hold tokens for
-        their own scripts, which never carry more than the person does.
+        A build pipeline uploads with a key scoped to what it may send to. A person can hold tokens
+        for their own scripts, which never carry more than the person does.
       </p>
 
-      {revokeKey.error != null && <Failed error={revokeKey.error} what="That key could not be revoked." />}
-      {revokeToken.error != null && <Failed error={revokeToken.error} what="That token could not be revoked." />}
+      {revokeKey.error != null && (
+        <Failed error={revokeKey.error} what="That key could not be revoked." />
+      )}
+      {revokeToken.error != null && (
+        <Failed error={revokeToken.error} what="That token could not be revoked." />
+      )}
 
       {keyRows.length === 0 && tokenRows.length === 0 ? (
         <p className="hint" style={{ margin: 0 }}>
@@ -360,7 +411,11 @@ function Credentials() {
             </thead>
             <tbody>
               {keyRows.map((key) => (
-                <tr key={`key ${key.name}`} className="row" style={{ opacity: key.revoked ? 0.55 : 1 }}>
+                <tr
+                  key={`key ${key.name}`}
+                  className="row"
+                  style={{ opacity: key.revoked ? 0.55 : 1 }}
+                >
                   <td>
                     <span className="id">{key.name}</span>
                   </td>
@@ -369,7 +424,8 @@ function Credentials() {
                     <span className="id">{key.product}</span>
                     <span className="hint">
                       {" "}
-                      · {key.stream ? key.stream : "any branch"}, {key.variant ? key.variant : "any variant"}
+                      · {key.stream ? key.stream : "any branch"},{" "}
+                      {key.variant ? key.variant : "any variant"}
                     </span>
                   </td>
                   <td className="hint">{key.last_used_at || "never"}</td>
@@ -377,7 +433,11 @@ function Credentials() {
                     {key.revoked ? (
                       <span style={{ color: "var(--faint)" }}>revoked</span>
                     ) : (
-                      <button type="button" className="linkish" onClick={() => revokeKey.mutate(key.name ?? "")}>
+                      <button
+                        type="button"
+                        className="linkish"
+                        onClick={() => revokeKey.mutate(key.name ?? "")}
+                      >
                         Revoke
                       </button>
                     )}
@@ -385,7 +445,11 @@ function Credentials() {
                 </tr>
               ))}
               {tokenRows.map((token) => (
-                <tr key={`token ${token.owner} ${token.name}`} className="row" style={{ opacity: token.revoked ? 0.55 : 1 }}>
+                <tr
+                  key={`token ${token.owner} ${token.name}`}
+                  className="row"
+                  style={{ opacity: token.revoked ? 0.55 : 1 }}
+                >
                   <td>
                     <span className="id">{token.name}</span>
                   </td>
@@ -407,7 +471,12 @@ function Credentials() {
                       <button
                         type="button"
                         className="linkish"
-                        onClick={() => revokeToken.mutate({ identity: token.owner ?? "", name: token.name ?? "" })}
+                        onClick={() =>
+                          revokeToken.mutate({
+                            identity: token.owner ?? "",
+                            name: token.name ?? "",
+                          })
+                        }
                       >
                         Revoke
                       </button>

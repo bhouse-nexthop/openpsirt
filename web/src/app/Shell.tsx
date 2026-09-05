@@ -95,7 +95,9 @@ export function Shell({ who, children }: { who: Who; children: ReactNode }) {
           aria-expanded={menu}
           onClick={() => setMenu(!menu)}
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h16" />
+          </svg>
         </button>
         <Scope />
         <span className="spacer" />
@@ -128,7 +130,13 @@ export function Shell({ who, children }: { who: Who; children: ReactNode }) {
         <span className="group">Across products</span>
         <Rail to="/" end icon="home" label="Home" />
         <Rail to="/review-queue" icon="inbox" label="Review queue" count={queue.data?.total} />
-        <Rail to="/unassigned" icon="nobody" label="Unassigned" count={unassigned.data?.total} quiet />
+        <Rail
+          to="/unassigned"
+          icon="nobody"
+          label="Unassigned"
+          count={unassigned.data?.total}
+          quiet
+        />
         <Rail to="/work" icon="people" label="Assignments" />
         {/* The record of what was judged. Across products because that is how
             it is asked for — an auditor asks about a period, not a build. */}
@@ -206,19 +214,14 @@ export function Shell({ who, children }: { who: Who; children: ReactNode }) {
         <NavLink to="/" end>
           Home
         </NavLink>
-        <NavLink to={findingsPath({ product, stream, variant })}>
-          Findings
-        </NavLink>
-        <NavLink to="/review-queue">
-          Queue
-        </NavLink>
+        <NavLink to={findingsPath({ product, stream, variant })}>Findings</NavLink>
+        <NavLink to="/review-queue">Queue</NavLink>
         <button type="button" aria-expanded={menu} onClick={() => setMenu(!menu)}>
           Menu
         </button>
       </nav>
 
       <UploadDrawer open={uploading} onClose={() => setUploading(false)} />
-
     </div>
   );
 }
@@ -357,7 +360,10 @@ function Me({ who }: { who: Who }) {
               aria-current={look === each.name ? "true" : undefined}
               onClick={() => setLook(each.name)}
             >
-              <span className="swatch" style={{ "--a": each.a, "--b": each.b } as React.CSSProperties} />
+              <span
+                className="swatch"
+                style={{ "--a": each.a, "--b": each.b } as React.CSSProperties}
+              />
               {each.label}
               <span className="tag">{each.said}</span>
             </button>
@@ -396,7 +402,10 @@ function Me({ who }: { who: Who }) {
 // Two letters for the corner. A display name people set is usually a full
 // name; an identity is usually not, and either has to fit in 30 pixels.
 function initials(name: string): string {
-  const parts = name.replace(/^[a-z]+:/, "").split(/[\s._-]+/).filter(Boolean);
+  const parts = name
+    .replace(/^[a-z]+:/, "")
+    .split(/[\s._-]+/)
+    .filter(Boolean);
   if (parts.length === 0) return "?";
   if (parts.length === 1) return (parts[0] ?? "").slice(0, 2).toUpperCase();
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();

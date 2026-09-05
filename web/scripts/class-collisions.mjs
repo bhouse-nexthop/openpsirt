@@ -99,7 +99,9 @@ const foreign = /^(recharts-|markdown-body$)/;
 const unused = names.filter(
   (name) =>
     !foreign.test(name) &&
-    !new RegExp(`[\\s"'\`.]${name.replace(/[-[\]{}()*+?.\\^$|]/g, "\\$&")}[\\s"'\`:.]`).test(markup),
+    !new RegExp(`[\\s"'\`.]${name.replace(/[-[\]{}()*+?.\\^$|]/g, "\\$&")}[\\s"'\`:.]`).test(
+      markup,
+    ),
 );
 
 if (unused.length > 0) {

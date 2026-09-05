@@ -22,7 +22,10 @@ export function Severity({ word }: { word?: string }) {
 export function Exploited({ when }: { when?: boolean }) {
   if (!when) return null;
   return (
-    <span className="kev" title="Somebody is known to be using this. It sorts above everything else, whatever the severity says">
+    <span
+      className="kev"
+      title="Somebody is known to be using this. It sorts above everything else, whatever the severity says"
+    >
       Exploited
     </span>
   );

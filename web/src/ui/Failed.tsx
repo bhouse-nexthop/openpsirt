@@ -14,7 +14,11 @@ export function Failed({ error, what }: { error: unknown; what: string }) {
       }}
     >
       <p style={{ margin: 0, fontWeight: 600 }}>{what}</p>
-      {said && <p className="hint" style={{ margin: "4px 0 0" }}>{said}</p>}
+      {said && (
+        <p className="hint" style={{ margin: "4px 0 0" }}>
+          {said}
+        </p>
+      )}
     </div>
   );
 }

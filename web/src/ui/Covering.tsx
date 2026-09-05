@@ -21,7 +21,8 @@ export function groupsOf(places: Sitting[]): Group[] {
   const byConsumer = new Map<string, Group>();
   for (const place of places) {
     const chain = place.chain ?? [];
-    const consumer = place.consumer || (chain.length > 1 ? (chain[chain.length - 2]?.component ?? "") : "");
+    const consumer =
+      place.consumer || (chain.length > 1 ? (chain[chain.length - 2]?.component ?? "") : "");
     const key = consumer || UNPLACED;
     const note = !consumer ? undefined : chain.length === 2 ? "the build itself" : undefined;
     const group = byConsumer.get(key) ?? { consumer: key, note, items: [] };
@@ -132,7 +133,9 @@ export function Covering({
             const isOpen = expanded.has(group.consumer);
             const shown = filter
               ? group.items.filter((p) =>
-                  (p.chain?.[p.chain.length - 1]?.component ?? "").toLowerCase().includes(filter.toLowerCase()),
+                  (p.chain?.[p.chain.length - 1]?.component ?? "")
+                    .toLowerCase()
+                    .includes(filter.toLowerCase()),
                 )
               : group.items;
             return (
@@ -170,7 +173,8 @@ export function Covering({
                 </div>
                 {isOpen &&
                   shown.map((place) => {
-                    const name = place.chain?.[place.chain.length - 1]?.component ?? place.place ?? "";
+                    const name =
+                      place.chain?.[place.chain.length - 1]?.component ?? place.place ?? "";
                     const key = place.place ?? "";
                     return (
                       <label key={key} className="loc">
@@ -205,12 +209,15 @@ export function Covering({
         </div>
       )}
 
-      <p className="said" style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
+      <p
+        className="said"
+        style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)" }}
+      >
         <b>
           {matching} other {matching === 1 ? "build matches" : "builds match"}
         </b>{" "}
-        automatically · <b>{differing}</b> at other {differing === 1 ? "version is" : "versions are"}{" "}
-        reviewed one at a time on submit.
+        automatically · <b>{differing}</b> at other{" "}
+        {differing === 1 ? "version is" : "versions are"} reviewed one at a time on submit.
       </p>
     </div>
   );

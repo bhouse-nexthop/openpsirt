@@ -11,11 +11,7 @@ import { Outcome } from "./Outcome";
 // The reach is computed either way; what this adds is the choosing. A carry
 // that happened silently would be one nobody reviewed, and the four groups are
 // four different things — only two of them are questions.
-export function Carried({
-  at,
-}: {
-  at: { product: string; stream: string; variant: string };
-}) {
+export function Carried({ at }: { at: { product: string; stream: string; variant: string } }) {
   const [from, setFrom] = useState("");
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const queries = useQueryClient();
@@ -72,9 +68,9 @@ export function Carried({
     <section className="panel" style={{ marginTop: 14 }}>
       <h3>What this line would inherit</h3>
       <p className="hint">
-        A judgment is a claim about a combination of code rather than about a release, so what
-        still matches reaches this line on its own. What moved is a question, and the words from
-        the old line come with it to start from rather than to start without.
+        A judgment is a claim about a combination of code rather than about a release, so what still
+        matches reaches this line on its own. What moved is a question, and the words from the old
+        line come with it to start from rather than to start without.
       </p>
 
       <div className="field" style={{ maxWidth: "40ch" }}>
@@ -149,9 +145,7 @@ export function Carried({
             </div>
           )}
 
-          {carry.error != null && (
-            <Failed error={carry.error} what="Those could not be carried." />
-          )}
+          {carry.error != null && <Failed error={carry.error} what="Those could not be carried." />}
           <div className="actions" style={{ marginTop: 8 }}>
             <button
               type="button"

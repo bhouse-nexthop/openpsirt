@@ -28,13 +28,23 @@ type Similar = Body<"SimilarBody">;
 const SAMPLE = 8;
 
 export function Finding() {
-  const { product = "", stream = "", variant = "", vulnerability = "", component = "" } = useParams();
+  const {
+    product = "",
+    stream = "",
+    variant = "",
+    vulnerability = "",
+    component = "",
+  } = useParams();
   const [params] = useSearchParams();
   const version = params.get("version") ?? "";
   const who = useWho();
   const at = { product, stream, variant, vulnerability, component };
   const [recorded, setRecorded] = useState<Recorded | null>(null);
-  const [prefill, setPrefill] = useState<{ outcome?: string; justification?: string; reasoning?: string } | null>(null);
+  const [prefill, setPrefill] = useState<{
+    outcome?: string;
+    justification?: string;
+    reasoning?: string;
+  } | null>(null);
   const [extending, setExtending] = useState<{ claimId: number; decisionId: number } | null>(null);
 
   const finding = useQuery({
@@ -59,22 +69,25 @@ export function Finding() {
   const standing = useQueries({
     queries: standingIds.slice(0, SAMPLE).map((id) => ({
       queryKey: ["decision", id],
-      queryFn: async () => unwrap(await api.GET("/v1/decisions/{id}", { params: { path: { id } } })),
+      queryFn: async () =>
+        unwrap(await api.GET("/v1/decisions/{id}", { params: { path: { id } } })),
     })),
   });
   // Which place each earlier decision was at, for reaffirming it.
   const openPlaces = places.filter((p) => p.decision == null).slice(0, SAMPLE);
   const history = useQueries({
-    queries: ((it?.previous ?? []).some((p) => p.ended === "lapsed") ? openPlaces : []).map((place) => ({
-      queryKey: ["decided", at, place.place],
-      queryFn: async () =>
-        unwrap(
-          await api.GET(
-            "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision",
-            { params: { path: { ...at, place: place.place ?? "" } } },
+    queries: ((it?.previous ?? []).some((p) => p.ended === "lapsed") ? openPlaces : []).map(
+      (place) => ({
+        queryKey: ["decided", at, place.place],
+        queryFn: async () =>
+          unwrap(
+            await api.GET(
+              "/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision",
+              { params: { path: { ...at, place: place.place ?? "" } } },
+            ),
           ),
-        ),
-    })),
+      }),
+    ),
   });
 
   if (finding.isPending) return <p className="hint">Loading…</p>;
@@ -90,10 +103,7 @@ export function Finding() {
           <ul className="refs">
             {choices.map((choice) => (
               <li key={`${choice.version} ${choice.ecosystem ?? ""}`}>
-                <Link
-                  className="linkish id"
-                  to={`?version=${encodeURIComponent(choice.version)}`}
-                >
+                <Link className="linkish id" to={`?version=${encodeURIComponent(choice.version)}`}>
                   {choice.version}
                 </Link>
                 {choice.ecosystem && <span className="hint">{choice.ecosystem}</span>}
@@ -111,7 +121,8 @@ export function Finding() {
   const placeOf = new Map<number, string>();
   history.forEach((q, i) => {
     for (const d of q.data?.previously ?? []) {
-      if (d.decision?.id && !placeOf.has(d.decision.id)) placeOf.set(d.decision.id, openPlaces[i]?.place ?? "");
+      if (d.decision?.id && !placeOf.has(d.decision.id))
+        placeOf.set(d.decision.id, openPlaces[i]?.place ?? "");
     }
   });
   const previous: Previous[] = (it.previous ?? []).map((p) => ({
@@ -132,7 +143,12 @@ export function Finding() {
 
   // Counted as locations, the way the decision counts them, not as chain rows.
   const decided = new Set(places.filter((p) => p.decision != null).map((p) => p.place)).size;
-  const state = stateOf(claims, decided, distinct, (it.standing ?? []).map((each) => each.state ?? ""));
+  const state = stateOf(
+    claims,
+    decided,
+    distinct,
+    (it.standing ?? []).map((each) => each.state ?? ""),
+  );
   const back =
     `/products/${encodeURIComponent(product)}` +
     `/streams/${encodeURIComponent(stream)}` +
@@ -154,12 +170,14 @@ export function Finding() {
           › <b>{it.vulnerability}</b>
         </span>
         <h2>
-          <span className="id">{it.vulnerability}</span> in <span className="id">{it.component}</span>{" "}
-          <Severity word={it.assessed || it.severity} /> {it.exploited && <Exploited when />}{" "}
+          <span className="id">{it.vulnerability}</span> in{" "}
+          <span className="id">{it.component}</span> <Severity word={it.assessed || it.severity} />{" "}
+          {it.exploited && <Exploited when />}{" "}
           <span className={`state ${state.cls}`}>{state.label}</span>
         </h2>
         <p>
-          {product} · {stream} · {variant} · {distinct} {distinct === 1 ? "location" : "locations"} ·{" "}
+          {product} · {stream} · {variant} · {distinct} {distinct === 1 ? "location" : "locations"}{" "}
+          ·{" "}
           <b style={{ color: "var(--ink)" }}>
             {decided} of {distinct} decided
           </b>
@@ -170,22 +188,30 @@ export function Finding() {
         <div className="alert info" style={{ marginBottom: 14 }}>
           <strong>Submitted</strong>
           <span>
-            Recorded against {recorded.recorded} {recorded.recorded === 1 ? "location" : "locations"} here
+            Recorded against {recorded.recorded}{" "}
+            {recorded.recorded === 1 ? "location" : "locations"} here
             {recorded.applied.filter((a) => a.ok).length > 0 && (
               <>
-                , and in {recorded.applied.filter((a) => a.ok).map((a) => a.build).join(", ")}
+                , and in{" "}
+                {recorded.applied
+                  .filter((a) => a.ok)
+                  .map((a) => a.build)
+                  .join(", ")}
               </>
             )}
-            ; {recorded.matching} matching {recorded.matching === 1 ? "build is" : "builds are"} reached by lookup.{" "}
+            ; {recorded.matching} matching {recorded.matching === 1 ? "build is" : "builds are"}{" "}
+            reached by lookup.{" "}
             {recorded.needsApproval
               ? "The dismissal takes effect once a second person approves it. It is now in the review queue."
               : "In force now."}
-            {recorded.applied.filter((a) => !a.ok).map((a) => (
-              <Fragment key={a.build}>
-                <br />
-                <b>{a.build}</b>: {a.said}
-              </Fragment>
-            ))}{" "}
+            {recorded.applied
+              .filter((a) => !a.ok)
+              .map((a) => (
+                <Fragment key={a.build}>
+                  <br />
+                  <b>{a.build}</b>: {a.said}
+                </Fragment>
+              ))}{" "}
             <Link to="/review-queue" className="linkish">
               Go to the review queue →
             </Link>
@@ -199,7 +225,10 @@ export function Finding() {
           <div>
             <h4>Upgraded, but not to a fixed version</h4>
             <p>
-              <span className="id">{it.component}</span> moved <b>{it.arrived_from} → {it.version}</b>
+              <span className="id">{it.component}</span> moved{" "}
+              <b>
+                {it.arrived_from} → {it.version}
+              </b>
               {it.fixed_in && (
                 <>
                   ; this issue is fixed in <b>{it.fixed_in}</b>
@@ -250,7 +279,9 @@ export function Finding() {
               <span className="l">CVSS</span>
             </div>
             <div className="score">
-              <span className="n">{typeof it.likelihood === "number" ? it.likelihood.toFixed(3) : "—"}</span>
+              <span className="n">
+                {typeof it.likelihood === "number" ? it.likelihood.toFixed(3) : "—"}
+              </span>
               <span className="l">EPSS</span>
             </div>
             <div className="score">
@@ -270,8 +301,8 @@ export function Finding() {
           <p className="hint">
             {it.assessed ? (
               <>
-                Assessed <Severity word={it.assessed} /> · published <Severity word={it.severity} />. The
-                assessment orders it and sets its deadline.
+                Assessed <Severity word={it.assessed} /> · published <Severity word={it.severity} />
+                . The assessment orders it and sets its deadline.
               </>
             ) : (
               <>
@@ -326,9 +357,9 @@ export function Finding() {
           {it.nothing_since && (
             <p className="alert" style={{ margin: 0 }}>
               <span>
-                Nothing has been released upstream since {it.latest_released_at ?? "well before"}, over
-                a year before this issue was named, and there is no fix. Replacing or patching the
-                component is the response available.
+                Nothing has been released upstream since {it.latest_released_at ?? "well before"},
+                over a year before this issue was named, and there is no fix. Replacing or patching
+                the component is the response available.
               </span>
             </p>
           )}
@@ -360,7 +391,12 @@ export function Finding() {
 
         {claims.length > 0 && claims[0]?.decision?.id && (
           <>
-            <Activity decisionId={claims[0].decision.id} claim={claims[0]} places={it.standing?.[0]?.places} previous={previous} />
+            <Activity
+              decisionId={claims[0].decision.id}
+              claim={claims[0]}
+              places={it.standing?.[0]?.places}
+              previous={previous}
+            />
             <Revisions decisionId={claims[0].decision.id} />
             <Comments
               decisionId={claims[0].decision.id}
@@ -379,13 +415,17 @@ export function Finding() {
 
         {places.some((p) => p.decision == null) && (
           <>
-            <Assess vulnerability={vulnerability} published={it.severity ?? ""} assessed={it.assessed ?? ""} />
+            <Assess
+              vulnerability={vulnerability}
+              published={it.severity ?? ""}
+              assessed={it.assessed ?? ""}
+            />
             {similar.length > 0 && !extending && (
               <div className="card">
                 <h3>Approved decisions at this component</h3>
                 <p className="reading" style={{ marginBottom: 8 }}>
-                  The same component under the same consumer, with the same justification. Applying one
-                  extends its argument to this issue; it still needs a second person.
+                  The same component under the same consumer, with the same justification. Applying
+                  one extends its argument to this issue; it still needs a second person.
                 </p>
                 {similar.map((s) => (
                   <div key={s.decision_id} className="prior">
@@ -442,7 +482,9 @@ export function Finding() {
             undecided={places.some((p) => p.decision == null)}
             onReuse={(reasoning, outcome, justification) => {
               setPrefill({ reasoning, outcome, justification });
-              document.querySelector(".deciding .card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              document
+                .querySelector(".deciding .card")
+                ?.scrollIntoView({ behavior: "smooth", block: "start" });
             }}
           />
         )}
@@ -469,9 +511,18 @@ type Previous = {
 // The head's pill reads each claim's state as a whole where the finding
 // reports it, not the representative row's: one row approved and forty
 // returned is pending, not approved.
-function stateOf(claims: Detail[], decided: number, total: number, overall: string[]): { label: string; cls: string } {
-  if (claims.length === 0) return decided > 0 && total > 0 ? { label: "Decided", cls: "agreed" } : { label: "Undecided", cls: "open" };
-  const states = overall.length === claims.length ? overall : claims.map((c) => c.decision?.state ?? "");
+function stateOf(
+  claims: Detail[],
+  decided: number,
+  total: number,
+  overall: string[],
+): { label: string; cls: string } {
+  if (claims.length === 0)
+    return decided > 0 && total > 0
+      ? { label: "Decided", cls: "agreed" }
+      : { label: "Undecided", cls: "open" };
+  const states =
+    overall.length === claims.length ? overall : claims.map((c) => c.decision?.state ?? "");
   if (states.some((s) => s === "proposed")) return { label: "Pending approval", cls: "waiting" };
   if (states.every((s) => s === "approved")) {
     const outcome = claims[0]?.decision?.outcome ?? "";
@@ -519,7 +570,9 @@ function Standing({
   // one row approved and forty sent back is not approved.
   const state = summary?.state ?? claim.decision?.state ?? "";
   const rows = summary?.rows;
-  const mixed = !!rows && [rows.proposed ?? 0, rows.sent_back ?? 0, rows.approved ?? 0].filter((n) => n > 0).length > 1;
+  const mixed =
+    !!rows &&
+    [rows.proposed ?? 0, rows.sent_back ?? 0, rows.approved ?? 0].filter((n) => n > 0).length > 1;
   const sentBackAt = summary?.sent_back_at ?? claim.decision?.sent_back_at;
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(claim.reasoning ?? "");
@@ -527,12 +580,20 @@ function Standing({
   const withdraw = useWithdraw();
   const approvals = useQuery({
     queryKey: ["decision", id, "approvals"],
-    queryFn: async () => unwrap(await api.GET("/v1/decisions/{id}/approvals", { params: { path: { id } } })),
+    queryFn: async () =>
+      unwrap(await api.GET("/v1/decisions/{id}/approvals", { params: { path: { id } } })),
   });
   const live = (approvals.data?.items ?? []).filter((a) => !a.withdrawn_at);
   const last = live[live.length - 1];
   const draftKey = `revise:${id}`;
-  const stripe = state === "proposed" ? "pending" : state === "approved" ? "approved" : state === "lapsed" ? "lapsed" : "";
+  const stripe =
+    state === "proposed"
+      ? "pending"
+      : state === "approved"
+        ? "approved"
+        : state === "lapsed"
+          ? "lapsed"
+          : "";
 
   return (
     <div className={`card standing ${stripe}`}>
@@ -546,7 +607,10 @@ function Standing({
           {typeof claim.age_days === "number" && claim.age_days > 365 && (
             <>
               {" "}
-              · <span style={{ color: "var(--sev-medium)" }}>a judgment this old is worth re-reading</span>
+              ·{" "}
+              <span style={{ color: "var(--sev-medium)" }}>
+                a judgment this old is worth re-reading
+              </span>
             </>
           )}
         </span>
@@ -555,7 +619,10 @@ function Standing({
         <div className="alert" style={{ marginBottom: 12 }}>
           <strong>
             Rejected on {sentBackAt.slice(0, 10)}
-            {rows && (rows.sent_back ?? 0) > 0 && (rows.sent_back ?? 0) < (rows.proposed ?? 0) + (rows.sent_back ?? 0) + (rows.approved ?? 0)
+            {rows &&
+            (rows.sent_back ?? 0) > 0 &&
+            (rows.sent_back ?? 0) <
+              (rows.proposed ?? 0) + (rows.sent_back ?? 0) + (rows.approved ?? 0)
               ? ` — ${rows.sent_back} of ${(rows.proposed ?? 0) + (rows.sent_back ?? 0) + (rows.approved ?? 0)} records`
               : ""}
           </strong>
@@ -577,7 +644,9 @@ function Standing({
           <div>
             <span className="l">Justification</span>
             <span className="v mono">{claim.decision.justification}</span>
-            {claim.decision.mitigation && <span className="hint">stopped by: {claim.decision.mitigation}</span>}
+            {claim.decision.mitigation && (
+              <span className="hint">stopped by: {claim.decision.mitigation}</span>
+            )}
           </div>
         )}
         {/* The evidence for a claim that the fix is already here, on the
@@ -618,7 +687,11 @@ function Standing({
               <>
                 <span className="state waiting">Pending</span> waiting for a second person
                 {mixed && rows && (
-                  <> · {rows.approved ?? 0} approved · {rows.proposed ?? 0} pending · {rows.sent_back ?? 0} returned</>
+                  <>
+                    {" "}
+                    · {rows.approved ?? 0} approved · {rows.proposed ?? 0} pending ·{" "}
+                    {rows.sent_back ?? 0} returned
+                  </>
                 )}
                 {mine && " — you proposed this, so you cannot approve it"}
                 {!mine && mayApprove && " — you may approve or reject it from the review queue"}
@@ -627,12 +700,15 @@ function Standing({
               <>
                 <span className="state agreed">Approved</span> by <b>{last.approved_by}</b>
                 {last.approved_at && <>, {last.approved_at.replace("T", " ").slice(0, 16)}</>}
-                {typeof last.covered === "number" && <> · covered {last.covered} records at the time</>}
+                {typeof last.covered === "number" && (
+                  <> · covered {last.covered} records at the time</>
+                )}
               </>
             ) : state === "approved" ? (
               <>
                 <span className="state agreed">Approved</span>
-                {claim.decision?.needs_approval === false && " — needed nobody: under the deferral threshold"}
+                {claim.decision?.needs_approval === false &&
+                  " — needed nobody: under the deferral threshold"}
               </>
             ) : (
               <span className={`state ${state === "lapsed" ? "lapsed" : "open"}`}>{state}</span>
@@ -646,8 +722,8 @@ function Standing({
           <div className="alert" style={{ marginBottom: 10 }}>
             <strong>Revising the reasoning withdraws the approval</strong>
             <span>
-              The earlier words stay readable in the revision history, and the decision returns to the
-              review queue marked as previously approved.
+              The earlier words stay readable in the revision history, and the decision returns to
+              the review queue marked as previously approved.
             </span>
           </div>
           <Editor
@@ -685,11 +761,17 @@ function Standing({
         </div>
       ) : (
         <div className="why rendered" style={{ marginTop: 12 }}>
-          {claim.reasoning ? <Markdown source={claim.reasoning} /> : <p className="hint">Nothing written.</p>}
+          {claim.reasoning ? (
+            <Markdown source={claim.reasoning} />
+          ) : (
+            <p className="hint">Nothing written.</p>
+          )}
         </div>
       )}
 
-      {withdraw.error != null && <Failed error={withdraw.error} what="That could not be withdrawn." />}
+      {withdraw.error != null && (
+        <Failed error={withdraw.error} what="That could not be withdrawn." />
+      )}
       {!editing && (state === "proposed" || state === "approved") && (
         <div className="actions" style={{ marginTop: 12 }}>
           <button
@@ -711,7 +793,9 @@ function Standing({
             Withdraw
           </button>
           <span className="consequence">
-            {state === "approved" ? "Revising withdraws the approval; withdrawing needs nobody" : "Withdrawing needs nobody"}
+            {state === "approved"
+              ? "Revising withdraws the approval; withdrawing needs nobody"
+              : "Withdrawing needs nobody"}
           </span>
         </div>
       )}
@@ -723,21 +807,37 @@ type Event = { when: string; who: string; what: string; earlier?: boolean };
 
 // One timeline: what happened to the claim that stands, and what happened at
 // this location before it.
-function Activity({ decisionId, claim, places, previous }: { decisionId: number; claim: Detail; places?: number; previous: Previous[] }) {
+function Activity({
+  decisionId,
+  claim,
+  places,
+  previous,
+}: {
+  decisionId: number;
+  claim: Detail;
+  places?: number;
+  previous: Previous[];
+}) {
   const approvals = useQuery({
     queryKey: ["decision", decisionId, "approvals"],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/decisions/{id}/approvals", { params: { path: { id: decisionId } } })),
+      unwrap(
+        await api.GET("/v1/decisions/{id}/approvals", { params: { path: { id: decisionId } } }),
+      ),
   });
   const revisions = useQuery({
     queryKey: ["decision", decisionId, "revisions"],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/decisions/{id}/revisions", { params: { path: { id: decisionId } } })),
+      unwrap(
+        await api.GET("/v1/decisions/{id}/revisions", { params: { path: { id: decisionId } } }),
+      ),
   });
   const comments = useQuery({
     queryKey: ["comments", decisionId],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/decisions/{id}/comments", { params: { path: { id: decisionId } } })),
+      unwrap(
+        await api.GET("/v1/decisions/{id}/comments", { params: { path: { id: decisionId } } }),
+      ),
   });
 
   const now: Event[] = [];
@@ -747,16 +847,31 @@ function Activity({ decisionId, claim, places, previous }: { decisionId: number;
     what: `proposed #${decisionId} — ${OUTCOME[claim.decision?.outcome ?? ""] ?? claim.decision?.outcome} · ${places ?? claim.decision?.places ?? 1} ${(places ?? claim.decision?.places ?? 1) === 1 ? "location" : "locations"}`,
   });
   for (const r of revisions.data?.items ?? []) {
-    if ((r.ordinal ?? 1) > 1) now.push({ when: r.written_at ?? "", who: r.written_by ?? "", what: `revised the reasoning (revision ${r.ordinal})` });
+    if ((r.ordinal ?? 1) > 1)
+      now.push({
+        when: r.written_at ?? "",
+        who: r.written_by ?? "",
+        what: `revised the reasoning (revision ${r.ordinal})`,
+      });
   }
   for (const a of approvals.data?.items ?? []) {
-    now.push({ when: a.approved_at ?? "", who: a.approved_by ?? "", what: `approved revision ${a.revision_id}${a.batch ? ` (batch ${a.batch})` : ""}` });
-    if (a.withdrawn_at) now.push({ when: a.withdrawn_at, who: a.approved_by ?? "", what: "approval withdrawn" });
+    now.push({
+      when: a.approved_at ?? "",
+      who: a.approved_by ?? "",
+      what: `approved revision ${a.revision_id}${a.batch ? ` (batch ${a.batch})` : ""}`,
+    });
+    if (a.withdrawn_at)
+      now.push({ when: a.withdrawn_at, who: a.approved_by ?? "", what: "approval withdrawn" });
   }
   for (const c of comments.data?.items ?? []) {
     now.push({ when: c.written_at ?? "", who: c.written_by ?? "", what: "commented" });
   }
-  if (claim.decision?.sent_back_at) now.push({ when: claim.decision.sent_back_at, who: "", what: "rejected — returned for revision" });
+  if (claim.decision?.sent_back_at)
+    now.push({
+      when: claim.decision.sent_back_at,
+      who: "",
+      what: "rejected — returned for revision",
+    });
   now.sort((a, b) => b.when.localeCompare(a.when));
 
   const earlier: Event[] = previous.map((p) => ({
@@ -795,7 +910,10 @@ function Activity({ decisionId, claim, places, previous }: { decisionId: number;
 }
 
 function initials(name: string): string {
-  const parts = name.replace(/^[a-z]+:/, "").split(/[\s._@-]+/).filter(Boolean);
+  const parts = name
+    .replace(/^[a-z]+:/, "")
+    .split(/[\s._@-]+/)
+    .filter(Boolean);
   if (parts.length === 0) return "⟳";
   if (parts.length === 1) return (parts[0] ?? "").slice(0, 2).toUpperCase();
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();
@@ -807,18 +925,27 @@ function Revisions({ decisionId }: { decisionId: number }) {
   const revisions = useQuery({
     queryKey: ["decision", decisionId, "revisions"],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/decisions/{id}/revisions", { params: { path: { id: decisionId } } })),
+      unwrap(
+        await api.GET("/v1/decisions/{id}/revisions", { params: { path: { id: decisionId } } }),
+      ),
   });
   const approvals = useQuery({
     queryKey: ["decision", decisionId, "approvals"],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/decisions/{id}/approvals", { params: { path: { id: decisionId } } })),
+      unwrap(
+        await api.GET("/v1/decisions/{id}/approvals", { params: { path: { id: decisionId } } }),
+      ),
   });
   const items = revisions.data?.items ?? [];
   if (items.length === 0) return null;
   const agreed = new Map<number, { by: string; at: string; withdrawn: boolean }>();
   for (const a of approvals.data?.items ?? []) {
-    if (a.revision_id) agreed.set(a.revision_id, { by: a.approved_by ?? "", at: a.approved_at ?? "", withdrawn: !!a.withdrawn_at });
+    if (a.revision_id)
+      agreed.set(a.revision_id, {
+        by: a.approved_by ?? "",
+        at: a.approved_at ?? "",
+        withdrawn: !!a.withdrawn_at,
+      });
   }
 
   return (
@@ -853,8 +980,8 @@ function Revisions({ decisionId }: { decisionId: number }) {
         })}
       </div>
       <p className="hint" style={{ margin: "10px 0 0" }}>
-        Every revision is kept. An approval names the revision it was given for, and revising withdraws
-        it.
+        Every revision is kept. An approval names the revision it was given for, and revising
+        withdraws it.
       </p>
     </div>
   );
@@ -879,7 +1006,9 @@ function Comments({
   const comments = useQuery({
     queryKey: ["comments", decisionId],
     queryFn: async () =>
-      unwrap(await api.GET("/v1/decisions/{id}/comments", { params: { path: { id: decisionId } } })),
+      unwrap(
+        await api.GET("/v1/decisions/{id}/comments", { params: { path: { id: decisionId } } }),
+      ),
   });
   const items = comments.data?.items ?? [];
 
@@ -1024,8 +1153,8 @@ function PreviousCard({
     <div className="card">
       <h3>Previous decisions at this location</h3>
       <p className="hint" style={{ margin: "0 0 10px" }}>
-        A decision that lapsed or was withdrawn covers nothing, and is kept: what was argued last time is
-        offered back rather than thrown away.
+        A decision that lapsed or was withdrawn covers nothing, and is kept: what was argued last
+        time is offered back rather than thrown away.
       </p>
       <div className="priors">
         {items.map((d) => (
@@ -1106,7 +1235,9 @@ function Prior({
           <Markdown source={item.reasoning} />
         </div>
       )}
-      {reaffirm.error != null && <Failed error={reaffirm.error} what="That could not be reaffirmed." />}
+      {reaffirm.error != null && (
+        <Failed error={reaffirm.error} what="That could not be reaffirmed." />
+      )}
       {asking && (
         <div className="field" style={{ margin: "8px 0 0", maxWidth: "78ch" }}>
           <label>Reaffirmation note</label>
@@ -1137,7 +1268,9 @@ function Prior({
             <button type="button" className="btn quiet" onClick={() => setAsking(false)}>
               Cancel
             </button>
-            <span className="consequence">No approval needed: same justification, severity unchanged</span>
+            <span className="consequence">
+              No approval needed: same justification, severity unchanged
+            </span>
           </>
         )}
         {undecided && item.reasoning && !asking && (
@@ -1162,7 +1295,15 @@ const RATINGS = ["low", "medium", "high", "critical"] as const;
 // What we think of the issue itself, as against what was published. About the
 // issue rather than where it sits, so it holds wherever the issue appears
 // (TRI-40); rating it milder waits for a second person (TRI-41).
-function Assess({ vulnerability, published, assessed }: { vulnerability: string; published: string; assessed: string }) {
+function Assess({
+  vulnerability,
+  published,
+  assessed,
+}: {
+  vulnerability: string;
+  published: string;
+  assessed: string;
+}) {
   const queries = useQueryClient();
   const [open, setOpen] = useState(false);
   const [severity, setSeverity] = useState<string>(published || "medium");
@@ -1192,8 +1333,8 @@ function Assess({ vulnerability, published, assessed }: { vulnerability: string;
       <div className="assess">
         <h3>Issue assessment</h3>
         <p className="reading" style={{ margin: 0 }}>
-          Assessed <Severity word={assessed} />, published <Severity word={published} />. The assessment
-          orders it and sets its deadline everywhere this issue appears.
+          Assessed <Severity word={assessed} />, published <Severity word={published} />. The
+          assessment orders it and sets its deadline everywhere this issue appears.
         </p>
       </div>
     );
@@ -1204,7 +1345,8 @@ function Assess({ vulnerability, published, assessed }: { vulnerability: string;
       <div className="assess">
         <h3>Issue assessment</h3>
         <p className="reading" style={{ margin: "0 0 8px" }}>
-          Published as <Severity word={published} />. A rating of ours holds wherever the issue appears.
+          Published as <Severity word={published} />. A rating of ours holds wherever the issue
+          appears.
         </p>
         <button type="button" className="linkish" onClick={() => setOpen(true)}>
           Rate it differently
@@ -1224,7 +1366,12 @@ function Assess({ vulnerability, published, assessed }: { vulnerability: string;
         </div>
         <div className="field" style={{ margin: 0 }}>
           <label htmlFor="rating">Assessed</label>
-          <select id="rating" value={severity} style={{ width: "auto" }} onChange={(event) => setSeverity(event.target.value)}>
+          <select
+            id="rating"
+            value={severity}
+            style={{ width: "auto" }}
+            onChange={(event) => setSeverity(event.target.value)}
+          >
             {RATINGS.map((each) => (
               <option key={each} value={each}>
                 {each}
@@ -1249,7 +1396,12 @@ function Assess({ vulnerability, published, assessed }: { vulnerability: string;
         />
       </div>
       <div className="actions">
-        <button type="button" className="btn" disabled={reasoning.trim() === "" || assess.isPending} onClick={() => assess.mutate()}>
+        <button
+          type="button"
+          className="btn"
+          disabled={reasoning.trim() === "" || assess.isPending}
+          onClick={() => assess.mutate()}
+        >
           Save assessment
         </button>
         <button type="button" className="btn quiet" onClick={() => setOpen(false)}>
@@ -1295,11 +1447,17 @@ function Places({ places, build }: { places: Sitting[]; build: string }) {
               {chain.map((step, depth) => {
                 const last = depth === chain.length - 1;
                 return (
-                  <div key={`${place.place} ${i} ${depth}`} className={`node${last ? " here" : ""}`} style={{ paddingLeft: depth * 18 }}>
+                  <div
+                    key={`${place.place} ${i} ${depth}`}
+                    className={`node${last ? " here" : ""}`}
+                    style={{ paddingLeft: depth * 18 }}
+                  >
                     <span className="rule">└</span>
                     <span className="id">{step.component}</span>
                     {step.version && <span className="ver">{step.version}</span>}
-                    {last && place.suppressed && <span className="state open">suppressed by the build</span>}
+                    {last && place.suppressed && (
+                      <span className="state open">suppressed by the build</span>
+                    )}
                     {last && place.decision != null && (
                       <Link to={`/decisions/${place.decision}`} className="linkish">
                         decided
@@ -1324,7 +1482,9 @@ function Places({ places, build }: { places: Sitting[]; build: string }) {
         to={
           `${build}/components?at=${encodeURIComponent(places[0]?.chain?.at(-1)?.component ?? "")}` +
           `&path=${encodeURIComponent((places[0]?.chain ?? []).map((step) => step.component ?? "").join("\u001f"))}` +
-          (places[0]?.chain?.at(-1)?.version ? `&version=${encodeURIComponent(places[0]?.chain?.at(-1)?.version ?? "")}` : "")
+          (places[0]?.chain?.at(-1)?.version
+            ? `&version=${encodeURIComponent(places[0]?.chain?.at(-1)?.version ?? "")}`
+            : "")
         }
         className="linkish"
       >
@@ -1336,11 +1496,19 @@ function Places({ places, build }: { places: Sitting[]; build: string }) {
 
 // Patches first: for somebody deciding whether to backport rather than
 // upgrade, the change itself is the answer.
-function References({ advisory, refs }: { advisory?: string; refs: { url?: string; kind?: string }[] }) {
+function References({
+  advisory,
+  refs,
+}: {
+  advisory?: string;
+  refs: { url?: string; kind?: string }[];
+}) {
   const all = advisory ? [{ url: advisory, kind: "advisory" }, ...refs] : refs;
   if (all.length === 0) return null;
   const order: Record<string, number> = { patch: 0, advisory: 1, report: 2, other: 3 };
-  const sorted = [...all].sort((a, b) => (order[a.kind ?? "other"] ?? 9) - (order[b.kind ?? "other"] ?? 9));
+  const sorted = [...all].sort(
+    (a, b) => (order[a.kind ?? "other"] ?? 9) - (order[b.kind ?? "other"] ?? 9),
+  );
   return (
     <div className="evblock">
       <h4>References</h4>
@@ -1392,13 +1560,14 @@ function HowMatched({
       {matched === "identifier" ? (
         <p>
           <b>Not confirmed by a packager.</b> Matched by comparing a published identifier against an
-          upstream version range. A distribution backports fixes without moving that version, so this may
-          already be fixed in <span className="id">{version}</span> — nobody has confirmed either way.
+          upstream version range. A distribution backports fixes without moving that version, so
+          this may already be fixed in <span className="id">{version}</span> — nobody has confirmed
+          either way.
         </p>
       ) : (
         <p>
-          <b>Confirmed by a packager.</b> Matched through an advisory for this package's own ecosystem,
-          which counts the release number and names the release that carries the fix.
+          <b>Confirmed by a packager.</b> Matched through an advisory for this package's own
+          ecosystem, which counts the release number and names the release that carries the fix.
         </p>
       )}
       {/* The evidence for the judgment above rather than a second way of
@@ -1422,8 +1591,8 @@ function HowMatched({
           <a href={from} target="_blank" rel="noreferrer noopener">
             {from.replace(/^https?:\/\//, "")}
           </a>
-          , which is not always where the issue is written up: one issue reached through two ecosystems
-          has two answers and the issue itself can hold one.
+          , which is not always where the issue is written up: one issue reached through two
+          ecosystems has two answers and the issue itself can hold one.
         </p>
       )}
     </div>
@@ -1478,7 +1647,13 @@ function LookItUp({ links }: { links: { url?: string; name?: string }[] }) {
 function FixingIn({
   at,
 }: {
-  at: { product: string; stream: string; variant: string; vulnerability: string; component: string };
+  at: {
+    product: string;
+    stream: string;
+    variant: string;
+    vulnerability: string;
+    component: string;
+  };
 }) {
   const queries = useQueryClient();
   const path =
@@ -1507,7 +1682,9 @@ function FixingIn({
   const toggle = (row: { stream?: string; variant?: string; state?: string }) => {
     const named = { stream: row.stream ?? "", variant: row.variant ?? "" };
     const now = chosen.map((each) => ({ stream: each.stream ?? "", variant: each.variant ?? "" }));
-    const already = now.some((each) => each.stream === named.stream && each.variant === named.variant);
+    const already = now.some(
+      (each) => each.stream === named.stream && each.variant === named.variant,
+    );
     set.mutate(
       already
         ? now.filter((each) => !(each.stream === named.stream && each.variant === named.variant))
@@ -1535,7 +1712,9 @@ function FixingIn({
               : plan.data?.resolved
                 ? `Fixed in all ${declared} of the releases chosen.`
                 : `${clear} of ${declared} chosen ${clear === 1 ? "release is" : "releases are"} clear` +
-                  (missed > 0 ? `, and ${missed} ${missed === 1 ? "was" : "were"} scanned since and still hold it.` : ".")}
+                  (missed > 0
+                    ? `, and ${missed} ${missed === 1 ? "was" : "were"} scanned since and still hold it.`
+                    : ".")}
           </p>
           <div className="tablewrap">
             <table>
@@ -1555,7 +1734,9 @@ function FixingIn({
                       <input
                         type="checkbox"
                         aria-label={`Fix this in ${row.stream} ${row.variant}`}
-                        checked={row.state === "fixing" || row.state === "missed" || row.state === "clear"}
+                        checked={
+                          row.state === "fixing" || row.state === "missed" || row.state === "clear"
+                        }
                         disabled={set.isPending || row.state === "retired" || row.state === "gone"}
                         onChange={() => toggle(row)}
                       />
@@ -1568,7 +1749,9 @@ function FixingIn({
                       <FixState state={row.state ?? ""} />
                     </td>
                     <td className="hint">
-                      {row.declared_by ? `${row.declared_by}, ${(row.declared_at ?? "").slice(0, 10)}` : "—"}
+                      {row.declared_by
+                        ? `${row.declared_by}, ${(row.declared_at ?? "").slice(0, 10)}`
+                        : "—"}
                     </td>
                   </tr>
                 ))}
@@ -1577,8 +1760,8 @@ function FixingIn({
           </div>
           <p className="hint" style={{ margin: "10px 0 0" }}>
             Declared intent, not commits. A release clears when the next scan of it stops finding
-            the issue &mdash; nothing here is marked done by hand, and a release it has left says
-            so whether anybody planned it or not.
+            the issue &mdash; nothing here is marked done by hand, and a release it has left says so
+            whether anybody planned it or not.
           </p>
         </>
       )}
@@ -1624,7 +1807,13 @@ function Holder({
   assigned,
   undisclosed,
 }: {
-  at: { product: string; stream: string; variant: string; vulnerability: string; component: string };
+  at: {
+    product: string;
+    stream: string;
+    variant: string;
+    vulnerability: string;
+    component: string;
+  };
   assigned: string;
   undisclosed: boolean;
 }) {
@@ -1696,9 +1885,9 @@ function Holder({
         {hand.isPending && <span className="hint">Recording…</span>}
       </div>
       <p className="hint" style={{ margin: "8px 0 0" }}>
-        Covers every place this sits at, and every build of the product holding the same component
-        — the same code built several ways is one piece of work. Handing it back to nobody is the
-        same action.
+        Covers every place this sits at, and every build of the product holding the same component —
+        the same code built several ways is one piece of work. Handing it back to nobody is the same
+        action.
       </p>
     </div>
   );
@@ -1791,7 +1980,6 @@ function Resolve({
     </div>
   );
 }
-
 
 // What text about this issue refers to.
 //
@@ -1889,9 +2077,7 @@ function Attachments({
                     type="button"
                     className="btn"
                     disabled={!reason.trim() || redact.isPending}
-                    onClick={() =>
-                      redact.mutate({ token: file.token ?? "", why: reason })
-                    }
+                    onClick={() => redact.mutate({ token: file.token ?? "", why: reason })}
                   >
                     Remove the file
                   </button>

@@ -53,9 +53,11 @@ export function Decision({ who }: { who: Who }) {
         {it.finding && (
           <p className="text-sm">
             {it.finding.severity && <Severity word={it.finding.severity} />}{" "}
-            {it.finding.exploited && <Exploited when />}{" "}
-            in <span className="id">{it.finding.component}</span>{" "}
-            {it.finding.version && <span className="id text-[var(--faint)]">{it.finding.version}</span>}
+            {it.finding.exploited && <Exploited when />} in{" "}
+            <span className="id">{it.finding.component}</span>{" "}
+            {it.finding.version && (
+              <span className="id text-[var(--faint)]">{it.finding.version}</span>
+            )}
             {" · "}
             {it.finding.product} · {it.finding.stream} · {it.finding.variant}
             {" · "}
@@ -75,20 +77,28 @@ export function Decision({ who }: { who: Who }) {
           </p>
         )}
         {it.finding?.description && (
-          <p className="mt-1 text-sm text-[var(--muted)]" style={{ whiteSpace: "pre-wrap" }}>{it.finding.description}</p>
+          <p className="mt-1 text-sm text-[var(--muted)]" style={{ whiteSpace: "pre-wrap" }}>
+            {it.finding.description}
+          </p>
         )}
         <p className="text-sm text-[var(--muted)]">
           {it.place?.product}
           {it.proposed_by && <> · proposed by {it.proposed_by}</>}
           {it.proposed_at && <> on {it.proposed_at.slice(0, 10)}</>}
           {typeof it.age_days === "number" && it.age_days > 365 && (
-            <> · <span className="text-[var(--sev-medium)]">a judgment this old is worth re-reading</span></>
+            <>
+              {" "}
+              ·{" "}
+              <span className="text-[var(--sev-medium)]">
+                a judgment this old is worth re-reading
+              </span>
+            </>
           )}
         </p>
         {it.decision?.sent_back_at && (
           <p className="mt-2 rounded border border-[var(--wait)] bg-[var(--wait-bg)] px-3 py-2 text-sm">
-            Rejected on {it.decision.sent_back_at.slice(0, 10)}. Back with whoever wrote it, and out of
-            the review queue until they revise it.
+            Rejected on {it.decision.sent_back_at.slice(0, 10)}. Back with whoever wrote it, and out
+            of the review queue until they revise it.
           </p>
         )}
         {it.decision?.selected_by && (
@@ -159,8 +169,8 @@ function Reasoning({
       {editing ? (
         <>
           <p className="mb-2 text-sm text-[var(--muted)]">
-            Revising withdraws any approval this has and returns it to the queue, marked as previously
-            approved. The earlier words stay readable.
+            Revising withdraws any approval this has and returns it to the queue, marked as
+            previously approved. The earlier words stay readable.
           </p>
           <Editor
             value={text}
@@ -200,7 +210,11 @@ function Reasoning({
         </>
       ) : (
         <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm">
-          {current ? <Markdown source={current} /> : <p className="text-[var(--muted)]">Nothing written.</p>}
+          {current ? (
+            <Markdown source={current} />
+          ) : (
+            <p className="text-[var(--muted)]">Nothing written.</p>
+          )}
         </div>
       )}
 
@@ -246,7 +260,10 @@ function Revisions({ id }: { id: number }) {
       </h2>
       <ul className="flex flex-col gap-2">
         {items.map((revision) => (
-          <li key={revision.id} className="rounded-lg border border-[var(--line)] bg-[var(--raised)] p-3 text-sm">
+          <li
+            key={revision.id}
+            className="rounded-lg border border-[var(--line)] bg-[var(--raised)] p-3 text-sm"
+          >
             <p className="mb-1 text-[var(--muted)]">
               #{revision.ordinal} · {revision.written_by}
               {revision.written_at && <> on {revision.written_at.slice(0, 10)}</>}
@@ -279,17 +296,22 @@ function Approvals({ id }: { id: number }) {
           <li
             key={approval.id}
             className={`rounded-lg border border-[var(--line)] p-3 ${
-              approval.withdrawn_at ? "bg-[var(--raised)] text-[var(--muted)]" : "bg-[var(--surface)]"
+              approval.withdrawn_at
+                ? "bg-[var(--raised)] text-[var(--muted)]"
+                : "bg-[var(--surface)]"
             }`}
           >
             <span>{approval.approved_by}</span>
-            {approval.approved_at && <span className="text-[var(--muted)]"> on {approval.approved_at.slice(0, 10)}</span>}
+            {approval.approved_at && (
+              <span className="text-[var(--muted)]"> on {approval.approved_at.slice(0, 10)}</span>
+            )}
             {typeof approval.covered === "number" && (
               <span
                 className="text-[var(--muted)]"
                 title="How much it covered when it was agreed to. A decision reaches by matching, so it covers more as builds appear — with nobody having acted"
               >
-                {" "}· covered {approval.covered} records then
+                {" "}
+                · covered {approval.covered} records then
               </span>
             )}
             {approval.withdrawn_at && (
@@ -304,7 +326,13 @@ function Approvals({ id }: { id: number }) {
 
 // Comments are separate from the reasoning and never affect an approval, so an
 // approved claim can be annotated at any time without disturbing it.
-function Comments({ id, about }: { id: number; about?: { product: string; vulnerability: string } }) {
+function Comments({
+  id,
+  about,
+}: {
+  id: number;
+  about?: { product: string; vulnerability: string };
+}) {
   const [text, setText] = useState("");
   const comment = useComment();
   const draftKey = `comment:${id}`;
@@ -325,7 +353,10 @@ function Comments({ id, about }: { id: number; about?: { product: string; vulner
       {items.length > 0 && (
         <ul className="mb-4 flex flex-col gap-2">
           {items.map((each) => (
-            <li key={each.id} className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm">
+            <li
+              key={each.id}
+              className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm"
+            >
               <p className="mb-1 text-[var(--muted)]">
                 {each.written_by}
                 {each.written_at && <> on {each.written_at.slice(0, 10)}</>}
