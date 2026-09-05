@@ -290,13 +290,13 @@ func registerTriageReading(api huma.API, in Ingest) {
 			"remark, not a justification.\n\n" +
 			"The text is markdown and is validated before it is stored; a 422 names the line and " +
 			"the offending text.",
-		Tags: []string{"Triage"}, DefaultStatus: http.StatusNoContent,
+		Tags: []string{"Triage"},
 	}, perProduct, "Only the author may edit a comment.", approveRights()...), func(ctx context.Context, input *struct {
 		ID   int64 `path:"id"`
 		Body struct {
 			Body string `json:"body" minLength:"1"`
 		}
-	}) (*struct{}, error) {
+	}) (*struct{ Body MentionsBody }, error) {
 		subject, store, err := triaging(ctx, in)
 		if err != nil {
 			return nil, err
@@ -305,8 +305,8 @@ func registerTriageReading(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, refusedDecision(err)
 		}
-		tellMentioned(ctx, in, subject, store, decisionID, input.Body.Body)
-		return &struct{}{}, nil
+		dropped := tellMentioned(ctx, in, subject, store, decisionID, input.Body.Body)
+		return &struct{ Body MentionsBody }{Body: MentionsBody{NotNotified: dropped}}, nil
 	})
 }
 

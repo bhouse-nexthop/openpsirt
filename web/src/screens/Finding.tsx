@@ -1067,6 +1067,18 @@ function Comments({
         />
       </div>
       {comment.error != null && <Failed error={comment.error} what="That could not be added." />}
+      {/* A name that reached nobody. Said without saying why: either no such
+          person is recorded or they cannot read this, and telling those apart
+          would answer "can this person see undisclosed work" one comment at a
+          time. The comment is kept either way — losing a paragraph to fix a
+          word is the wrong trade. */}
+      {(comment.data?.not_notified?.length ?? 0) > 0 && (
+        <p className="hint">
+          Nobody was told about {comment.data?.not_notified?.map((name) => `@${name}`).join(", ")} —
+          either there is no such person here, or they cannot read this finding. The comment was
+          saved.
+        </p>
+      )}
       <div className="actions">
         <button
           type="button"

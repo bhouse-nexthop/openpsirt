@@ -291,3 +291,72 @@ func TestWhatAScanIsFiledAgainstIgnoresCapitals(t *testing.T) {
 		}
 	})
 }
+
+func TestATagCanBeToldWhatItWasCutFromAfterwards(t *testing.T) {
+	// Release readiness asks what was cut from this branch, so a tag declared
+	// without saying leaves the branch reporting that nothing has ever been
+	// released from it. There was no way to supply it later: re-declaring with
+	// the parent was refused as a contradiction, which it is not — nothing had
+	// been said for it to contradict.
+	//
+	// Saying it came from a *different* branch stays refused, because a tag is
+	// one frozen point and it came from wherever it came from.
+	dbtest.Each(t, func(t *testing.T, db *database.DB) {
+		ctx := t.Context()
+		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+		if err := schema.Up(ctx, db, quiet); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		dbtest.Reset(t, db)
+
+		store := catalog.NewStore(db.DB)
+		product, err := store.DeclareProduct(ctx, "sonic", "SONiC")
+		if err != nil {
+			t.Fatal(err)
+		}
+		branch, err := store.DeclareStream(ctx, product.ID, "master", catalog.Branch, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		other, err := store.DeclareStream(ctx, product.ID, "next", catalog.Branch, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Declared without saying where it came from, which is what a pipeline
+		// that does not know will do.
+		tag, created, err := store.EnsureStream(ctx, product.ID, "v1.0", catalog.Tag, nil)
+		if err != nil || !created {
+			t.Fatalf("declaring the tag: created=%v %v", created, err)
+		}
+		if tag.ParentID != nil {
+			t.Fatal("a tag declared without a parent has one")
+		}
+
+		// Told afterwards, which used to be refused.
+		filled, created, err := store.EnsureStream(ctx, product.ID, "v1.0", catalog.Tag, &branch.ID)
+		if err != nil {
+			t.Fatalf("filling in what it was cut from: %v", err)
+		}
+		if created {
+			t.Error("filling one in declared a second tag")
+		}
+		if filled.ParentID == nil || *filled.ParentID != branch.ID {
+			t.Errorf("it was cut from %v, want the branch %d", filled.ParentID, branch.ID)
+		}
+
+		// And it is recorded, not merely returned.
+		read, err := store.StreamByName(ctx, product.ID, "v1.0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if read.ParentID == nil || *read.ParentID != branch.ID {
+			t.Errorf("what was written is %v, want the branch %d", read.ParentID, branch.ID)
+		}
+
+		// Moving it to a different branch is still a contradiction.
+		if _, _, err := store.EnsureStream(ctx, product.ID, "v1.0", catalog.Tag, &other.ID); err == nil {
+			t.Error("a tag was moved to a branch it was not cut from")
+		}
+	})
+}

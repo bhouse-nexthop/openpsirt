@@ -56,6 +56,7 @@ type describedRow struct {
 	Component   string `bun:"component"`
 	Version     string `bun:"version"`
 	ConsumerID  *int64 `bun:"consumer_id"`
+	Consumer    string `bun:"consumer"`
 	FixState    string `bun:"fix_state"`
 	FixedIn     string `bun:"fixed_in"`
 	Issue       int64  `bun:"vulnerability_id"`
@@ -121,6 +122,7 @@ func (s *Store) Describe(ctx context.Context, subject access.Subject, decisions 
 		ColumnExpr("c.name AS component").
 		ColumnExpr("c.version AS version").
 		ColumnExpr("f.consumer_id AS consumer_id").
+		ColumnExpr("COALESCE(uc.name, '') AS consumer").
 		ColumnExpr("f.fix_state AS fix_state").
 		ColumnExpr("f.fixed_in AS fixed_in").
 		ColumnExpr("f.vulnerability_id AS vulnerability_id").
@@ -288,6 +290,13 @@ func (s *Store) Describe(ctx context.Context, subject access.Subject, decisions 
 			at = *row.ConsumerID
 		}
 		one.Owner, one.Parent, _ = finding.Ends(chains[row.TargetID][at])
+		// A route up that could not be walked is not the same as nothing
+		// pulling this in. The finding records its consumer either way, so
+		// the card names it rather than showing an approver a blank where the
+		// path they are meant to judge the claim by should be.
+		if one.Owner == "" && one.Parent == "" && row.Consumer != "" {
+			one.Parent = row.Consumer
+		}
 		out[id] = one
 	}
 	return out, nil

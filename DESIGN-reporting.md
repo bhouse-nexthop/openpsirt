@@ -237,6 +237,18 @@ Days remaining are rounded down rather than truncated toward zero. Truncation
 reports something twelve hours overdue as having zero days left, which reads as
 due today.
 
+## A release with nothing open is still a release
+
+The release-over-release figures are read from every build that has been
+**scanned**, and the counts are attached to that list rather than the list being
+derived from the counts.
+
+Driven from the findings alone, a build with nothing open had no row — and
+absent is how this list says "never scanned". So a clean release read as an
+unmeasured one, which is the opposite of what it is, and it was missing from
+exactly the chart that exists to show the estate getting better. The one build
+in the demo with nothing against it was the one the chart could not show.
+
 ## Release readiness
 
 A branch beside the last release cut from it: *8 criticals now, v2.4.1 shipped

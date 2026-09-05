@@ -135,15 +135,33 @@ export function Inventories() {
                       </div>
                     )}
                   </td>
-                  <td className="num">{scan.opened || (scan.state === "scanned" ? "—" : "")}</td>
-                  <td className="num">{scan.closed || (scan.state === "scanned" ? "—" : "")}</td>
+                  {/* Grouped, like every other count here. Seven thousand
+                      findings written as 7587 is a number somebody has to
+                      count the digits of. */}
+                  <td className="num">
+                    {scan.opened
+                      ? scan.opened.toLocaleString()
+                      : scan.state === "scanned"
+                        ? "—"
+                        : ""}
+                  </td>
+                  <td className="num">
+                    {scan.closed
+                      ? scan.closed.toLocaleString()
+                      : scan.state === "scanned"
+                        ? "—"
+                        : ""}
+                  </td>
                   <td>
                     <Sent sent={scan.sent ?? []} />
                   </td>
                   <td className="num">
                     <Placed components={scan.components} placed={scan.placed} />
                   </td>
-                  <td className="id hint">{scan.serial}</td>
+                  {/* A document that named itself, or an em dash. An empty
+                      cell reads as a column that failed to load rather than
+                      as a producer that supplied no serial. */}
+                  <td className="id hint">{scan.serial || "—"}</td>
                 </tr>
               ))}
             </tbody>

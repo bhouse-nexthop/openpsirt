@@ -46,6 +46,7 @@ func described(ctx context.Context, a Administering, store *access.Store,
 			Effective: grant.Active, Source: string(grant.Source),
 		})
 	}
+	body.SeesNothing = seesNothing(body.Holds)
 	return body, nil
 }
 
@@ -86,8 +87,38 @@ type PersonBody struct {
 	EmailSource string `json:"email_source,omitempty" enum:"provider,recorded" doc:"Who last decided it. A provider's may be refreshed by a later sign-in; one recorded here is never overwritten"`
 	// Holds is what they may do, listed as product and role.
 	Holds []HeldBody `json:"holds,omitempty"`
+	// SeesNothing says every role they hold is a capability, so they reach no
+	// product at all.
+	//
+	// A capability is bounded by what its holder may read (ACC-13), so
+	// `approver` or `reporting` on its own grants nothing: the person is
+	// recorded, the grant is in force, and every screen is empty. It was
+	// accepted in silence, which reads as working until somebody signs in.
+	// Answered here rather than left for a reader to work out from the list,
+	// because working it out means knowing which roles grant visibility.
+	SeesNothing bool `json:"sees_nothing,omitempty" doc:"Every role they hold is a capability, so they reach no product. A capability is bounded by what its holder may read, so on its own it grants nothing"`
 	// SignsInBy lists the ways they can arrive.
 	SignsInBy []SignInBody `json:"signs_in_by,omitempty"`
+}
+
+// seesNothing reports that every grant in force is a capability.
+//
+// False for somebody holding nothing at all: that is an account waiting to be
+// granted something rather than one granted the wrong thing, and saying it of
+// everybody newly recorded would make the warning worthless.
+func seesNothing(held []HeldBody) bool {
+	var inForce int
+	for _, grant := range held {
+		if !grant.Effective {
+			continue
+		}
+		inForce++
+		switch access.Role(grant.Role) {
+		case access.PublicRead, access.PrivateRead, access.PublicTriage, access.PrivateTriage:
+			return false
+		}
+	}
+	return inForce > 0
 }
 
 // RecordBody is somebody being recorded, and what they are to hold.
@@ -210,6 +241,7 @@ func registerAdministration(api huma.API, a Administering) {
 					Effective: grant.Active, Source: string(grant.Source),
 				})
 			}
+			body.SeesNothing = seesNothing(body.Holds)
 			out.Body.Items = append(out.Body.Items, body)
 		}
 		return out, nil

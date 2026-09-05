@@ -93,21 +93,59 @@ func (s *Store) Releases(ctx context.Context, subject access.Subject,
 		return nil, fmt.Errorf("read what is open against each build: %w", err)
 	}
 
+	// **Every build that has been scanned, whether or not anything is open
+	// against it.** Read separately and merged, because the counts come from
+	// the findings and a build with none has no finding to be read from.
+	//
+	// Driven from the findings alone, a release with nothing open was simply
+	// absent — and absent is how this list says "never scanned". So a clean
+	// build read as an unmeasured one, which is the opposite of what it is,
+	// and it was missing from the chart that is meant to show the estate
+	// getting better.
+	var scanned []struct {
+		Stream  string `bun:"stream"`
+		Kind    string `bun:"kind"`
+		Variant string `bun:"variant"`
+	}
+	builds := s.db.NewSelect().
+		TableExpr("target AS tg").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		Join("JOIN variant AS va ON va.id = tg.variant_id").
+		ColumnExpr("st.name AS stream").
+		ColumnExpr("st.kind AS kind").
+		ColumnExpr("va.name AS variant").
+		Where("st.product_id = ?", productID).
+		Where(`EXISTS (SELECT 1 FROM "scan_run" AS sr
+			WHERE sr.target_id = tg.id AND sr.finished_at IS NOT NULL)`).
+		OrderExpr("st.name, va.name")
+	if err := builds.Scan(ctx, &scanned); err != nil {
+		return nil, fmt.Errorf("read which builds have been scanned: %w", err)
+	}
+
 	// Folded in order, so the sequence the database returned is the sequence
-	// the caller sees.
+	// the caller sees. The scanned builds go in first, which is also what
+	// fixes the order: a build with nothing open would otherwise be appended
+	// after everything that has something.
 	var releases []Release
 	at := map[string]int{}
-	for _, row := range rows {
-		key := row.Stream + "\x00" + row.Variant
+	place := func(stream, kind, variant string) int {
+		key := stream + "\x00" + variant
 		index, seen := at[key]
 		if !seen {
 			index = len(releases)
 			at[key] = index
 			releases = append(releases, Release{
-				Stream: row.Stream, Kind: row.Kind, Variant: row.Variant,
+				Stream: stream, Kind: kind, Variant: variant,
 				BySeverity: map[string]int{},
 			})
 		}
+		return index
+	}
+	for _, build := range scanned {
+		place(build.Stream, build.Kind, build.Variant)
+	}
+	for _, row := range rows {
+		index := place(row.Stream, row.Kind, row.Variant)
 		releases[index].Open += row.Open
 		releases[index].BySeverity[row.Band] += row.Open
 	}

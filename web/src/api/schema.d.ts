@@ -2719,6 +2719,8 @@ export interface components {
             readonly $schema?: string;
             /** Format: int64 */
             id: number;
+            /** @description Names written after an @ that reached nobody. Either no such person is recorded, or they cannot read what the text is about — deliberately not said which */
+            not_notified?: string[] | null;
         };
         CommentBody: {
             /** @description The comment text, in markdown */
@@ -3953,6 +3955,16 @@ export interface components {
             /** @description What to show while choosing */
             name: string;
         };
+        MentionsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/MentionsBody.json
+             */
+            readonly $schema?: string;
+            /** @description Names written after an @ that reached nobody. Either no such person is recorded, or they cannot read what the text is about — deliberately not said which */
+            not_notified?: string[] | null;
+        };
         Meta: {
             category: string;
             csaf_version: string;
@@ -4095,6 +4107,8 @@ export interface components {
             identity: string;
             /** @description Which sign-in path they will arrive by, such as proxy for a trusted header */
             provider?: string;
+            /** @description Every role they hold is a capability, so they reach no product. A capability is bounded by what its holder may read, so on its own it grants nothing */
+            sees_nothing?: boolean;
             signs_in_by?: components["schemas"]["SignInBody"][] | null;
             /** @description What that provider calls them. Defaults to the identity */
             username?: string;
@@ -5353,12 +5367,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description No Content */
-            204: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MentionsBody"];
+                };
             };
             /** @description Error */
             default: {
@@ -5616,12 +5632,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description No Content */
-            204: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MentionsBody"];
+                };
             };
             /** @description Error */
             default: {

@@ -1079,6 +1079,21 @@ function Sits({ row }: { row: Row }) {
   if (!row.owner && !row.parent) {
     return <span className="hint">nothing records what pulls this in</span>;
   }
+  // Where the route up could not be walked the server sends what pulls this
+  // in and no owner above it. Rendering it as one hop rather than as an empty
+  // first hop and an arrow to nowhere: what is unknown is the way up to the
+  // build, and drawing that as a blank claims something worse than not knowing.
+  if (!row.owner && row.parent) {
+    return (
+      <span className="chain">
+        <span className="hop id">{row.parent}</span>
+        <span className="hint" title="The inventory does not place this under the build">
+          · nothing places it under the build
+        </span>
+        {(row.chains ?? 0) > 1 && <span className="hint">· one of {row.chains}</span>}
+      </span>
+    );
+  }
   const same = row.owner === row.parent;
   return (
     <span className="chain">

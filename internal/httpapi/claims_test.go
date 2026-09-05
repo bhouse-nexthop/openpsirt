@@ -490,7 +490,9 @@ func TestAFindingsRowSaysHowFarItIsDecidedAndWhetherItCameBack(t *testing.T) {
 		// Revised, it is waiting again; approved, it is agreed.
 		if got := asPerson(t, r, "triager", http.MethodPut,
 			fmt.Sprintf("/v1/decisions/%d/reasoning", ids.Standing[0].DecisionID),
-			`{"reasoning":"The encoder only. Re-checked the call sites."}`); got.Code != http.StatusNoContent {
+			`{"reasoning":"The encoder only. Re-checked the call sites."}`); got.Code != http.StatusOK {
+			// 200 rather than 204: it answers which names in the text reached
+			// nobody, so the author is told a mention did not land.
 			t.Fatalf("revising answered %d: %s", got.Code, got.Body.String())
 		}
 		if state, back := row(); state != "waiting" || back {

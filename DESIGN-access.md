@@ -2,7 +2,7 @@
 
 Who is asking, and what they may reach.
 
-Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-44 to ACC-65, SEC-03,
+Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-44 to ACC-66, SEC-03,
 SEC-07 to SEC-09, SEC-20, UIX-32's server half, and the half of ACC-43 that has
 a trigger today. What is not built is named at the foot.
 
@@ -237,6 +237,22 @@ sits at no build here is exempt because it discloses nothing. A refusal is
 spelled as an unused name, and an unreadable claim is left out of the list
 rather than refused, so neither the issue nor the claim identifier can be
 walked. `DESIGN-triage.md` carries the shape.
+
+## A mention that reached nobody is said so
+
+Mentioning somebody who cannot read the finding is accepted, nobody is told,
+and **whoever wrote it is told that much** (ACC-66).
+
+Refusing the write was the other way and is worse: a comment rejected because
+one name in it was wrong loses the paragraph to fix a word, and the words are
+worth keeping either way.
+
+**Why it did not land stays unsaid.** A name nobody holds and a name held by
+somebody who may not read this answer alike, because telling them apart turns
+every comment into a question about who can see undisclosed work. Saying only
+*that* it did not land discloses nothing further — the author may read the
+thing they are writing about, so they may already ask who can be mentioned
+there, which is the same set from the same query.
 
 ## What somebody is told asks for reading it
 

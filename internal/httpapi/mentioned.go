@@ -18,6 +18,18 @@ import (
 // nobody hits it while writing normally.
 const mentionCap = 20
 
+// MentionsBody says which names in a piece of text reached nobody.
+//
+// **Reported rather than refused**, and without saying why. The words are
+// worth keeping either way, and a comment rejected because one name in it was
+// wrong loses the paragraph to fix a word. A name nobody holds and a name held
+// by somebody who may not read this are the same answer here, because telling
+// them apart would answer "can this person see undisclosed work" one comment
+// at a time.
+type MentionsBody struct {
+	NotNotified []string `json:"not_notified,omitempty" doc:"Names written after an @ that reached nobody. Either no such person is recorded, or they cannot read what the text is about — deliberately not said which"`
+}
+
 // tellMentioned tells whoever a decision's new text named (NTF-12).
 //
 // The decision is read back rather than carried out of the write, because what
@@ -29,20 +41,22 @@ const mentionCap = 20
 // the time this runs, and losing a comment because a notification could not be
 // stored would be sacrificing the wrong half.
 func tellMentioned(ctx context.Context, in Ingest, subject access.Subject,
-	store *triage.Store, decisionID int64, body string) {
+	store *triage.Store, decisionID int64, body string) []string {
 
 	if len(markdown.Mentions(body)) == 0 {
-		return
+		return nil
 	}
 	decision, _, err := store.Read(ctx, subject, decisionID)
 	if err != nil {
 		in.Logger.WarnContext(ctx, "could not tell who was named", "error", err)
-		return
+		return nil
 	}
-	if err := mentioned(ctx, in, subject, decision, body,
-		fmt.Sprintf("/decisions/%d", decisionID)); err != nil {
+	dropped, err := mentioned(ctx, in, subject, decision, body,
+		fmt.Sprintf("/decisions/%d", decisionID))
+	if err != nil {
 		in.Logger.WarnContext(ctx, "could not tell who was named", "error", err)
 	}
+	return dropped
 }
 
 // mentioned tells whoever a piece of text named that it named them (NTF-12).
@@ -60,12 +74,25 @@ func tellMentioned(ctx context.Context, in Ingest, subject access.Subject,
 // record by the time this runs, and losing a comment because a notification
 // could not be written would be the wrong half to sacrifice — so this reports
 // and the caller logs.
+// It returns the names that reached nobody, so the caller can say so.
+//
+// **Reached nobody, without saying why.** A name nobody holds and a name held
+// by somebody who may not read this stay indistinguishable, because telling
+// them apart would answer "can this person see undisclosed work" one comment
+// at a time. What the author is told is that their mention did not land, which
+// is what they can act on — and it discloses nothing they could not already
+// learn by asking who may be mentioned here, which they may, because they can
+// read the thing they are writing about.
+//
+// Reported rather than refused. The words are worth keeping either way, and a
+// comment rejected because one name in it was wrong loses the paragraph to fix
+// a word.
 func mentioned(ctx context.Context, in Ingest, subject access.Subject,
-	decision *triage.Decision, body, link string) error {
+	decision *triage.Decision, body, link string) ([]string, error) {
 
 	names := markdown.Mentions(body)
 	if len(names) == 0 || decision == nil {
-		return nil
+		return nil, nil
 	}
 	if len(names) > mentionCap {
 		names = names[:mentionCap]
@@ -77,7 +104,7 @@ func mentioned(ctx context.Context, in Ingest, subject access.Subject,
 	readers, err := access.NewStore(in.DB.DB).WhoCanRead(ctx,
 		decision.ProductID, decision.Visibility, 100)
 	if err != nil {
-		return fmt.Errorf("read who may be told: %w", err)
+		return nil, fmt.Errorf("read who may be told: %w", err)
 	}
 	byName := make(map[string]int64, len(readers))
 	for _, reader := range readers {
@@ -85,13 +112,18 @@ func mentioned(ctx context.Context, in Ingest, subject access.Subject,
 	}
 
 	told := map[int64]bool{subject.ID: true}
+	var dropped []string
 	for _, name := range names {
 		who, known := byName[strings.ToLower(name)]
 		// A name nobody holds, and a name held by somebody who may not read
 		// this, are both simply not told — and they are not told apart. A
 		// refusal naming which it was would answer, one comment at a time,
 		// whether a given person can see undisclosed work.
-		if !known || told[who] {
+		if !known {
+			dropped = append(dropped, name)
+			continue
+		}
+		if told[who] {
 			continue
 		}
 		told[who] = true
@@ -103,10 +135,10 @@ func mentioned(ctx context.Context, in Ingest, subject access.Subject,
 			Private:  decision.Visibility == access.Private,
 			Concerns: notify.Concerning(decision.ProductID, decision.VulnerabilityID, 0),
 		}); err != nil {
-			return fmt.Errorf("tell %d they were named: %w", who, err)
+			return dropped, fmt.Errorf("tell %d they were named: %w", who, err)
 		}
 	}
-	return nil
+	return dropped, nil
 }
 
 // whoever is what to call the person who wrote the text.

@@ -286,13 +286,13 @@ func registerTriage(api huma.API, in Ingest) {
 			"queue, marked as previously approved. Requires no approval of its own.\n\n" +
 			"The text is markdown and is validated before it is stored; a 422 names the line and " +
 			"the offending text.",
-		Tags: []string{"Triage"}, DefaultStatus: http.StatusNoContent,
+		Tags: []string{"Triage"},
 	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		ID   int64 `path:"id"`
 		Body struct {
 			Reasoning string `json:"reasoning" minLength:"1"`
 		}
-	}) (*struct{}, error) {
+	}) (*struct{ Body MentionsBody }, error) {
 		subject, store, err := triaging(ctx, in)
 		if err != nil {
 			return nil, err
@@ -300,8 +300,8 @@ func registerTriage(api huma.API, in Ingest) {
 		if _, err := store.Revise(ctx, subject, input.ID, input.Body.Reasoning); err != nil {
 			return nil, refusedDecision(err)
 		}
-		tellMentioned(ctx, in, subject, store, input.ID, input.Body.Reasoning)
-		return &struct{}{}, nil
+		dropped := tellMentioned(ctx, in, subject, store, input.ID, input.Body.Reasoning)
+		return &struct{ Body MentionsBody }{Body: MentionsBody{NotNotified: dropped}}, nil
 	})
 
 	huma.Register(api, requiring(huma.Operation{
@@ -373,7 +373,8 @@ func registerTriage(api huma.API, in Ingest) {
 		}
 	}) (*struct {
 		Body struct {
-			ID int64 `json:"id"`
+			ID          int64    `json:"id"`
+			NotNotified []string `json:"not_notified,omitempty" doc:"Names written after an @ that reached nobody. Either no such person is recorded, or they cannot read what the text is about — deliberately not said which"`
 		}
 	}, error) {
 		subject, store, err := triaging(ctx, in)
@@ -384,13 +385,15 @@ func registerTriage(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, refusedDecision(err)
 		}
-		tellMentioned(ctx, in, subject, store, input.ID, input.Body.Body)
+		dropped := tellMentioned(ctx, in, subject, store, input.ID, input.Body.Body)
 		out := &struct {
 			Body struct {
-				ID int64 `json:"id"`
+				ID          int64    `json:"id"`
+				NotNotified []string `json:"not_notified,omitempty" doc:"Names written after an @ that reached nobody. Either no such person is recorded, or they cannot read what the text is about — deliberately not said which"`
 			}
 		}{}
 		out.Body.ID = comment.ID
+		out.Body.NotNotified = dropped
 		return out, nil
 	})
 }

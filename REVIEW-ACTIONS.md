@@ -461,7 +461,7 @@ person can be acted as directly:
   - The gate checks that decisions have documents, never that documents are
     true; a person has to.
 
-- [~] **X10 · Small defects found on the way.** **S each** — *seven of fourteen done; the rest are listed at the end of this item.*
+- [x] **X10 · Small defects found on the way.** **S each** — *all fourteen.*
 
   - `make demo-status` prints "open 404 page not found" per build: the
     target (Makefile around line 747) curls
@@ -545,30 +545,49 @@ person can be acted as directly:
   - `make demo` sets a publisher, so the CSAF path is demonstrable rather
     than answering 409 out of the box.
 
-  **Still open (7)** — each needs more than an edit, and is left rather than
-  rushed:
+  **Done (7 more):**
 
-  - The kernel row's "way down" is empty at build scope. `finding.Ends`
-    answers `"", ""` for a depth-0 chain, which is the honest answer for what
-    it is given; the question is why the group's chain is empty when its
-    places have real consumers. That is a read-path investigation, not a
-    wording fix. The queue card's "two ends" complaint is the same root.
-  - Readiness requires `st.parent_id = branch` and the demo's tags have no
-    parent, so Home reads "nothing has been released from this branch". Needs
-    a way to correct "Cut from" after the fact — there is no PUT — as well as
-    the query.
-  - `Releases` selects from open findings, so a scanned build with zero open
-    is absent and reads as unscanned. Wants driving from `target` with a
-    finished run and left-joining the counts.
-  - Mentioning somebody who cannot read the finding is accepted and silently
-    dropped. ACC-59 says refused while composing; only the candidate list
-    enforces it. Either refuse the write or return the dropped mentions.
-  - Capability-only grants (`approver`-only, `reporting`-only) resolve to
-    `reach: []` and are accepted silently.
-  - REL-07's "what this line would inherit" is on the new line's Inventories
-    screen, where nobody making a branch looks.
-  - The openpsirt container's inventory list: twelve identical rows, an empty
-    Serial column, and a missing thousands separator.
+  - **A row now names what pulls it in even where the route up is unknown.**
+    `finding.Ends` answering `"", ""` for an empty chain is right for what it
+    is given; the row was wrong to render that as "nothing records what pulls
+    this in", because the finding records its consumer whatever the graph
+    managed. It happens where an inventory describes a fragment it never
+    attached — `golang.org/x/net` under `sonic-mgmt-common-codegen` on the
+    demo. The queue card had the same root and the same fix, which is the
+    "two ends" half of the complaint.
+  - **A tag can be told what it was cut from afterwards** (MDL-33). There was
+    no way to correct it: re-declaring with the branch named was refused as a
+    contradiction, and it is not one — nothing had been said for it to
+    contradict. Naming a *different* branch stays refused. The declare form
+    now says what "Cut from" decides, and **the demo grows a tag** (`v1.0`,
+    cut from `main`, scanned), because a deployment with only branches can
+    demonstrate neither release readiness nor the new critical-on-a-release
+    alert.
+  - **A scanned build with nothing open is a release again.** `Releases` is
+    driven from `target` with a finished run and the counts attached, rather
+    than derived from open findings — where a clean build simply had no row,
+    and absent is how that list says "never scanned".
+  - **A mention that reached nobody is reported to whoever wrote it**
+    (ACC-66), without saying why, and the comment is kept. Refusing the write
+    was the other option and loses a paragraph to fix a word; saying *why* it
+    did not land would turn every comment into a question about who sees
+    undisclosed work. Saying *that* it did not discloses nothing — the author
+    can already ask who may be mentioned there.
+  - **A capability-only grant says "sees nothing"** on the People screen,
+    answered by the server rather than left for a reader to work out from a
+    list of roles.
+  - **Declaring a line points at what it would inherit**, from the form where
+    somebody making one actually is.
+  - **The inventory list groups its thousands and draws an em dash** where a
+    producer supplied no serial — an empty cell reads as a column that failed
+    to load.
+
+  Found while doing them, and fixed with them: **`access.Everything` could not
+  read.** The subject the background passes use is documented as "what it may
+  do is read", `Products` and `Sees` both answered that way, and `Reads` had
+  never been told — so a pass that narrowed its own query correctly was still
+  refused by any check asking one product at a time. Introduced with ACC-64
+  earlier today.
 
 ---
 

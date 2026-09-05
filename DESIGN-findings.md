@@ -2,7 +2,7 @@
 
 What a scan run found, and where.
 
-Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, MDL-22 to MDL-32,
+Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, MDL-22 to MDL-33,
 ING-02, ING-21,
 ING-29, ING-30, ING-39, ING-40, STA-03, STA-04, STA-05, STA-08, STA-17,
 RNK-01 to RNK-07, MDL-09, STA-01, STA-02, STA-06, STA-07, STA-09, STA-10,
@@ -866,6 +866,24 @@ thing to answer, forty-eight rows to write, and both are true. **Late is
 counted the same way** — a piece of work is late when any of its places is,
 because a group with one late place among forty is late, and calling it a
 fortieth of one is a number nobody acts on.
+
+## A row names what pulls it in, even where the route up is unknown
+
+The findings list shows the two ends of the way down: the part of the product a
+component belongs to, and what directly pulls it in. Where the walk up to the
+build reaches nothing, both used to be blank and the row read "nothing records
+what pulls this in".
+
+**Those are two different statements, and the second one was false.** The
+finding records its consumer whatever the graph managed; what was missing was
+the route up. It happens where an inventory describes something under a
+component that is itself not reachable from the root — a fragment the producer
+described and never attached — and the honest answer is the half that is known.
+
+So a row with no walkable chain names its consumer and leaves the owner empty,
+and the screen draws one hop rather than a blank followed by an arrow to
+nowhere. A component the inventory placed nowhere at all still says so, because
+then there really is nothing above it.
 
 ## A finding carries what it takes to act on it
 

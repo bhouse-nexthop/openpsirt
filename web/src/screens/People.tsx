@@ -146,6 +146,18 @@ export function People() {
                       <span style={{ color: "var(--faint)" }}>none</span>
                     ) : (
                       <span className="variants">
+                        {/* Every role they hold is a capability, so they reach
+                            no product at all. It was accepted in silence,
+                            which reads as working until they sign in to an
+                            empty tool. */}
+                        {person.sees_nothing && (
+                          <span
+                            className="vchip warn"
+                            title="A capability is bounded by what its holder may read, so on its own it grants nothing. Grant a read role as well."
+                          >
+                            sees nothing
+                          </span>
+                        )}
                         {(person.holds ?? []).map((held) => (
                           <span
                             key={`${held.product} ${held.role}`}

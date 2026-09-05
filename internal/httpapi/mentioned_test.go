@@ -2,6 +2,7 @@ package httpapi_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -118,4 +119,57 @@ func itoa(n int64) string {
 		n /= 10
 	}
 	return string(out)
+}
+
+func TestAMentionThatReachedNobodyIsReportedBack(t *testing.T) {
+	// ACC-59 says mentioning somebody who cannot see the finding is refused
+	// while composing, and only the candidate list enforced it. Writing the
+	// name anyway was accepted, nobody was told, and the author had no way to
+	// know — so a question was asked of somebody who never heard it.
+	//
+	// Reported rather than refused: the words are worth keeping either way,
+	// and a comment rejected because one name in it was wrong loses the
+	// paragraph to fix a word.
+	//
+	// And reported **without saying why**. A name nobody holds and a name held
+	// by somebody who may not read this are one answer here, because telling
+	// them apart would answer "can this person see undisclosed work" one
+	// comment at a time.
+	twoReach(t, func(t *testing.T, r *reach) {
+		place := r.scanned(t)
+		decision := r.decided(t, place)
+
+		got := asPerson(t, r, "private-triage", http.MethodPost,
+			fmt.Sprintf("/v1/decisions/%d/comments", decision),
+			`{"body":"@private-triage and @nobody-is-called-this, what do you think?"}`)
+		if got.Code != http.StatusCreated {
+			t.Fatalf("commenting answered %d: %s", got.Code, got.Body.String())
+		}
+		var said struct {
+			NotNotified []string `json:"not_notified"`
+		}
+		if err := json.Unmarshal(got.Body.Bytes(), &said); err != nil {
+			t.Fatalf("decode: %v (%s)", err, got.Body.String())
+		}
+		if len(said.NotNotified) != 1 || said.NotNotified[0] != "nobody-is-called-this" {
+			t.Errorf("the answer says %v reached nobody, want the one unknown name",
+				said.NotNotified)
+		}
+
+		// A comment naming only people who can read it says nothing, so the
+		// report is a report rather than noise on every write.
+		quiet := asPerson(t, r, "private-triage", http.MethodPost,
+			fmt.Sprintf("/v1/decisions/%d/comments", decision),
+			`{"body":"@private-triage one more thing."}`)
+		if quiet.Code != http.StatusCreated {
+			t.Fatalf("commenting answered %d: %s", quiet.Code, quiet.Body.String())
+		}
+		var second struct {
+			NotNotified []string `json:"not_notified"`
+		}
+		_ = json.Unmarshal(quiet.Body.Bytes(), &second)
+		if len(second.NotNotified) != 0 {
+			t.Errorf("a comment naming only readers reported %v", second.NotNotified)
+		}
+	})
 }

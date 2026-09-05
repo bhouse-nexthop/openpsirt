@@ -2,7 +2,7 @@
 
 What a scan is filed against, and why the shape is what it is.
 
-Satisfies MDL-01 to MDL-08, MDL-10 to MDL-13, MDL-16 to MDL-18, MDL-21,
+Satisfies MDL-01 to MDL-08, MDL-10 to MDL-13, MDL-16 to MDL-18, MDL-21, MDL-33,
 REM-16, RPT-04, ING-09, ING-11,
 ING-36 to ING-38, STA-08.
 
@@ -29,6 +29,15 @@ difference.
 A tag records the branch it was cut from, where that is known. That parent is
 what lets a branch be compared against its last release, and what a new line
 seeds its decisions from.
+
+**It can be filled in afterwards** (MDL-33). A pipeline that does not know
+declares the tag without it, and release readiness then reports that nothing
+has ever been released from the branch — which is not a small omission, because
+it is indistinguishable from a branch that has genuinely shipped nothing.
+Declaring the tag again with the branch named records it. That is not a change:
+nothing had been said for it to contradict, and filling in what was left out is
+the same act arriving late. Naming a *different* branch stays refused, because
+a tag is one frozen point and it came from wherever it came from.
 
 ### When something goes out of support
 

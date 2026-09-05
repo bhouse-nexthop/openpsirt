@@ -626,3 +626,56 @@ func TestSearchingFindsAnIssueByNameAndByAlias(t *testing.T) {
 		}
 	})
 }
+
+func TestARowNamesWhatPullsItInEvenWhereTheRouteUpIsUnknown(t *testing.T) {
+	// The row said "nothing records what pulls this in" whenever the way down
+	// could not be walked. Those are two different things: the finding records
+	// its consumer either way, and what is missing is the route up to the
+	// build rather than what sits directly above.
+	//
+	// It happens where the inventory describes a fragment it never attached —
+	// something holds the component, and nothing holds that. Saying nothing
+	// pulls it in is then false about the one part we do know, and it is the
+	// part somebody judging the finding actually reads.
+	each(t, func(t *testing.T, f *fixture) {
+		stray := at("stray-fragment", "2.0")
+		f.shipped(t, graph.Snapshot{
+			Root:       root,
+			Components: []graph.Described{swss, libnl, stray},
+			Dependencies: []graph.Dependency{
+				{Parent: root, Child: swss},
+				// stray holds libnl, and nothing holds stray.
+				{Parent: stray, Child: libnl},
+			},
+		})
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-STRAY", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+
+		who := f.holding(t, access.PrivateRead)
+		rows, _, err := f.store.Groups(t.Context(), who, f.scope, 50, 0, finding.Filter{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var found bool
+		for _, row := range rows {
+			if row.Vulnerability != "CVE-2026-STRAY" {
+				continue
+			}
+			found = true
+			if row.Parent != stray.Name {
+				t.Errorf("the row names %q as what pulls it in, want %q", row.Parent, stray.Name)
+			}
+			// The owner stays empty, because that is the part genuinely not
+			// known — claiming the build holds it would be the comfortable
+			// sentence rather than the true one.
+			if row.Owner != "" {
+				t.Errorf("the row claims an owner of %q where the route up is unknown", row.Owner)
+			}
+		}
+		if !found {
+			t.Fatal("the finding is not in the list at all")
+		}
+	})
+}

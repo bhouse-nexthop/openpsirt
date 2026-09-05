@@ -820,6 +820,11 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, scope Scope,
 	for _, row := range rows {
 		issues = append(issues, row.VulnerabilityID)
 		components = append(components, row.ComponentID)
+		// The consumer too, so a row whose way down could not be walked can
+		// still name what pulls it in.
+		if row.ConsumerID != nil {
+			components = append(components, *row.ConsumerID)
+		}
 	}
 	named, err := issuesNamed(ctx, s.db, issues)
 	if err != nil {
@@ -896,6 +901,21 @@ func (s *Store) Groups(ctx context.Context, subject access.Subject, scope Scope,
 				down = chains[*row.ConsumerID]
 			}
 			group.Owner, group.Parent, group.Middle = Ends(down)
+			// A way down that could not be walked is not the same as nothing
+			// pulling this in, and the row said the second when it meant the
+			// first. The finding records its consumer whatever the graph did,
+			// so name it: what is unknown is the route up to the build, not
+			// what sits directly above.
+			//
+			// It happens where the inventory places a component under
+			// something that is itself not reachable from the root — a
+			// fragment the producer described and never attached — and the
+			// honest answer is the half we hold rather than none of it.
+			if group.Owner == "" && group.Parent == "" && row.ConsumerID != nil {
+				if consumer, held := shipped[*row.ConsumerID]; held {
+					group.Parent = consumer.Name
+				}
+			}
 		} else if at, held := where[row.TargetID]; held {
 			group.Builds = row.Builds
 			// The way down is left empty rather than filled from this one

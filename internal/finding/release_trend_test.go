@@ -102,3 +102,50 @@ func TestAcrossProductsThereIsNoSequenceToPlot(t *testing.T) {
 		}
 	})
 }
+
+func TestAScannedBuildWithNothingOpenIsStillAReleaseOfItsOwn(t *testing.T) {
+	// A build with nothing open was absent from this list, and absent is how
+	// the list says "never scanned". So a clean release read as an unmeasured
+	// one — the opposite of what it is, and it was missing from the chart that
+	// exists to show the estate getting better.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		dirty := f.run(t)
+		if _, err := f.store.Apply(t.Context(), f.target, dirty,
+			[]finding.Reported{found("CVE-2026-DIRTY", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.store.Finish(t.Context(), dirty, "0.100.0", "2026-09-05", "", nil); err != nil {
+			t.Fatal(err)
+		}
+
+		// A second build of the same product, scanned, with nothing reported.
+		clean := f.anotherVariant(t, "mellanox")
+		f.shippedTo(t, clean, twoConsumers())
+		run := f.runOn(t, clean)
+		if _, err := f.store.Apply(t.Context(), clean, run, []finding.Reported{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.store.Finish(t.Context(), run, "0.100.0", "2026-09-05", "", nil); err != nil {
+			t.Fatal(err)
+		}
+
+		releases, err := f.store.Releases(t.Context(), f.holding(t, access.PrivateRead), f.productID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		byVariant := map[string]finding.Release{}
+		for _, r := range releases {
+			byVariant[r.Variant] = r
+		}
+		if _, held := byVariant["mellanox"]; !held {
+			t.Fatalf("a scanned build with nothing open is missing: %+v", releases)
+		}
+		if got := byVariant["mellanox"].Open; got != 0 {
+			t.Errorf("the clean build reports %d open, want 0", got)
+		}
+		if got := byVariant["broadcom"].Open; got == 0 {
+			t.Error("the build with a finding reports nothing open")
+		}
+	})
+}

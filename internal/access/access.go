@@ -207,6 +207,13 @@ func (s Subject) Holds(role Role, productID int64) bool {
 // a finding can necessarily see it, and a deployment that had to grant both
 // would eventually grant one.
 func (s Subject) Reads(visibility Visibility, productID int64) bool {
+	// The deployment reads everything, which is the whole of what it is for.
+	// Products and Sees already answered that way and this did not, so a pass
+	// that narrowed its own query correctly was still refused by any check
+	// asking the question one product at a time.
+	if s.unnarrowed {
+		return true
+	}
 	switch visibility {
 	case Public:
 		return s.Holds(PublicRead, productID) || s.Holds(PublicTriage, productID) ||

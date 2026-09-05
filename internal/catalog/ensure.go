@@ -56,9 +56,28 @@ func (s *Store) EnsureStream(ctx context.Context, productID int64, name string, 
 			return nil, false, fmt.Errorf("%q: %w: it was declared as a %s, not a %s",
 				name, ErrDiffers, existing.Kind, kind)
 		}
-		if parentID != nil && (existing.ParentID == nil || *existing.ParentID != *parentID) {
+		// Saying it was cut from a *different* branch is a change, and a
+		// contradiction: a tag is one frozen point and it came from wherever
+		// it came from.
+		if parentID != nil && existing.ParentID != nil && *existing.ParentID != *parentID {
 			return nil, false, fmt.Errorf("%q: %w: it was not cut from the branch now being named",
 				name, ErrDiffers)
+		}
+		// **Filling in one that was never stated is not a change.** It was
+		// left out, and there was no way to supply it afterwards — so a tag
+		// declared without it stayed that way, and release readiness, which
+		// asks what was cut from this branch, reported that nothing had ever
+		// been released. Recording it later is the same act as recording it at
+		// the time, arriving late.
+		if parentID != nil && existing.ParentID == nil {
+			if _, err := s.db.NewUpdate().Model((*Stream)(nil)).
+				Set("parent_id = ?", *parentID).
+				Where("id = ?", existing.ID).
+				Where("parent_id IS NULL").Exec(ctx); err != nil {
+				return nil, false, fmt.Errorf("record what %q was cut from: %w", name, err)
+			}
+			existing.ParentID = parentID
+			return existing, false, nil
 		}
 		return existing, false, nil
 	case !errors.Is(err, ErrNotFound):

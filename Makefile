@@ -716,6 +716,7 @@ demo-seed:
 	@for spec in \
 	  '/v1/products|{"name":"openpsirt","display_name":"OpenPSIRT"}' \
 	  '/v1/products/openpsirt/streams|{"name":"main","kind":"branch"}' \
+	  '/v1/products/openpsirt/streams|{"name":"v1.0","kind":"tag","parent":"main"}' \
 	  '/v1/products/openpsirt/variants|{"name":"binary","customer_facing":true}' \
 	  '/v1/products/openpsirt/variants|{"name":"container","customer_facing":true}'; do \
 	  path=$${spec%%|*}; body=$${spec#*|}; \
@@ -730,6 +731,16 @@ demo-seed:
 	    -X POST -H "Origin: $(DEMO_URL)" \
 	    -F "inventory=@$(DEMO_DIR)/openpsirt-$$variant.cdx.json" \
 	    "$(DEMO_URL)/v1/products/openpsirt/streams/main/variants/$$variant/scans"; \
+	done
+	@# The tag as well, so there is something released to compare the branch
+	@# against. Release readiness is a branch beside the last release cut from
+	@# it, and a deployment with only branches cannot show it at all — which
+	@# is also true of the alert about a critical on something shipped.
+	@for variant in binary container; do \
+	  curl -sS --noproxy '*' -o /dev/null -w "  upload openpsirt/v1.0/$$variant %{http_code}\n" \
+	    -X POST -H "Origin: $(DEMO_URL)" \
+	    -F "inventory=@$(DEMO_DIR)/openpsirt-$$variant.cdx.json" \
+	    "$(DEMO_URL)/v1/products/openpsirt/streams/v1.0/variants/$$variant/scans"; \
 	done
 	@# The rest of the cast, with roles on every product just declared.
 	@#
@@ -759,7 +770,8 @@ demo-status:
 	  IFS=',' read -r file product display stream variant <<< "$$entry"; \
 	  builds="$$builds $$product:$$stream:$$variant"; \
 	done; \
-	for triple in $$builds openpsirt:main:binary openpsirt:main:container; do \
+	for triple in $$builds openpsirt:main:binary openpsirt:main:container \
+	    openpsirt:v1.0:binary openpsirt:v1.0:container; do \
 	  IFS=':' read -r product stream variant <<< "$$triple"; \
 	  build="$$product/streams/$$stream/variants/$$variant"; \
 	  printf "  %-46s scan " "$$build"; curl -sS --noproxy '*' \
