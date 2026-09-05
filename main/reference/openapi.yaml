@@ -6650,12 +6650,12 @@ paths:
           schema:
             description: Keep only what is open against components of this name, whatever version
             type: string
-        - description: Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name
+        - description: Keep only rows whose component name or issue name contains this, ignoring capitals. Issue names include every alias, so searching the name a reporter used reaches the row filed under the name a scanner used. A way to find a package, or an advisory, in a list of thousands — where component is the exact package name
           explode: false
           in: query
           name: q
           schema:
-            description: Keep only components whose name contains this, ignoring capitals. A way to find a package in a list of thousands, where component is the exact name
+            description: Keep only rows whose component name or issue name contains this, ignoring capitals. Issue names include every alias, so searching the name a reporter used reaches the row filed under the name a scanner used. A way to find a package, or an advisory, in a list of thousands — where component is the exact package name
             maxLength: 200
             type: string
         - description: "Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"
@@ -6900,12 +6900,12 @@ paths:
           schema:
             description: Include what this product does not consider worth triaging
             type: boolean
-        - description: Keep only components whose name contains this, ignoring capitals
+        - description: Keep only rows whose component name or issue name contains this, ignoring capitals. Issue names include every alias, so searching the name a reporter used reaches the row filed under the name a scanner used
           explode: false
           in: query
           name: q
           schema:
-            description: Keep only components whose name contains this, ignoring capitals
+            description: Keep only rows whose component name or issue name contains this, ignoring capitals. Issue names include every alias, so searching the name a reporter used reaches the row filed under the name a scanner used
             maxLength: 200
             type: string
         - description: "Keep only components of one package kind, as the package identifier spells it: deb, golang, cargo, pypi, generic, oci, github, maven. Not the language's name — Rust is cargo and Python is pypi"
