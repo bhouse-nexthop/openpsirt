@@ -580,6 +580,17 @@ has not reached yet, and it does not stop being true because somebody rebuilt.
 Keyed to a place it would have to be repeated at each one and would lapse on a
 version change that had nothing to do with it.
 
+**Making one asks for triage anywhere, and reading them is not narrowed at
+all** (ACC-62). Because the claim is about an issue there is no product to hold
+a role on, so the right is asked for on some product rather than on this one —
+and the list of claims answers every person the same way. That much is a gap
+rather than a decision: a rating names an issue, and an issue somebody recorded
+by hand under an identifier this deployment minted is one nobody has announced.
+It is small — the identifier, a severity word and a reason, with no product, no
+build and no component beside it — and it is written down rather than narrowed,
+because narrowing it means deciding what a claim about an issue is scoped to,
+which is the question TRI-40 answered the other way.
+
 **Rating something worse takes effect at once; rating it milder waits for a
 second person.** Nobody needs protecting from being told something is worse than
 the world says. Milder is the direction that hides things, and it hides more

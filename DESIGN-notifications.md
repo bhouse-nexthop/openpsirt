@@ -284,6 +284,21 @@ checked rather than inferred from the number — without it, a key numbered thre
 reads and acknowledges the notifications of person three. A test pins that by
 giving the key the person's own number.
 
+**A notification outlives the role that justified it.** Every check is at the
+moment of telling — the writer asks whether the reader may read what it is
+about (ACC-63) — and nothing asks again afterwards. Reading is narrowed by
+person and by nothing else, so somebody whose private-triage is withdrawn keeps
+a list naming undisclosed findings, in a product that is meant to read to them
+as not existing. ACC-43 already hands their assignments back on that trigger;
+notifications are not part of it.
+
+Written down rather than fixed, because the shape of the fix is a question and
+not an oversight: whether revocation *clears* those rows or merely stops
+serving them is a decision about a record somebody was told something, and
+clearing what a person was told is not obviously right. What makes it tractable
+either way is that an event carries what it is about — the product, the issue
+and the component as identifiers — so there is something to key on.
+
 ## What the line says
 
 The body is stored rather than derived when it is read. It describes a moment:
