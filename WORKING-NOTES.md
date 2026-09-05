@@ -120,11 +120,17 @@ a 1.7 fixture through the existing reader tests would turn "accepted by
 construction" into something checked. *Recorded in `DESIGN-ingest.md`, which is
 where it lives now — this note is a copy and the design document is not.*
 
-**Phase 1 leftovers**: remediation metrics (RPT-03), mail and the digest
-(NTF-03, NTF-14), mentions that link (UIX-24, which blocks NTF-12), the
-absent-person prompt (ACC-45), trends release-over-release (half of RPT-09),
-comparison as release-note prose (half of RPT-06), repeat deferrals reported
-(TRI-19), the carry-forward preview (REL-07).
+**Phase 1 leftovers**: remediation metrics (RPT-03), mentions that link
+(UIX-24, which blocks NTF-12), the absent-person prompt (ACC-45), trends
+release-over-release (half of RPT-09), comparison as release-note prose (half
+of RPT-06), repeat deferrals reported (TRI-19), the carry-forward preview
+(REL-07).
+
+*Mail and the digest were on this list and are built* — `internal/notify`
+carries both, and `DESIGN-notifications.md` describes them as shipped and
+opt-in. They landed after this section was written on 2026-09-04 and nobody
+came back to it, which is the failure mode a temporary document has: it is
+trusted for exactly as long as it takes somebody to rebuild something.
 
 **Before release, mandatory**: collapse the migrations into one and start
 keeping schema and API compatibility (DAT-29).
