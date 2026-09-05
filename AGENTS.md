@@ -17,6 +17,7 @@ so and cite its ID — do not quietly implement something else.
 | `DECISIONS.md` | **Why** — every decision, with reasoning, by area | Permanent |
 | `DESIGN-*.md` | **How** — structures, flows, behavior | Permanent |
 | `IMPLEMENTATION.md` | Build order | **Temporary — deleted when the work lands** |
+| `REVIEW-ACTIONS.md` | What a review found, to work through | **Temporary — deleted when the work lands** |
 | Code | What runs | — |
 
 ### The chain that makes audits possible
@@ -53,14 +54,15 @@ All at the repository root, named `DESIGN-<area>.md`.
 - **Update them in the same change as the code.** A design document that lags is
   worse than none, because it is trusted and wrong.
 
-## Two documents are temporary
+## Three documents are temporary
 
-`IMPLEMENTATION.md` holds build order and `WORKING-NOTES.md` holds the state of
+`IMPLEMENTATION.md` holds build order, `WORKING-NOTES.md` holds the state of
 whatever is being built right now — what was decided this week, what is still
-open, and the traps that cost an hour each. Both are deleted once the work
-lands, and **nothing may reference either**: not code, not comments, not commit
-messages, not the design documents. Anything durable moves to `DECISIONS.md` or
-a `DESIGN-*.md` before the note goes.
+open, and the traps that cost an hour each — and `REVIEW-ACTIONS.md` holds
+what a review found, as a list ticked off as items land. All three are deleted
+once the work lands, and **nothing may reference any of them**: not code, not
+comments, not commit messages, not the design documents. Anything durable
+moves to `DECISIONS.md` or a `DESIGN-*.md` before the note goes.
 
 ## Plan documents are temporary
 
