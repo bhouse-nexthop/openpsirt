@@ -1175,12 +1175,39 @@ everything — one item
 deferred three times is a judgment, and forty of them is a policy nobody wrote
 down.
 
-**What a decision would carry to other builds is a sentence, not a panel**
-(REL-07). The decision says how far it reaches and asks separately about the
-versions it does not already cover; what the mockup draws instead is a list of
-matching findings on other branches and tags as unticked checkboxes, one per
-match. The reach is computed and shown, so what is missing is the form rather
-than the answer.
+
+
+## Carrying triage onto a new line
+
+What a new line would inherit is shown before anything happens, and what moved
+is chosen rather than taken (REL-07). Four groups because they need four
+different things: what already applies has nothing to agree to, what covers
+nothing here has nothing to apply to, what moved is a question, and what was
+postponed is a question that carries its own history.
+
+**Reasoning travels and conclusions do not** (REL-08). Everything carried
+arrives as a claim waiting for a second person, however confident whoever
+carried it was — the version moved, which is exactly what made the old judgment
+stop applying, so somebody has to look at the new code. What is inherited is
+the thinking. Making somebody start from a blank page, having thrown away what
+was written last time, is how a tool teaches people to stop writing reasoning
+at all.
+
+**Only what was offered may be carried.** Naming a judgment the preview
+classified as already applying, or as covering nothing here, is refused rather
+than skipped: a caller that got the set wrong should hear so.
+
+**The place is read from the new line, never copied from the old claim.** The
+versions are what a decision is keyed on and they are the thing that moved, so
+copying them would write a claim keyed to a build it is not about.
+
+**A deferral carries the date it had.** Quietly moving it forward would be the
+tool making the judgment it is asking for, and the total it has already run for
+is shown beside it because that is what agreeing to it again agrees to.
+
+**Bounded like every other action that writes many rows** (TRI-32), and written
+in one transaction: carrying six judgments is one act, and half of it landing
+is a line nobody can tell from one somebody chose that way.
 
 ## Choices the decisions did not cover
 

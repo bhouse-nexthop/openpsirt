@@ -1289,7 +1289,19 @@ export interface paths {
          */
         get: operations["preview-carried-decisions"];
         put?: never;
-        post?: never;
+        /**
+         * Carry chosen triage onto a new line
+         * @description Takes the judgments named onto this build as claims waiting for agreement, each carrying the words from the line it came from.
+         *
+         *     **Reasoning travels and conclusions do not.** Every one arrives needing approval, however confident whoever carried it was: a version moved, which is exactly what made the old judgment stop applying, so somebody has to look at the new code. What is inherited is the thinking rather than the answer.
+         *
+         *     **Only what the preview offered.** A judgment that already applies here has nothing to agree to, and one covering nothing here has nothing to apply to; naming either is refused rather than skipped, because a caller that got the set wrong should hear so.
+         *
+         *     A deferral is carried with the date it had, not with a fresh one. Bounded by the same setting that bounds every other action writing many rows.
+         *
+         *     **Requires:** public-triage or private-triage on the product
+         */
+        post: operations["carry-decisions"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2536,6 +2548,29 @@ export interface components {
             moved: components["schemas"]["InheritedBody"][] | null;
             /** @description Deferrals, offered separately and never carried by default */
             postponed: components["schemas"]["InheritedBody"][] | null;
+        };
+        "Carry-decisionsRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Carry-decisionsRequest.json
+             */
+            readonly $schema?: string;
+            /** @description Which of the offered judgments to carry */
+            decisions: number[] | null;
+        };
+        "Carry-decisionsResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Carry-decisionsResponse.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description How many claims were written, each waiting for a second person
+             */
+            carried: number;
         };
         ChangedBody: {
             /** @description The version this was bumped from since the earlier build. Only on still-present entries, where it means the bump did not reach the fix */
@@ -6835,6 +6870,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CarriedBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "carry-decisions": {
+        parameters: {
+            query: {
+                /** @description The line to carry from — a branch or a tag */
+                from: string;
+                /** @description That line's variant */
+                from_variant: string;
+            };
+            header?: never;
+            path: {
+                product: string;
+                stream: string;
+                variant: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Carry-decisionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Carry-decisionsResponse"];
                 };
             };
             /** @description Error */

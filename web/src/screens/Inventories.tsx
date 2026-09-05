@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { unwrap } from "../api/queries";
+import { Carried } from "../ui/Carried";
 import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
 import { Fab } from "../ui/Drawer";
@@ -164,6 +165,12 @@ export function Inventories() {
           </div>
         </div>
       )}
+
+      {/* What this line would inherit from another, and which of it to take
+          (REL-07). Here because this is the screen somebody is on when a line
+          has just had its first scan, which is the moment the question
+          arises. */}
+      <Carried at={{ product, stream, variant }} />
 
       <Fab label="Upload inventory" onClick={() => setUploading(true)} />
       <UploadDrawer open={uploading} onClose={() => setUploading(false)} />

@@ -444,6 +444,45 @@ components:
         - postponed
         - absent
       type: object
+    Carry-decisionsRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Carry-decisionsRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        decisions:
+          description: Which of the offered judgments to carry
+          items:
+            format: int64
+            type: integer
+          minItems: 1
+          type:
+            - array
+            - "null"
+      required:
+        - decisions
+      type: object
+    Carry-decisionsResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Carry-decisionsResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        carried:
+          description: How many claims were written, each waiting for a second person
+          format: int64
+          type: integer
+      required:
+        - carried
+      type: object
     ChangedBody:
       additionalProperties: false
       properties:
@@ -7318,6 +7357,77 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Show what triage a new line would inherit
+      tags:
+        - Triage
+      x-openpsirt-requires:
+        scope: product
+        any_of:
+          - public-triage
+          - private-triage
+    post:
+      description: |-
+        Takes the judgments named onto this build as claims waiting for agreement, each carrying the words from the line it came from.
+
+        **Reasoning travels and conclusions do not.** Every one arrives needing approval, however confident whoever carried it was: a version moved, which is exactly what made the old judgment stop applying, so somebody has to look at the new code. What is inherited is the thinking rather than the answer.
+
+        **Only what the preview offered.** A judgment that already applies here has nothing to agree to, and one covering nothing here has nothing to apply to; naming either is refused rather than skipped, because a caller that got the set wrong should hear so.
+
+        A deferral is carried with the date it had, not with a fresh one. Bounded by the same setting that bounds every other action writing many rows.
+
+        **Requires:** public-triage or private-triage on the product
+      operationId: carry-decisions
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: stream
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: variant
+          required: true
+          schema:
+            type: string
+        - description: The line to carry from — a branch or a tag
+          explode: false
+          in: query
+          name: from
+          required: true
+          schema:
+            description: The line to carry from — a branch or a tag
+            type: string
+        - description: That line's variant
+          explode: false
+          in: query
+          name: from_variant
+          required: true
+          schema:
+            description: That line's variant
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Carry-decisionsRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Carry-decisionsResponse"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Carry chosen triage onto a new line
       tags:
         - Triage
       x-openpsirt-requires:

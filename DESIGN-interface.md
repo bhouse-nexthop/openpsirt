@@ -1242,13 +1242,22 @@ here linking to it. An identifier alone does not name a finding — a finding is
 an issue at a place in a build — so what is missing is not the link but the
 route: there is no address that means "this issue, wherever we have it".
 
+## What a new line inherits
+
+The inventories screen carries it, because that is the screen somebody is on
+when a line has just had its first scan — which is the moment the question
+arises. It names the line to carry from, says how many reach this one already
+and how many cover nothing here, and offers the rest as a list to tick.
+
+Only two of the four groups are questions, and the screen says which. What
+already applies is a number rather than a row, because a decision is a claim
+about a combination of code rather than about a release and there is nothing
+to agree to.
+
 ## Not built yet
 
 Named so that what is missing is a plan rather than something rediscovered by
 clicking.
-
-**The carry-forward preview.** What a decision will cover when a build moves is
-a hint sentence rather than the panel the mockup draws.
 
 **A claim scoped to a consumer subtree, and ownership by subtree.** Both were
 proposed in the workflow review and neither is decided (DECISIONS.md Section 4).

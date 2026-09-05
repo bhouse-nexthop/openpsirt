@@ -9,6 +9,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
+	"github.com/bhouse-nexthop/openpsirt/internal/setting"
 	"github.com/bhouse-nexthop/openpsirt/internal/triage"
 )
 
@@ -421,6 +422,87 @@ func registerCarry(api huma.API, in Ingest) {
 			Postponed: inherited(carried.Postponed),
 		}
 		return &struct{ Body CarriedBody }{Body: body}, nil
+	})
+}
+
+// registerCarrying takes the chosen judgments onto the new line (REL-07).
+func registerCarrying(api huma.API, in Ingest) {
+	huma.Register(api, requiring(huma.Operation{
+		OperationID: "carry-decisions", Method: http.MethodPost,
+		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/carried",
+		Summary: "Carry chosen triage onto a new line",
+		Description: "Takes the judgments named onto this build as claims waiting for " +
+			"agreement, each carrying the words from the line it came from.\n\n" +
+			"**Reasoning travels and conclusions do not.** Every one arrives needing approval, " +
+			"however confident whoever carried it was: a version moved, which is exactly what " +
+			"made the old judgment stop applying, so somebody has to look at the new code. " +
+			"What is inherited is the thinking rather than the answer.\n\n" +
+			"**Only what the preview offered.** A judgment that already applies here has " +
+			"nothing to agree to, and one covering nothing here has nothing to apply to; " +
+			"naming either is refused rather than skipped, because a caller that got the set " +
+			"wrong should hear so.\n\n" +
+			"A deferral is carried with the date it had, not with a fresh one. Bounded by the " +
+			"same setting that bounds every other action writing many rows.",
+		Tags:          []string{"Triage"},
+		DefaultStatus: http.StatusCreated,
+	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
+		Product string `path:"product"`
+		Stream  string `path:"stream"`
+		Variant string `path:"variant"`
+		From    string `query:"from" required:"true" doc:"The line to carry from — a branch or a tag"`
+		// The same pair the preview takes, so the two cannot come to disagree
+		// about which build is being carried from.
+		FromVariant string `query:"from_variant" required:"true" doc:"That line's variant"`
+		Body        struct {
+			Decisions []int64 `json:"decisions" minItems:"1" doc:"Which of the offered judgments to carry"`
+		}
+	}) (*struct {
+		Body struct {
+			Carried int `json:"carried" doc:"How many claims were written, each waiting for a second person"`
+		}
+	}, error) {
+		subject, err := reading(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if in.DB == nil {
+			return nil, huma.Error500InternalServerError("this process cannot carry decisions")
+		}
+		names := catalog.NewStore(in.DB.DB)
+		to, err := names.LocateVisible(ctx, subject, input.Product, input.Stream, input.Variant)
+		if err != nil {
+			return nil, noSuchProduct()
+		}
+		toTarget, err := names.ExistingTarget(ctx, to.StreamID, to.VariantID)
+		if err != nil {
+			return nil, nothingScannedThere()
+		}
+		from, err := names.LocateVisible(ctx, subject, input.Product, input.From, input.FromVariant)
+		if err != nil {
+			return nil, noSuchProduct()
+		}
+		fromTarget, err := names.ExistingTarget(ctx, from.StreamID, from.VariantID)
+		if err != nil {
+			return nil, nothingScannedThere()
+		}
+
+		cap, err := setting.NewStore(in.DB.DB).Count(ctx, setting.TogetherCap,
+			triage.DefaultTogetherCap)
+		if err != nil {
+			return nil, wentWrong(in.Logger, "cannot tell how much may be carried at once", err)
+		}
+		carried, err := triage.NewStore(in.DB.DB).Carry(ctx, subject,
+			fromTarget.ID, toTarget.ID, input.Body.Decisions, cap)
+		if err != nil {
+			return nil, refusedDecision(err)
+		}
+		out := &struct {
+			Body struct {
+				Carried int `json:"carried" doc:"How many claims were written, each waiting for a second person"`
+			}
+		}{}
+		out.Body.Carried = carried
+		return out, nil
 	})
 }
 

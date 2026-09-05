@@ -77,6 +77,7 @@ Granted per product. Any one of the roles listed is enough — a dash means any 
 | POST | `/v1/products/{product}/issues/{vulnerability}/disclosure` | private-triage | A second person agrees past the threshold. |
 | GET | `/v1/products/{product}/mentionable` | — | Asking about undisclosed findings needs private-read or private-triage. |
 | GET | `/v1/products/{product}/streams/{stream}/variants/{variant}/carried` | public-triage, private-triage |  |
+| POST | `/v1/products/{product}/streams/{stream}/variants/{variant}/carried` | public-triage, private-triage |  |
 | POST | `/v1/products/{product}/streams/{stream}/variants/{variant}/components/{component}/decisions` | public-triage, private-triage |  |
 | POST | `/v1/products/{product}/streams/{stream}/variants/{variant}/findings` | public-triage, private-triage | private-triage where the finding is undisclosed. |
 | PUT | `/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/assignment` | public-triage, private-triage | Giving work to somebody else also needs assigner. Taking unowned work, or handing back your own, does not. |
