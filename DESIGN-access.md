@@ -119,6 +119,28 @@ somebody holds come back differently, which is a directory of the organization
 readable by every account. It is the same rule as a finding somebody may not
 reach answering as one that is not there, applied to people.
 
+### And nobody learns which issues exist by being refused
+
+The same rule, applied to issue names, and it had the same hole. Every route
+shaped "this issue, at this place" resolved the name first and checked what it
+reached second, so an issue somebody may not read answered one sentence and an
+issue nobody has ever recorded answered another. On two of them the second
+check was not a refusal at all: a fix target answered an empty list and an
+assignment answered "done" while writing nothing, so those two disclosed by
+succeeding rather than by refusing.
+
+**One resolver does both steps**, and every such route goes through it: resolve
+the name, then ask whether this person may read a finding of it in this
+product, and answer a failure of either as "no open finding is recorded there".
+Written once rather than checked at each route, because the leak is the
+*ordering* and every one of these routes has the same shape — so a route added
+later gets the rule by using the resolver instead of by remembering it.
+
+An issue reaching this product only where the reader may not look is, for them,
+an issue this product does not have. The identifier itself carries no sequence
+either (MDL-32), so the names cannot be walked or counted even before a route
+is asked.
+
 ## Roles are held against a product
 
 | | |

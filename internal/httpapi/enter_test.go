@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,8 +49,8 @@ func TestAFlawInOurOwnProductIsRecordedAndReadBackLikeAnyOther(t *testing.T) {
 		if err := json.Unmarshal(got.Body.Bytes(), &recorded); err != nil {
 			t.Fatalf("decode: %v (%s)", err, got.Body.String())
 		}
-		if recorded.Identifier != "MINE-2026-0001" {
-			t.Errorf("filed under %q, want the product's own first identifier",
+		if !strings.HasPrefix(recorded.Identifier, "MINE-2026-") {
+			t.Errorf("filed under %q, want one of the product's own identifiers",
 				recorded.Identifier)
 		}
 		if recorded.Visibility != "private" {
@@ -399,5 +400,94 @@ func TestAVectorSettlesTheSeverityRatherThanBeingAskedTwice(t *testing.T) {
 			return
 		}
 		t.Error("what was recorded is not in the list")
+	})
+}
+
+func TestAHiddenIssueAndAnAbsentOneAnswerTheSameOnEveryRoute(t *testing.T) {
+	// ACC-56 applied to issues (TRI-53). Every route shaped "this issue, at
+	// this place" resolved the name first and checked what it reached second,
+	// so a name somebody holds and a name nobody holds came back differently —
+	// and on two of them the check that came second was not a refusal at all:
+	// a fix target answered an empty list and an assignment answered "done"
+	// while writing nothing. Both disclose by succeeding.
+	twoReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+
+		// An undisclosed flaw somebody recorded, at a component the prober can
+		// otherwise read.
+		recorded := asPerson(t, r, "private-triage", http.MethodPost,
+			"/v1/products/mine/findings",
+			`{"builds":[{"stream":"master","variant":"broadcom"}],`+
+				`"summary":"The management socket answers before anyone authenticated.",`+
+				`"severity":"critical"}`)
+		if recorded.Code != http.StatusCreated {
+			t.Fatalf("recording answered %d: %s", recorded.Code, recorded.Body.String())
+		}
+		var flaw struct {
+			Identifier string `json:"identifier"`
+			Component  string `json:"component"`
+		}
+		if err := json.Unmarshal(recorded.Body.Bytes(), &flaw); err != nil {
+			t.Fatalf("decode: %v (%s)", err, recorded.Body.String())
+		}
+		// A name of the same shape that nobody has ever issued.
+		absent := "MINE-2026-404404"
+		if flaw.Identifier == absent {
+			t.Fatalf("the drawn identifier collided with the one used as absent")
+		}
+
+		const build = "/v1/products/mine/streams/master/variants/broadcom"
+		routes := []struct {
+			what   string
+			method string
+			path   string
+			body   string
+		}{
+			{"the finding itself", http.MethodGet,
+				build + "/findings/%s/components/" + flaw.Component, ""},
+			{"its fix targets", http.MethodGet,
+				build + "/findings/%s/components/" + flaw.Component + "/fix-targets", ""},
+			{"a decision about it", http.MethodPost,
+				build + "/findings/%s/components/" + flaw.Component + "/decision",
+				`{"outcome":"not-applicable","justification":"vulnerable_code_not_present",` +
+					`"reasoning":"Probing."}`},
+			{"who is holding it", http.MethodPut,
+				build + "/findings/%s/components/" + flaw.Component + "/assignment",
+				`{"person":"reader"}`},
+			{"closing it", http.MethodPost, build + "/findings/%s/resolve",
+				`{"because":"invalid"}`},
+			{"extending the embargo", http.MethodPost,
+				"/v1/products/mine/issues/%s/disclosure",
+				`{"until":"2027-01-01T00:00:00Z","reason":"Probing for the date."}`},
+			{"its attachments", http.MethodGet,
+				"/v1/products/mine/issues/%s/attachments", ""},
+			{"when it is disclosed", http.MethodGet,
+				"/v1/products/mine/issues/%s/disclosure", ""},
+			{"which builds it affects", http.MethodPut,
+				"/v1/products/mine/issues/%s/builds",
+				`{"builds":[{"stream":"master","variant":"broadcom"}]}`},
+		}
+
+		// The prober triages this product and may not read undisclosed work,
+		// which is the credential the leak was demonstrated with.
+		for _, route := range routes {
+			hidden := asPerson(t, r, "triager", route.method,
+				fmt.Sprintf(route.path, flaw.Identifier), route.body)
+			unused := asPerson(t, r, "triager", route.method,
+				fmt.Sprintf(route.path, absent), route.body)
+
+			if hidden.Code != unused.Code {
+				t.Errorf("%s: a hidden issue answers %d and an unused name %d",
+					route.what, hidden.Code, unused.Code)
+			}
+			if hidden.Code < 400 {
+				t.Errorf("%s: probing a hidden issue succeeded with %d: %s",
+					route.what, hidden.Code, hidden.Body.String())
+			}
+			if hidden.Body.String() != unused.Body.String() {
+				t.Errorf("%s: the two answers read differently\n hidden: %s\n unused: %s",
+					route.what, hidden.Body.String(), unused.Body.String())
+			}
+		}
 	})
 }

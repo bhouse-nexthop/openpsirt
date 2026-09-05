@@ -2,6 +2,8 @@ package finding_test
 
 import (
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -34,8 +36,8 @@ func TestAFlawInWhatWeShipIsRecordedAndSurvivesTheNextScan(t *testing.T) {
 		if err != nil {
 			t.Fatalf("recording a flaw: %v", err)
 		}
-		if identifier != "SONIC-2026-0001" {
-			t.Errorf("filed under %q, want the product's own first identifier of the year",
+		if !mintedFor(identifier, "SONIC", 2026) {
+			t.Errorf("filed under %q, want the product's own name, the year and a number",
 				identifier)
 		}
 		if row.Visibility != access.Private {
@@ -68,7 +70,8 @@ func TestAFlawInWhatWeShipIsRecordedAndSurvivesTheNextScan(t *testing.T) {
 			t.Errorf("%d recorded findings are open after a scan, want 1", open)
 		}
 
-		// The second one this year counts on from the first.
+		// The second one is a different identifier, and nothing about it says
+		// how many came before it (MDL-32).
 		_, next, err := f.store.Enter(t.Context(), who, finding.Entering{
 			TargetIDs: []int64{f.target}, Severity: "medium",
 			Summary: "The recovery console does not clear the previous session.",
@@ -76,8 +79,19 @@ func TestAFlawInWhatWeShipIsRecordedAndSurvivesTheNextScan(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if next != "SONIC-2026-0002" {
+		if !mintedFor(next, "SONIC", 2026) {
 			t.Errorf("the second identifier this year is %q", next)
+		}
+		if next == identifier {
+			t.Errorf("both flaws were filed under %q", next)
+		}
+		// The property the shape exists for: the number is not the count of
+		// what has been recorded, so a reader cannot walk it or read a total
+		// off it. Counting from one lands exactly here, which is what makes
+		// this the assertion rather than a distance between two draws — those
+		// are as likely to be close together as far apart.
+		if drawn(t, next) == drawn(t, identifier)+1 {
+			t.Errorf("identifiers %q then %q are a counter", identifier, next)
 		}
 	})
 }
@@ -433,4 +447,29 @@ func TestABuildTakenBackOutIsNeitherAFixNorANote(t *testing.T) {
 	if !strings.Contains(notes, "CVE-2026-2") {
 		t.Errorf("a real fix went missing:\n%s", notes)
 	}
+}
+
+// mintedFor reports whether an identifier is one this deployment issued for a
+// product in a year: the name, the year, and a number.
+func mintedFor(identifier, product string, year int) bool {
+	prefix := fmt.Sprintf("%s-%d-", product, year)
+	if !strings.HasPrefix(identifier, prefix) {
+		return false
+	}
+	n, err := strconv.Atoi(strings.TrimPrefix(identifier, prefix))
+	return err == nil && n > 0
+}
+
+// drawn is the number in one of those, for the checks about how it was chosen.
+func drawn(t *testing.T, identifier string) int {
+	t.Helper()
+	at := strings.LastIndex(identifier, "-")
+	if at < 0 {
+		t.Fatalf("%q carries no number", identifier)
+	}
+	n, err := strconv.Atoi(identifier[at+1:])
+	if err != nil {
+		t.Fatalf("the number in %q does not parse: %v", identifier, err)
+	}
+	return n
 }

@@ -2,8 +2,10 @@ package finding
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 
@@ -108,7 +110,9 @@ var ErrNothingScanned = errors.New(
 // nothing else to file it under: a flaw nobody has published has no CVE, and
 // waiting for one would mean the record of what we knew starts after the work
 // does. The identifier is the product's own name, the year, and a number —
-// `SONIC-2026-0001` — which is the shape a vendor advisory already takes.
+// `SONIC-2026-481907` — which is the shape a vendor advisory already takes.
+// The number is drawn rather than counted, so it is not a running total of
+// what this product has kept quiet (MDL-32).
 // When a CVE is assigned later it is recorded as another name for the same
 // issue, and the issue is then filed under the CVE; nothing about the finding,
 // the decisions or the approvals moves, because they are keyed on the issue
@@ -369,45 +373,54 @@ func (s *Store) carrying(ctx context.Context, targetID int64, in Entering) (int6
 	return root.ID, root.Name, nil
 }
 
-// mint issues the next identifier this product has to give out this year.
+// mint issues an identifier for a flaw recorded against this product.
 //
 // Shaped like a vendor advisory identifier because that is what it becomes:
-// the product, the year, and a number that counts from one. Nothing infers the
-// prefix from configuration — the product already has a name people type, and
-// a second setting for it is a second thing to keep in step.
+// the product, the year, and a number. **The number is drawn rather than
+// counted** (MDL-32). Counting from one made the identifier a running total of
+// what this product has kept quiet — anybody could ask for the first one, walk
+// upward until the answers changed, and read off both how many undisclosed
+// flaws exist and when the last one was recorded. That is a disclosure made by
+// the name alone, before any route is asked anything.
 //
-// The number is read and used inside one transaction, so two people recording
-// at the same moment cannot be handed the same one: the second waits, reads
-// the first's row, and gets the number after it.
+// Drawn from a source fit for the purpose, because guessing the next one is
+// the whole of what this prevents. A collision is answered by drawing again
+// inside the same transaction, so two people recording at the same moment
+// cannot be handed the same identifier: the second waits, sees the first's
+// row, and draws once more.
 func mint(ctx context.Context, tx bun.Tx, product string, year int) (string, error) {
 	prefix := strings.ToUpper(strings.TrimSpace(product))
 	if prefix == "" {
 		return "", fmt.Errorf("a product with no name cannot issue an identifier")
 	}
-	like := fmt.Sprintf("%s-%d-%%", prefix, year)
-
-	var issued []string
-	err := tx.NewSelect().
-		TableExpr("vulnerability AS v").
-		ColumnExpr("v.identifier").
-		Where("v.identifier LIKE ?", like).
-		Scan(ctx, &issued)
-	if err != nil {
-		return "", fmt.Errorf("read what has been issued: %w", err)
-	}
-
-	highest := 0
-	for _, identifier := range issued {
-		var n int
-		// Anything that does not parse is not one of ours and is skipped
-		// rather than refused: the pattern can match an identifier somebody
-		// else issued that happens to start the same way, and refusing then
-		// would stop this product recording anything ever again.
-		if _, err := fmt.Sscanf(identifier, prefix+"-%d-%d", &year, &n); err == nil && n > highest {
-			highest = n
+	// Six digits, kept to a fixed width so every identifier this deployment
+	// issues reads the same length. The width is not what makes it
+	// unguessable — the routes answer a name somebody holds and a name nobody
+	// holds identically (TRI-53) — it is what stops the sequence from being
+	// readable.
+	const lowest, span = 100000, 900000
+	for attempt := 0; attempt < 8; attempt++ {
+		drawn, err := rand.Int(rand.Reader, big.NewInt(span))
+		if err != nil {
+			return "", fmt.Errorf("draw an identifier: %w", err)
+		}
+		candidate := fmt.Sprintf("%s-%d-%d", prefix, year, drawn.Int64()+lowest)
+		taken, err := tx.NewSelect().
+			TableExpr("vulnerability AS v").
+			Where("v.identifier = ?", candidate).
+			Count(ctx)
+		if err != nil {
+			return "", fmt.Errorf("read whether that identifier is spoken for: %w", err)
+		}
+		if taken == 0 {
+			return candidate, nil
 		}
 	}
-	return fmt.Sprintf("%s-%d-%04d", prefix, year, highest+1), nil
+	// Eight collisions in a row against a space this size is not luck, and
+	// carrying on would be a loop nobody is watching.
+	return "", fmt.Errorf(
+		"no identifier could be drawn for %s in %d — the ones it issues are nearly all taken",
+		prefix, year)
 }
 
 // productNameOf reads what a product is called, for the identifiers it issues.

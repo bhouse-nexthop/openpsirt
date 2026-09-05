@@ -212,9 +212,9 @@ func registerResolution(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, nothingScannedThere()
 		}
-		issueID, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, input.Vulnerability)
+		issueID, err := issueHere(ctx, in, subject, named.ProductID, input.Vulnerability)
 		if err != nil {
-			return nil, noSuchIssue()
+			return nil, err
 		}
 
 		done, err := finding.NewStore(in.DB.DB).Resolve(ctx, subject,
@@ -449,9 +449,9 @@ func embargoAt(ctx context.Context, in Ingest, productName, issueName string) (
 	if err != nil {
 		return subject, nil, 0, 0, noSuchProduct()
 	}
-	issue, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, issueName)
+	issue, err := issueHere(ctx, in, subject, product.ID, issueName)
 	if err != nil {
-		return subject, nil, 0, 0, noSuchIssue()
+		return subject, nil, 0, 0, err
 	}
 	return subject, finding.NewStore(in.DB.DB), product.ID, issue, nil
 }
@@ -542,9 +542,9 @@ func registerAffects(api huma.API, in Ingest) {
 		}
 		// The resolver everything else uses, so an issue found by a CVE it was
 		// later given answers the same as one found by what we filed it under.
-		issue, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, input.Vulnerability)
+		issue, err := issueHere(ctx, in, subject, product.ID, input.Vulnerability)
 		if err != nil {
-			return nil, huma.Error404NotFound("no issue here goes by that name")
+			return nil, err
 		}
 
 		targets := make([]int64, 0, len(input.Body.Builds))

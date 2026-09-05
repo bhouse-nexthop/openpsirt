@@ -1,11 +1,14 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 )
 
@@ -124,4 +127,33 @@ func severalComponents(several *graph.Ambiguous, sayWith string) error {
 	return huma.Error409Conflict(fmt.Sprintf(
 		"this build ships %q as %d different components — say which one with %s",
 		several.Name, len(several.Choices), sayWith), detail...)
+}
+
+// issueHere resolves an issue named in a path about a place, and answers as
+// though the name were unused wherever the subject may not read a finding of
+// it in this product.
+//
+// One helper rather than a check at each route, because the shape that leaks
+// is the ordering — resolve the name, then check what it reached — and every
+// route here has that shape. Written once so a new route gets it by using the
+// resolver rather than by remembering the rule (ACC-56, TRI-53).
+//
+// The refusal is noSuchFinding, which is what these routes already answer when
+// the place is not one the caller may read. That is the point: the two have to
+// be the same sentence, or the difference between them is the disclosure.
+func issueHere(ctx context.Context, in Ingest, subject access.Subject,
+	productID int64, name string) (int64, error) {
+
+	issue, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, name)
+	if err != nil {
+		return 0, noSuchFinding()
+	}
+	told, err := finding.NewStore(in.DB.DB).MayBeToldOfIn(ctx, subject, productID, issue)
+	if err != nil {
+		return 0, wentWrong(in.Logger, "that could not be looked up", err)
+	}
+	if !told {
+		return 0, noSuchFinding()
+	}
+	return issue, nil
 }

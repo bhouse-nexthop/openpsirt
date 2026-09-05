@@ -2,7 +2,7 @@
 
 What a scan run found, and where.
 
-Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, MDL-22 to MDL-31,
+Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, MDL-22 to MDL-32,
 ING-02, ING-21,
 ING-29, ING-30, ING-39, ING-40, STA-03, STA-04, STA-05, STA-08, STA-17,
 RNK-01 to RNK-07, MDL-09, STA-01, STA-02, STA-06, STA-07, STA-09, STA-10,
@@ -85,10 +85,21 @@ to be triaged, assigned, decided, clocked and reported like everything else —
 so it is a finding, of a different kind (MDL-22).
 
 **It is filed under an identifier this deployment mints** (MDL-24): the
-product's name, the year, and a number — `SONIC-2026-0001` — which is the shape
-a vendor advisory already takes. There is nothing else to file it under. A flaw
-nobody has published has no CVE, and waiting for one would mean the record of
-what we knew starts after the work does.
+product's name, the year, and a number — `SONIC-2026-481907` — which is the
+shape a vendor advisory already takes. There is nothing else to file it under.
+A flaw nobody has published has no CVE, and waiting for one would mean the
+record of what we knew starts after the work does.
+
+**The number is drawn rather than counted** (MDL-32). Counted from one it was a
+running total of what the product had kept quiet — ask for the first one, walk
+upward until the answers change, and both how many undisclosed flaws exist and
+when the last was recorded fall out of the names alone, before any route has
+been asked anything. Six digits, so every identifier this deployment issues
+reads the same length; a collision is answered by drawing again inside the same
+transaction, which is also what stops two people recording at the same moment
+from being handed the same one. The width is not what makes it safe to probe —
+that is the routes answering a name somebody holds and a name nobody holds
+identically (TRI-53).
 
 Nothing is configured for that prefix. The product has a name people type, and
 a setting for it would be a second thing to keep in step. When a CVE is

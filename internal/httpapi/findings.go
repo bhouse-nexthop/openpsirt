@@ -526,9 +526,9 @@ func registerFindingDetail(api huma.API, in Ingest) {
 			return nil, nothingScannedThere()
 		}
 
-		issue, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, input.Vulnerability)
+		issue, err := issueHere(ctx, in, subject, named.ProductID, input.Vulnerability)
 		if err != nil {
-			return nil, noSuchIssue()
+			return nil, err
 		}
 		// Name and version together, because a name alone is not unique: a
 		// real image ships three vendored versions of one library, and

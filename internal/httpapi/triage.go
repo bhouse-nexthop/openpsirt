@@ -723,9 +723,9 @@ func findingAbout(ctx context.Context, in Ingest, subject access.Subject,
 	if err != nil {
 		return 0, 0, 0, nothingScannedThere()
 	}
-	issue, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, vulnerability)
+	issue, err := issueHere(ctx, in, subject, named.ProductID, vulnerability)
 	if err != nil {
-		return 0, 0, 0, noSuchIssue()
+		return 0, 0, 0, err
 	}
 	at, err := graph.NewStore(in.DB.DB).ComponentVersionAt(ctx, target.ID, component, version)
 	if err != nil {
@@ -748,9 +748,9 @@ func decidingAbout(ctx context.Context, in Ingest, subject access.Subject,
 		return nil, nothingScannedThere()
 	}
 
-	issue, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, vulnerability)
+	issue, err := issueHere(ctx, in, subject, named.ProductID, vulnerability)
 	if err != nil {
-		return nil, noSuchIssue()
+		return nil, err
 	}
 
 	at, err := finding.NewStore(in.DB.DB).PlaceFor(ctx, subject, target.ID, issue, place)

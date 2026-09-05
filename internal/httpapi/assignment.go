@@ -407,9 +407,9 @@ func locateFinding(ctx context.Context, in Ingest, subject access.Subject,
 	if err != nil {
 		return 0, 0, 0, 0, nothingScannedThere()
 	}
-	issue, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, vulnerability)
+	issue, err := issueHere(ctx, in, subject, named.ProductID, vulnerability)
 	if err != nil {
-		return 0, 0, 0, 0, noSuchIssue()
+		return 0, 0, 0, 0, err
 	}
 	held, err := graph.NewStore(in.DB.DB).ComponentAt(ctx, target.ID, component)
 	if err != nil {

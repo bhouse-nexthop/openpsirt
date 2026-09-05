@@ -125,7 +125,30 @@ person can be acted as directly:
   known by that name"; a public reader lists assessments → the row is
   absent. Runs on SQLite and PostgreSQL (DAT-12).
 
-- [ ] **X2 · "Hidden" and "absent" answer differently, and minted identifiers are a counter.** *Leak, demonstrated.* **S–M**
+- [x] **X2 · "Hidden" and "absent" answer differently, and minted identifiers are a counter.** *Leak, demonstrated.* **S–M**
+
+  **Done, both halves.** Recorded as TRI-53 (the routes) and MDL-32 (the
+  identifier); MDL-24's closing clause was corrected, since it described the
+  counting mechanism.
+
+  One resolver now does "resolve this name, then ask whether this person may
+  read a finding of it in this product", and the seven sites that resolved an
+  issue name all go through it: finding detail, fix targets, place decision,
+  assignment, closing, the disclosure list and extend, and setting which builds
+  a flaw affects. Both failures answer "no open finding is recorded there". The
+  advisory route already narrowed correctly and was left alone.
+
+  Minted numbers are six digits drawn from `crypto/rand`, redrawn on collision
+  inside the same transaction. That also drops an unbounded read: the old form
+  loaded every identifier the product had ever issued to find the largest.
+
+  Pinned by a test that walks nine routes with a hidden issue and an unused
+  name and asserts the status **and** the body match. Reverting the resolver
+  makes all nine fail; reverting the draw makes the identifier test fail with
+  `"MINE-2026-1" then "MINE-2026-2" are a counter`. Two holes in the first
+  draft of that test were caught by breaking it — the assignment body field is
+  `person`, not `holder`, and the closing route is `/resolve`, so both were
+  passing on a validation error and a router 404 rather than on the invariant.
 
   As `rev-public` (identical for `rev-pubtri` and a public person's token):
 

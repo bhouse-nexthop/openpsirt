@@ -54,67 +54,10 @@ const (
 // ErrAlreadyAssessed is returned where a claim already stands about an issue.
 var ErrAlreadyAssessed = errors.New("this issue is already assessed")
 
-// ErrUnknownIssue is returned where an issue is not one this subject may be
-// told about, and is answered exactly as a name nobody has ever used.
-var ErrUnknownIssue = errors.New("no issue is known by that name")
-
 // ErrNoSuchAssessment is returned where a claim is missing or is about an
 // issue this subject may not be told about. One error for both, because
 // telling them apart is what turns a claim identifier into a directory.
 var ErrNoSuchAssessment = errors.New("no assessment is recorded there")
-
-// mayBeToldOf reports whether this subject may be told an issue exists.
-//
-// An assessment is a claim about an issue rather than about a place (TRI-40),
-// which is why making one asks for triage on some product rather than on a
-// particular one (ACC-62). Both of those read "an issue is public knowledge" —
-// which holds for a CVE and does not hold for an identifier this deployment
-// minted for a flaw nobody has announced (MDL-24, MDL-27). Naming one and
-// being handed the severity recorded against it is a disclosure, and it does
-// not stop being one because the route taken to it was a rating.
-//
-// So an issue somebody may read a finding of, in any product, is one they may
-// argue about. An issue that reaches nothing here is nobody's secret — a CVE
-// interned by a scan that no longer matches anything, or one rated before it
-// arrives — and refusing that would take away the half of TRI-40 that reaches
-// products an issue has not met yet. A flaw recorded here always sits at a
-// build, so it is never in that second case.
-//
-// Read through the finding rather than the issue because visibility lives on
-// the finding: the same issue is undisclosed in one product and announced in
-// another, and what the reader may be told follows the place.
-func mayBeToldOf(ctx context.Context, db bun.IDB, subject access.Subject,
-	vulnerabilityID int64) (bool, error) {
-
-	if subject.Kind != access.Person {
-		return false, nil
-	}
-	products, all := subject.Products()
-	if all {
-		return true, nil
-	}
-	// Closed findings count. An issue whose findings have all been fixed is
-	// still one the reader has seen, and dropping it here would quietly retire
-	// their ability to argue about it.
-	readable, err := onlyReadable(db.NewSelect().
-		TableExpr("finding AS f").
-		Join("JOIN target AS tg ON tg.id = f.target_id").
-		Join("JOIN stream AS st ON st.id = tg.stream_id").
-		Where("f.vulnerability_id = ?", vulnerabilityID),
-		subject, products, all).Count(ctx)
-	if err != nil {
-		return false, fmt.Errorf("read where this issue sits: %w", err)
-	}
-	if readable > 0 {
-		return true, nil
-	}
-	anywhere, err := db.NewSelect().Model((*Finding)(nil)).
-		Where("vulnerability_id = ?", vulnerabilityID).Count(ctx)
-	if err != nil {
-		return false, fmt.Errorf("read whether this issue reaches anything: %w", err)
-	}
-	return anywhere == 0, nil
-}
 
 // Assess records what somebody thinks of an issue.
 //
