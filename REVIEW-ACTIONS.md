@@ -412,7 +412,34 @@ person can be acted as directly:
   Change: no outcome selected and Submit disabled until one is chosen, or
   default to "Affected". In triage mode, default to the last-used pair (W5).
 
-- [ ] **X9 · Documents describe things that do not run.** **S**
+- [x] **X9 · Documents describe things that do not run.** **S**
+
+  **Done**, all five, and each in the place a reader actually stops.
+
+  - **ING-01's SPDX clause is superseded.** The only SPDX in the codebase is a
+    test asserting such a document is refused. The reasoning still stands and
+    is now stated as why an adapter would be worth writing rather than as
+    something that exists. The README already said CycloneDX only.
+  - **ING-28's secondary path is marked not built**, in `DECISIONS.md` — which
+    is where it was wrong. `DESIGN-ingest.md` already said "the model keeps
+    room for a producer-supplied vulnerability report, and nothing reads one
+    today". ING-33 and SCP-01's cross-reference carried the same implication
+    and are qualified with it.
+  - **The reporting contradiction is settled the other way from the review's
+    reading**: RPT-03 *is* built — the Satisfies line was stale, and there was
+    no "says so at the foot" note to find. Corrected, and REM-04 is now named
+    as satisfied **in part**, because the escalation view exists and nothing
+    computes an SLA rate. `DESIGN-remediation.md` says the same.
+  - **NTF-01 says the two chat adapters are not built.** Only the design
+    document had said so, which is the wrong way round: a reader who stops at
+    the decision is the reader being misled.
+  - **The gap itself is recorded in `AGENTS.md`.** The gate cannot check that a
+    document is true — a paragraph describing behavior nobody wrote reads
+    exactly like one describing behavior somebody did — so a document is
+    checked by reading the code against it, and where something is half built,
+    the document says which half.
+
+  Both reversals are logged in `DECISIONS.md` §11, where reversals go.
 
   - ING-01 says "SPDX 2.3 accepted but lossy" and the README's table implies
     it; the only SPDX in code is `internal/sbom/cyclonedx_test.go:362`

@@ -2,9 +2,13 @@
 
 The numbers this produces, and what each of them is honestly a number of.
 
-Satisfies RPT-01 to RPT-02, RPT-04 to RPT-08, RPT-10 to RPT-13, RPT-15 to
-RPT-17, REM-25, REM-26, REL-08, ING-13. RPT-09 is only half done and says
-where; RPT-03 is not built and says so at the foot.
+Satisfies RPT-01 to RPT-08, RPT-10 to RPT-13, RPT-15 to RPT-17, REM-04 in
+part, REM-25, REM-26, REL-08, ING-13. RPT-09 is only half done and says where.
+
+**Of REM-04, the escalation view and the per-item time remaining are built and
+the SLA compliance rate is not.** Nothing computes a rate anywhere. It is named
+here rather than left out, because a decision half-built and silent about which
+half is the shape an auditor cannot tell from an accident.
 
 Everything here reads what the findings and decisions already hold. Nothing in
 this document has a table of its own.

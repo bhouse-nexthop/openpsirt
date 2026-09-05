@@ -5,7 +5,10 @@ happened.
 
 Satisfies REM-01 to REM-03, REM-06 to REM-10, REM-13, REM-15 to REM-24.
 REM-04's escalation view and REM-05's work distribution read what is here and
-are described in `DESIGN-reporting.md` and `DESIGN-findings.md`. REM-11 and
+are described in `DESIGN-reporting.md` and `DESIGN-findings.md`. **REM-04 also
+asks for an SLA compliance rate, and nothing computes one** — the escalation
+view shows what is past target rather than what proportion of everything met
+it, and those are different questions. REM-11 and
 REM-12 are the external hand-off, which is not built. Of "Publication" below,
 the CSAF document is built and every adapter that would send it somewhere is
 not.
