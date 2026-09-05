@@ -569,12 +569,14 @@ export function Findings() {
             )}
           </span>
         </div>
-        <RecordDrawer
-          open={recording}
-          onClose={() => setRecording(false)}
-          who={who.data}
-          at={{ product, stream, variant }}
-        />
+        {oneBuild && (
+          <RecordDrawer
+            open={recording}
+            onClose={() => setRecording(false)}
+            who={who.data}
+            at={{ product, stream, variant }}
+          />
+        )}
         {controls}
         <ByComponent
           at={{ product, stream, variant }}
@@ -670,12 +672,16 @@ export function Findings() {
         </span>
       </div>
 
-      <RecordDrawer
-        open={recording}
-        onClose={() => setRecording(false)}
-        who={who.data}
-        at={{ product, stream, variant }}
-      />
+      {/* Recording is about what one build ships, so the form is not there to
+          be opened where the selection is wider than one. */}
+      {oneBuild && (
+        <RecordDrawer
+          open={recording}
+          onClose={() => setRecording(false)}
+          who={who.data}
+          at={{ product, stream, variant }}
+        />
+      )}
 
       {controls}
 
