@@ -108,6 +108,16 @@ query.
 - Sessions, and one subject-resolution step for all credential types
 - Roles per product, visibility enforced in the data-access layer
 - API keys with scope constraints; bootstrap admin
+- **Handing work to somebody else is its own right** (ACC-61), held alongside
+  triage rather than instead of it, with taking unowned work and handing back
+  your own left to any triager
+- **A judgment that is not about a product asks for the role anywhere**
+  (ACC-62), because a rating is a claim about an issue and there is no product
+  to hold a role on
+- **Every operation states what it asks of a caller** (API-22), as structured
+  data on the API document and as a line in its description, both from one
+  value — and `docs/reference/privileges.md` is generated from the same
+  registrations rather than maintained beside them
 
 **Proves it works:** the role × visibility × endpoint matrix, **including
 counts, aggregates, search and exports** — the paths that leak when only row
@@ -119,11 +129,17 @@ reads are checked.
 
 ## Stage 4 — Triage
 
-- Findings per place; the outcomes; VEX justification vocabulary
+- Findings per place; the outcomes; VEX justification vocabulary. **Five
+  outcomes, not four**: `already-fixed` (TRI-51) says whoever packages the
+  component has published the fix, carries the version they published it in,
+  and exports as VEX `fixed` — which the justifications cannot say, because
+  every one of them is a claim about our build rather than about the
+  packager's patch
 - Decisions keyed structurally, carried forward, expiring on version change
 - Review queue, approval, separation of duties, bulk action, withdrawal
 - Duplicates across variants, branches and tags
-- Markdown text: justification revisions, comments, server-side rendering
+- Markdown text: justification revisions, comments. Rendering moved to the
+  browser (UIX-22); what the server keeps is the policy at submission
 
 **Proves it works:** a decision survives a nightly re-ingest; lapses when the
 component or its consumer changes upstream version; does **not** lapse on a
@@ -176,9 +192,14 @@ deadlines and what a new line would inherit.
 - **Trends on calendar time are built**, and so is **release readiness** — a
   branch beside the last release cut from it. Release over release as a trend
   axis is not
-- Email, digest, operational alerts — **the in-app notification area is
-  built**, with both lifetimes and two of its producers; see
-  `DESIGN-notifications.md` for what is told and what is not yet
+- **The in-app notification area is built**, with both lifetimes and two of
+  its producers, and **mail now carries what leaves it**: the categories worth
+  interrupting somebody for go at once, and a daily digest — off until a person
+  asks for it — carries what nothing else told them. A message about a finding
+  nobody has announced says only that there is something. Each person chooses
+  their own; an operator sets `MAIL_FROM` and `MAIL_SERVER` or nothing leaves
+  at all. Chat adapters and operational alerts are not built;
+  `DESIGN-notifications.md` says what is told and what is not
 
 **Proves it works:** a release comparison matches a known pair of releases; a
 declared fix that did not land shows as a missed target.
@@ -344,7 +365,7 @@ thing rather than a gap somebody rediscovers by auditing.
 | REL-07 | A screen | ING-13 was the other half and is built: what a new line would inherit can be asked for. What is missing is the form — the reach is computed and shown, and ticking the ones to carry is not |
 | ING-24 to ING-27, SCP-11 | Analyzer findings | Intended scope, not built. The finding model carries a kind from the start so a second kind needs no rewrite, which is the part that had to be got right early |
 | UIX-24, linking a mention or a finding reference | Resolution the server has to do | The editor offers the right people to mention and writes the text; what nothing does is turn `@name` or a finding reference into a link. That is resolution rather than formatting — it needs to know what the reader may see — so it belongs on the server beside the policy, not in the renderer |
-| The server-side renderer (`internal/markdown.Render`) | An email's HTML part | The interface renders in the browser (UIX-22), so the renderer's only remaining reader is a digest email, which has no client to render for it. It is kept rather than deleted and rebuilt: it carries the sanitizer and a corpus of cross-site-scripting payloads, and a security control rebuilt from memory comes back weaker. Its tests are what keep it exercised until Stage 6 wires it up |
+| The server-side renderer (`internal/markdown.Render`) | Nothing, now — a decision to take | Stage 6 landed and did not wire it: mail carries the markdown as its text part (NTF-14), which reads fine unrendered, so the HTML part it was being kept for was never built. It is still kept rather than deleted, because it carries the sanitizer and a corpus of cross-site-scripting payloads and a security control rebuilt from memory comes back weaker — but "waiting for Stage 6" is no longer true, and the honest state is that it has no consumer and its tests are what exercise it |
 | MDL-10 | Nothing — it is a limitation | The same version built with different feature flags can use its dependencies differently. Recorded so nobody assumes the graph says more than it does |
 
 ## Not planned yet
