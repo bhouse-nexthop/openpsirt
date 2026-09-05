@@ -179,7 +179,20 @@ person can be acted as directly:
   counter (random suffix), which removes the "watch the counter" channel
   without touching handlers. Both is best.
 
-- [ ] **X3 · `GET /v1/people/{identity}/assignments` is a staff directory.** *Leak, demonstrated.* **S**
+- [x] **X3 · `GET /v1/people/{identity}/assignments` is a staff directory.** *Leak, demonstrated.* **S**
+
+  **Done.** An identity nobody holds now answers with the same empty list an
+  identity somebody holds answers with when none of their work is the caller's
+  to see. No new decision — this is ACC-56 as already written, reaching a route
+  it had been missed on.
+
+  Not a fourth point fix: a test walks every route carrying an `{identity}` —
+  assignments, handing work on, withdrawing a role, revoking a token, ending
+  sessions — for every kind of credential, and asserts both spellings answer
+  alike. The other four satisfy it the other way, by refusing everybody who is
+  not an administrator *before* the name is resolved. Reverting the fix makes
+  the test fail with exactly the review's evidence: `200 {"items":[],"total":0}`
+  against `404 "nobody here is called that"`.
 
       GET /v1/people/proxy:rev-public/assignments   X-User: rev-report → 200 {"items":[],"total":0}
       GET /v1/people/proxy:nobody-xyz/assignments   X-User: rev-report → 404 "nobody here is called that"

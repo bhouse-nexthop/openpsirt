@@ -232,9 +232,13 @@ func registerAssignment(api huma.API, in Ingest) {
 			"units as what nobody is dealing with: **one item per issue in a component in a " +
 			"product**, not one per build. The same code built several ways is one piece of " +
 			"work, and it was taken on as one.\n\n" +
-			"Send `me` as the identity for your own.",
+			"Send `me` as the identity for your own.\n\n" +
+			"An identity nobody holds answers with an empty list rather than a 404, which is " +
+			"also what an identity somebody holds answers when none of their work is yours to " +
+			"see. The two are deliberately the same.",
 		Tags: []string{"Findings"},
-	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see. An identity nobody holds answers as one whose "+
+		"work you cannot see."), func(ctx context.Context, input *struct {
 		Identity string `path:"identity" doc:"Their sign-in identity, or 'me' for your own"`
 		ScopeQuery
 		Limit  int `query:"limit" default:"50" minimum:"1" maximum:"200"`
@@ -260,9 +264,18 @@ func registerAssignment(api huma.API, in Ingest) {
 		if input.Identity != "me" {
 			person, err := access.NewStore(in.DB.DB).ByIdentity(ctx, input.Identity)
 			if err != nil {
-				return nil, noSuchPerson()
+				// A name nobody holds answers exactly as a name somebody
+				// holds whose work this caller cannot see: an empty list
+				// (ACC-56). Refusing instead would answer "does this person
+				// have an account here" for any credential at all, including
+				// one holding no product — a directory of the organization
+				// for the price of one request. This read is narrowed by what
+				// the caller may see anyway, so nothing is lost by answering
+				// it for a name that reaches nobody.
+				personID = nobody
+			} else {
+				personID = person.ID
 			}
-			personID = person.ID
 		}
 		rows, total, err := finding.NewStore(in.DB.DB).AssignedTo(ctx, subject, personID,
 			scope, input.Limit, input.Offset)

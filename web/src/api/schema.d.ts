@@ -753,7 +753,9 @@ export interface paths {
          *
          *     Send `me` as the identity for your own.
          *
-         *     **Requires:** any recognized credential. Answers only what you may see.
+         *     An identity nobody holds answers with an empty list rather than a 404, which is also what an identity somebody holds answers when none of their work is yours to see. The two are deliberately the same.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see. An identity nobody holds answers as one whose work you cannot see.
          */
         get: operations["list-assigned"];
         put?: never;

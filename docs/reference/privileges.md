@@ -131,7 +131,7 @@ Any credential this deployment recognizes. The answer is narrowed to what you ma
 | GET | `/v1/decisions/{id}/comments` | — | Answers only what you may see. |
 | GET | `/v1/decisions/{id}/revisions` | — | Answers only what you may see. |
 | GET | `/v1/deferrals/repeated` | — | Answers only what you may see. |
-| GET | `/v1/people/{identity}/assignments` | — | Answers only what you may see. |
+| GET | `/v1/people/{identity}/assignments` | — | Answers only what you may see. An identity nobody holds answers as one whose work you cannot see. |
 | GET | `/v1/products` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/comparison` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/comparison/notes` | — | Answers only what you may see. |

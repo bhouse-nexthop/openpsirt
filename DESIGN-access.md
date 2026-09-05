@@ -119,6 +119,19 @@ somebody holds come back differently, which is a directory of the organization
 readable by every account. It is the same rule as a finding somebody may not
 reach answering as one that is not there, applied to people.
 
+**A route open to any credential satisfies it the other way.** There is no
+earlier check to hide behind on a read anybody may make, so a name nobody holds
+answers exactly as a name somebody holds whose work the caller cannot see: an
+empty list. What one person is dealing with is that shape — it is narrowed by
+what the reader may see in any case, so answering for a name that reaches
+nobody gives away nothing that answering for a real one does not.
+
+That read was the third place this shape was found, after the assignment writes
+and handing work back, so it is no longer checked one route at a time: **a test
+walks every route carrying an identity** and asserts that both spellings answer
+alike, for every kind of credential including one holding nothing at all. A
+route added later is covered by being added to that table.
+
 ### And nobody learns which issues exist by being refused
 
 The same rule, applied to issue names, and it had the same hole. Every route

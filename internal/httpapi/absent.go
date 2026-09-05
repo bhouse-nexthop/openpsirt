@@ -52,6 +52,16 @@ func noSuchAssessment() error {
 	return huma.Error404NotFound("no assessment is recorded there")
 }
 
+// nobody is a person identifier no account can hold, for the reads that answer
+// a name nobody holds exactly as they answer a name somebody holds whose work
+// the caller cannot see (ACC-56).
+//
+// A number rather than a refusal, because the query is what has to come back
+// empty. Refusing would restore the difference the whole rule exists to remove,
+// and answering an empty list without asking the database would be a second
+// spelling of "what this caller may see" to keep in step with the first.
+const nobody = int64(-1)
+
 func nothingScannedThere() error {
 	return huma.Error404NotFound("nothing has been scanned there")
 }
