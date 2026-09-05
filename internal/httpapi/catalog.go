@@ -494,12 +494,24 @@ func registerCatalog(api huma.API, d Declaring) {
 		// The product's date, read once, so a release that has not stated one
 		// shows what actually applies to it rather than a blank that reads as
 		// "supported for ever".
+		// What each tag was cut from, by name. The rows carry the parent as an
+		// identifier and this list never resolved it, so the column reporting
+		// it was empty whatever the data said — which reads as "none of these
+		// was cut from anything" and is what release readiness depends on.
+		named := make(map[int64]string, len(rows))
+		for _, row := range rows {
+			named[row.ID] = row.Name
+		}
+
 		out := &listOutput[StreamBody]{}
 		out.Body.Items = make([]StreamBody, 0, len(rows))
 		for _, row := range rows {
 			body := StreamBody{
 				Name: row.Name, Kind: string(row.Kind),
 				Open: open[row.ID], LastScanAt: seen[row.Name],
+			}
+			if row.ParentID != nil {
+				body.Parent = named[*row.ParentID]
 			}
 			switch {
 			case row.EOLOn != nil:

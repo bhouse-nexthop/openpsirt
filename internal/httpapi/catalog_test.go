@@ -490,3 +490,38 @@ func TestADateNobodyCanReadIsRefused(t *testing.T) {
 		}
 	})
 }
+
+func TestTheStreamsListSaysWhatEachTagWasCutFrom(t *testing.T) {
+	// The screen has had a "Cut from" column all along and this list never
+	// resolved the parent, so it was empty whatever the data said — which
+	// reads as "none of these was cut from anything". Release readiness
+	// compares a branch against the last release cut from it, so the one
+	// column that shows whether that will work showed nothing.
+	eachCatalog(t, func(t *testing.T, d *declaring) {
+		d.post(t, "/v1/products", `{"name":"sonic"}`)
+		d.post(t, "/v1/products/sonic/streams", `{"name":"master","kind":"branch"}`)
+		d.post(t, "/v1/products/sonic/streams", `{"name":"v1.0","kind":"tag","parent":"master"}`)
+		d.post(t, "/v1/products/sonic/streams", `{"name":"orphan","kind":"tag"}`)
+
+		_, body := d.get(t, "/v1/products/sonic/streams")
+		items, _ := body["items"].([]any)
+		cutFrom := map[string]string{}
+		for _, each := range items {
+			row, _ := each.(map[string]any)
+			name, _ := row["name"].(string)
+			parent, _ := row["parent"].(string)
+			cutFrom[name] = parent
+		}
+		if cutFrom["v1.0"] != "master" {
+			t.Errorf("v1.0 reads as cut from %q, want master", cutFrom["v1.0"])
+		}
+		// One that genuinely was not says so, rather than every row saying the
+		// same thing whichever it is.
+		if cutFrom["orphan"] != "" {
+			t.Errorf("a tag cut from nothing reads as cut from %q", cutFrom["orphan"])
+		}
+		if cutFrom["master"] != "" {
+			t.Errorf("a branch reads as cut from %q", cutFrom["master"])
+		}
+	})
+}

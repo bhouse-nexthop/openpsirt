@@ -563,6 +563,12 @@ person can be acted as directly:
     cut from `main`, scanned), because a deployment with only branches can
     demonstrate neither release readiness nor the new critical-on-a-release
     alert.
+
+    Rebuilding the demo to check it found the actual cause of "Both demo tags
+    show Cut from —": **the streams list never resolved the parent at all**,
+    so that column was empty whatever the data said. The review read it as a
+    data problem and it was a reporting one — the one column that shows
+    whether readiness will work showed nothing, for every deployment.
   - **A scanned build with nothing open is a release again.** `Releases` is
     driven from `target` with a finished run and the counts attached, rather
     than derived from open findings — where a clean build simply had no row,
