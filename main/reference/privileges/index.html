@@ -872,6 +872,12 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 <td>Not the person who asked for it.</td>
 </tr>
 <tr>
+<td>POST</td>
+<td><code>/v1/products/{product}/findings</code></td>
+<td>public-triage, private-triage</td>
+<td>private-triage where the finding is undisclosed.</td>
+</tr>
+<tr>
 <td>GET</td>
 <td><code>/v1/products/{product}/issues/{vulnerability}/disclosure</code></td>
 <td>private-read, private-triage</td>
@@ -906,12 +912,6 @@ answer</strong>, so an endpoint you may call still shows only what you may see. 
 <td><code>/v1/products/{product}/streams/{stream}/variants/{variant}/components/{component}/decisions</code></td>
 <td>public-triage, private-triage</td>
 <td></td>
-</tr>
-<tr>
-<td>POST</td>
-<td><code>/v1/products/{product}/streams/{stream}/variants/{variant}/findings</code></td>
-<td>public-triage, private-triage</td>
-<td>private-triage where the finding is undisclosed.</td>
 </tr>
 <tr>
 <td>PUT</td>
