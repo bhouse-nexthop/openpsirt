@@ -128,6 +128,7 @@ Any credential this deployment recognizes. The answer is narrowed to what you ma
 | GET | `/v1/decisions/{id}/approvals` | — | Answers only what you may see. |
 | GET | `/v1/decisions/{id}/comments` | — | Answers only what you may see. |
 | GET | `/v1/decisions/{id}/revisions` | — | Answers only what you may see. |
+| GET | `/v1/deferrals/repeated` | — | Answers only what you may see. |
 | GET | `/v1/people/{identity}/assignments` | — | Answers only what you may see. |
 | GET | `/v1/products` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/comparison` | — | Answers only what you may see. |
@@ -149,6 +150,7 @@ Any credential this deployment recognizes. The answer is narrowed to what you ma
 | GET | `/v1/products/{product}/streams/{stream}/variants/{variant}/readiness` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/streams/{stream}/variants/{variant}/scans` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/variants` | — | Answers only what you may see. |
+| GET | `/v1/remediation` | — | Answers only what you may see. |
 | GET | `/v1/review-queue` | — | Answers only what you may see. |
 | GET | `/v1/running-out` | — | Answers only what you may see. |
 | GET | `/v1/scanning` | — | Answers only what you may see. |

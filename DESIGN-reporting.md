@@ -369,16 +369,16 @@ took its value from the deployment's environment and never looked.
 The order is the administrator's setting first, then whatever the process was
 started with, then the built-in default.
 
-## Remediation metrics, which are not built
+## Remediation metrics
 
-Fix velocity, mean time to remediate by severity, aging buckets, and the trend
-against the previous thirty days (RPT-03). None of it exists.
+Fix velocity, average time to remediate by severity, and aging buckets over a
+window (RPT-03). Built, and narrowed by the scope picker like every other
+figure.
 
-What it would be built from is already here — a finding records the run that
-opened it and the run that closed it, so how long something took is a
-subtraction rather than a second record somebody maintains. Two rules it would
-have to inherit, stated now because they are the ones that make such a figure
-honest or useless:
+It is worked out from what was already here — a finding records when it opened
+and when it closed, so how long something took is a subtraction rather than a
+second record somebody maintains. Two rules make such a figure honest or
+useless, and both are enforced rather than described:
 
 **A closure only counts as resolved if the issue actually went away** (RPT-15).
 A bump that carried the issue with it, and a finding the scanner silently
@@ -388,3 +388,30 @@ churn.
 **Counted as issues, not places.** One kernel flaw across sixty modules is one
 thing that was fixed, and a mean time to remediate weighted by how far a
 component fans out is a measurement of the dependency graph.
+
+**Subtracting two moments has no portable spelling**, so this is one of the few
+places an engine is asked directly. It is confined to a single expression
+rather than spread through the query, and the answer comes back as a fraction
+of a day: declaring it a whole number scanned on none of the four — one refused
+a float outright and three handed back a decimal string.
+
+## What keeps being put off
+
+Places deferred more than once, with how often and for how long in total
+(TRI-19). The cumulative threshold already refuses a *further* deferral past a
+point, one item at a time; what it cannot show is the shape across everything,
+and one item deferred three times is a judgment where forty of them is a policy
+nobody wrote down.
+
+**Counted over the judgments rather than the findings they cover**, for the
+same reason the metrics above are: counting findings would order the list by
+how far a component spreads through an image.
+
+**A withdrawn deferral is not time anything spent put off.** Somebody taking a
+decision back would otherwise look like somebody avoiding the work.
+
+## Where these are read
+
+A **Reports** screen, beside the record rather than inside it: the record is
+what was judged, and these are how the judging is going. Both follow the scope
+picker.

@@ -133,6 +133,9 @@ export function Shell({ who, children }: { who: Who; children: ReactNode }) {
         {/* The record of what was judged. Across products because that is how
             it is asked for — an auditor asks about a period, not a build. */}
         <Rail to="/audit" icon="scan" label="The record" />
+        {/* How the work is going, as against what it is: how fast things are
+            fixed, and what keeps being put off. */}
+        <Rail to="/reports" icon="compare" label="Reports" />
 
         <span className="group" title={scope}>
           {scope}

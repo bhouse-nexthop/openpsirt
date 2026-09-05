@@ -232,6 +232,7 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	registerResolution(api, in)
 	registerAdvisory(api, in)
 	registerAttachments(api, in)
+	registerRemediation(api, in)
 	registerExtensions(api, in)
 	registerDue(api, in)
 	registerGraph(api, in)

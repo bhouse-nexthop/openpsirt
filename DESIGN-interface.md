@@ -1203,6 +1203,17 @@ who has to take one back out needs to find it without hunting through every
 justification for the reference. A removed file is still listed, saying so and
 why.
 
+## Reports
+
+A screen of its own, under "Across products", for what the tool can say about
+**how the work is going** rather than about what the work is: how fast issues
+are being fixed, what is aging, and what keeps being put off. It follows the
+scope picker like the other cross-product screens.
+
+Beside "The record" rather than inside it. The record is what was judged and
+who agreed; these are the shape of the judging, and a screen that mixed them
+would be answering two questions at once.
+
 ## Not built yet
 
 Named so that what is missing is a plan rather than something rediscovered by

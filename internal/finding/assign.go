@@ -702,6 +702,21 @@ func targetsNamed(ctx context.Context, db *bun.DB, ids []int64) (map[int64]build
 // and the clause collapsed to public-only for the one subject who is supposed
 // to see everything. Their dashboard, deadline list and trend all
 // under-reported, with nothing saying so.
+// onlyReadable narrows a query to what one person may read: the products they
+// hold anything on, and within those, what has been disclosed to them.
+//
+// **Both halves, together, because forgetting the first one is silent.** The
+// visibility half alone admits every disclosed finding in the deployment,
+// including in products the asker holds nothing on — which reads as working,
+// because the numbers are plausible and nothing refuses. Written as one call
+// so that a query cannot have half of it.
+func onlyReadable(q *bun.SelectQuery, subject access.Subject, products []int64, all bool) *bun.SelectQuery {
+	if !all {
+		q = q.Where("st.product_id IN (?)", bun.List(products))
+	}
+	return onlyVisible(q, subject, products, all)
+}
+
 func onlyVisible(q *bun.SelectQuery, subject access.Subject, products []int64, all bool) *bun.SelectQuery {
 	if all {
 		return q

@@ -472,6 +472,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/deferrals/repeated": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List what keeps being put off
+         * @description Places deferred more than once, most-deferred first, with how long they have been put off for in total.
+         *
+         *     The cumulative threshold already refuses a further deferral past a point, one item at a time. What it cannot show is the shape across everything: one item deferred three times is a judgment, and forty of them is a policy nobody wrote down.
+         *
+         *     Counted over the judgments rather than the findings they cover, so the order is not decided by how far a component spreads through an image.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
+         */
+        get: operations["list-repeated-deferrals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/disclosing": {
         parameters: {
             query?: never;
@@ -1740,6 +1766,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/remediation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report how fast findings are being fixed
+         * @description Fix velocity, average time to remediate by severity, and what is aging, over a window and narrowed by the scope picker.
+         *
+         *     **A closure only counts as a fix if the issue actually went away.** A bump that carried the issue into the next version, and a finding a scanner silently stopped reporting, are not fixes — counting them measures churn and reports it as progress, so the figure moves in the right direction while nothing improves.
+         *
+         *     **Counted in issues, not in places.** One kernel flaw across sixty modules is one thing that was fixed; an average weighted by how far a component fans out measures the dependency graph rather than anybody's work.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
+         */
+        get: operations["get-remediation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/review-queue": {
         parameters: {
             query?: never;
@@ -2356,6 +2408,16 @@ export interface components {
             category: string;
             name: string;
             product?: components["schemas"]["Named"];
+        };
+        BucketBody: {
+            /**
+             * Format: int64
+             * @description Where the stretch starts, so these can be ordered without reading the label
+             */
+            days: number;
+            label: string;
+            /** Format: int64 */
+            open: number;
         };
         BuildBody: {
             stream: string;
@@ -3482,6 +3544,15 @@ export interface components {
             /** Format: int64 */
             total: number;
         };
+        "List-repeated-deferralsResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/List-repeated-deferralsResponse.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["RepeatBody"][] | null;
+        };
         "List-unassignedResponse": {
             /**
              * Format: uri
@@ -4134,6 +4205,56 @@ export interface components {
             /** @description The branch or tag */
             stream: string;
             variant: string;
+        };
+        RemediationOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RemediationOutputBody.json
+             */
+            readonly $schema?: string;
+            /** @description What is open now, by how long it has been */
+            aging: components["schemas"]["BucketBody"][] | null;
+            /**
+             * Format: int64
+             * @description The window these cover
+             */
+            days: number;
+            /**
+             * Format: int64
+             * @description Distinct issues that actually went away in the window
+             */
+            fixed: number;
+            /**
+             * Format: int64
+             * @description Distinct issues that appeared in it
+             */
+            opened: number;
+            /** @description Average hours an issue closed in the window was open for, by severity. A severity nothing closed at is absent rather than zero */
+            time_to_fix?: {
+                [key: string]: number;
+            };
+        };
+        RepeatBody: {
+            /** @description The furthest any of them reached */
+            last_until?: string;
+            /** @description Names the place rather than describing it: what it is called depends on the build, and this is not about one build */
+            place: string;
+            product: string;
+            severity?: string;
+            /** @description A deferral is in force now. Something put off three times and since decided is history; the same thing still being put off is the pattern */
+            standing?: boolean;
+            /**
+             * Format: int64
+             * @description How often it has been put off
+             */
+            times: number;
+            /**
+             * Format: int64
+             * @description How long it has been put off for, added up
+             */
+            total_days: number;
+            vulnerability: string;
         };
         "Resolve-findingRequest": {
             /**
@@ -5336,6 +5457,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-repeated-deferrals": {
+        parameters: {
+            query?: {
+                /** @description Limit to one product, by name. Empty means every product you can see */
+                product?: string;
+                /** @description How many deferrals make something worth listing. One is an ordinary judgment */
+                at_least?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-repeated-deferralsResponse"];
+                };
             };
             /** @description Error */
             default: {
@@ -7354,6 +7510,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeclaredVariantBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-remediation": {
+        parameters: {
+            query?: {
+                /** @description Limit to one product, by name. Empty means every product you can see */
+                product?: string;
+                /** @description Limit to one branch or tag. Only meaningful with a product */
+                stream?: string;
+                /** @description Limit to one variant. Only meaningful with a product, and independent of the branch */
+                variant?: string;
+                /** @description How far back to measure */
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemediationOutputBody"];
                 };
             };
             /** @description Error */

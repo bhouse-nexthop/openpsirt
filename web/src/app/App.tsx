@@ -37,6 +37,7 @@ const Inventories = lazy(() =>
 );
 const Settings = lazy(() => import("../screens/Settings").then((m) => ({ default: m.Settings })));
 const Audit = lazy(() => import("../screens/Audit").then((m) => ({ default: m.Audit })));
+const Reports = lazy(() => import("../screens/Reports").then((m) => ({ default: m.Reports })));
 
 const build = "/products/:product/streams/:stream/variants/:variant";
 
@@ -82,6 +83,7 @@ export function App() {
         <Route path="/people" element={<People />} />
         <Route path="/work" element={<Work />} />
         <Route path="/audit" element={<Audit />} />
+        <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<Settings />} />
         {/* A path the page does not know either. Sending somebody home is
             better than a dead end, and the address bar already told them
