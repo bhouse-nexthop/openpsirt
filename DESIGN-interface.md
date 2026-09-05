@@ -1174,6 +1174,35 @@ already runs the real renderer, so the checks are there for nothing otherwise �
 and a refusal at submit, on a long justification, sends somebody hunting for
 the line by eye.
 
+## Attaching a file
+
+The editor carries an attach control wherever an issue is in hand — writing a
+justification, writing a comment, editing one. It puts the file against that
+issue and writes the reference at the cursor: an image as an image, everything
+else as a link, and which it is comes from the type the server decided rather
+than from the file's name.
+
+**A refusal is shown beside the control**, because the two somebody can act on
+— a file larger than the deployment accepts, and a deployment with no room —
+are invisible if the control simply does nothing.
+
+**A reference becomes a path to this origin before anything renders it.** The
+scheme is one no browser knows, so an attribute still carrying it when the
+sanitizer runs is dropped as unknown — and then there would be nothing left to
+rewrite. By the time anything is judged, what is there is a relative path,
+which the content security policy already permits (ATT-13).
+
+**An image pointing anywhere else loses the whole element**, not just its
+source. Such text is refused at submission, so what reaches this was written
+before that rule — and an `img` with its source taken away is a broken-image
+icon in the middle of somebody's reasoning.
+
+**The finding lists what is attached**, beside rendering it. A file referred to
+from a revision nobody is reading now is still part of the record, and somebody
+who has to take one back out needs to find it without hunting through every
+justification for the reference. A removed file is still listed, saying so and
+why.
+
 ## Not built yet
 
 Named so that what is missing is a plan rather than something rediscovered by

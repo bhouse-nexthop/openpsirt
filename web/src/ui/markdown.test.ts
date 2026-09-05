@@ -135,3 +135,45 @@ describe("the renderer", () => {
     expect(out).toContain("<li>");
   });
 });
+
+describe("files attached here", () => {
+  const token = "0f9a1b2c3d4e5f60718293a4b5c6d7e8";
+
+  it("renders an image of one from this origin", () => {
+    // The content security policy permits images from this origin and no
+    // other, so the reference becomes a path here rather than an address at
+    // whoever's store the operator runs (ATT-13).
+    const html = render(`![a screenshot](attachment:${token})`);
+    expect(html).toContain(`src="/v1/attachments/${token}"`);
+    expect(html).toContain('referrerpolicy="no-referrer"');
+  });
+
+  it("links to one without sending the reader away", () => {
+    const html = render(`[the log](attachment:${token})`);
+    expect(html).toContain(`href="/v1/attachments/${token}"`);
+    // Ours, so not opened in another tab with a policy meant for somebody
+    // else's site.
+    expect(html).not.toContain('target="_blank"');
+  });
+
+  it("takes the whole element away from an image pointing anywhere else", () => {
+    // Refused at submission, so this is text written before that rule — and a
+    // source that is merely stripped leaves a broken-image icon in the middle
+    // of somebody's reasoning.
+    for (const source of [
+      "![shot](https://example.org/s.png)",
+      "![shot](data:image/png;base64,AAAA)",
+      "![shot](/static/s.png)",
+      "![shot](attachment:not-a-token)",
+    ]) {
+      const html = render(source);
+      expect(html).not.toContain("<img");
+      expect(html).not.toContain("example.org");
+    }
+  });
+
+  it("does not resolve a reference shaped differently", () => {
+    const html = render(`[x](attachment:${token.toUpperCase()})`);
+    expect(html).not.toContain("/v1/attachments/");
+  });
+});

@@ -34,6 +34,7 @@ export function Editor({
   placeholder,
   label,
   mentions,
+  attachTo,
 }: {
   value: string;
   onChange: (next: string) => void;
@@ -47,10 +48,17 @@ export function Editor({
   // Where mentions may be offered from. Omitted where there is no product in
   // hand, in which case nothing is offered rather than everybody.
   mentions?: { product: string; visibility?: "public" | "private" };
+  // The issue a file would be attached to. Omitted where there is none in
+  // hand, and then no attach control is offered — a control that could not
+  // say what it was attaching to would be one that guessed.
+  attachTo?: { product: string; vulnerability: string };
 }) {
   const [showing, setShowing] = useState<"write" | "preview">("write");
   const [typing, setTyping] = useState<string | null>(null);
+  const [attaching, setAttaching] = useState(false);
+  const [refused, setRefused] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+  const chooser = useRef<HTMLInputElement>(null);
 
   // Only people who can already read what this text is about. An autocomplete
   // listing everybody teaches somebody to name a colleague who then cannot
@@ -132,6 +140,43 @@ export function Editor({
     });
   }
 
+  // Puts one file against the issue and writes the reference where the cursor
+  // is. An image goes in as one, and everything else as a link: what decides
+  // that is the type the server chose from the bytes, not the file's name.
+  async function attach(file: File) {
+    if (!attachTo) return;
+    setAttaching(true);
+    setRefused(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const answered = await api.POST(
+        "/v1/products/{product}/issues/{vulnerability}/attachments",
+        {
+          params: { path: attachTo },
+          body: form as never,
+          bodySerializer: (body: unknown) => body as FormData,
+        },
+      );
+      const stored = unwrap(answered);
+      const written = stored.inline
+        ? `![${stored.filename}](${stored.reference})`
+        : `[${stored.filename}](${stored.reference})`;
+      const field = box.current;
+      const at = field ? field.selectionStart : value.length;
+      onChange(value.slice(0, at) + written + value.slice(at));
+      queueMicrotask(() => field?.focus());
+    } catch (error) {
+      // Said here rather than thrown away. The two refusals somebody can act
+      // on are a file too large and a deployment with no room, and both are
+      // invisible if the control simply does nothing.
+      setRefused(error instanceof Error ? error.message : "That file could not be attached.");
+    } finally {
+      setAttaching(false);
+      if (chooser.current) chooser.current.value = "";
+    }
+  }
+
   return (
     <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)]">
       <div className="flex flex-wrap items-center gap-1 border-b border-[var(--line)] px-2 py-1.5">
@@ -147,6 +192,29 @@ export function Editor({
             {mark.label}
           </button>
         ))}
+        {attachTo && (
+          <>
+            <input
+              ref={chooser}
+              type="file"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void attach(file);
+              }}
+            />
+            <button
+              type="button"
+              title="Attach a file"
+              aria-label="Attach a file"
+              disabled={attaching}
+              onClick={() => chooser.current?.click()}
+              className="min-h-8 min-w-8 rounded px-2 text-sm text-[var(--muted)] hover:bg-[var(--raised)] hover:text-[var(--ink)] disabled:opacity-50"
+            >
+              {attaching ? "…" : "📎"}
+            </button>
+          </>
+        )}
         <div className="ml-auto flex gap-1">
           {(["write", "preview"] as const).map((tab) => (
             <button
@@ -163,6 +231,12 @@ export function Editor({
           ))}
         </div>
       </div>
+
+      {refused && (
+        <p className="mx-3 mt-2 rounded border border-[var(--line)] bg-[var(--raised)] px-3 py-2 text-sm text-[var(--bad)]">
+          {refused}
+        </p>
+      )}
 
       {showing === "write" && typing !== null && candidates.length > 0 && (
         <ul className="mx-3 mt-1 max-h-40 overflow-y-auto rounded border border-[var(--line)] bg-[var(--raised)] text-sm">

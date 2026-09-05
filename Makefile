@@ -575,7 +575,12 @@ demo-up: demo-down
 	  -e OPENPSIRT_BOOTSTRAP_ADMINS="proxy:$(DEMO_USER)" \
 	  -e OPENPSIRT_TRUSTED_HEADER="X-User" \
 	  -e OPENPSIRT_TRUSTED_SOURCES="$(DEMO_SUBNET)" \
+	  -e OPENPSIRT_ATTACHMENT_DIR="/data/attachments" \
 	  $(DEMO_IMAGE) >/dev/null
+	@# Files go on the container's disk rather than in an object store. That is
+	@# the development backend and the demo says so on startup — one process
+	@# and one disk — and standing a bucket up to show what attaching a file
+	@# looks like would put a dependency between somebody and their first look.
 	@# Deliberately no OPENPSIRT_BASE_URL. It is what a sign-in provider sends
 	@# somebody back to, and the demo has no provider — but it is also what the
 	@# forgery guard compares a browser's origin against, so setting it pins
@@ -779,6 +784,7 @@ dev-up: dev-down
 	 OPENPSIRT_BOOTSTRAP_ADMINS="proxy:$(DEMO_USER)" \
 	 OPENPSIRT_TRUSTED_HEADER="X-User" \
 	 OPENPSIRT_TRUSTED_SOURCES="127.0.0.0/8" \
+	 OPENPSIRT_ATTACHMENT_DIR="$(DEV_DIR)/attachments" \
 	 OPENPSIRT_BASE_URL="$(DEV_URL)" \
 	 nohup ./$(BIN) > $(DEV_DIR)/api.log 2>&1 & echo $$! > $(DEV_DIR)/api.pid
 	@OPENPSIRT_DEV_USER="$(DEMO_USER)" \

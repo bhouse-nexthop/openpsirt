@@ -344,6 +344,7 @@ export function Finding() {
             mine={mine(claim.proposed_by ?? "")}
             mayApprove={!!who.data?.reach.find((r) => r.product === product)?.may_agree}
             onRevised={() => void finding.refetch()}
+            about={{ product, vulnerability }}
           />
         ))}
 
@@ -351,9 +352,14 @@ export function Finding() {
           <>
             <Activity decisionId={claims[0].decision.id} claim={claims[0]} places={it.standing?.[0]?.places} previous={previous} />
             <Revisions decisionId={claims[0].decision.id} />
-            <Comments decisionId={claims[0].decision.id} mine={mine} />
+            <Comments
+              decisionId={claims[0].decision.id}
+              mine={mine}
+              about={{ product, vulnerability }}
+            />
           </>
         )}
+        <Attachments about={{ product, vulnerability }} admin={!!who.data?.admin} />
 
         <Holder at={at} assigned={it.assigned_to ?? ""} />
 
@@ -482,6 +488,7 @@ function Standing({
   mine,
   mayApprove,
   onRevised,
+  about,
 }: {
   claim: Detail;
   summary?: Body<"StandingClaimBody">;
@@ -489,6 +496,7 @@ function Standing({
   mine: boolean;
   mayApprove: boolean;
   onRevised: () => void;
+  about: { product: string; vulnerability: string };
 }) {
   const id = claim.decision?.id ?? 0;
   // Which locations this claim covers, named rather than counted. A count says
@@ -632,7 +640,13 @@ function Standing({
               review queue marked as previously approved.
             </span>
           </div>
-          <Editor value={text} onChange={setText} draftKey={draftKey} label="Reasoning" />
+          <Editor
+            value={text}
+            onChange={setText}
+            draftKey={draftKey}
+            label="Reasoning"
+            attachTo={about}
+          />
           {revise.error != null && <Failed error={revise.error} what="That could not be stored." />}
           <div className="actions" style={{ marginTop: 8 }}>
             <button
@@ -837,7 +851,17 @@ function Revisions({ decisionId }: { decisionId: number }) {
 }
 
 // Comments are separate from the reasoning and never affect an approval.
-function Comments({ decisionId, mine }: { decisionId: number; mine: (who: string) => boolean }) {
+function Comments({
+  decisionId,
+  mine,
+  about,
+}: {
+  decisionId: number;
+  mine: (who: string) => boolean;
+  // The issue a file would be attached to. Comments are written about one, so
+  // the control can say what it is attaching to rather than guessing.
+  about: { product: string; vulnerability: string };
+}) {
   const [text, setText] = useState("");
   const [editing, setEditing] = useState<number | null>(null);
   const comment = useComment();
@@ -867,6 +891,7 @@ function Comments({ decisionId, mine }: { decisionId: number; mine: (who: string
                   <Edit
                     id={each.id ?? 0}
                     was={each.body ?? ""}
+                    about={about}
                     onDone={() => setEditing(null)}
                   />
                 ) : (
@@ -898,6 +923,7 @@ function Comments({ decisionId, mine }: { decisionId: number; mine: (who: string
           rows={4}
           label="Comment"
           placeholder="A question, a note, something worth knowing later."
+          attachTo={about}
         />
       </div>
       {comment.error != null && <Failed error={comment.error} what="That could not be added." />}
@@ -937,12 +963,22 @@ function Comments({ decisionId, mine }: { decisionId: number; mine: (who: string
 // No draft is saved. A draft exists so a half-written thought survives a
 // sign-out; this one starts as text that is already stored, so keeping a copy
 // of it would offer somebody their own comment back as an unsent draft.
-function Edit({ id, was, onDone }: { id: number; was: string; onDone: () => void }) {
+function Edit({
+  id,
+  was,
+  onDone,
+  about,
+}: {
+  id: number;
+  was: string;
+  onDone: () => void;
+  about: { product: string; vulnerability: string };
+}) {
   const [text, setText] = useState(was);
   const edit = useEditComment();
   return (
     <div className="field" style={{ margin: 0, maxWidth: "78ch" }}>
-      <Editor value={text} onChange={setText} rows={4} label="Comment" />
+      <Editor value={text} onChange={setText} rows={4} label="Comment" attachTo={about} />
       {edit.error != null && <Failed error={edit.error} what="That could not be changed." />}
       <div className="actions">
         <button
@@ -1715,5 +1751,124 @@ function Resolve({
         </>
       )}
     </div>
+  );
+}
+
+
+// What text about this issue refers to.
+//
+// Listed as well as rendered inline, because a file referred to from a
+// revision nobody is reading now is still part of the record — and because
+// somebody who has to take one back out needs to find it without hunting
+// through every justification for the reference.
+function Attachments({
+  about,
+  admin,
+}: {
+  about: { product: string; vulnerability: string };
+  admin: boolean;
+}) {
+  const queries = useQueryClient();
+  const listed = useQuery({
+    queryKey: ["attachments", about],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/v1/products/{product}/issues/{vulnerability}/attachments", {
+          params: { path: about },
+        }),
+      ),
+  });
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const redact = useMutation({
+    mutationFn: async ({ token, why }: { token: string; why: string }) =>
+      unwrap(
+        await api.DELETE("/v1/attachments/{token}", {
+          params: { path: { token } },
+          body: { reason: why },
+        }),
+      ),
+    onSuccess: async () => {
+      setRemoving(null);
+      setReason("");
+      await queries.invalidateQueries({ queryKey: ["attachments"] });
+    },
+  });
+
+  const files = listed.data?.items ?? [];
+  // Nothing attached is the ordinary case, and a heading over an empty list
+  // is a screen asking a question nobody had.
+  if (files.length === 0) return null;
+
+  return (
+    <section className="panel" style={{ marginTop: 14 }}>
+      <h3>Attached files</h3>
+      <ul className="files">
+        {files.map((file) => (
+          <li key={file.token}>
+            {file.redacted ? (
+              <>
+                <span className="hint">
+                  <b>{file.filename}</b> was removed
+                  {file.redacted_reason ? <> — {file.redacted_reason}</> : null}
+                </span>
+              </>
+            ) : (
+              <>
+                <a href={`/v1/attachments/${file.token}`} rel="noreferrer">
+                  {file.filename}
+                </a>
+                <span className="hint">
+                  {" "}
+                  · {file.content_type} · {Math.max(1, Math.round((file.size ?? 0) / 1024))} KB
+                </span>
+                {admin && removing !== file.token && (
+                  <button
+                    type="button"
+                    className="btn quiet"
+                    style={{ marginLeft: 8 }}
+                    onClick={() => setRemoving(file.token ?? null)}
+                  >
+                    Remove
+                  </button>
+                )}
+              </>
+            )}
+            {removing === file.token && (
+              <div className="field" style={{ margin: "6px 0 0", maxWidth: "60ch" }}>
+                <label>Why it is being removed</label>
+                <input
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder="A credential was pasted into it"
+                />
+                <p className="hint">
+                  The file goes and the record stays, so the text that pointed at it says what
+                  happened rather than pointing at nothing.
+                </p>
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={!reason.trim() || redact.isPending}
+                    onClick={() =>
+                      redact.mutate({ token: file.token ?? "", why: reason })
+                    }
+                  >
+                    Remove the file
+                  </button>
+                  <button type="button" className="btn quiet" onClick={() => setRemoving(null)}>
+                    Cancel
+                  </button>
+                </div>
+                {redact.error != null && (
+                  <Failed error={redact.error} what="That file could not be removed." />
+                )}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
