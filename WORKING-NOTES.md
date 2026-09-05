@@ -8,21 +8,22 @@ here.
 
 ## Where to pick up
 
-*Written 2026-09-04, for somebody arriving with no memory of the session that
-produced it. Everything below this heading and above "Performance and the
-development loop" is current; the rest of the document is a chronological
-record and should be read only when it is cited.*
+*Rewritten 2026-09-05, for somebody arriving with no memory of the session that
+produced it. The four sections that follow are current — the state, what to do
+first, what is left, and what just landed with the traps it left behind.
+Everything from "2026-09-05: the findings list stopped being one build's"
+onward is a chronological record, newest first, and should be read only when
+something cites it.*
 
 ### The state, in one paragraph
 
-Phase 1 is essentially built. **Phase 2 is the current thrust**, at the user's
-direction and for a good reason: the reports and channels still to build would
-grow hooks into private findings, and retrofitting disclosure into them
-afterwards is the expensive order. Of Phase 2, **manual entry with its own
-screen, disclosure dates, extension of a date, the alert when one arrives,
-resolving a recorded flaw, and the CSAF advisory document are built**. What is
-not: every adapter that would send an advisory anywhere, the VEX profile of
-that document, and attachments.
+**Phase 1 and Phase 2 are built, apart from one piece deliberately left.**
+Attachments landed on 2026-09-05 — the last large Phase 2 item — and so did
+every Phase 1 leftover the plan was still carrying. What remains of Phase 2 is
+**the adapters that would send an advisory somewhere (REM-17, REM-22) and the
+VEX profile of the document**, and those are deferred on the owner's
+instruction rather than blocked: the document is generated and handed over, and
+where it goes next differs completely by product.
 
 ### Do this first on a fresh checkout
 
@@ -32,6 +33,77 @@ says to do (DAT-29) — so
 an existing `.demo` database is missing columns and the application will not
 start against it. The same applies to a development database against the four
 engines: `make engines-down && make engines-up`.
+
+### What is left
+
+**Phase 2, deferred rather than blocked**: the adapters that would send an
+advisory somewhere (REM-17, REM-22), and the VEX profile of the document, which
+needs the mapping from a decision to the releases it covers rather than any new
+vocabulary — the dismissal words were aligned to VEX from the start. The owner
+asked for these to wait.
+
+**A screen for one endpoint.** `PUT /v1/products/{product}/issues/{id}/builds`
+sets which builds a recorded flaw affects (MDL-31) and nothing in the interface
+offers it. The finding screen is where it belongs.
+
+**Before release, mandatory**: collapse the migrations into one and start
+keeping schema and API compatibility (DAT-29).
+
+**A test gap that is live rather than theoretical**: syft 1.51.1 emits
+**CycloneDX 1.7**, so the inventory the image ships and the one the demo
+ingests as the `container` variant are both 1.7 documents going through a
+reader whose only fixtures are 1.6. It demonstrably works. Nothing pins it, and
+a 1.7 fixture through the existing reader tests would turn "accepted by
+construction" into something checked. *Recorded in `DESIGN-ingest.md`, which is
+where it lives now — this note is a copy and the design document is not.*
+
+**Two questions waiting on the owner**, both in `DECISIONS.md` §7: what the
+`reporting` role is for, and whether revoking a role clears the notifications
+naming undisclosed findings or merely stops serving them.
+
+**Not verified in a browser**: the mention notifications and the identifier
+autolinking. Everything else built on 2026-09-05 was driven through the demo.
+
+**One standing caution**: the composed image inventory is correct, but
+`DESIGN-packaging.md` should be re-read before touching it — the composition
+rules are subtle and the tool has tests that were written by breaking it.
+
+### What was built on 2026-09-05
+
+A long stretch. Each has its decisions recorded and its design document
+updated; this is the index rather than the reasoning.
+
+| | |
+|---|---|
+| **The findings list stopped being one build's** | UIX-53. It was fenced off with the five screens that are about a dependency chain, on a justification that only fits those five. Measured on the demo: 7,587 rows on one variant and 7,610 on the other against **7,612 pieces of work** across the product — so 7,585 were one piece of work seen twice, and the 27 real differences could not be found from that screen at all |
+| **Attachments** | ATT-01 to ATT-15, end to end: the table, both stores, upload, authorized fetch, limits, redaction with a tombstone, the sweep, the markdown policy, the editor control and the finding's file list |
+| **The Phase 1 leftovers** | Remediation metrics (RPT-03), repeat deferrals (TRI-19), release notes as markdown (RPT-06), the release-over-release axis (RPT-09), the absent-person prompt (ACC-45), mentions that notify (NTF-12), identifier autolinking (UIX-24), and carrying triage onto a new line (REL-07) — plus a **Reports** screen for the three that had nowhere to live |
+| **Recording a flaw, rebuilt** | UIX-54 and MDL-27 to MDL-31: its own screen off the rail, sets of lines and variants rather than one build, an optional severity, a CVSS vector scored on the server, weaknesses recorded as given, a markdown description, evidence files, and a way to correct which builds it affects |
+
+### Traps from that stretch, worth an hour each to somebody
+
+**A `str.replace` on an anchor that has moved is a silent no-op.** Two design
+sections reported as written that day had never been written, and half of one
+query change vanished the same way. Every scripted edit to a document or a
+source file asserts on the match now; anything that does not is a change that
+may or may not have happened.
+
+**The gate only checks decisions have documents, never that documents have
+decisions.** Four screens' worth of behaviour was built and described in
+`DESIGN-*.md` with no `DECISIONS.md` row, and nothing complained. `make
+unclaimed` will not catch this; a person has to.
+
+**Testing against the published formula means the published formula.** A CVSS
+expected value written from memory was wrong by a tenth, on the one vector
+where the scope change makes the metrics stop being independent.
+
+**An empty string is not the same as an absent field.** The record form sent
+`severity: ""` where every other optional field is omitted, and huma's enum
+refused it — "not worked out yet" is the absence of the field.
+
+**`Model(&rows)` already names the table and its alias.** Adding `TableExpr`
+beside it aliases the table twice, which four engines report four different
+ways.
 
 ### 2026-09-05: the findings list stopped being one build's
 
@@ -102,43 +174,6 @@ Each has its own section further down with the reasoning and what was found.
 | **Two inventories of ourselves** | The image carried an inventory of the *binary*; it now also carries one of the *image* (SCP-16), composed from parts by `internal/tools/compose`. Measured on ourselves: the binary variant has 41 components and no findings, the container variant 345 and 79. The inventory we shipped said we were clean |
 | **How a match was made** | A finding records whether a scanner reached it through an advisory for the package in its own ecosystem or by comparing a published identifier against an upstream version range (MDL-26). That is the question to ask about a distribution's packages — a backported fix does not move the upstream version — and it was being discarded |
 | **Reported by use** | The dependency tree ordered by what is inside a node rather than alphabetically, levels drawn whole, a shared build stamp said once; a receipt says how much of an inventory was placed; a comment can be edited, and doing so closed an enumeration oracle |
-
-### What is left
-
-**Phase 2**: attachments (ATT-01 to ATT-12, and `DESIGN-attachments.md` says
-what is settled) — the last large one, and it needs an S3-compatible client,
-which is a new dependency under SCP-06. Then the adapters that would send an
-advisory somewhere (REM-17, REM-22), and the VEX profile of the document, which
-needs the mapping from a decision to the releases it covers rather than any new
-vocabulary — the dismissal words were aligned to VEX from the start.
-
-**A test gap that is now live rather than theoretical**: syft 1.51.1 emits
-**CycloneDX 1.7**, so the inventory the image ships and the one the demo
-ingests as the `container` variant are both 1.7 documents going through a
-reader whose only fixtures are 1.6. It demonstrably works. Nothing pins it, and
-a 1.7 fixture through the existing reader tests would turn "accepted by
-construction" into something checked. *Recorded in `DESIGN-ingest.md`, which is
-where it lives now — this note is a copy and the design document is not.*
-
-**Phase 1 leftovers**: remediation metrics (RPT-03), mentions that link
-(UIX-24, which blocks NTF-12), the absent-person prompt (ACC-45), trends
-release-over-release (half of RPT-09), comparison as release-note prose (half
-of RPT-06), repeat deferrals reported (TRI-19), the carry-forward preview
-(REL-07).
-
-*Mail and the digest were on this list and are built* — `internal/notify`
-carries both, and `DESIGN-notifications.md` describes them as shipped and
-opt-in. They landed after this section was written on 2026-09-04 and nobody
-came back to it, which is the failure mode a temporary document has: it is
-trusted for exactly as long as it takes somebody to rebuild something.
-
-**Before release, mandatory**: collapse the migrations into one and start
-keeping schema and API compatibility (DAT-29).
-
-**One known gap with a recorded shape**: the composed image inventory is
-correct now, but `DESIGN-packaging.md` should be re-read before touching it —
-the composition rules are subtle and the tool has tests that were written by
-breaking it.
 
 ### The older record
 
