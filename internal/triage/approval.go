@@ -168,6 +168,9 @@ func (s *Store) revise(ctx context.Context, subject access.Subject, decisionID i
 	if _, err := s.db.NewInsert().Model(revision).Exec(ctx); err != nil {
 		return nil, fmt.Errorf("record a revision: %w", err)
 	}
+	if err := noting(ctx, s.db, reasoning, revision.WrittenAt); err != nil {
+		return nil, err
+	}
 
 	// Every approval standing on the old words is taken back, and the decision
 	// goes back to being a proposal. It is marked as having been approved

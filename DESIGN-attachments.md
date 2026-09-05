@@ -21,24 +21,34 @@ finding is entered by hand and marked undisclosed, nothing has to be revisited
 to keep it that way. Attachments are the third: the reference format is settled
 now so that text written before Phase 2 does not have to be rewritten.
 
-## What is built now, and it is only the seam
+## How the text refers to one
 
 Markdown refers to an attachment by an **opaque identifier, never by a URL**
-(ATT-05). That is the whole of the early commitment, and it is the one that
-cannot be deferred: a URL in stored text pins the storage arrangement into
-every justification and comment ever written, and moving buckets then means
-rewriting the record a decision rests on. An identifier resolves through the
-application, which is also the only way the authorization below can exist.
+(ATT-05), written as `attachment:` followed by it. A URL in stored text pins
+the storage arrangement into every justification and comment ever written, and
+moving buckets then means rewriting the record a decision rests on. An
+identifier resolves through the application, which is also the only way the
+authorization below can exist.
 
-Nothing else is built. There is no upload path, no storage interface with an
-implementation behind it, and no fetch.
+The identifier is unguessable rather than sequential. Authorization is what
+protects a file; this is what stops the existence of one being discoverable by
+counting.
 
-## Why it waits for private findings
+**A reference is recognized from the parsed document, not by searching the
+text.** One inside a fenced block or an inline code span is being shown rather
+than made, and somebody explaining how to write one has not attached
+anything.
 
-Every fetch is authorized against **the visibility of the finding the
-attachment hangs off**, and only then redirected to a short-lived signed URL
-(ATT-06). That is the same rule private findings need, and building it twice is
-how the second one ends up weaker.
+## The rule it waited for private findings to settle
+
+Every fetch is authorized against **the visibility of the issue the attachment
+hangs off**, and only then served (ATT-06). That is the same rule private
+findings need, and building it twice is how the second one ends up weaker.
+
+**A file somebody may not see and a file that is not there answer
+identically**, in the same words. Told apart, a reference somebody guessed
+becomes a way to ask which products exist and which of them hold undisclosed
+work (ACC-08).
 
 A private finding's attachment sitting in a readable bucket is exactly the
 disclosure the public and private split exists to prevent, and it would be
@@ -155,3 +165,49 @@ The official AWS SDK for Go, v2 (ATT-14). Chosen by measuring it against a
 signer written here rather than by preference: the credential chain is what a
 deployment on a cloud provider actually needs, and it is the part that cannot
 be tested anywhere else.
+
+
+## What is built
+
+All of it. The table, the two stores, the upload, the authorized fetch, the
+limits, the redaction and the sweep.
+
+**One object per attachment, and never content-addressed.** Two identical files
+uploaded twice are two attachments with two keys. Deduplicating by digest would
+mean a redaction blanking a file somebody else was relying on, and ATT-10 makes
+that a real case rather than a hypothetical one — the whole point of a
+redaction is that it removes bytes somebody else can see. The digest is kept
+beside the row anyway, so that a redaction can say what it removed once the
+bytes are gone.
+
+**The row is written after the bytes and removed if it cannot be.** The other
+order leaves a reference to something that never arrived. What this order can
+leave is bytes with no row, for exactly as long as the failing write takes, and
+those are removed on the way out rather than left for a sweep that has no
+record to work from.
+
+**The sweep and a redaction remove things in opposite orders, on purpose.** A
+redaction marks the row and then removes the file, because a file removed with
+nothing saying so reads as a store that lost it. The sweep removes the file and
+then the row, because nothing refers to these — a file gone with its row still
+there is collected again next time, where a row gone first would leave bytes
+nothing can ever find.
+
+**The quota is asked twice**: once before anything is carried, so an upload
+that cannot be kept is refused rather than transferred and thrown away, and
+once inside the transaction that writes, because the first answer was read
+before the bytes were and the deployment may have filled up while they were.
+
+**The local store is confined structurally rather than by checking.** Names
+go through a directory handle that cannot be escaped, instead of a path
+comparison this package performs. The keys are ours and contain nothing
+anybody typed, so nothing can reach outside today; confinement that depends on
+every future caller staying careful is the kind that stops holding.
+
+## What is deliberately not solved
+
+**Uploads are not scanned for malware** (ATT-12). Stated rather than implied by
+silence: an operator handling files from outside their organization should know
+that this does nothing about it, and a claim to scan resting on one engine's
+signatures would be worse than the honest sentence. Scanning belongs in front
+of the bucket, where an operator can choose it.

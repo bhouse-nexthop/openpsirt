@@ -432,6 +432,9 @@ func (s *Store) propose(ctx context.Context, claimID int64, p Proposal) (*Decisi
 		return nil, fmt.Errorf("record the reasoning: %w", err)
 	}
 	decision.RevisionID = &revision.ID
+	if err := noting(ctx, s.db, p.Reasoning, now); err != nil {
+		return nil, err
+	}
 	return decision, nil
 }
 

@@ -31,6 +31,7 @@ Held for the deployment rather than per product. Holding every product role ther
 
 | | Endpoint | Roles | |
 |---|---|---|---|
+| DELETE | `/v1/attachments/{token}` | — |  |
 | GET | `/v1/keys` | — |  |
 | POST | `/v1/keys` | — |  |
 | DELETE | `/v1/keys/{name}` | — |  |
@@ -120,6 +121,7 @@ Any credential this deployment recognizes. The answer is narrowed to what you ma
 |---|---|---|---|
 | GET | `/v1/assessments` | — | Every claim, whoever asks: a rating is about an issue, not a product (TRI-40), so there is nothing here to narrow by. |
 | GET | `/v1/assignments` | — | Answers only what you may see. |
+| GET | `/v1/attachments/{token}` | — | Answers only what you may see. |
 | GET | `/v1/audit` | — | Answers only what you may see. |
 | GET | `/v1/decisions` | — | Answers only what you may see. |
 | GET | `/v1/decisions/{id}` | — | Answers only what you may see. |
@@ -132,6 +134,8 @@ Any credential this deployment recognizes. The answer is narrowed to what you ma
 | GET | `/v1/products/{product}/findings` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/findings/components` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/issues/{vulnerability}/advisory` | — | Answers only what you may see. |
+| GET | `/v1/products/{product}/issues/{vulnerability}/attachments` | — | Answers only what you may see. |
+| POST | `/v1/products/{product}/issues/{vulnerability}/attachments` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/releases` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/streams` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/streams/{stream}/variants` | — | Answers only what you may see. |

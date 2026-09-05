@@ -9,6 +9,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/attach"
 	"github.com/bhouse-nexthop/openpsirt/internal/markdown"
 )
 
@@ -56,6 +57,9 @@ func (s *Store) Say(ctx context.Context, subject access.Subject, decisionID int6
 	if _, err := s.db.NewInsert().Model(comment).Exec(ctx); err != nil {
 		return nil, fmt.Errorf("record a comment: %w", err)
 	}
+	if err := noting(ctx, s.db, body, comment.WrittenAt); err != nil {
+		return nil, err
+	}
 	return comment, nil
 }
 
@@ -96,13 +100,17 @@ func (s *Store) Reword(ctx context.Context, subject access.Subject, commentID in
 		return err
 	}
 
+	edited := s.now().Truncate(time.Microsecond)
 	if _, err := s.db.NewUpdate().Model((*Comment)(nil)).
 		Set("body = ?", body).
-		Set("edited_at = ?", s.now().Truncate(time.Microsecond)).
+		Set("edited_at = ?", edited).
 		Where("id = ?", commentID).Exec(ctx); err != nil {
 		return fmt.Errorf("change a comment: %w", err)
 	}
-	return nil
+	// An edit can add a reference the first version did not have. It can also
+	// take one away, and that does not un-attach the file: the revision that
+	// referred to it is still on record.
+	return noting(ctx, s.db, body, edited)
 }
 
 // Discussion returns what has been said about a decision, oldest first.
@@ -117,4 +125,18 @@ func (s *Store) Discussion(ctx context.Context, subject access.Subject, decision
 		return nil, fmt.Errorf("read the discussion: %w", err)
 	}
 	return comments, nil
+}
+
+// noting records that saved text refers to attachments (ATT-11).
+//
+// Called wherever text is stored, and only after it is stored: an upload
+// becomes attached when something points at it, and something points at it
+// once the words containing the reference are on record. Until then it is an
+// upload somebody may yet abandon, which is what the sweep collects.
+//
+// **Silent about references it cannot match.** The text has already been
+// accepted, and a reference to nothing is a broken link in a document rather
+// than a reason to refuse somebody's justification after the fact.
+func noting(ctx context.Context, db bun.IDB, body string, now time.Time) error {
+	return attach.Attached(ctx, db, markdown.References(body), now)
 }

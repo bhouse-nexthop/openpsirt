@@ -452,7 +452,7 @@ func (s *Store) sayToEach(ctx context.Context, subject access.Subject, ids []int
 		body, subject.ID, now, bun.List(ids)); err != nil {
 		return fmt.Errorf("record a comment: %w", err)
 	}
-	return nil
+	return noting(ctx, s.db, body, now)
 }
 
 // authorsOf reads who wrote the words each decision currently rests on, in

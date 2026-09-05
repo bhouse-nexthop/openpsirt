@@ -105,18 +105,20 @@ A rendering that fails is the renderer's problem to survive. The source is the
 authoritative form and is what the API returns, so nothing about a presentation
 failure can turn into an outage here.
 
-## Nothing is fetched
+## Nothing is fetched from anywhere else
 
-No image is rendered, from anywhere. Not restricted by address — the element is
-not permitted at all, because the address is not the problem.
+An image may come from a file attached here, and from nowhere else. The
+restriction is not by address, because the address is not the problem.
 
 An image fires from the browser of everybody who reads the text, from inside
 the network, telling whoever wrote it who is looking at which finding and when.
-On an undisclosed finding that is a disclosure channel. Files are to be
-attached instead and fetched through a path that checks who is asking —
-`DESIGN-attachments.md` holds that design, and none of it is built, so today
-the rule is the refusal alone: the submission check tells an author to attach
-the file, and there is nothing yet to attach it to.
+On an undisclosed finding that is a disclosure channel. A file attached here is
+fetched through a path that asks who is looking, which is the difference —
+`DESIGN-attachments.md` holds that design, and it is built.
+
+So the one scheme an image may use is `attachment:`, and the submission check
+still tells an author to attach the file when they point somewhere else. There
+is now something to attach it to.
 
 ## What a scan file said is shown, never rendered
 

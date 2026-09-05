@@ -17,6 +17,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/advisory"
+	"github.com/bhouse-nexthop/openpsirt/internal/attach"
 	"github.com/bhouse-nexthop/openpsirt/internal/config"
 	"github.com/bhouse-nexthop/openpsirt/internal/currency"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
@@ -158,6 +159,13 @@ func run(args []string, stdout, stderr *os.File) error {
 			"OPENPSIRT_")
 	}
 
+	// Where files hanging off an issue are kept. Nothing configured is the
+	// ordinary case: attachments are off and everything else works (ATT-04).
+	files, err := attachmentStore(ctx, cfg, logger)
+	if err != nil {
+		return err
+	}
+
 	work := queue.New(db, queue.DefaultOptions())
 	// Named before the handler is built as well as before the workers are:
 	// work that must happen once — rewriting deadlines after a policy
@@ -178,7 +186,8 @@ func run(args []string, stdout, stderr *os.File) error {
 			Name: cfg.PublisherName, Namespace: cfg.PublisherNamespace,
 			Category: cfg.PublisherCategory,
 		},
-		Mode: roleMode(settings),
+		Mode:  roleMode(settings),
+		Files: files,
 	})
 
 	// Every replica serves, reads and scans. Separate worker deployments would
@@ -210,7 +219,10 @@ func run(args []string, stdout, stderr *os.File) error {
 	// it to go. Nil when they did not, which is ordinary rather than broken:
 	// the notification area is the channel that always exists.
 	post := notify.NewPost(db.DB, mailChannel(cfg), cfg.BaseURL, logger, name)
-	return serve(cfg, logger, handler, reader, runner, schedule, upstream, watch, post)
+	// Removes uploads nothing ever referred to (ATT-11). Nil where this
+	// deployment holds no files, which is ordinary (ATT-04).
+	keeper := attach.NewKeeper(db.DB, files, logger, 0)
+	return serve(cfg, logger, handler, reader, runner, schedule, upstream, watch, post, keeper)
 }
 
 // readInterval is how long an idle reader waits before asking for work again.
@@ -321,7 +333,8 @@ func newLogger(cfg config.Config, w *os.File) *slog.Logger {
 
 func serve(cfg config.Config, logger *slog.Logger, handler http.Handler,
 	reader *ingest.Reader, runner *scanner.Runner, schedule *scanner.Schedule,
-	upstream *currency.Refresher, watch *notify.Watch, post *notify.Post) error {
+	upstream *currency.Refresher, watch *notify.Watch, post *notify.Post,
+	keeper *attach.Keeper) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -345,6 +358,13 @@ func serve(cfg config.Config, logger *slog.Logger, handler http.Handler,
 		go func() {
 			defer workers.Done()
 			post.Run(ctx, 0)
+		}()
+	}
+	if keeper != nil {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			keeper.Run(ctx, 0)
 		}()
 	}
 	if runner != nil {
@@ -510,4 +530,45 @@ func mailChannel(cfg config.Config) notify.Channel {
 		return nil
 	}
 	return mail
+}
+
+// attachmentStore is where attachments go, or nothing where an operator
+// configured nowhere (ATT-04).
+//
+// The bucket wins where both are set. The local directory is the development
+// backend (ATT-03) — one process and one disk — and a deployment that named a
+// bucket meant the bucket.
+func attachmentStore(ctx context.Context, cfg config.Config, logger *slog.Logger) (attach.Storage, error) {
+	bucket, err := attach.NewBucket(ctx, cfg.AttachmentEndpoint, cfg.AttachmentBucket,
+		cfg.AttachmentRegion, cfg.AttachmentKey, cfg.AttachmentSecret, cfg.AttachmentToken,
+		cfg.AttachmentPathStyle)
+	if err != nil {
+		return nil, err
+	}
+	if bucket != nil {
+		// Asked now rather than at somebody's first upload. A bucket that does
+		// not answer is a configuration mistake, and the moment to report one
+		// is while whoever made it is still watching the logs.
+		if err := bucket.Reachable(ctx); err != nil {
+			return nil, err
+		}
+		logger.Info("attachments are held in an object store", "bucket", cfg.AttachmentBucket)
+		return bucket, nil
+	}
+	local, err := attach.NewFiles(cfg.AttachmentDir)
+	if err != nil {
+		return nil, err
+	}
+	if local == nil {
+		return nil, nil
+	}
+	if err := local.Reachable(ctx); err != nil {
+		return nil, err
+	}
+	// Said plainly, because it is the backend that is not a production
+	// option: one process and one disk, and two replicas would disagree about
+	// what exists.
+	logger.Warn("attachments are held on this machine's disk, which is for development",
+		"directory", cfg.AttachmentDir)
+	return local, nil
 }

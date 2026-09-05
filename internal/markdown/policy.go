@@ -15,7 +15,16 @@ import (
 // `javascript:` in a link is the oldest attack there is, and a `data:` address
 // lets a link become a page we appear to have served. Everything else is
 // refused rather than argued about, autolinked text included.
-var Schemes = map[string]bool{"http": true, "https": true, "mailto": true}
+//
+// `attachment:` is a file held here, referred to by an opaque identifier and
+// never by an address (ATT-05). It resolves through a path that asks who is
+// looking, which is what makes it the one scheme an image may also use.
+var Schemes = map[string]bool{
+	"http": true, "https": true, "mailto": true, Attachment: true,
+}
+
+// Attachment is the scheme a file held here is referred to by.
+const Attachment = "attachment"
 
 // Languages are the fenced-block tags that may reach a class attribute.
 //
@@ -67,14 +76,24 @@ func inspect(source string) []Fault {
 		}
 		switch typed := node.(type) {
 		case *ast.Image:
+			// An image may come from a file held here and from nowhere else.
+			// The rule that nothing is fetched from a third party is
+			// unchanged, and it is the whole rule: an image loaded from
+			// somewhere else fires from the browser of everybody who reads
+			// the text, from inside the network, telling whoever wrote it who
+			// is looking and when. On an undisclosed finding that is a
+			// disclosure channel rather than a picture.
 			destination := string(typed.Destination)
-			faults = append(faults, Fault{
-				Line:      lines.of(destination, lines.at(node)),
-				Offending: destination,
-				Reason: "images are not shown, because a rendered image is fetched by the browser of " +
-					"everybody who reads this — from inside the network, telling whoever wrote it who " +
-					"is looking and when. Attach the file instead",
-			})
+			if scheme, _ := schemeOf(destination); scheme != Attachment {
+				faults = append(faults, Fault{
+					Line:      lines.of(destination, lines.at(node)),
+					Offending: destination,
+					Reason: "an image has to be a file attached here, because one loaded from " +
+						"anywhere else is fetched by the browser of everybody who reads this — " +
+						"from inside the network, telling whoever wrote it who is looking and " +
+						"when. Attach the file and refer to it",
+				})
+			}
 		case *ast.Link:
 			destination := string(typed.Destination)
 			if fault, bad := destinationFault(lines.of(destination, lines.at(node)), destination); bad {
@@ -105,7 +124,8 @@ func destinationFault(line int, destination string) (Fault, bool) {
 	}
 	return Fault{
 		Line: line, Offending: destination,
-		Reason: fmt.Sprintf("a link may use http, https or mailto, and this uses %q", scheme),
+		Reason: fmt.Sprintf(
+			"a link may use http, https, mailto or attachment, and this uses %q", scheme),
 	}, true
 }
 
@@ -229,3 +249,64 @@ func (l lineIndex) at(node ast.Node) int {
 
 // lineIndexFor builds the map inspect uses.
 func lineIndexFor(source string) lineIndex { return newLineIndex(source) }
+
+// References lists the attachments a piece of text refers to, in the order it
+// refers to them and without repeats.
+//
+// Read from the parsed document rather than by searching the source, so that a
+// reference inside a fenced block or an inline code span — where it is being
+// shown rather than made — is not counted. Somebody explaining how to write
+// one of these should not thereby attach a file to their justification.
+func References(source string) []string {
+	if strings.TrimSpace(source) == "" {
+		return nil
+	}
+	document := parser.Parser().Parse(text.NewReader([]byte(source)))
+	var found []string
+	seen := map[string]bool{}
+	_ = ast.Walk(document, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		var destination string
+		switch typed := node.(type) {
+		case *ast.Image:
+			destination = string(typed.Destination)
+		case *ast.Link:
+			destination = string(typed.Destination)
+		default:
+			return ast.WalkContinue, nil
+		}
+		scheme, _ := schemeOf(destination)
+		if scheme != Attachment {
+			return ast.WalkContinue, nil
+		}
+		token := strings.TrimPrefix(destination, Attachment+":")
+		// Only what a minted identifier looks like. A reference to anything
+		// else is a broken link in a document rather than something to go
+		// looking for, and matching loosely would let text name rows by
+		// pattern.
+		if !mintedToken(token) || seen[token] {
+			return ast.WalkContinue, nil
+		}
+		seen[token] = true
+		found = append(found, token)
+		return ast.WalkContinue, nil
+	})
+	return found
+}
+
+// mintedToken reports whether a reference is shaped like one this deployment
+// makes: 32 hexadecimal characters, lower case.
+func mintedToken(token string) bool {
+	if len(token) != 32 {
+		return false
+	}
+	for i := 0; i < len(token); i++ {
+		c := token[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}

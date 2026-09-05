@@ -231,6 +231,7 @@ func New(logger *slog.Logger, ready Ready, in Ingest) (http.Handler, huma.API) {
 	registerDisclosure(api, in)
 	registerResolution(api, in)
 	registerAdvisory(api, in)
+	registerAttachments(api, in)
 	registerExtensions(api, in)
 	registerDue(api, in)
 	registerGraph(api, in)

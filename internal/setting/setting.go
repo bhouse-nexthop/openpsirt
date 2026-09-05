@@ -106,7 +106,30 @@ const (
 	// sealed off; a deployment that cannot reach out loses this answer and
 	// nothing else.
 	UpstreamCurrency = "upstream.currency"
+	// AttachmentMaxSize is the largest single file this deployment accepts, in
+	// bytes, and AttachmentQuota is how much it will hold in total (ATT-09).
+	//
+	// Two limits rather than one because they answer different questions. The
+	// first stops one upload being enormous; the second stops many ordinary
+	// ones filling a disk somebody else pays for. Storage that another person
+	// fills on our behalf needs a ceiling, and how high it should be is a
+	// judgment about a deployment rather than a constant.
+	AttachmentMaxSize = "attachment.max-size"
+	AttachmentQuota   = "attachment.quota"
 )
+
+// DefaultAttachmentMaxSize is what one file may be where nobody has said.
+//
+// Screenshots and logs are what people attach, and both fit comfortably. It is
+// deliberately not generous: an operator who wants to accept a core dump can
+// say so, and the direction that needs a deliberate act is the one that fills
+// a disk.
+const DefaultAttachmentMaxSize = 25 << 20
+
+// DefaultAttachmentQuota is what a deployment holds in total where nobody has
+// said. Four hundred files at the default size, which is a working year for a
+// team and small enough that filling it is noticed rather than invoiced.
+const DefaultAttachmentQuota = 10 << 30
 
 // DefaultQuietAfter is how long a build may go unscanned before it is reported
 // as having gone quiet, where a deployment has not said otherwise.

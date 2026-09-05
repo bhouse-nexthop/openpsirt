@@ -62,6 +62,26 @@ type Config struct {
 	MailServer   string
 	MailUsername string
 	MailPassword string
+	// Where files hanging off an issue are kept, and absent is ordinary: with
+	// none of this set, attachments are off and everything else works
+	// (ATT-04). An operator who wants none should not have to run a bucket.
+	//
+	// AttachmentBucket is what turns the object store on. Endpoint is what a
+	// self-hosted store needs and a cloud one does not; credentials are
+	// optional, because a deployment on a cloud provider gets a rotating role
+	// from its environment rather than a key somebody stored.
+	//
+	// AttachmentDir is the development backend (ATT-03), for running the tool
+	// without standing an object store up first — one process and one disk, so
+	// never a production option. The bucket wins where both are set.
+	AttachmentBucket    string
+	AttachmentEndpoint  string
+	AttachmentRegion    string
+	AttachmentKey       string
+	AttachmentSecret    string
+	AttachmentToken     string
+	AttachmentPathStyle bool
+	AttachmentDir       string
 	// BootstrapAdmins are granted administrator at every startup, not only the
 	// first. Applying it every time makes it the way back in for an operator
 	// who has locked themselves out: add yourself, restart. For software
@@ -141,12 +161,24 @@ const envPrefix = "OPENPSIRT_"
 func Load() (Config, error) {
 	var r reader
 	c := Config{
-		Addr:                   env("ADDR", ":8080"),
-		BaseURL:                env("BASE_URL", ""),
-		MailFrom:               env("MAIL_FROM", ""),
-		MailServer:             env("MAIL_SERVER", ""),
-		MailUsername:           env("MAIL_USERNAME", ""),
-		MailPassword:           env("MAIL_PASSWORD", ""),
+		Addr:               env("ADDR", ":8080"),
+		BaseURL:            env("BASE_URL", ""),
+		MailFrom:           env("MAIL_FROM", ""),
+		MailServer:         env("MAIL_SERVER", ""),
+		MailUsername:       env("MAIL_USERNAME", ""),
+		MailPassword:       env("MAIL_PASSWORD", ""),
+		AttachmentBucket:   env("ATTACHMENT_BUCKET", ""),
+		AttachmentEndpoint: env("ATTACHMENT_ENDPOINT", ""),
+		AttachmentRegion:   env("ATTACHMENT_REGION", ""),
+		AttachmentKey:      env("ATTACHMENT_KEY", ""),
+		AttachmentSecret:   env("ATTACHMENT_SECRET", ""),
+		AttachmentToken:    env("ATTACHMENT_SESSION_TOKEN", ""),
+		AttachmentDir:      env("ATTACHMENT_DIR", ""),
+		// Path style is what a self-hosted store is usually addressed by and
+		// a provider usually is not, so it follows the endpoint rather than
+		// having a default of its own.
+		AttachmentPathStyle: r.boolean("ATTACHMENT_PATH_STYLE",
+			env("ATTACHMENT_ENDPOINT", "") != ""),
 		PublisherName:          env("PUBLISHER_NAME", ""),
 		PublisherNamespace:     env("PUBLISHER_NAMESPACE", ""),
 		PublisherCategory:      env("PUBLISHER_CATEGORY", "vendor"),

@@ -50,6 +50,8 @@ var settable = []struct {
 	{setting.QuietAfter, "How long a build may go without a scan arriving before it is reported as having gone quiet. Measured from the last arrival, or from when the build was declared where nothing has ever arrived"},
 	{setting.ScanEvery, "How often everything tracked is scanned again against the vulnerability data of the day. A release that is never rebuilt has the same components it always had and a different answer every month, so this is what finds an advisory published after it shipped"},
 	{setting.UpstreamCurrency, "Whether to ask public package indexes what the newest version of a component is. Off unless turned on: it is the only thing here that reaches the network, and a deployment that cannot reach out loses this answer and nothing else"},
+	{setting.AttachmentMaxSize, "The largest single file this deployment accepts, in bytes. A whole number, not a length of time"},
+	{setting.AttachmentQuota, "How much this deployment will hold in attachments in total, in bytes. Storage somebody else fills on our behalf needs a ceiling, and this is it"},
 }
 
 // aSwitch is the settings that are on or off. The fourth kind.
@@ -72,7 +74,13 @@ func aSeverity(name string) bool { return name == setting.TriageFloor }
 // aCount is the settings whose value is a number of things rather than a
 // length of time. Named here because the two are checked differently, and a
 // value checked as the wrong kind is stored and then silently ignored.
-func aCount(name string) bool { return name == setting.TogetherCap }
+func aCount(name string) bool {
+	switch name {
+	case setting.TogetherCap, setting.AttachmentMaxSize, setting.AttachmentQuota:
+		return true
+	}
+	return false
+}
 
 func registerSettings(api huma.API, in Ingest) {
 	huma.Register(api, requiring(huma.Operation{
@@ -324,6 +332,10 @@ func shipped(name string) string {
 		return access.MaxTokenLifetime.String()
 	case setting.TogetherCap:
 		return strconv.Itoa(triage.DefaultTogetherCap)
+	case setting.AttachmentMaxSize:
+		return strconv.Itoa(setting.DefaultAttachmentMaxSize)
+	case setting.AttachmentQuota:
+		return strconv.Itoa(setting.DefaultAttachmentQuota)
 	case setting.TriageFloor:
 		// Nothing hidden until somebody decides to hide it.
 		return "everything"

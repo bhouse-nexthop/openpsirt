@@ -18,6 +18,7 @@ import (
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/advisory"
+	"github.com/bhouse-nexthop/openpsirt/internal/attach"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
@@ -71,6 +72,20 @@ type Ingest struct {
 	// Mode says where roles come from. Read per request rather than held, so
 	// an administrator turning group binding off takes effect at once.
 	Mode func(context.Context) access.Mode
+	// Files is where attachments are kept. Nil is a deployment that holds
+	// none, which is ordinary: attachments are off and everything else works
+	// (ATT-04).
+	Files attach.Storage
+}
+
+// attachments returns a store over the files this deployment holds, or nothing
+// where there is no database. A nil Storage inside it is the deployment that
+// configured none, and every path through it refuses in the same words.
+func (in Ingest) attachments() *attach.Store {
+	if in.DB == nil {
+		return nil
+	}
+	return attach.NewStore(in.DB.DB, in.Files)
 }
 
 // catalog returns a store over this deployment's database, or nothing when
