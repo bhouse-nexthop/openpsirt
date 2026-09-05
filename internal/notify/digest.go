@@ -167,7 +167,7 @@ func Assemble(ctx context.Context, db *bun.DB, person *access.Account, most int)
 		return digest, err
 	}
 	for _, row := range held {
-		if told[Concerning(row.Product, row.Vulnerability, row.Component)] {
+		if told[Concerning(row.ProductID, row.VulnerabilityID, row.ComponentID)] {
 			continue
 		}
 		digest.take(row)

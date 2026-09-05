@@ -61,16 +61,16 @@ func (s *Store) Assign(ctx context.Context, subject access.Subject, targetID, vu
 	if !triages {
 		return 0, false, access.Denied(fmt.Sprintf("decide who deals with findings in product %d", productID))
 	}
-	if !subject.Holds(access.Assigner, productID) {
-		mine, err := onlyMine(ctx, s.db, subject, productID, vulnerabilityID, componentID, to)
-		if err != nil {
-			return 0, false, err
-		}
-		if !mine {
-			return 0, false, access.Denied(fmt.Sprintf(
-				"give work to somebody else in product %d — you may take what nobody owns, "+
-					"and hand back your own", productID))
-		}
+	// Whether this caller may put work on somebody else, or take what
+	// somebody else holds. Where they may not, the rule is carried into the
+	// write below rather than checked before it: a check and a write that are
+	// two statements are two moments, and a colleague's assignment landing
+	// between them is all it takes to reassign what the rule just refused.
+	dispatches := subject.Holds(access.Assigner, productID)
+	if !dispatches && to != nil && *to != subject.ID {
+		return 0, false, access.Denied(fmt.Sprintf(
+			"give work to somebody else in product %d — you may take what nobody owns, "+
+				"and hand back your own", productID))
 	}
 	visible := access.Visible(subject, productID)
 	if len(visible) == 0 {
@@ -95,6 +95,15 @@ func (s *Store) Assign(ctx context.Context, subject access.Subject, targetID, vu
 		// finding nobody has disclosed is not one somebody may hand around.
 		Where("visibility IN (?)", bun.List(visible))
 
+	// Without the right to dispatch, this only ever moves what nobody owns or
+	// what is already theirs. Asked here rather than beforehand so that the
+	// engine answers it at the moment of the write: there is no window for a
+	// colleague's assignment to land in, and a row that stopped qualifying is
+	// simply not matched.
+	if !dispatches {
+		update = update.Where("assigned_to IS NULL OR assigned_to = ?", subject.ID)
+	}
+
 	if to == nil {
 		update = update.Set("assigned_to = ?", nil).Set("assigned_at = ?", nil)
 	} else {
@@ -110,6 +119,33 @@ func (s *Store) Assign(ctx context.Context, subject access.Subject, targetID, vu
 		return 0, false, fmt.Errorf("record who is dealing with this: %w", err)
 	}
 	if moved == 0 {
+		// Nothing moved. For a caller who may not dispatch, that is either
+		// "there is nothing there" or "somebody else is holding it", and the
+		// two deserve different answers — so the question is asked once, on
+		// the failing path only, and narrowed by what this person may see so
+		// that the answer cannot describe a row they may not read.
+		if !dispatches {
+			held, err := s.db.NewSelect().Model((*Finding)(nil)).
+				Column("id").
+				Where(`target_id IN (SELECT tg.id FROM "target" AS tg
+					JOIN "stream" AS st ON st.id = tg.stream_id
+					WHERE st.product_id = ?)`, productID).
+				Where("vulnerability_id = ?", vulnerabilityID).
+				Where("component_id = ?", componentID).
+				Where("closed_at IS NULL").
+				Where("visibility IN (?)", bun.List(visible)).
+				Where("assigned_to IS NOT NULL").
+				Where("assigned_to <> ?", subject.ID).
+				Exists(ctx)
+			if err != nil {
+				return 0, false, fmt.Errorf("read who is dealing with this: %w", err)
+			}
+			if held {
+				return 0, false, access.Denied(fmt.Sprintf(
+					"take work somebody else is dealing with in product %d — you may take "+
+						"what nobody owns, and hand back your own", productID))
+			}
+		}
 		return 0, false, nil
 	}
 
@@ -367,14 +403,18 @@ func (s *Store) HeldBy(ctx context.Context, subject access.Subject) ([]Holding, 
 
 // Owned is one finding nobody is dealing with, named rather than numbered.
 type Owned struct {
-	VulnerabilityID int64  `bun:"vulnerability_id"`
-	ComponentID     int64  `bun:"component_id"`
-	Vulnerability   string `bun:"vulnerability"`
-	Component       string `bun:"component"`
-	Version         string `bun:"version"`
-	Severity        string `bun:"severity"`
-	Exploited       bool   `bun:"exploited"`
-	Product         string `bun:"product"`
+	VulnerabilityID int64 `bun:"vulnerability_id"`
+	ComponentID     int64 `bun:"component_id"`
+	// ProductID is what a caller keys on where a name will not do: a product
+	// is spelled one way in a path and another on a screen, and an identifier
+	// is the same everywhere and cannot be renamed out from under a key.
+	ProductID     int64  `bun:"product_id"`
+	Vulnerability string `bun:"vulnerability"`
+	Component     string `bun:"component"`
+	Version       string `bun:"version"`
+	Severity      string `bun:"severity"`
+	Exploited     bool   `bun:"exploited"`
+	Product       string `bun:"product"`
 	// Stream and Variant name **a** build holding this, not the only one. A
 	// screen needs somewhere to link to and an action needs a finding to name,
 	// and where several builds hold the same code any of them will do. What
@@ -596,7 +636,8 @@ func (s *Store) workSince(ctx context.Context, subject access.Subject, scope Sco
 	for _, head := range heads {
 		row := Owned{
 			VulnerabilityID: head.VulnerabilityID, ComponentID: head.ComponentID,
-			Urgency: head.Urgency, Places: head.Places, Builds: head.Builds,
+			ProductID: head.ProductID,
+			Urgency:   head.Urgency, Places: head.Places, Builds: head.Builds,
 			Undisclosed: head.Undisclosed, OpenedAt: head.OpenedAt,
 			Exploited: Rank(head.Urgency).Exploited(),
 		}
@@ -678,44 +719,4 @@ func onlyVisible(q *bun.SelectQuery, subject access.Subject, products []int64, a
 	}
 	return q.Where("(f.visibility = ? OR st.product_id IN (?))",
 		access.Public, bun.List(held))
-}
-
-// onlyMine reports whether an assignment is one triage alone may make: taking
-// something nobody owns, or handing back something already yours.
-//
-// Both halves are about who holds it now rather than about who is asking, so
-// they are read from the rows rather than inferred. A finding somebody else
-// holds is refused even when the caller is putting it on themselves — taking
-// work off a colleague is the act the right exists to name, and doing it to
-// yourself is still doing it.
-func onlyMine(ctx context.Context, db bun.IDB, subject access.Subject,
-	productID, vulnerabilityID, componentID int64, to *int64,
-) (bool, error) {
-	// Assigning to anybody but yourself is giving work away, whatever is
-	// there now. Assigning to nobody is only ever handing back.
-	if to != nil && *to != subject.ID {
-		return false, nil
-	}
-
-	// Asked as "is any of this held by somebody else", rather than by reading
-	// the holders and comparing them here. Scanning a nullable column into
-	// pointers hands back a pointer to zero where the row is null, which reads
-	// as "held by nobody at all" only if you remember that — and once it is a
-	// comparison in the query, the engine answers it and there is nothing to
-	// remember.
-	somebodyElse, err := db.NewSelect().Model((*Finding)(nil)).
-		Column("id").
-		Where(`target_id IN (SELECT tg.id FROM "target" AS tg
-			WHERE tg.stream_id IN (SELECT st.id FROM "stream" AS st
-				WHERE st.product_id = ?))`, productID).
-		Where("vulnerability_id = ?", vulnerabilityID).
-		Where("component_id = ?", componentID).
-		Where("closed_at IS NULL").
-		Where("assigned_to IS NOT NULL").
-		Where("assigned_to <> ?", subject.ID).
-		Exists(ctx)
-	if err != nil {
-		return false, fmt.Errorf("read who is dealing with this: %w", err)
-	}
-	return !somebodyElse, nil
 }

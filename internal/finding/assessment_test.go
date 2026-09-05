@@ -97,6 +97,44 @@ func TestRatingSomethingMilderWaitsForSomebodyElse(t *testing.T) {
 	})
 }
 
+func TestRatingAnIssueAsksForTriageSomewhere(t *testing.T) {
+	// A rating is not about a product (TRI-40), which is why it stood on
+	// nothing more than being a person: there was no product to hold a role
+	// on. That is not an authorization rule (ACC-62). A rating moves deadlines
+	// and can take a finding off the working list entirely, in every product
+	// at once, so it asks for triage somewhere.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-NOBODY", swss)}); err != nil {
+			t.Fatal(err)
+		}
+		id := f.issue(t, "CVE-2026-NOBODY")
+
+		f.recorded(t, 1, "someone")
+		// Signed in, granted reading and nothing else.
+		onlooker := f.holding(t, access.PublicRead)
+		if _, err := f.store.Assess(t.Context(), onlooker, id, "low", "Looks fine to me."); err == nil {
+			t.Error("somebody who triages nothing rated an issue")
+		}
+
+		// Made by somebody who may, so there is a live claim to act on.
+		triager := f.holding(t, access.PublicTriage)
+		claim, err := f.store.Assess(t.Context(), triager, id, "low", "Compiled out of our build.")
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.recorded(t, triager.ID+1, "onlooker")
+		onlooker.ID = triager.ID + 1
+		if _, err := f.store.Agree(t.Context(), onlooker, claim.ID); err == nil {
+			t.Error("somebody who triages nothing agreed to a milder rating")
+		}
+		if err := f.store.Withdraw(t.Context(), onlooker, claim.ID); err == nil {
+			t.Error("somebody who triages nothing took a rating back")
+		}
+	})
+}
+
 func TestWithdrawingTakesThePublishedRatingBack(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		f.shipped(t, twoConsumers())

@@ -143,7 +143,10 @@ over the code affects its license no more than the compiler does.
 
 Generated from the operations registered in `internal/httpapi`, never written by
 hand — API-04. CI regenerates it and fails if the committed copy differs, so an
-endpoint cannot change without the document following.
+endpoint cannot change without the document following. The privileges page
+(API-22) comes off the same registrations and is checked the same way, in the
+same job: a generated file nothing diffs is a hand-maintained file with extra
+steps.
 
 The application serves the document itself — the framework's own route,
 authenticated like every other — and nothing that renders it: no documentation

@@ -229,6 +229,36 @@ func (s Subject) Sees(productID int64) bool {
 	return s.Reads(Public, productID) || s.Reads(Private, productID)
 }
 
+// HoldsAnywhere reports whether this subject holds one of these roles on any
+// product at all.
+//
+// For the judgments that are not about a product. An assessment is a claim
+// about an issue rather than about a place (TRI-40), so there is no product to
+// hold a role on — and the alternative that stood here was "any person signed
+// in", which is not an authorization rule (ACC-62). Somebody who triages
+// anywhere is somebody this deployment already trusts to argue about
+// severities; somebody who triages nowhere is not.
+//
+// An administrator holds everything everywhere, as they do in Holds.
+func (s Subject) HoldsAnywhere(roles ...Role) bool {
+	if s.Kind != Person {
+		return false
+	}
+	if s.Admin {
+		return true
+	}
+	for _, held := range s.grants {
+		for _, role := range held {
+			for _, wanted := range roles {
+				if role == wanted {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // Products returns the products this subject may know about. An admin sees
 // everything, which is reported as nothing listed rather than as a list.
 func (s Subject) Products() (ids []int64, all bool) {

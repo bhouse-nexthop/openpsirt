@@ -311,7 +311,7 @@ components:
           description: Agree to somebody else's claim
           type: boolean
         may_assign:
-          description: Give work to somebody else, or take what they hold. Taking work nobody owns, and handing back your own, need only may_triage
+          description: Give work to somebody else, or take what they hold — triage as well as the assigner role. Taking work nobody owns, and handing back your own, need only may_triage
           type: boolean
         may_hide:
           description: Argue about a finding nobody has disclosed
@@ -2914,9 +2914,12 @@ components:
         email:
           description: Where they are reached outside the application
           type: string
-        email_derived:
-          description: A sign-in provider supplied this address rather than somebody here, so a later sign-in may refresh it
-          type: boolean
+        email_source:
+          description: Who last decided it. A provider's may be refreshed by a later sign-in; one recorded here is never overwritten
+          enum:
+            - provider
+            - recorded
+          type: string
         holds:
           items:
             $ref: "#/components/schemas/HeldBody"
@@ -3174,7 +3177,7 @@ components:
           description: When the producer says the build was made
           type: string
         caution:
-          description: What the scanner said while succeeding — a qualification on what it found, such as matching Go binaries at module granularity because they carry no function symbols, which can report a component as affected when the vulnerable function is not linked in
+          description: "What the scanner said while still succeeding — a qualification on what it found rather than a failure. Usually empty: the scan runs over an inventory written from what is held here, so most of what a scanner would warn about a producer's document it has no grounds to say about ours"
           type: string
         closed:
           description: Issues that were open and are not any more
@@ -3308,8 +3311,7 @@ components:
           description: What to show instead of the identity
           type: string
         email:
-          description: Where to reach them outside the application. Optional. A sign-in provider that verifies an address fills this in when it is empty, and never overwrites one recorded here
-          format: email
+          description: Where to reach them outside the application. Optional. Send it empty to clear it; omit it to leave it alone. A sign-in provider that verifies an address fills it in where nobody here has recorded one, and never replaces one that was
           type: string
         holds:
           items:
@@ -4301,9 +4303,9 @@ paths:
       description: |-
         Withdraws every approval recorded under this batch name, returning those decisions to the review queue. The decisions themselves stand — only the approvals are undone. Returns how many were affected.
 
-        Only decisions on products you may triage are touched.
+        Only decisions you may reach are touched.
 
-        **Requires:** public-triage or private-triage on the product
+        **Requires:** approver or public-triage or private-triage on the product
       operationId: undo-batch
       parameters:
         - in: path
@@ -4330,6 +4332,7 @@ paths:
       x-openpsirt-requires:
         scope: product
         any_of:
+          - approver
           - public-triage
           - private-triage
   /v1/assessments:
@@ -4337,7 +4340,7 @@ paths:
       description: |-
         Every claim, or those in one state. The ones waiting are milder ratings somebody has proposed and nobody has agreed to yet, which are the ones not yet affecting anything.
 
-        **Requires:** any recognized credential. Answers only what you may see.
+        **Requires:** any recognized credential. Every claim, whoever asks: a rating is about an issue, not a product (TRI-40), so there is nothing here to narrow by.
       operationId: list-assessments
       parameters:
         - description: Limit to one state
@@ -4378,13 +4381,13 @@ paths:
         - Triage
       x-openpsirt-requires:
         scope: any
-        note: Answers only what you may see.
+        note: "Every claim, whoever asks: a rating is about an issue, not a product (TRI-40), so there is nothing here to narrow by."
   /v1/assessments/{id}:
     delete:
       description: |-
         The rating in force returns to the published one, and everything that reads it — where a finding sits in the list, how long it has, whether it is above the line a product triages — follows it back.
 
-        **Requires:** public-triage or private-triage on the product
+        **Requires:** public-triage or private-triage on any product
       operationId: withdraw-assessment
       parameters:
         - in: path
@@ -4406,7 +4409,7 @@ paths:
       tags:
         - Triage
       x-openpsirt-requires:
-        scope: product
+        scope: any-product
         any_of:
           - public-triage
           - private-triage
@@ -4415,7 +4418,7 @@ paths:
       description: |-
         Only a milder rating waits for this. Somebody other than whoever proposed it, for the same reason every other second person here is somebody else: a control one person can complete alone is not a control.
 
-        **Requires:** approver or public-triage or private-triage on the product. The proposer may not approve their own.
+        **Requires:** approver or public-triage or private-triage on any product. The proposer may not approve their own.
       operationId: agree-assessment
       parameters:
         - in: path
@@ -4441,7 +4444,7 @@ paths:
       tags:
         - Triage
       x-openpsirt-requires:
-        scope: product
+        scope: any-product
         any_of:
           - approver
           - public-triage
@@ -4667,7 +4670,7 @@ paths:
 
         The text is markdown and is validated before it is stored; a 422 names the line and the offending text.
 
-        **Requires:** public-triage or private-triage on the product. Only the author may edit a comment.
+        **Requires:** approver or public-triage or private-triage on the product. Only the author may edit a comment.
       operationId: edit-comment
       parameters:
         - in: path
@@ -4697,6 +4700,7 @@ paths:
       x-openpsirt-requires:
         scope: product
         any_of:
+          - approver
           - public-triage
           - private-triage
         note: Only the author may edit a comment.
@@ -4972,7 +4976,7 @@ paths:
 
         A comment may later be edited by its author only, and editing overwrites it rather than keeping revisions.
 
-        **Requires:** public-triage or private-triage on the product
+        **Requires:** approver or public-triage or private-triage on the product
       operationId: comment-on-decision
       parameters:
         - in: path
@@ -5006,6 +5010,7 @@ paths:
       x-openpsirt-requires:
         scope: product
         any_of:
+          - approver
           - public-triage
           - private-triage
   /v1/decisions/{id}/reasoning:
@@ -5246,7 +5251,7 @@ paths:
 
         The published rating is never overwritten. Ours is what ranks; the world's stays beside it, because a rating of ours shown where the world's goes reads as the world's.
 
-        **Requires:** public-triage or private-triage on the product
+        **Requires:** public-triage or private-triage on any product
       operationId: assess-issue
       parameters:
         - description: The issue, by any name it is known under
@@ -5279,7 +5284,7 @@ paths:
       tags:
         - Triage
       x-openpsirt-requires:
-        scope: product
+        scope: any-product
         any_of:
           - public-triage
           - private-triage
@@ -6099,7 +6104,7 @@ paths:
 
         `visibility` says which kind of finding the text is about. Asking about undisclosed findings requires being able to read them.
 
-        **Requires:** any recognized credential. Answers only what you may see.
+        **Requires:** any recognized credential on the product. Any role on the product. Asking about undisclosed findings needs private-read or private-triage.
       operationId: list-mentionable
       parameters:
         - in: path
@@ -6144,8 +6149,8 @@ paths:
       tags:
         - Triage
       x-openpsirt-requires:
-        scope: any
-        note: Answers only what you may see.
+        scope: product
+        note: Any role on the product. Asking about undisclosed findings needs private-read or private-triage.
   /v1/products/{product}/releases:
     get:
       description: |-
@@ -7177,7 +7182,7 @@ paths:
 
         Findings arriving later under the same component start unassigned.
 
-        **Requires:** assigner on the product. Taking unowned work, or handing back your own, needs only triage.
+        **Requires:** public-triage or private-triage on the product. Giving work to somebody else also needs assigner. Taking unowned work, or handing back your own, does not.
       operationId: assign-finding
       parameters:
         - in: path
@@ -7226,8 +7231,9 @@ paths:
       x-openpsirt-requires:
         scope: product
         any_of:
-          - assigner
-        note: Taking unowned work, or handing back your own, needs only triage.
+          - public-triage
+          - private-triage
+        note: Giving work to somebody else also needs assigner. Taking unowned work, or handing back your own, does not.
   /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/decision:
     post:
       description: |-
@@ -7634,7 +7640,7 @@ paths:
 
         Only `differing` is a choice. The first two follow from the matching rules and are there to be told, not agreed to — and showing them as one number is how a decision comes to reach builds the person making it never knew about.
 
-        **Requires:** public-triage or private-triage on the product
+        **Requires:** any recognized credential. Answers only what you may see.
       operationId: get-decision-reach
       parameters:
         - in: path
@@ -7679,10 +7685,8 @@ paths:
       tags:
         - Triage
       x-openpsirt-requires:
-        scope: product
-        any_of:
-          - public-triage
-          - private-triage
+        scope: any
+        note: Answers only what you may see.
   /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/resolve:
     post:
       description: |-
@@ -7864,7 +7868,7 @@ paths:
 
         **Returns 202 before the documents are parsed.** A success here means they were accepted for processing, not that they were valid. Poll `GET .../scans` to find out whether they parsed and what the scan found.
 
-        **Requires:** public-triage or private-triage on the product
+        **Requires:** public-triage or private-triage on the product. A pipeline key covering this product, branch and variant sends without any of these, and is how a build sends.
       operationId: upload-scan
       parameters:
         - description: The declared product this build is of
@@ -7934,6 +7938,7 @@ paths:
         any_of:
           - public-triage
           - private-triage
+        note: A pipeline key covering this product, branch and variant sends without any of these, and is how a build sends.
   /v1/products/{product}/triage-floor:
     put:
       description: |-
@@ -8607,7 +8612,7 @@ paths:
 
         Expiry is not optional, and `lifetime` may not exceed the ceiling an administrator has set. A credential that never runs out is one nobody ever revokes, and those are found when somebody leaves and nobody knows what breaks if it is turned off.
 
-        **Requires:** your own credential
+        **Requires:** your own credential. Signed in, not through a token: a token cannot mint another.
       operationId: mint-token
       requestBody:
         content:
@@ -8633,6 +8638,7 @@ paths:
         - Access
       x-openpsirt-requires:
         scope: self
+        note: "Signed in, not through a token: a token cannot mint another."
   /v1/tokens/{name}:
     delete:
       description: |-
@@ -8640,7 +8646,7 @@ paths:
 
         Yours alone. An administrator withdraws anybody else's through the administration paths.
 
-        **Requires:** your own credential
+        **Requires:** your own credential. Signed in, not through a token: a token cannot withdraw another.
       operationId: revoke-my-token
       parameters:
         - in: path
@@ -8662,6 +8668,7 @@ paths:
         - Access
       x-openpsirt-requires:
         scope: self
+        note: "Signed in, not through a token: a token cannot withdraw another."
   /v1/trend:
     get:
       description: |-

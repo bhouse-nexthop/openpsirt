@@ -63,7 +63,12 @@ func upAccess(ctx context.Context, tx *sql.Tx) error {
 			-- same reason: a provider may refresh what a provider gave and
 			-- may never overwrite what somebody here decided.
 			"email"        ` + t.free + ` NULL,
-			"email_derived" ` + t.boolean + ` NOT NULL,
+			-- Who last decided the address: nobody, a sign-in provider, or
+			-- somebody here. Three states rather than a flag, because two
+			-- cannot tell "nobody has said" from "somebody said none" — and
+			-- reading the second as the first is how a sign-in puts back an
+			-- address an administrator had just removed.
+			"email_source" ` + t.kind + ` NOT NULL,
 			-- Whether they get a digest, and whether it lists what nobody
 			-- owns. Two switches rather than one because they answer
 			-- different questions — "remind me what is mine" and "tell me

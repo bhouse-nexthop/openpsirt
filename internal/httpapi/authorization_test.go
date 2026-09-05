@@ -218,10 +218,16 @@ func reachOn(t *testing.T, on engines, fn func(t *testing.T, r *reach)) {
 		// to somebody else is not, and a cast where everybody could do both
 		// would test neither (ACC-61).
 		for who, roles := range map[string][]access.Role{
-			"reader":         {access.PublicRead},
-			"private":        {access.PrivateRead},
-			"triager":        {access.PublicTriage},
-			"assigner":       {access.PublicTriage, access.Assigner},
+			"reader":   {access.PublicRead},
+			"private":  {access.PrivateRead},
+			"triager":  {access.PublicTriage},
+			"assigner": {access.PublicTriage, access.Assigner},
+			// The capability without the triage right it sits on, plus enough
+			// to see the product — otherwise the conjunction is untestable,
+			// since a subject who reaches nothing is refused before any role
+			// is consulted. Assigning is triage *and* assigner, and this is
+			// the identity that shows it.
+			"dispatcher":     {access.PublicRead, access.Assigner},
 			"private-triage": {access.PrivateTriage},
 			"approver":       {access.Approver},
 			"reporter":       {access.Reporting},

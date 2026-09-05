@@ -8,10 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/graph"
 	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
+	"github.com/bhouse-nexthop/openpsirt/internal/notify"
 )
 
 // scanned puts a build behind the handler: one component under the product,
@@ -597,6 +599,120 @@ func TestWorkNobodyOwnsCanBeFoundAndGivenToSomebody(t *testing.T) {
 		read(t, r, "triager", "/v1/unassigned", &waiting)
 		if waiting.Total != 1 {
 			t.Errorf("handing it back left %d waiting for an owner", waiting.Total)
+		}
+	})
+}
+
+func TestAssigningSomethingUndisclosedTellsOnlyWhoMayReadIt(t *testing.T) {
+	// The message names the issue, the component and the build, and it is
+	// stored as written — so there is no filter downstream that could repair
+	// it, and the check belongs at the moment of telling (ACC-63). Gating it
+	// on the product being visible handed the name of an embargoed finding to
+	// anybody holding public reading there: the announcement an embargo exists
+	// to prevent, sent by the act of assigning it.
+	//
+	// The assignment itself is left alone either way. Whether work may be
+	// given to somebody who cannot yet see it is a question about assignment,
+	// not about this channel.
+	eachReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+		if _, err := r.db.DB.NewUpdate().Table("finding").
+			Set("visibility = ?", "private").
+			Where("1 = 1").Exec(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+
+		const at = "/v1/products/mine/streams/master/variants/broadcom" +
+			"/findings/CVE-2026-9999/components/libnl-3-200/assignment"
+		// An administrator, because giving work to somebody else asks for the
+		// assigner right as well as triage (ACC-61), and this test is about
+		// what the recipient is told rather than about who may hand it over.
+		if got := asPerson(t, r, "admin", http.MethodPut, at,
+			`{"person":"reader"}`); got.Code != http.StatusNoContent {
+			t.Fatalf("assigning answered %d: %s", got.Code, got.Body.String())
+		}
+
+		type waiting struct {
+			Items []struct {
+				Body string `json:"body"`
+			} `json:"items"`
+			Total int `json:"total"`
+		}
+		var told waiting
+		read(t, r, "reader", "/v1/notifications", &told)
+		for _, item := range told.Items {
+			if strings.Contains(item.Body, "CVE-2026-9999") {
+				t.Errorf("somebody who may not read undisclosed findings was told about one: %q",
+					item.Body)
+			}
+		}
+
+		// And somebody who may read them is told, so the rule narrows rather
+		// than silences.
+		if got := asPerson(t, r, "admin", http.MethodPut, at,
+			`{"person":"private"}`); got.Code != http.StatusNoContent {
+			t.Fatalf("assigning answered %d: %s", got.Code, got.Body.String())
+		}
+		var reached waiting
+		read(t, r, "private", "/v1/notifications", &reached)
+		named := false
+		for _, item := range reached.Items {
+			if strings.Contains(item.Body, "CVE-2026-9999") {
+				named = true
+			}
+		}
+		if !named {
+			t.Error("somebody who may read undisclosed findings was told nothing")
+		}
+	})
+}
+
+func TestTheAssignerRightAloneHandsNobodyAnything(t *testing.T) {
+	// Assigning is triage *and* the assigner right, not either. The role by
+	// itself is held by somebody who may not argue about this product's
+	// findings at all, and handing work around a product you cannot reach is
+	// the reach the visibility rules exist to refuse — so the endpoint answers
+	// as though the finding were not there.
+	//
+	// Pinned in both places a client could learn it: the refusal itself, and
+	// what /v1/session/me says the caller may do. A screen that drew the
+	// control from a widened may_assign would offer an action that always
+	// fails.
+	//
+	// The refusal is enforced twice — at the endpoint and again in the store
+	// (ACC-61) — so this assertion only moves when both go. The store's own
+	// half is broken and watched in internal/finding.
+	eachReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+		const at = "/v1/products/mine/streams/master/variants/broadcom" +
+			"/findings/CVE-2026-9999/components/libnl-3-200/assignment"
+
+		if got := asPerson(t, r, "dispatcher", http.MethodPut, at,
+			`{"person":"reader"}`); got.Code < 400 {
+			t.Errorf("the assigner role alone assigned work: %d", got.Code)
+		}
+		// Nor to themselves, which is the exception triage carries and this
+		// identity does not hold.
+		if got := asPerson(t, r, "dispatcher", http.MethodPut, at,
+			`{"person":"dispatcher"}`); got.Code < 400 {
+			t.Errorf("the assigner role alone took work: %d", got.Code)
+		}
+
+		var told struct {
+			Reach []struct {
+				Product   string `json:"product"`
+				MayAssign bool   `json:"may_assign"`
+				MayTriage bool   `json:"may_triage"`
+			} `json:"reach"`
+		}
+		read(t, r, "dispatcher", "/v1/session/me", &told)
+		for _, each := range told.Reach {
+			if each.MayAssign {
+				t.Errorf("%s is offered assignment to somebody who may not triage it", each.Product)
+			}
+			if each.MayTriage {
+				t.Errorf("%s is offered triage to somebody holding only the assigner role", each.Product)
+			}
 		}
 	})
 }
@@ -1333,6 +1449,49 @@ func TestAPlaceNamesTheClaimStandingOnIt(t *testing.T) {
 		}
 		if named == 0 {
 			t.Error("no place carries the decision that was just recorded")
+		}
+	})
+}
+
+func TestBeingToldAboutWorkKeepsItOutOfTheDigest(t *testing.T) {
+	// NTF-16: the digest carries what nothing else told you. That rests on the
+	// key written when somebody is told matching the key read when the digest
+	// asks — and the first version of this did not: one side keyed on the name
+	// in the request path and the other on the display name from a query, so
+	// they never compared equal and the digest repeated every message.
+	//
+	// So this asserts across the seam rather than round-tripping one side
+	// against itself, which is what let that through.
+	eachReach(t, func(t *testing.T, r *reach) {
+		r.scanned(t)
+		at := "/v1/products/mine/streams/master/variants/broadcom" +
+			"/findings/CVE-2026-9999/components/libnl-3-200/assignment"
+		if got := asPerson(t, r, "assigner", http.MethodPut, at,
+			`{"person":"reader"}`); got.Code != http.StatusNoContent {
+			t.Fatalf("assigning answered %d: %s", got.Code, got.Body.String())
+		}
+
+		reader, err := access.NewStore(r.db.DB).ByIdentity(t.Context(), "reader")
+		if err != nil {
+			t.Fatal(err)
+		}
+		told, err := notify.ToldAbout(t.Context(), r.db.DB, reader.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(told) != 1 {
+			t.Fatalf("%d things were recorded as told, want 1", len(told))
+		}
+
+		// The digest reads what it holds and must recognize the same work.
+		digest, err := notify.Assemble(t.Context(), r.db.DB, reader, 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range digest.Mine {
+			if item.Issue == "CVE-2026-9999" {
+				t.Errorf("the digest repeats work its owner was already told about: %+v", item)
+			}
 		}
 	})
 }

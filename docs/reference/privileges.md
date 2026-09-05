@@ -57,37 +57,44 @@ Held for the deployment rather than per product. Holding every product role ther
 
 ## A role on the product
 
-Granted per product. Any one of the roles listed is enough, and what you may see narrows what the answer contains.
+Granted per product. Any one of the roles listed is enough — a dash means any role on that product will do — and what you may see narrows what the answer contains.
 
 | | Endpoint | Roles | |
 |---|---|---|---|
-| DELETE | `/v1/approval-batches/{batch}` | public-triage, private-triage |  |
-| DELETE | `/v1/assessments/{id}` | public-triage, private-triage |  |
-| POST | `/v1/assessments/{id}/agreement` | approver, public-triage, private-triage | The proposer may not approve their own. |
+| DELETE | `/v1/approval-batches/{batch}` | approver, public-triage, private-triage |  |
 | POST | `/v1/claims/{id}/approval` | approver, public-triage, private-triage | The proposer may not approve their own. |
 | POST | `/v1/claims/{id}/send-back` | approver, public-triage, private-triage | The proposer may not approve their own. |
-| PUT | `/v1/comments/{id}` | public-triage, private-triage | Only the author may edit a comment. |
+| PUT | `/v1/comments/{id}` | approver, public-triage, private-triage | Only the author may edit a comment. |
 | DELETE | `/v1/decisions/{id}` | public-triage, private-triage |  |
 | POST | `/v1/decisions/{id}/approval` | approver, public-triage, private-triage | The proposer may not approve their own. |
-| POST | `/v1/decisions/{id}/comments` | public-triage, private-triage |  |
+| POST | `/v1/decisions/{id}/comments` | approver, public-triage, private-triage |  |
 | PUT | `/v1/decisions/{id}/reasoning` | public-triage, private-triage |  |
 | POST | `/v1/decisions/{id}/send-back` | approver, public-triage, private-triage | The proposer may not approve their own. |
 | GET | `/v1/disclosing` | private-read, private-triage | Only where you may read undisclosed work. |
 | POST | `/v1/disclosure-extensions/{id}/approval` | private-triage | Not the person who asked for it. |
-| POST | `/v1/issues/{vulnerability}/assessment` | public-triage, private-triage |  |
 | GET | `/v1/products/{product}/issues/{vulnerability}/disclosure` | private-read, private-triage | Only where you may read undisclosed work. |
 | POST | `/v1/products/{product}/issues/{vulnerability}/disclosure` | private-triage | A second person agrees past the threshold. |
+| GET | `/v1/products/{product}/mentionable` | — | Any role on the product. Asking about undisclosed findings needs private-read or private-triage. |
 | GET | `/v1/products/{product}/streams/{stream}/variants/{variant}/carried` | public-triage, private-triage |  |
 | POST | `/v1/products/{product}/streams/{stream}/variants/{variant}/components/{component}/decisions` | public-triage, private-triage |  |
 | POST | `/v1/products/{product}/streams/{stream}/variants/{variant}/findings` | public-triage, private-triage | private-triage where the finding is undisclosed. |
-| PUT | `/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/assignment` | assigner | Taking unowned work, or handing back your own, needs only triage. |
+| PUT | `/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/assignment` | public-triage, private-triage | Giving work to somebody else also needs assigner. Taking unowned work, or handing back your own, does not. |
 | POST | `/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/decision` | public-triage, private-triage |  |
 | PUT | `/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/fix-targets` | public-triage, private-triage |  |
 | POST | `/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision` | public-triage, private-triage |  |
 | POST | `/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision/reaffirmation` | public-triage, private-triage |  |
-| GET | `/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/reach` | public-triage, private-triage |  |
 | POST | `/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/resolve` | public-triage, private-triage |  |
-| POST | `/v1/products/{product}/streams/{stream}/variants/{variant}/scans` | public-triage, private-triage |  |
+| POST | `/v1/products/{product}/streams/{stream}/variants/{variant}/scans` | public-triage, private-triage | A pipeline key covering this product, branch and variant sends without any of these, and is how a build sends. |
+
+## A role on any product
+
+Not about a product at all: a rating is a claim about an issue, true wherever it appears, so there is no product to hold a role on. The role is asked for anywhere instead, because being signed in is not a role.
+
+| | Endpoint | Roles | |
+|---|---|---|---|
+| DELETE | `/v1/assessments/{id}` | public-triage, private-triage |  |
+| POST | `/v1/assessments/{id}/agreement` | approver, public-triage, private-triage | The proposer may not approve their own. |
+| POST | `/v1/issues/{vulnerability}/assessment` | public-triage, private-triage |  |
 
 ## Your own
 
@@ -102,8 +109,8 @@ About whoever is asking. No role is needed and none helps.
 | GET | `/v1/session/me` | — |  |
 | PUT | `/v1/session/me/digest` | — |  |
 | GET | `/v1/tokens` | — |  |
-| POST | `/v1/tokens` | — |  |
-| DELETE | `/v1/tokens/{name}` | — |  |
+| POST | `/v1/tokens` | — | Signed in, not through a token: a token cannot mint another. |
+| DELETE | `/v1/tokens/{name}` | — | Signed in, not through a token: a token cannot withdraw another. |
 
 ## Any credential
 
@@ -111,7 +118,7 @@ Any credential this deployment recognizes. The answer is narrowed to what you ma
 
 | | Endpoint | Roles | |
 |---|---|---|---|
-| GET | `/v1/assessments` | — | Answers only what you may see. |
+| GET | `/v1/assessments` | — | Every claim, whoever asks: a rating is about an issue, not a product (TRI-40), so there is nothing here to narrow by. |
 | GET | `/v1/assignments` | — | Answers only what you may see. |
 | GET | `/v1/audit` | — | Answers only what you may see. |
 | GET | `/v1/decisions` | — | Answers only what you may see. |
@@ -123,7 +130,6 @@ Any credential this deployment recognizes. The answer is narrowed to what you ma
 | GET | `/v1/products` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/comparison` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/issues/{vulnerability}/advisory` | — | Answers only what you may see. |
-| GET | `/v1/products/{product}/mentionable` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/releases` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/streams` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/streams/{stream}/variants` | — | Answers only what you may see. |
@@ -135,6 +141,7 @@ Any credential this deployment recognizes. The answer is narrowed to what you ma
 | GET | `/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}/fix-targets` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/decision` | — | Answers only what you may see. |
+| GET | `/v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/places/{place}/reach` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/streams/{stream}/variants/{variant}/readiness` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/streams/{stream}/variants/{variant}/scans` | — | Answers only what you may see. |
 | GET | `/v1/products/{product}/variants` | — | Answers only what you may see. |

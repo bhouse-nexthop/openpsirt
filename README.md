@@ -26,7 +26,10 @@ place to triage what it finds and track it through to a fix.
 > readiness and what a new line would inherit. A fix is declared rather than
 > completed — somebody says which releases it is meant to reach, and the next
 > scan of each answers whether it arrived. What people are told about is an
-> area inside the application; nothing leaves it yet.
+> area inside the application, and mail now carries it out of one: the
+> categories worth interrupting somebody for go immediately, and a daily
+> digest — off until asked for — carries what nothing else said. A message
+> about a finding nobody has announced says only that there is something.
 >
 > Private findings have begun, which is where the work is. A flaw in what a
 > build ships can be recorded by hand, from the findings list of the build it
@@ -45,8 +48,8 @@ place to triage what it finds and track it through to a fix.
 > it.
 >
 > What does not: every adapter that would send an advisory somewhere,
-> attachments, mail and the digest, remediation metrics, export, and findings
-> from a static analyzer. The design record is in [DECISIONS.md](DECISIONS.md).
+> attachments, chat, remediation metrics, export, and findings from a static
+> analyzer. The design record is in [DECISIONS.md](DECISIONS.md).
 
 ## What it does
 

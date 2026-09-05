@@ -167,6 +167,37 @@ func TestSomebodyWhoMayNotSeeAFindingCannotAssignIt(t *testing.T) {
 	})
 }
 
+func TestTheAssignerRightDoesNotStandOnItsOwn(t *testing.T) {
+	// Assigning is triage *and* assigner (ACC-61). Somebody holding the
+	// capability without the triage right it sits on can read the product and
+	// nothing more, and handing work around a product you may not argue about
+	// is not a narrower version of triaging — it is a different act on work
+	// somebody else has to do.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{found("CVE-2026-1", libnl)}); err != nil {
+			t.Fatal(err)
+		}
+		open := f.open(t)
+
+		dispatcher := f.holding(t, access.PublicRead, access.Assigner)
+		if _, _, err := f.store.Assign(t.Context(), dispatcher, f.target,
+			open[0].VulnerabilityID, open[0].ComponentID, ptr(int64(7))); err == nil {
+			t.Error("the assigner right alone gave work to somebody")
+		}
+		// Nor to themselves: taking unowned work is the triager's exception,
+		// and this identity is not one.
+		if _, _, err := f.store.Assign(t.Context(), dispatcher, f.target,
+			open[0].VulnerabilityID, open[0].ComponentID, &dispatcher.ID); err == nil {
+			t.Error("the assigner right alone took work")
+		}
+		if held := f.assigned(t); len(held) != 0 {
+			t.Errorf("%d findings were handed out by somebody who may not triage", len(held))
+		}
+	})
+}
+
 func ptr[T any](v T) *T { return &v }
 
 func TestWorkComesBackWhenTheirLastRoleOnAProductGoes(t *testing.T) {

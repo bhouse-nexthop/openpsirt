@@ -9,6 +9,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/queue"
 )
 
 // betweenPosts is how often what is unsent is carried out of the application.
@@ -37,19 +38,31 @@ type Post struct {
 	channel Channel
 	baseURL string
 	logger  *slog.Logger
+	// leases and replica are how one process carries a message rather than
+	// all of them. Every replica runs this sweep, as every replica runs the
+	// others; without a lease each one reads the same unsent rows and sends
+	// them, and somebody gets a message per replica.
+	leases  *queue.Leases
+	replica string
 	now     func() time.Time
 }
+
+// PostLease names the work of carrying messages out of the application.
+const PostLease = "notification.post"
 
 // NewPost returns a sweep over db, or nil where no channel is configured.
 //
 // Nil because a deployment without mail is ordinary: the notification area is
 // the channel that always exists, and it needs nothing set up (NTF-08).
-func NewPost(db *bun.DB, channel Channel, baseURL string, logger *slog.Logger) *Post {
+func NewPost(db *bun.DB, channel Channel, baseURL string, logger *slog.Logger,
+	replica string) *Post {
+
 	if channel == nil {
 		return nil
 	}
 	return &Post{
 		db: db, channel: channel, baseURL: baseURL, logger: logger,
+		leases: queue.NewLeases(db), replica: replica,
 		now: func() time.Time { return time.Now().UTC() },
 	}
 }
@@ -94,6 +107,16 @@ type waiting struct {
 // Ordered oldest first, so a backlog drains in the order things happened
 // rather than in the order a query felt like.
 func (p *Post) Once(ctx context.Context) (sent, failed int, err error) {
+	// One replica carries, the rest skip. Not an error and not worth saying:
+	// the work happens either way, and a skipped cycle is the ordinary case
+	// on every replica but one.
+	if p.leases != nil {
+		mine, err := p.leases.Take(ctx, PostLease, p.replica, betweenPosts)
+		if err != nil || !mine {
+			return 0, 0, err
+		}
+	}
+
 	var rows []waiting
 	err = p.db.NewSelect().
 		Model((*Notification)(nil)).
@@ -159,6 +182,15 @@ const atMostInADigest = 50
 // separates it from the categories NTF-02 says are worth interrupting somebody
 // for. A person is sent nothing where there is nothing to say.
 func (p *Post) Digests(ctx context.Context) (sent int, err error) {
+	// The same lease as the immediate messages, held for the same reason: two
+	// replicas would each send everybody a digest.
+	if p.leases != nil {
+		mine, err := p.leases.Take(ctx, DigestLease, p.replica, betweenPosts)
+		if err != nil || !mine {
+			return 0, err
+		}
+	}
+
 	var people []access.Account
 	if err := p.db.NewSelect().Model(&people).
 		Where("digest = ?", true).
@@ -168,12 +200,22 @@ func (p *Post) Digests(ctx context.Context) (sent int, err error) {
 		// One a day. The sweep runs far more often than that, because it
 		// carries the immediate messages too.
 		Where("digest_sent_at IS NULL OR digest_sent_at < ?", p.now().Add(-aDay)).
+		// Bounded like every other read here. A deployment with more people
+		// than this sends the rest on the next cycle rather than holding the
+		// lease for as long as it takes.
+		Limit(200).
 		Scan(ctx, &people); err != nil {
 		return 0, fmt.Errorf("read who asked for a digest: %w", err)
 	}
 
 	for i := range people {
 		person := &people[i]
+		// Taken before the read, and written after. A stamp taken afterwards
+		// covers the time the queries and the send took — seconds, and a
+		// synchronous send can take the whole timeout — and anything that
+		// opened inside it belongs to no digest at all: too late for this
+		// one's "since", too early for the next one's.
+		asOf := p.now()
 		digest, err := Assemble(ctx, p.db, person, atMostInADigest)
 		if err != nil {
 			p.logger.Warn("could not assemble a digest",
@@ -191,14 +233,22 @@ func (p *Post) Digests(ctx context.Context) (sent int, err error) {
 			if err := p.channel.Send(ctx, person.Email, digest.Message(p.baseURL)); err != nil {
 				p.logger.Warn("could not send a digest",
 					"channel", p.channel.Name(), "person", person.Identity, "error", err)
-				continue
+				// The stamp still moves. A mailbox that refuses is retried
+				// tomorrow rather than every minute until it answers — the
+				// same reason an immediate message stops after five, and the
+				// digest is the pass that would otherwise do nothing else.
+			} else {
+				sent++
 			}
-			sent++
 		}
 		if _, err := p.db.NewUpdate().Model((*access.Account)(nil)).
-			Set("digest_sent_at = ?", p.now()).
+			Set("digest_sent_at = ?", asOf).
 			Where("id = ?", person.ID).Exec(ctx); err != nil {
-			return sent, fmt.Errorf("record that a digest went: %w", err)
+			// Reported and carried on, like the sends above. Abandoning the
+			// rest of the list because one row would not update leaves
+			// everybody after this person unsent for the cycle.
+			p.logger.Warn("could not record that a digest went",
+				"person", person.Identity, "error", err)
 		}
 	}
 	return sent, nil
@@ -206,3 +256,8 @@ func (p *Post) Digests(ctx context.Context) (sent int, err error) {
 
 // aDay is how long between digests.
 const aDay = 24 * time.Hour
+
+// DigestLease names the work of assembling and sending digests. Separate from
+// the immediate messages so that a long digest cycle does not stop the
+// messages NTF-02 says are worth interrupting somebody for.
+const DigestLease = "notification.digest"

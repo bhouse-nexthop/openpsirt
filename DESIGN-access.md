@@ -45,6 +45,13 @@ first, working the queue would be a full-time job for whoever held the right.
 yourself is still doing it.** A triager may take what nobody owns and may not
 take what somebody has.
 
+**Assigner is held alongside triage, not instead of it.** The role widens what
+a triager may do with work; on its own it assigns nothing, because handing
+around findings in a product you may not argue about is not a narrower version
+of triaging it. Enforced twice — the endpoint refuses it, and the store refuses
+it again — and `may_assign` in the session answer is the same conjunction, so
+an interface does not draw a control that always fails.
+
 **Moving everything one person holds stays administrative.** That is about a
 person rather than a finding — somebody has left, or their last role on a
 product was withdrawn — and it spans every product at once, which is not a
@@ -134,6 +141,29 @@ made the approver capability do nothing at all — somebody granted exactly the
 right to approve could approve nothing, and the only people who could were the
 ones who could also have proposed it. So an act asks for the right it is named
 for, alongside the visibility it acts on.
+
+## Judgments that are not about a product
+
+A rating of an issue is a claim about the issue, true wherever it appears
+(TRI-40) — so there is no product to hold a role on, and what stood in that gap
+was "is signed in". That is not an authorization rule (ACC-62).
+
+**These ask for the role anywhere.** Recording a rating and taking one back ask
+for triage on some product; agreeing to a milder one asks for that or the
+approver capability, as agreeing does everywhere else. A rating sets the
+deadline and can push a finding below the line a product triages at all — in
+every product at once — so an account granted reading on one product is not
+somebody to trust with it. Enforced in the store, and the API document says the
+scope is a role on any product rather than pretending it is per-product.
+
+## What somebody is told asks for reading it
+
+A notification names the issue, the component and the build, and it is stored as
+written — there is no visibility filter downstream that could repair it. So the
+check is at the **visibility of the finding**, not of the product (ACC-63):
+being able to see that a product exists is not being able to read its embargoed
+work. Assigning an undisclosed finding to somebody who holds only public
+reading assigns it and tells them nothing.
 
 **A product somebody holds nothing on is invisible**, not merely unreadable.
 Not listed, not counted, and — this is the part that is easy to get wrong —

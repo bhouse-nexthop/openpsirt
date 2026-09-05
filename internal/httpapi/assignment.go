@@ -60,7 +60,8 @@ func registerAssignment(api huma.API, in Ingest) {
 			"same operation as giving out, so there is one path rather than two that drift.\n\n" +
 			"Findings arriving later under the same component start unassigned.",
 		Tags: []string{"Findings"}, DefaultStatus: http.StatusNoContent,
-	}, perProduct, "Taking unowned work, or handing back your own, needs only triage.", []access.Role{access.Assigner}...), func(ctx context.Context, input *struct {
+	}, perProduct, "Giving work to somebody else also needs assigner. Taking unowned work, "+
+		"or handing back your own, does not.", triageRights()...), func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
 		Stream        string `path:"stream"`
 		Variant       string `path:"variant"`
@@ -86,6 +87,20 @@ func registerAssignment(api huma.API, in Ingest) {
 		// a directory of the organization for the price of one request.
 		if !subject.Holds(access.PublicTriage, product) &&
 			!subject.Holds(access.PrivateTriage, product) {
+			return nil, noSuchFinding()
+		}
+
+		// Every right this needs is checked before any name is looked up
+		// (ACC-56). The triage check above is not enough on its own: giving
+		// work to somebody else asks for more, and resolving the name first
+		// answers "does this person have an account here" differently
+		// depending on whether they do — which is a staff directory for the
+		// price of one request, to anybody who may triage.
+		//
+		// Assigning to yourself, or to nobody, is not giving work away and
+		// needs no more than the triage right already checked.
+		givingAway := input.Body.Person != "" && input.Body.Person != subject.Identity
+		if givingAway && !subject.Holds(access.Assigner, product) {
 			return nil, noSuchFinding()
 		}
 
@@ -129,7 +144,8 @@ func registerAssignment(api huma.API, in Ingest) {
 		// A failure here is logged and not returned. The assignment happened;
 		// answering with an error would invite a retry that assigns it again,
 		// and the notification is the lesser half of the two.
-		if to != nil && *to != subject.ID && seenBy(ctx, in, input.Body.Person, product) {
+		if to != nil && *to != subject.ID &&
+			seenBy(ctx, in, input.Body.Person, product, undisclosed) {
 			if err := notify.NewStore(in.DB.DB).Tell(ctx, notify.Telling{
 				PersonID: *to, Kind: notify.Assigned,
 				Body: input.Vulnerability + " in " + input.Component +
@@ -138,7 +154,7 @@ func registerAssignment(api huma.API, in Ingest) {
 					input.Vulnerability, input.Component),
 				// What it is about, so a digest can tell later that this
 				// person was told about this work and leave it out.
-				Concerns: notify.Concerning(input.Product, input.Vulnerability, input.Component),
+				Concerns: notify.Concerning(product, issue, component),
 				// The body above names the product, the build and the issue.
 				// Inside the application that is right — reaching it is
 				// already the visibility check — and outside it is the
@@ -423,15 +439,25 @@ func refusedFinding(in Ingest, err error) error {
 	return wentWrong(in.Logger, "that could not be recorded", err)
 }
 
-// seenBy reports whether the person being told may see the product it is about.
+// seenBy reports whether the person being told may read what it is about.
 //
 // Read as that person rather than as the caller: what the caller can see says
 // nothing about what the recipient can, and it is the recipient who receives
 // the text.
-func seenBy(ctx context.Context, in Ingest, identity string, productID int64) bool {
+//
+// **At the visibility of the finding, not merely of the product.** The body
+// names the issue, the component and the build, and is stored as written — so
+// somebody who may read what has been disclosed and no more would be handed
+// the name of a finding nobody has announced, in a product they hold nothing
+// undisclosed on. Seeing that a product exists is not reading its embargoed
+// work (ACC-04).
+func seenBy(ctx context.Context, in Ingest, identity string, productID int64, undisclosed bool) bool {
 	them, err := access.NewStore(in.DB.DB).Resolve(ctx, identity)
 	if err != nil {
 		return false
 	}
-	return them.Sees(productID)
+	if undisclosed {
+		return them.Reads(access.Private, productID)
+	}
+	return them.Reads(access.Public, productID)
 }

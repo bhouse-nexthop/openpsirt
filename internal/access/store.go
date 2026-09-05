@@ -38,8 +38,10 @@ type Account struct {
 	//
 	// Empty is ordinary. An address is optional, and somebody without one is
 	// told nothing outside the application and keeps the area inside it.
-	Email        string `bun:"email"`
-	EmailDerived bool   `bun:"email_derived,notnull"`
+	Email string `bun:"email"`
+	// EmailSource says who last decided the address. Three states, because
+	// two cannot tell "nobody has said" from "somebody said none".
+	EmailSource EmailSource `bun:"email_source,notnull"`
 	// Digest says they asked for one, and DigestUnassigned that it lists what
 	// nobody owns as well as what is theirs (NTF-03, NTF-17). Both off by
 	// default: a digest nobody asked for is mail somebody filters.
@@ -152,6 +154,21 @@ func (s *Store) Ensure(ctx context.Context, identity, displayName string, admin 
 	return person, nil
 }
 
+// EmailSource says who last decided somebody's address.
+type EmailSource string
+
+const (
+	// NobodySaid is the state of a person nobody has given an address to. A
+	// provider may fill it in.
+	NobodySaid EmailSource = ""
+	// FromProvider is an address a sign-in provider stated and said it had
+	// verified. A later sign-in may refresh it.
+	FromProvider EmailSource = "provider"
+	// Recorded is an address somebody here set, including setting it to none.
+	// A provider may never write over one of these.
+	Recorded EmailSource = "recorded"
+)
+
 // SetEmail records where to reach somebody outside the application (ACC-60).
 //
 // `derived` says a sign-in provider supplied it rather than somebody here, and
@@ -167,21 +184,25 @@ func (s *Store) Ensure(ctx context.Context, identity, displayName string, admin 
 //
 // The comparison is on what is stored rather than on what was read earlier,
 // so two sign-ins racing cannot both decide they are the first.
-func (s *Store) SetEmail(ctx context.Context, personID int64, address string, derived bool) error {
+func (s *Store) SetEmail(ctx context.Context, personID int64, address string, from EmailSource) error {
 	address = strings.TrimSpace(address)
 	if personID == 0 {
 		return errors.New("an address needs somebody to belong to")
 	}
-	if derived && address == "" {
+	if from == FromProvider && address == "" {
 		return nil
 	}
 
 	update := s.db.NewUpdate().Model((*Account)(nil)).
 		Set("email = ?", address).
-		Set("email_derived = ?", derived).
+		Set("email_source = ?", from).
 		Where("id = ?", personID)
-	if derived {
-		update = update.Where("email IS NULL OR email = ? OR email_derived = ?", "", true)
+	if from == FromProvider {
+		// Only where nobody here has decided. "Nobody has said" and "somebody
+		// said none" are different states and this is why they have to be:
+		// read as the same, the next sign-in puts back exactly the address an
+		// administrator had just removed.
+		update = update.Where("email_source <> ?", Recorded)
 	}
 	if _, err := update.Exec(ctx); err != nil {
 		return fmt.Errorf("record where to reach person %d: %w", personID, err)

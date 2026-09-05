@@ -490,6 +490,15 @@ type SentBack struct {
 	Sent int
 	// Decision is a representative of what went back: the earliest row.
 	Decision Decision
+	// Undisclosed says at least one row of the claim is about a finding
+	// nobody has announced.
+	//
+	// Not read off Decision above. That row is a representative chosen by
+	// identifier for naming the claim, and a claim is one action over many
+	// places whose rows need not agree about visibility — so the earliest
+	// row being public says nothing about the rest, and what may leave this
+	// deployment is decided by the most careful row in the set (NTF-15).
+	Undisclosed bool
 }
 
 // SendBackClaim asks the author for more before agreeing to any of a claim.
@@ -535,6 +544,14 @@ func (s *Store) SendBackClaim(ctx context.Context, subject access.Subject, claim
 			}
 			if len(ids) == 0 {
 				result.Decision = row
+			}
+			// Whether anything in this claim is undisclosed, which decides
+			// what may be said about it outside the application (NTF-15). Any
+			// row is enough: a claim is one action over many places and its
+			// rows need not agree, so the representative row above answers
+			// for the claim's identity and not for this.
+			if row.Visibility == access.Private {
+				result.Undisclosed = true
 			}
 			if author := authors[row.ID]; author != 0 && !told[author] {
 				told[author] = true

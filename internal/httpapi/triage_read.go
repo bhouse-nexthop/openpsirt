@@ -291,7 +291,7 @@ func registerTriageReading(api huma.API, in Ingest) {
 			"The text is markdown and is validated before it is stored; a 422 names the line and " +
 			"the offending text.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusNoContent,
-	}, perProduct, "Only the author may edit a comment.", triageRights()...), func(ctx context.Context, input *struct {
+	}, perProduct, "Only the author may edit a comment.", approveRights()...), func(ctx context.Context, input *struct {
 		ID   int64 `path:"id"`
 		Body struct {
 			Body string `json:"body" minLength:"1"`

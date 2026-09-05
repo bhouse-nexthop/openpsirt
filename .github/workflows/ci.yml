@@ -147,6 +147,11 @@ jobs:
       # renderer nothing rendered with, and a rule enforced in a second place
       # nothing called — all of it looking like working code.
       - run: make unreachable
+      # Every decision in force is named by a design document. The chain is
+      # code -> design -> decision, and a decision nothing describes is one
+      # the code has quietly stopped following; local runs caught this and CI
+      # did not, which is the wrong way round.
+      - run: make unclaimed
 
   security:
     name: Vulnerabilities and licenses
@@ -185,8 +190,11 @@ jobs:
       # The document is generated from the running registrations. If the
       # committed copy differs, the API changed without it being regenerated.
       - run: make openapi
-      - name: Fail if the committed document is stale
-        run: git diff --exit-code -- docs/reference/openapi.yaml
+      # Both files the target writes. The privileges page is generated from
+      # the same registrations, so checking only the specification let a stale
+      # page describing the wrong permissions pass.
+      - name: Fail if the committed documents are stale
+        run: git diff --exit-code -- docs/reference/openapi.yaml docs/reference/privileges.md
 
   sbom:
     name: Software bill of materials

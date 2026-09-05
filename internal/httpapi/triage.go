@@ -330,9 +330,9 @@ func registerTriage(api huma.API, in Ingest) {
 		Description: "Withdraws every approval recorded under this batch name, returning those " +
 			"decisions to the review queue. The decisions themselves stand — only the approvals " +
 			"are undone. Returns how many were affected.\n\n" +
-			"Only decisions on products you may triage are touched.",
+			"Only decisions you may reach are touched.",
 		Tags: []string{"Triage"},
-	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
+	}, perProduct, "", approveRights()...), func(ctx context.Context, input *struct {
 		Batch string `path:"batch"`
 	}) (*struct {
 		Body struct {
@@ -365,7 +365,7 @@ func registerTriage(api huma.API, in Ingest) {
 			"A comment may later be edited by its author only, and editing overwrites it rather " +
 			"than keeping revisions.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusCreated,
-	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
+	}, perProduct, "", approveRights()...), func(ctx context.Context, input *struct {
 		ID   int64 `path:"id"`
 		Body struct {
 			Body string `json:"body" minLength:"1"`
@@ -809,7 +809,7 @@ func registerElsewhere(api huma.API, in Ingest) {
 			"there to be told, not agreed to — and showing them as one number is how a decision " +
 			"comes to reach builds the person making it never knew about.",
 		Tags: []string{"Triage"},
-	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
+	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
 		Product       string `path:"product"`
 		Stream        string `path:"stream"`
 		Variant       string `path:"variant"`

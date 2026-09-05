@@ -33,7 +33,7 @@ func described(ctx context.Context, a Administering, store *access.Store,
 	}
 	body := &PersonBody{
 		Identity: person.Identity, DisplayName: person.DisplayName, Admin: person.IsAdmin,
-		Email: person.Email, EmailDerived: person.EmailDerived,
+		Email: person.Email, EmailSource: string(person.EmailSource),
 	}
 	for _, door := range doors {
 		body.SignsInBy = append(body.SignsInBy, SignInBody{
@@ -82,8 +82,8 @@ type PersonBody struct {
 	// Email, and whether a provider gave it. The second is worth answering:
 	// an address a provider supplied is one a later sign-in may change, and
 	// one recorded here is not.
-	Email        string `json:"email,omitempty" doc:"Where they are reached outside the application"`
-	EmailDerived bool   `json:"email_derived,omitempty" doc:"A sign-in provider supplied this address rather than somebody here, so a later sign-in may refresh it"`
+	Email       string `json:"email,omitempty" doc:"Where they are reached outside the application"`
+	EmailSource string `json:"email_source,omitempty" enum:"provider,recorded" doc:"Who last decided it. A provider's may be refreshed by a later sign-in; one recorded here is never overwritten"`
 	// Holds is what they may do, listed as product and role.
 	Holds []HeldBody `json:"holds,omitempty"`
 	// SignsInBy lists the ways they can arrive.
@@ -109,7 +109,11 @@ type RecordBody struct {
 	// one somebody is told nothing outside it and keeps the area inside it.
 	// A provider that verifies an address fills in one nobody stated here,
 	// and never replaces one that was (ACC-60).
-	Email string `json:"email,omitempty" format:"email" doc:"Where to reach them outside the application. Optional. A sign-in provider that verifies an address fills this in when it is empty, and never overwrites one recorded here"`
+	// A pointer so that three things are distinguishable: an address, an
+	// empty one, and no mention at all. Stating it empty clears it, which is
+	// how somebody comes off mail without coming off the tool; omitting it
+	// leaves whatever is stored.
+	Email *string `json:"email,omitempty" doc:"Where to reach them outside the application. Optional. Send it empty to clear it; omit it to leave it alone. A sign-in provider that verifies an address fills it in where nobody here has recorded one, and never replaces one that was"`
 	// Holds is what to grant them, listed as product and role.
 	Holds []GrantBody `json:"holds,omitempty"`
 }
@@ -255,8 +259,13 @@ func registerAdministration(api huma.API, a Administering) {
 		// (ACC-60). A request that says nothing about an address leaves the
 		// stored one alone rather than clearing it: this endpoint records
 		// somebody, and an omission is silence rather than an instruction.
-		if strings.TrimSpace(in.Body.Email) != "" {
-			if err := store.SetEmail(ctx, person.ID, in.Body.Email, false); err != nil {
+		// An address stated is recorded; an address stated as empty is
+		// cleared, which is how somebody comes off mail without coming off
+		// the tool. A request that does not mention one at all leaves the
+		// stored address alone: this endpoint records somebody, and an
+		// omission is silence rather than an instruction.
+		if in.Body.Email != nil {
+			if err := store.SetEmail(ctx, person.ID, *in.Body.Email, access.Recorded); err != nil {
 				return nil, wentWrong(a.Logger, "where to reach them could not be recorded", err)
 			}
 		}

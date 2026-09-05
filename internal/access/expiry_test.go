@@ -132,15 +132,15 @@ func TestAProviderMayRefreshWhatAProviderGaveAndNotWhatSomebodySet(t *testing.T)
 		}
 
 		// A provider fills in what nobody recorded.
-		if err := store.SetEmail(ctx, person.ID, "ana@provider.example", true); err != nil {
+		if err := store.SetEmail(ctx, person.ID, "ana@provider.example", FromProvider); err != nil {
 			t.Fatal(err)
 		}
-		if got := reread(t, store, ctx, "ana"); got.Email != "ana@provider.example" || !got.EmailDerived {
-			t.Fatalf("a provider filling an empty address left %q derived=%v", got.Email, got.EmailDerived)
+		if got := reread(t, store, ctx, "ana"); got.Email != "ana@provider.example" || got.EmailSource != FromProvider {
+			t.Fatalf("a provider filling an empty address left %q from=%v", got.Email, got.EmailSource)
 		}
 
 		// And may refresh its own.
-		if err := store.SetEmail(ctx, person.ID, "ana@moved.example", true); err != nil {
+		if err := store.SetEmail(ctx, person.ID, "ana@moved.example", FromProvider); err != nil {
 			t.Fatal(err)
 		}
 		if got := reread(t, store, ctx, "ana"); got.Email != "ana@moved.example" {
@@ -148,15 +148,15 @@ func TestAProviderMayRefreshWhatAProviderGaveAndNotWhatSomebodySet(t *testing.T)
 		}
 
 		// An administrator's overrides it and stops being a provider's.
-		if err := store.SetEmail(ctx, person.ID, "ana@work.example", false); err != nil {
+		if err := store.SetEmail(ctx, person.ID, "ana@work.example", Recorded); err != nil {
 			t.Fatal(err)
 		}
-		if got := reread(t, store, ctx, "ana"); got.Email != "ana@work.example" || got.EmailDerived {
-			t.Fatalf("recording an address left %q derived=%v", got.Email, got.EmailDerived)
+		if got := reread(t, store, ctx, "ana"); got.Email != "ana@work.example" || got.EmailSource != Recorded {
+			t.Fatalf("recording an address left %q from=%v", got.Email, got.EmailSource)
 		}
 
 		// After which a provider may not take it back.
-		if err := store.SetEmail(ctx, person.ID, "ana@provider.example", true); err != nil {
+		if err := store.SetEmail(ctx, person.ID, "ana@provider.example", FromProvider); err != nil {
 			t.Fatal(err)
 		}
 		if got := reread(t, store, ctx, "ana"); got.Email != "ana@work.example" {
@@ -165,7 +165,7 @@ func TestAProviderMayRefreshWhatAProviderGaveAndNotWhatSomebodySet(t *testing.T)
 
 		// A provider stating nothing is silent rather than asking for the
 		// stored address to go.
-		if err := store.SetEmail(ctx, person.ID, "", true); err != nil {
+		if err := store.SetEmail(ctx, person.ID, "", FromProvider); err != nil {
 			t.Fatal(err)
 		}
 		if got := reread(t, store, ctx, "ana"); got.Email != "ana@work.example" {
@@ -174,11 +174,22 @@ func TestAProviderMayRefreshWhatAProviderGaveAndNotWhatSomebodySet(t *testing.T)
 
 		// An administrator clearing it is how somebody comes off mail without
 		// coming off the tool.
-		if err := store.SetEmail(ctx, person.ID, "", false); err != nil {
+		if err := store.SetEmail(ctx, person.ID, "", Recorded); err != nil {
 			t.Fatal(err)
 		}
 		if got := reread(t, store, ctx, "ana"); got.Email != "" {
 			t.Errorf("an address could not be cleared: %q", got.Email)
+		}
+
+		// And a clearing is a decision, not an absence. Read as an absence, a
+		// provider fills it straight back in and somebody taken off mail on
+		// purpose is on it again by their next sign-in — which is the whole
+		// reason the source has three states rather than two.
+		if err := store.SetEmail(ctx, person.ID, "ana@provider.example", FromProvider); err != nil {
+			t.Fatal(err)
+		}
+		if got := reread(t, store, ctx, "ana"); got.Email != "" {
+			t.Errorf("a sign-in undid a clearing: %q", got.Email)
 		}
 	})
 }

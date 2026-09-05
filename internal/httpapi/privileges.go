@@ -42,7 +42,7 @@ func Privileges(api huma.API) string {
 
 	var out strings.Builder
 	out.WriteString(privilegesHeader)
-	for _, scope := range []string{deploymentWide, perProduct, ownSubject, anySubject} {
+	for _, scope := range []string{deploymentWide, perProduct, anyProduct, ownSubject, anySubject} {
 		rows := byScope[scope]
 		if len(rows) == 0 {
 			continue
@@ -65,6 +65,7 @@ func Privileges(api huma.API) string {
 var scopeTitles = map[string]string{
 	deploymentWide: "Administrator",
 	perProduct:     "A role on the product",
+	anyProduct:     "A role on any product",
 	ownSubject:     "Your own",
 	anySubject:     "Any credential",
 }
@@ -72,8 +73,12 @@ var scopeTitles = map[string]string{
 var scopeBlurbs = map[string]string{
 	deploymentWide: "Held for the deployment rather than per product. Holding every " +
 		"product role there is does not amount to any of it.",
-	perProduct: "Granted per product. Any one of the roles listed is enough, and what " +
-		"you may see narrows what the answer contains.",
+	perProduct: "Granted per product. Any one of the roles listed is enough — a dash " +
+		"means any role on that product will do — and what you may see narrows what the " +
+		"answer contains.",
+	anyProduct: "Not about a product at all: a rating is a claim about an issue, true " +
+		"wherever it appears, so there is no product to hold a role on. The role is asked " +
+		"for anywhere instead, because being signed in is not a role.",
 	ownSubject: "About whoever is asking. No role is needed and none helps.",
 	anySubject: "Any credential this deployment recognizes. The answer is narrowed to what " +
 		"you may see, so two people calling the same endpoint get different answers " +

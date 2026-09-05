@@ -188,6 +188,24 @@ applied at every startup rather than once: lose administrative access, add
 yourself, upgrade. The notes printed after an install say so, because that is
 the moment somebody will need it and the last moment they will be reading.
 
+### Mail
+
+The chart carries it, because a password belongs in a Secret and `extraEnv` is
+not where an operator should be putting one. `mail.server` and `mail.from`
+together turn it on; `mail.username` with either `mail.password` or an
+`existingSecret` adds credentials. Nothing set sends nothing, which is an
+ordinary way to run (NTF-08).
+
+**Half of it fails at render** (SCP-18), in three shapes: a server with no
+address to send as, an address with no server, and a password with no username
+to send it with. This is SCP-14's reasoning applied to the one subsystem whose
+failure is silent — a missing database crash-loops and is found in minutes,
+while mail configured halfway comes up healthy and is discovered when somebody
+asks why they never heard about a finding.
+
+The refusals are tested the same way the sign-in ones are: by asserting each
+fires.
+
 ## What is not here yet
 
 Publishing. The image builds and is verified in CI but is not pushed anywhere,

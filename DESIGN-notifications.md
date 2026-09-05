@@ -77,9 +77,7 @@ not the same thing to the person waiting — which is what the queue's own
 
 ## What is not built, and what it will be
 
-**A chat adapter**, behind the same interface mail uses (NTF-01). Not built. Off by default because a digest nobody asked for is mail
-somebody filters, and a filtered channel is worse than no channel: it looks
-like it is working.
+**A chat adapter**, behind the same interface mail uses (NTF-01). Not built.
 
 **Mail carries the markdown as its text part** (NTF-14), which it does. A chat
 adapter translates rather than forwarding it, and mostly sends a summary and a
@@ -87,6 +85,12 @@ link rather than the whole thing — a channel people read on a phone is not a
 channel to paste a justification into. That adapter is not built, and neither
 is the HTML part of a mail, which is the only remaining reader for the
 server-side renderer and why it is kept rather than deleted.
+
+**The digest is off by default** (NTF-03), and so is the part of it that lists
+what nobody owns (NTF-17). Both are built and both are described above; they
+are named here because "opt-in" is the half people look for in this section. A
+digest nobody asked for is mail somebody filters, and a filtered channel is
+worse than none: it looks like it is working.
 
 ## Carrying something out of the application
 
@@ -172,8 +176,13 @@ which is where somebody works through it rather than in a mail client.
 **It names what has been disclosed and gives numbers for what has not**
 (NTF-18). A public finding is listed with its issue, component and build. The
 undisclosed ones become a count and the figures that say how urgent they are —
-how many at each severity, how many past their disclosure date, how many nobody
-owns — with the way in NTF-15 gives.
+how many at each severity, how many known to be exploited, how many nobody owns
+— with the way in NTF-15 gives.
+
+Lateness is deliberately not among them. An embargo whose date has passed
+already raises an alert of its own (ACC-47), and repeating it here would say
+one thing twice while leaving out the figure that actually decides whether this
+is tonight or tomorrow.
 
 A bare count would not have been enough. "Three undisclosed" does not tell
 somebody whether to open the tool now or after coffee, and a channel that

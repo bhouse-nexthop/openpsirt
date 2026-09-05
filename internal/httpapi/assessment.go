@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/bhouse-nexthop/openpsirt/internal/access"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 )
 
@@ -57,13 +58,18 @@ func registerAssessment(api huma.API, in Ingest) {
 			"stays beside it, because a rating of ours shown where the world's goes reads " +
 			"as the world's.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusCreated,
-	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
+	}, anyProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		Vulnerability string `path:"vulnerability" doc:"The issue, by any name it is known under"`
 		Body          AssessmentBody
 	}) (*struct{ Body AssessmentBody }, error) {
 		subject, _, err := triaging(ctx, in)
 		if err != nil {
 			return nil, err
+		}
+		// Before the name is resolved (ACC-56). Refusing afterwards answers
+		// "is this issue known here" for anybody with an account.
+		if !subject.HoldsAnywhere(access.PublicTriage, access.PrivateTriage) {
+			return nil, huma.Error403Forbidden("not authorized")
 		}
 		issue, err := finding.NewVulnerabilities(in.DB.DB).ByName(ctx, input.Vulnerability)
 		if err != nil {
@@ -90,7 +96,7 @@ func registerAssessment(api huma.API, in Ingest) {
 			"proposed it, for the same reason every other second person here is somebody " +
 			"else: a control one person can complete alone is not a control.",
 		Tags: []string{"Triage"},
-	}, perProduct, "The proposer may not approve their own.", approveRights()...), func(ctx context.Context, input *struct {
+	}, anyProduct, "The proposer may not approve their own.", approveRights()...), func(ctx context.Context, input *struct {
 		ID int64 `path:"id"`
 	}) (*struct{ Body AssessmentBody }, error) {
 		subject, _, err := triaging(ctx, in)
@@ -99,6 +105,9 @@ func registerAssessment(api huma.API, in Ingest) {
 		}
 		claim, err := finding.NewStore(in.DB.DB).Agree(ctx, subject, input.ID)
 		if err != nil {
+			if errors.Is(err, access.ErrDenied) {
+				return nil, huma.Error403Forbidden("not authorized")
+			}
 			return nil, huma.Error422UnprocessableEntity(err.Error())
 		}
 		return &struct{ Body AssessmentBody }{Body: assessmentBody(*claim, "")}, nil
@@ -112,7 +121,7 @@ func registerAssessment(api huma.API, in Ingest) {
 			"reads it — where a finding sits in the list, how long it has, whether it is " +
 			"above the line a product triages — follows it back.",
 		Tags: []string{"Triage"}, DefaultStatus: http.StatusNoContent,
-	}, perProduct, "", triageRights()...), func(ctx context.Context, input *struct {
+	}, anyProduct, "", triageRights()...), func(ctx context.Context, input *struct {
 		ID int64 `path:"id"`
 	}) (*struct{}, error) {
 		subject, _, err := triaging(ctx, in)
@@ -120,6 +129,9 @@ func registerAssessment(api huma.API, in Ingest) {
 			return nil, err
 		}
 		if err := finding.NewStore(in.DB.DB).Withdraw(ctx, subject, input.ID); err != nil {
+			if errors.Is(err, access.ErrDenied) {
+				return nil, huma.Error403Forbidden("not authorized")
+			}
 			return nil, huma.Error422UnprocessableEntity(err.Error())
 		}
 		return &struct{}{}, nil
@@ -133,7 +145,8 @@ func registerAssessment(api huma.API, in Ingest) {
 			"ratings somebody has proposed and nobody has agreed to yet, which are the " +
 			"ones not yet affecting anything.",
 		Tags: []string{"Triage"},
-	}, anySubject, "Answers only what you may see."), func(ctx context.Context, input *struct {
+	}, anySubject, "Every claim, whoever asks: a rating is about an issue, not a product "+
+		"(TRI-40), so there is nothing here to narrow by."), func(ctx context.Context, input *struct {
 		State string `query:"state" enum:"proposed,live,withdrawn" doc:"Limit to one state"`
 		Limit int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 	}) (*listOutput[AssessmentBody], error) {

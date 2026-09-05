@@ -26,6 +26,12 @@
 {{- if and .Values.auth.trustedHeader.name (not .Values.auth.trustedHeader.sources) }}
 {{- fail "set auth.trustedHeader.sources: a header named with nothing to trust it from is a header anybody can set" }}
 {{- end }}
+{{- if or (and .Values.mail.server (not .Values.mail.from)) (and .Values.mail.from (not .Values.mail.server)) }}
+{{- fail "set mail.server and mail.from together, or neither: a server with nobody to send as sends nothing, and nothing is what an operator who configured half of it would never find out" }}
+{{- end }}
+{{- if and (or .Values.mail.password .Values.mail.existingSecret) (not .Values.mail.username) }}
+{{- fail "set mail.username: a password with no username is never sent, so the server would refuse every message and the mail would look configured" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -134,6 +140,23 @@ spec:
             {{- end }}
             - name: OPENPSIRT_TRUSTED_GROUPS_DELIMITER
               value: {{ .Values.auth.trustedHeader.groupsDelimiter | quote }}
+            {{- end }}
+            {{- if .Values.mail.server }}
+            - name: OPENPSIRT_MAIL_SERVER
+              value: {{ .Values.mail.server | quote }}
+            - name: OPENPSIRT_MAIL_FROM
+              value: {{ .Values.mail.from | quote }}
+            {{- with .Values.mail.username }}
+            - name: OPENPSIRT_MAIL_USERNAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if or .Values.mail.password .Values.mail.existingSecret }}
+            - name: OPENPSIRT_MAIL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mail.existingSecret | default (printf "%s-mail" (include "openpsirt.fullname" .)) }}
+                  key: {{ .Values.mail.existingSecretKey }}
+            {{- end }}
             {{- end }}
             - name: OPENPSIRT_AUTO_MIGRATE
               value: {{ .Values.autoMigrate | quote }}

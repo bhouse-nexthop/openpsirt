@@ -292,3 +292,35 @@ func TestAMatchThatStatesNoRangeSaysSoRatherThanGuessing(t *testing.T) {
 		t.Errorf("invented range %q from %q", got.MatchedRange, got.MatchedIn)
 	}
 }
+
+func TestTheRangeComesFromTheDetailTheKindWasDecidedBy(t *testing.T) {
+	// A match often carries two details: an advisory for the package's own
+	// ecosystem, and a comparison against an upstream range. The kind is
+	// decided by whether any of them compared an identifier, so the range has
+	// to come from that same one — otherwise a finding reads "not confirmed
+	// by a packager" beside a range that names the packaging revision, and
+	// the two halves of the evidence argue with each other.
+	const doc = `{"matches":[{
+	  "vulnerability":{"id":"CVE-2025-1000","severity":"High","namespace":"nvd:cpe"},
+	  "artifact":{"name":"busybox","version":"1.37.0-r31",
+	    "purl":"pkg:apk/alpine/busybox@1.37.0-r31?distro=alpine-3.24.1"},
+	  "matchDetails":[
+	    {"type":"exact-direct-match","found":{"versionConstraint":"< 1.37.0-r15"}},
+	    {"type":"cpe-match","found":{"versionConstraint":"<= 1.37.0 (unknown)"}}
+	  ]
+	}]}`
+
+	result, err := scanner.ParseGrype(strings.NewReader(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := result.Reported[0]
+	if got.Matched != finding.ByIdentifier {
+		t.Fatalf("reached %q, want the identifier match the cpe detail describes", got.Matched)
+	}
+	if got.MatchedRange != "<= 1.37.0 (unknown)" {
+		t.Errorf("the range reads %q, which is the other detail's — so the evidence "+
+			"names a packaging revision beside a verdict saying packaging was not considered",
+			got.MatchedRange)
+	}
+}

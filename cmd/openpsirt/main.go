@@ -209,7 +209,7 @@ func run(args []string, stdout, stderr *os.File) error {
 	// What leaves the application, where an operator configured somewhere for
 	// it to go. Nil when they did not, which is ordinary rather than broken:
 	// the notification area is the channel that always exists.
-	post := notify.NewPost(db.DB, mailChannel(cfg), cfg.BaseURL, logger)
+	post := notify.NewPost(db.DB, mailChannel(cfg), cfg.BaseURL, logger, name)
 	return serve(cfg, logger, handler, reader, runner, schedule, upstream, watch, post)
 }
 

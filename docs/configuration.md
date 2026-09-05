@@ -40,6 +40,32 @@ taken.
 |---|---|---|
 | `OPENPSIRT_SCANNER_PATH` | Where the vulnerability scanner binary lives. Empty means whatever the environment resolves. The scanner is a requirement of a deployment rather than an option: the vulnerability data is produced here, not sent in | unset |
 
+## Telling people
+
+Mail is how anything leaves the application. A deployment that sets none of
+this tells nobody anything outside it, which is an ordinary way to run: the
+notification area in the interface still works.
+
+`MAIL_FROM` and `MAIL_SERVER` are both needed for mail to happen at all — a
+server with nobody to send as is half a configuration, and either alone sends
+nothing rather than failing at startup. Credentials are optional, and are
+refused over a connection the server would not secure with STARTTLS.
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `OPENPSIRT_MAIL_FROM` | The address messages are sent as. Set it and the server together, or neither | unset |
+| `OPENPSIRT_MAIL_SERVER` | The SMTP server as `host:port`, e.g. `smtp.example.com:587` | unset |
+| `OPENPSIRT_MAIL_USERNAME` | Username, where the server wants one. Sent only after STARTTLS | unset |
+| `OPENPSIRT_MAIL_PASSWORD` | Password for that username. Sent only after STARTTLS | unset |
+
+Who gets what is not configuration: each person chooses in their own settings,
+and the daily digest is off until somebody asks for it. A message about a
+finding nobody has announced carries no detail — only that there is something,
+and a link.
+
+On the Helm chart these are the `mail` values, and the password goes in a
+Secret the chart makes or one you name.
+
 ## Publishing advisories
 
 An advisory is a document about a flaw in your own product. It is generated

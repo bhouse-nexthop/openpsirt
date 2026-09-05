@@ -246,6 +246,17 @@ func ParseGrype(r io.Reader) (Result, error) {
 // keeps this a description of the match rather than an attempt to reconcile
 // two, which is what the match kind beside it already refuses to do.
 func matchedRange(details []matchDetail) string {
+	// From the detail the kind was decided by, not merely the first that
+	// states one. A match often carries two — an ecosystem's advisory and a
+	// comparison against an upstream range — and taking the kind from one and
+	// the range from the other prints packaging-aware evidence beside a
+	// verdict that says the packaging was not considered. The two halves are
+	// read together and would then argue with each other.
+	for _, detail := range details {
+		if strings.Contains(strings.ToLower(detail.Type), "cpe") {
+			return strings.TrimSpace(detail.Found.VersionConstraint)
+		}
+	}
 	for _, detail := range details {
 		if stated := strings.TrimSpace(detail.Found.VersionConstraint); stated != "" {
 			return stated

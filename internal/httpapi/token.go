@@ -59,7 +59,7 @@ func registerTokens(api huma.API, in Ingest) {
 			"has set. A credential that never runs out is one nobody ever revokes, and those are " +
 			"found when somebody leaves and nobody knows what breaks if it is turned off.",
 		Tags: []string{"Access"}, DefaultStatus: http.StatusCreated,
-	}, ownSubject, ""), func(ctx context.Context, input *struct{ Body TokenBody }) (*struct{ Body TokenBody }, error) {
+	}, ownSubject, "Signed in, not through a token: a token cannot mint another."), func(ctx context.Context, input *struct{ Body TokenBody }) (*struct{ Body TokenBody }, error) {
 		subject, rights, names, err := mine(ctx, in)
 		if err != nil {
 			return nil, err
@@ -124,7 +124,7 @@ func registerTokens(api huma.API, in Ingest) {
 			"paths.",
 		Tags:          []string{"Access"},
 		DefaultStatus: http.StatusNoContent,
-	}, ownSubject, ""), func(ctx context.Context, input *struct {
+	}, ownSubject, "Signed in, not through a token: a token cannot withdraw another."), func(ctx context.Context, input *struct {
 		Name string `path:"name"`
 	}) (*struct{}, error) {
 		subject, rights, _, err := mine(ctx, in)

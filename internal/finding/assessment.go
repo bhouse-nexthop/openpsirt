@@ -71,6 +71,13 @@ func (s *Store) Assess(ctx context.Context, subject access.Subject, vulnerabilit
 	if subject.Kind != access.Person || subject.ID == 0 {
 		return nil, errors.New("an assessment is recorded as made by whoever made it")
 	}
+	// Triage somewhere, rather than merely being signed in (ACC-62). A rating
+	// here moves deadlines and can take a finding off the working list
+	// altogether, in every product at once, and being able to read one product
+	// is not a reason to be trusted with that.
+	if !subject.HoldsAnywhere(access.PublicTriage, access.PrivateTriage) {
+		return nil, access.Denied("say what we think of an issue")
+	}
 	severity = strings.TrimSpace(strings.ToLower(severity))
 	if Band(severity) != severity || severity == "" {
 		return nil, fmt.Errorf("%q is not a rating — write one of %s",
@@ -152,6 +159,11 @@ func (s *Store) Agree(ctx context.Context, subject access.Subject, id int64) (*A
 	if subject.Kind != access.Person || subject.ID == 0 {
 		return nil, errors.New("agreeing is something a person does")
 	}
+	// The same people who may agree to a decision, and for the same reason:
+	// agreeing is what puts a milder rating into force (ACC-62).
+	if !subject.HoldsAnywhere(access.Approver, access.PublicTriage, access.PrivateTriage) {
+		return nil, access.Denied("agree to a rating")
+	}
 	var agreed *Assessment
 	err := database.InTransaction(ctx, s.db, func(ctx context.Context, tx bun.Tx) error {
 		claim := new(Assessment)
@@ -187,6 +199,11 @@ func (s *Store) Agree(ctx context.Context, subject access.Subject, id int64) (*A
 func (s *Store) Withdraw(ctx context.Context, subject access.Subject, id int64) error {
 	if subject.Kind != access.Person || subject.ID == 0 {
 		return errors.New("withdrawing is something a person does")
+	}
+	// Taking a rating back is making one (ACC-62): the published severity
+	// returns, and everything reading it follows.
+	if !subject.HoldsAnywhere(access.PublicTriage, access.PrivateTriage) {
+		return access.Denied("take a rating back")
 	}
 	return database.InTransaction(ctx, s.db, func(ctx context.Context, tx bun.Tx) error {
 		claim := new(Assessment)

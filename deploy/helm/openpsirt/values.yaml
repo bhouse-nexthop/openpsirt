@@ -103,6 +103,27 @@ auth:
     groupsHeader: ""
     groupsDelimiter: ","
 
+# Mail is how anything leaves the application. Leave server empty and this
+# deployment tells nobody anything outside it, which is a supported way to run:
+# the notification area in the interface still works. Who gets what is each
+# person's own setting rather than a deployment one.
+mail:
+  # Both together, or neither: one without the other fails at render, since a
+  # server with nobody to send as sends nothing and nothing is what an
+  # operator would never notice.
+  server: ""
+  from: ""
+  # Credentials, where the server wants them. They are sent only over a
+  # connection STARTTLS secured; a server that will not secure one is refused
+  # rather than handed the password anyway.
+  username: ""
+  # Set password here and the chart puts it in a Secret, or name one you
+  # manage yourself. A secret in values.yaml ends up in your release history
+  # and probably in version control.
+  password: ""
+  existingSecret: ""
+  existingSecretKey: "mail-password"
+
 # Schema changes are applied at startup by default, which makes an upgrade
 # just a deployment. Turn this off to run "openpsirt migrate up" yourself,
 # under different credentials, at a time you choose.

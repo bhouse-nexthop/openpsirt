@@ -297,7 +297,7 @@ func TestOnlySomebodyWithAnAddressIsSentAnything(t *testing.T) {
 		}
 
 		sender := &recorder{}
-		post := notify.NewPost(db.DB, sender, "https://psirt.example", discard())
+		post := notify.NewPost(db.DB, sender, "https://psirt.example", discard(), "test")
 		if sent, failed, err := post.Once(ctx); err != nil || sent != 0 || failed != 0 {
 			t.Fatalf("with no address: sent=%d failed=%d err=%v", sent, failed, err)
 		}
@@ -305,7 +305,7 @@ func TestOnlySomebodyWithAnAddressIsSentAnything(t *testing.T) {
 			t.Fatalf("a message was sent to somebody with nowhere to send it: %+v", sender.sent)
 		}
 
-		if err := access.NewStore(db.DB).SetEmail(ctx, me.ID, "ana@example", false); err != nil {
+		if err := access.NewStore(db.DB).SetEmail(ctx, me.ID, "ana@example", access.Recorded); err != nil {
 			t.Fatal(err)
 		}
 		sent, failed, err := post.Once(ctx)
@@ -331,7 +331,7 @@ func TestAMessageThatCannotBeSentIsLeftAloneEventually(t *testing.T) {
 	// arrived that did not.
 	eachWithDB(t, func(t *testing.T, db *database.DB, s *notify.Store, me, _ access.Subject) {
 		ctx := t.Context()
-		if err := access.NewStore(db.DB).SetEmail(ctx, me.ID, "ana@example", false); err != nil {
+		if err := access.NewStore(db.DB).SetEmail(ctx, me.ID, "ana@example", access.Recorded); err != nil {
 			t.Fatal(err)
 		}
 		if err := s.Tell(ctx, notify.Telling{
@@ -341,7 +341,7 @@ func TestAMessageThatCannotBeSentIsLeftAloneEventually(t *testing.T) {
 		}
 
 		sender := &recorder{fail: errors.New("no such mailbox")}
-		post := notify.NewPost(db.DB, sender, "https://psirt.example", discard())
+		post := notify.NewPost(db.DB, sender, "https://psirt.example", discard(), "test")
 		for i := 0; i < 8; i++ {
 			if _, _, err := post.Once(ctx); err != nil {
 				t.Fatalf("sweep %d: %v", i, err)
@@ -383,7 +383,7 @@ func TestADigestCarriesOnlyWhatNothingElseSaid(t *testing.T) {
 	eachWithDB(t, func(t *testing.T, db *database.DB, s *notify.Store, me, _ access.Subject) {
 		ctx := t.Context()
 		rights := access.NewStore(db.DB)
-		if err := rights.SetEmail(ctx, me.ID, "ana@example", false); err != nil {
+		if err := rights.SetEmail(ctx, me.ID, "ana@example", access.Recorded); err != nil {
 			t.Fatal(err)
 		}
 
@@ -391,7 +391,7 @@ func TestADigestCarriesOnlyWhatNothingElseSaid(t *testing.T) {
 		if err := s.Tell(ctx, notify.Telling{
 			PersonID: me.ID, Kind: notify.Assigned,
 			Body:     "CVE-2026-1 in libfoo",
-			Concerns: notify.Concerning("mine", "CVE-2026-1", "libfoo"),
+			Concerns: notify.Concerning(7, 11, 13),
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -400,10 +400,10 @@ func TestADigestCarriesOnlyWhatNothingElseSaid(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !told[notify.Concerning("mine", "CVE-2026-1", "libfoo")] {
+		if !told[notify.Concerning(7, 11, 13)] {
 			t.Error("what somebody was told about was not recorded")
 		}
-		if told[notify.Concerning("mine", "CVE-2026-2", "libfoo")] {
+		if told[notify.Concerning(7, 12, 13)] {
 			t.Error("something nobody was told about reads as told")
 		}
 	})

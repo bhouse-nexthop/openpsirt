@@ -372,15 +372,18 @@ func (s *Store) AcknowledgeAll(ctx context.Context, subject access.Subject) (int
 
 // Concerning names the finding a notification is about.
 //
-// One function so that whoever records a telling and whoever asks later
-// whether somebody was told agree on the shape without either writing it out.
+// Identifiers rather than names, for two reasons that both bit. A name is
+// spelled differently depending on where it is read — the path a request names
+// a product by is not the display name a query returns — so keying on one and
+// looking up by the other never matches, and the digest silently repeats
+// everything it was meant to leave out. And a name is unbounded: a component
+// name comes from a third party's inventory, and three of them concatenated
+// overflow a bounded column on every engine but SQLite, where the write fails
+// and the person is told nothing at all.
+//
 // Assignment covers every build of a product holding the same component
 // (REL-01), so the build is deliberately not part of it: being told about one
 // build and asked about another is the same piece of work.
-//
-// The separator is a unit separator rather than a punctuation character,
-// because a component name may contain any punctuation somebody chose and two
-// different findings must not produce one key.
-func Concerning(product, vulnerability, component string) string {
-	return product + "\x1f" + vulnerability + "\x1f" + component
+func Concerning(productID, vulnerabilityID, componentID int64) string {
+	return fmt.Sprintf("%d/%d/%d", productID, vulnerabilityID, componentID)
 }

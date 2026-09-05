@@ -497,21 +497,24 @@ check-packaging:
 	  --set auth.bootstrapAdmins='{admin}' --set auth.baseURL=https://psirt.example.com \
 	  --set auth.oidc.issuer=https://id.example.com --set auth.oidc.clientID=abc \
 	  --set auth.oidc.clientSecret=shh >/dev/null
-	# An install that cannot reach a login is not an install. Each of these
-	# refuses at template time rather than producing a deployment that starts,
-	# fails its own administration check, and crash-loops with the reason in a
-	# log nobody is watching yet.
+	# An install that cannot reach a login is not an install, and mail that is
+	# half configured is mail nobody gets. Each of these refuses at template
+	# time rather than producing a deployment that starts, fails its own
+	# administration check, and crash-loops with the reason in a log nobody is
+	# watching yet — or one that comes up healthy and quietly tells nobody.
 	@for missing in \
 	  "nobody can administer:--set database.existingSecret=s" \
 	  "no way to sign in:--set database.existingSecret=s --set auth.bootstrapAdmins={admin}" \
 	  "no address to return to:--set database.existingSecret=s --set auth.bootstrapAdmins={admin} --set auth.oidc.issuer=https://id.example.com" \
-	  "a header anybody can set:--set database.existingSecret=s --set auth.bootstrapAdmins={admin} --set auth.trustedHeader.name=X-User"; do \
+	  "a header anybody can set:--set database.existingSecret=s --set auth.bootstrapAdmins={admin} --set auth.trustedHeader.name=X-User" \
+	  "half a mail configuration:--set database.existingSecret=s --set auth.bootstrapAdmins={admin} --set auth.trustedHeader.name=X-User --set auth.trustedHeader.sources={10.0.0.0/8} --set mail.server=smtp:587" \
+	  "a password that is never sent:--set database.existingSecret=s --set auth.bootstrapAdmins={admin} --set auth.trustedHeader.name=X-User --set auth.trustedHeader.sources={10.0.0.0/8} --set mail.server=smtp:587 --set mail.from=psirt@example.com --set mail.password=shh"; do \
 	  what="$${missing%%:*}"; args="$${missing#*:}"; \
 	  if helm template t deploy/helm/openpsirt $$args >/dev/null 2>&1; then \
 	    echo "the chart accepted an install with $$what"; exit 1; \
 	  fi; \
 	done
-	@echo "the chart refuses every install that could not be signed into"
+	@echo "the chart refuses every install that could not be signed into, and every mail configuration that would send nothing"
 
 run:
 	$(GO) run ./cmd/openpsirt

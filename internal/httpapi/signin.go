@@ -256,7 +256,7 @@ func fillEmail(r *http.Request, in Ingest, rights *access.Store,
 	if !identity.EmailVerified || strings.TrimSpace(identity.Email) == "" {
 		return
 	}
-	if err := rights.SetEmail(r.Context(), person.ID, identity.Email, true); err != nil && in.Logger != nil {
+	if err := rights.SetEmail(r.Context(), person.ID, identity.Email, access.FromProvider); err != nil && in.Logger != nil {
 		in.Logger.Warn("could not record where to reach somebody who signed in",
 			"person", person.Identity, "error", err)
 	}

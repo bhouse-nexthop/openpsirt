@@ -159,7 +159,8 @@ func registerScans(api huma.API, in Ingest) {
 		MaxBodyBytes:  maxUpload(in.Limits),
 		Middlewares:   huma.Middlewares{boundedForm(api, maxUpload(in.Limits))},
 		DefaultStatus: http.StatusAccepted,
-	}, perProduct, "", triageRights()...), func(ctx context.Context, input *UploadInput) (*UploadOutput, error) {
+	}, perProduct, "A pipeline key covering this product, branch and variant sends without any "+
+		"of these, and is how a build sends.", triageRights()...), func(ctx context.Context, input *UploadInput) (*UploadOutput, error) {
 		return upload(ctx, in, input)
 	})
 }
@@ -416,7 +417,7 @@ type ReceiptBody struct {
 	Failure string `json:"failure,omitempty" doc:"Why it could not be used, where it could not"`
 	// Caution qualifies the answer rather than saying there is none, so it is
 	// reported beside a scan that succeeded rather than instead of one.
-	Caution string `json:"caution,omitempty" doc:"What the scanner said while succeeding — a qualification on what it found, such as matching Go binaries at module granularity because they carry no function symbols, which can report a component as affected when the vulnerable function is not linked in"`
+	Caution string `json:"caution,omitempty" doc:"What the scanner said while still succeeding — a qualification on what it found rather than a failure. Usually empty: the scan runs over an inventory written from what is held here, so most of what a scanner would warn about a producer's document it has no grounds to say about ours"`
 	// What the run covering this upload changed, counted as issues at
 	// components rather than as places. Absent where no run has covered it
 	// yet, and absent on an upload whose run was already reported against a

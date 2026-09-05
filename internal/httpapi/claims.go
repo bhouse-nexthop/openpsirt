@@ -140,9 +140,12 @@ func registerClaims(api huma.API, in Ingest) {
 				PersonID: author, Kind: notify.SentBack,
 				Body: "A claim of yours was sent back: " + input.Body.Because,
 				Link: link,
-				// The words an approver wrote are about the finding, so they
-				// are as private as it is (NTF-15).
-				Private: back.Decision.Visibility == access.Private,
+				// The words an approver wrote are about the findings, so they
+				// are as private as the most careful of them. Read off the
+				// claim rather than off its representative row: that row is
+				// chosen by identifier and a claim's rows need not agree
+				// (NTF-15).
+				Private: back.Undisclosed,
 			}); err != nil && in.Logger != nil {
 				in.Logger.Error("could not say that a claim was sent back",
 					"error", err, "claim", input.ID, "person", author)
