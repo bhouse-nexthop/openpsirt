@@ -624,10 +624,12 @@ func TestAssigningSomethingUndisclosedTellsOnlyWhoMayReadIt(t *testing.T) {
 
 		const at = "/v1/products/mine/streams/master/variants/broadcom" +
 			"/findings/CVE-2026-9999/components/libnl-3-200/assignment"
-		// An administrator, because giving work to somebody else asks for the
-		// assigner right as well as triage (ACC-61), and this test is about
-		// what the recipient is told rather than about who may hand it over.
-		if got := asPerson(t, r, "admin", http.MethodPut, at,
+		// The identity holding private triage and the assigner right, because
+		// giving work to somebody else asks for both (ACC-61) and this test is
+		// about what the recipient is told rather than about who may hand it
+		// over. An administrator used to stand here and no longer holds either
+		// (ACC-64).
+		if got := asPerson(t, r, "private-dispatcher", http.MethodPut, at,
 			`{"person":"reader"}`); got.Code != http.StatusNoContent {
 			t.Fatalf("assigning answered %d: %s", got.Code, got.Body.String())
 		}
@@ -649,7 +651,7 @@ func TestAssigningSomethingUndisclosedTellsOnlyWhoMayReadIt(t *testing.T) {
 
 		// And somebody who may read them is told, so the rule narrows rather
 		// than silences.
-		if got := asPerson(t, r, "admin", http.MethodPut, at,
+		if got := asPerson(t, r, "private-dispatcher", http.MethodPut, at,
 			`{"person":"private"}`); got.Code != http.StatusNoContent {
 			t.Fatalf("assigning answered %d: %s", got.Code, got.Body.String())
 		}
@@ -1190,7 +1192,11 @@ func TestWithdrawingSomebodysLastRoleHandsBackWhatTheyHeld(t *testing.T) {
 				Open   int    `json:"open"`
 			} `json:"items"`
 		}
-		read(t, r, "admin", "/v1/assignments", &holdings)
+		// Read as the administrator who granted themselves reading: who holds
+		// how much open work is a count of findings, which administering does
+		// not reach (ACC-64). Withdrawing the role below is administration and
+		// is still done as the plain administrator, which is the split.
+		read(t, r, "admin-reader", "/v1/assignments", &holdings)
 		if len(holdings.Items) == 0 {
 			t.Fatal("nothing was assigned to begin with")
 		}

@@ -98,10 +98,12 @@ func TestMeasureAYearOfNightlyScans(t *testing.T) {
 		store := finding.NewStore(db.DB)
 		graphs := graph.NewStore(db.DB)
 		scans := ingest.NewStore(db.DB)
-		// An administrator, and the timings say so: every product is visible to
-		// one, so the queries run without the narrowing an ordinary reader's
-		// carry. The cheapest plan available rather than the common one.
-		who := access.NewPerson(1, "an administrator", true, nil)
+		// Somebody granted reading on the one product these builds belong to.
+		// The narrowing is the ordinary one, which is what the common plan
+		// carries — an administrator is no longer a way to run without it
+		// (ACC-64).
+		who := access.NewPerson(1, "a reader", false,
+			map[int64][]access.Role{product.ID: {access.PrivateRead}})
 
 		// What a night costs in *statements*, not only in seconds.
 		//

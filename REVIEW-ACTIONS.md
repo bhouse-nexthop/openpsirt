@@ -271,7 +271,36 @@ person can be acted as directly:
   (NTF-18). Fix the design document in the same change, which currently
   describes something that does not run.
 
-- [ ] **X8 · Administrator is silently every role, and an admin's token can mint credentials.** *Model gap, unrecorded.* **S–M**
+- [x] **X8 · Administrator is silently every role, and an admin's token can mint credentials.** *Model gap, unrecorded.* **S–M**
+
+  **Done, as recommended.** Recorded as ACC-64 (admin administers) and ACC-65
+  (a credential cannot create a person or a key).
+
+  It was not "one `if s.Admin { return true }`". Removing it broke **38 tests**,
+  and two of them were real behavior rather than test convenience:
+
+  - **Two questions were one.** "May I know this product exists" and "may I read
+    what is open against it" were both answered by `Products()`. An
+    administrator needs the first to administer the catalog and not the second,
+    so they are now `Knows()` and `Products()`. Without the split an
+    administrator could not list the products they administer.
+  - **The background passes leaned on admin to mean "sees everything".** The
+    watch that reports what has gone quiet asked as an admin-with-no-grants.
+    That is not a person's authorization at all, so it is now
+    `access.Everything(...)` — the deployment itself, which nothing resolves a
+    credential to and which holds no role.
+
+  The rest were tests using an admin as a shortcut for "can see everything";
+  each now grants the roles it actually meant. The authorization matrix gained
+  an `admin-reader` identity — an administrator who granted themselves reading —
+  because that is the path the decision creates.
+
+  The demo's administrator now grants itself roles while seeding, which is what
+  an operator does and what the decision intends to be visible.
+
+  Both controls verified by breaking them. Reverting the minting gate reproduces
+  the review's evidence exactly: `201` for an admin person and `201` for a
+  pipeline key, both from a token.
 
       POST /v1/decisions/61/approval             X-User: dev (admin, no product roles) → 204
       POST /v1/disclosure-extensions/1/approval  X-User: dev                            → 204

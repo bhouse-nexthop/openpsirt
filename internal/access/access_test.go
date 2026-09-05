@@ -170,7 +170,13 @@ func TestACapabilityHandsOverNoVisibility(t *testing.T) {
 	})
 }
 
-func TestAnAdministratorHoldsEverythingEverywhere(t *testing.T) {
+func TestAnAdministratorAdministersRatherThanHoldingEveryRole(t *testing.T) {
+	// ACC-64. It read the other way and nothing said so: an administrator
+	// held every role on every product, so one account proposed and approved
+	// its own work, re-rated severities and read every embargo. That defeats
+	// separation of duties silently, and it made a read-only auditor
+	// impossible — nobody could see everything without also being able to
+	// change everything.
 	each(t, func(t *testing.T, f *fixture) {
 		ctx := t.Context()
 		if _, err := f.store.Ensure(ctx, "admin", "", true); err != nil {
@@ -180,15 +186,63 @@ func TestAnAdministratorHoldsEverythingEverywhere(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		for _, product := range f.products {
-			if !subject.Reads(access.Private, product) || !subject.Sees(product) {
-				t.Error("an administrator was refused a product")
+			// Administering the catalog is knowing a product exists.
+			if !subject.Sees(product) {
+				t.Error("an administrator cannot see a product they administer")
+			}
+			// Reading what is open against it is not.
+			if subject.Reads(access.Public, product) || subject.Reads(access.Private, product) {
+				t.Error("an administrator reads findings they were never granted")
+			}
+			for _, role := range []access.Role{
+				access.PublicTriage, access.PrivateTriage, access.Approver, access.Assigner,
+			} {
+				if subject.Holds(role, product) {
+					t.Errorf("an administrator holds %s without being granted it", role)
+				}
 			}
 		}
-		if _, all := subject.Products(); !all {
-			t.Error("an administrator's reach is reported as a list")
+		if subject.HoldsAnywhere(access.PublicTriage, access.PrivateTriage) {
+			t.Error("an administrator triages somewhere without being granted it")
+		}
+
+		// The catalog and the findings are answered by different questions.
+		if _, all := subject.Knows(); !all {
+			t.Error("an administrator is not told which products exist")
+		}
+		if ids, all := subject.Products(); all || len(ids) != 0 {
+			t.Errorf("an administrator reads findings in %v (all=%v), want none", ids, all)
+		}
+
+		// And granting themselves a role works like anybody else's, which is
+		// what makes the grant visible in the same record.
+		sonic := f.products["sonic"]
+		if err := f.store.GrantRole(ctx, mustID(t, f, "admin"), sonic, access.PublicRead); err != nil {
+			t.Fatal(err)
+		}
+		granted, err := f.store.Resolve(ctx, "admin")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !granted.Reads(access.Public, sonic) {
+			t.Error("an administrator who granted themselves reading still cannot read")
+		}
+		if granted.Reads(access.Private, sonic) {
+			t.Error("public reading reached undisclosed work")
 		}
 	})
+}
+
+// mustID is the account identifier for somebody already recorded.
+func mustID(t *testing.T, f *fixture, identity string) int64 {
+	t.Helper()
+	person, err := f.store.ByIdentity(t.Context(), identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return person.ID
 }
 
 func TestAKeyMaySendAndNothingElse(t *testing.T) {

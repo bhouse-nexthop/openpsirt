@@ -253,7 +253,10 @@ func stillAdministrable(ctx context.Context, rights *access.Store, a Administeri
 // productNames maps product rows to the names bindings state them by.
 func productNames(ctx context.Context, a Administering) (map[int64]string, error) {
 	names := a.Catalog()
-	products, err := names.Products(ctx, access.NewPerson(0, "", true, nil))
+	// Every product, because this is naming the ones bindings already refer
+	// to rather than answering anybody about them. The caller is administering
+	// group bindings and was authorized for that before reaching here.
+	products, err := names.Products(ctx, access.Everything("naming products for bindings"))
 	if err != nil {
 		return nil, wentWrong(a.Logger, "cannot read the products roles are held against", err)
 	}

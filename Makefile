@@ -660,6 +660,19 @@ demo-down:
 # Declares somewhere to file scans against and sends the full-size fixture.
 # Idempotent: declaring something that exists succeeds and changes nothing, so
 # this can be run again without tearing anything down.
+# The administrator grants themselves what they need on a product they have
+# just declared.
+#
+# Declaring a product is administration; filing a build against it and reading
+# what is open are not (ACC-64). So the bootstrap administrator grants
+# themselves roles like anybody else, which is also the honest demonstration —
+# the grant is visible in the same record everyone else's is, rather than
+# implied by a flag. Idempotent, so re-seeding is not a special case.
+demo-grant = curl -sS --noproxy '*' -o /dev/null -w "  grant dev on $(1) %{http_code}\n" \
+	  -X POST -H "Origin: $(DEMO_URL)" -H 'Content-Type: application/json' \
+	  -d "{\"identity\":\"proxy:$(DEMO_USER)\",\"display_name\":\"$(DEMO_USER)\",\"provider\":\"proxy\",\"username\":\"$(DEMO_USER)\",\"admin\":true,\"holds\":[{\"product\":\"$(1)\",\"role\":\"private-triage\"},{\"product\":\"$(1)\",\"role\":\"assigner\"},{\"product\":\"$(1)\",\"role\":\"approver\"},{\"product\":\"$(1)\",\"role\":\"reporting\"}]}" \
+	  "$(DEMO_URL)/v1/people"
+
 demo-seed:
 	@command -v xz >/dev/null || { echo "xz is needed to read the fixtures"; exit 1; }
 	@for entry in $(DEMO_BUILDS); do \
@@ -675,6 +688,7 @@ demo-seed:
 	      -H 'Content-Type: application/json' -d "$$body" \
 	      "$(DEMO_URL)$$path"; \
 	  done; \
+	  $(call demo-grant,$$product); \
 	  curl -sS --noproxy '*' -o /dev/null -w "  upload $$product/$$stream/$$variant %{http_code}\n" \
 	    -X POST -H "Origin: $(DEMO_URL)" \
 	    -F "inventory=@$(DEMO_DIR)/$$product-$$stream-$$variant.cdx.json" \
@@ -704,6 +718,7 @@ demo-seed:
 	    -H 'Content-Type: application/json' -d "$$body" \
 	    "$(DEMO_URL)$$path"; \
 	done
+	@$(call demo-grant,openpsirt)
 	@for variant in binary container; do \
 	  curl -sS --noproxy '*' -o /dev/null -w "  upload openpsirt/main/$$variant %{http_code}\n" \
 	    -X POST -H "Origin: $(DEMO_URL)" \

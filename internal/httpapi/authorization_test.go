@@ -212,6 +212,20 @@ func reachOn(t *testing.T, on engines, fn func(t *testing.T, r *reach)) {
 		if err := rights.Claim(ctx, administrator.ID, access.ProxyProvider, "admin"); err != nil {
 			t.Fatal(err)
 		}
+		// An administrator who granted themselves reading, which is how one
+		// reaches findings since ACC-64 — and the point of the pair is that
+		// the grant is visible in the same record as everybody else's rather
+		// than implied by the flag.
+		adminReader, err := rights.Ensure(ctx, "admin-reader", "", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := rights.Claim(ctx, adminReader.ID, access.ProxyProvider, "admin-reader"); err != nil {
+			t.Fatal(err)
+		}
+		if err := rights.GrantRole(ctx, adminReader.ID, mine.ID, access.PrivateRead); err != nil {
+			t.Fatal(err)
+		}
 		// One entry per identity, and more than one role where the point of
 		// the identity is what holding both allows. "triager" deliberately
 		// holds triage alone: taking unowned work is theirs and giving work
@@ -229,8 +243,11 @@ func reachOn(t *testing.T, on engines, fn func(t *testing.T, r *reach)) {
 			// the identity that shows it.
 			"dispatcher":     {access.PublicRead, access.Assigner},
 			"private-triage": {access.PrivateTriage},
-			"approver":       {access.Approver},
-			"reporter":       {access.Reporting},
+			// Private triage plus the right to hand work to somebody else,
+			// for the tests about what a recipient is told.
+			"private-dispatcher": {access.PrivateTriage, access.Assigner},
+			"approver":           {access.Approver},
+			"reporter":           {access.Reporting},
 		} {
 			person, err := rights.Ensure(ctx, who, "", false)
 			if err != nil {
@@ -431,7 +448,11 @@ func TestWhoMayReachWhat(t *testing.T) {
 			{"reader", http.MethodGet, mineFound, http.StatusOK},
 			{"private", http.MethodGet, mineFound, http.StatusOK},
 			{"triager", http.MethodGet, mineFound, http.StatusOK},
-			{"admin", http.MethodGet, mineFound, http.StatusOK},
+			// An administrator holds no role on this product, so they read
+			// nothing of it (ACC-64). Administering the catalog is knowing the
+			// build exists, which is why this is 403 rather than 404.
+			{"admin", http.MethodGet, mineFound, http.StatusForbidden},
+			{"admin-reader", http.MethodGet, mineFound, http.StatusOK},
 			{"reader", http.MethodGet, theirFound, http.StatusNotFound},
 			{"approver", http.MethodGet, mineFound, http.StatusNotFound},
 			{"reporter", http.MethodGet, mineFound, http.StatusNotFound},
@@ -440,7 +461,8 @@ func TestWhoMayReachWhat(t *testing.T) {
 			{"reader", http.MethodGet, mineWhole, http.StatusOK},
 			{"private", http.MethodGet, mineWhole, http.StatusOK},
 			{"triager", http.MethodGet, mineWhole, http.StatusOK},
-			{"admin", http.MethodGet, mineWhole, http.StatusOK},
+			{"admin", http.MethodGet, mineWhole, http.StatusForbidden},
+			{"admin-reader", http.MethodGet, mineWhole, http.StatusOK},
 			{"reader", http.MethodGet, theirWhole, http.StatusNotFound},
 			{"approver", http.MethodGet, mineWhole, http.StatusNotFound},
 			{"reporter", http.MethodGet, mineWhole, http.StatusNotFound},

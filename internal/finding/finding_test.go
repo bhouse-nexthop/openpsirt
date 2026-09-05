@@ -918,7 +918,11 @@ func TestOnlyWhatSomebodyMayReadIsRead(t *testing.T) {
 			{"private reader", f.holding(t, access.PrivateRead), 2, false},
 			{"private triager", f.holding(t, access.PrivateTriage), 2, false},
 			{"an approver alone", f.holding(t), 0, true},
-			{"an administrator", access.NewPerson(1, "admin", true, nil), 2, false},
+			// An administrator holds no role here, so they read nothing here
+			// (ACC-64). Administering the catalog is not reading what is open
+			// against it, and this is the row that used to say otherwise.
+			{"an administrator granted nothing", access.NewPerson(1, "admin", true, nil), 0, true},
+			{"an administrator granted private reading", f.admin(t, access.PrivateRead), 2, false},
 			{"a pipeline", access.NewPipeline(1, "nightly", access.Scope{ProductID: f.productID}), 0, true},
 		} {
 			rows, err := f.store.Open(t.Context(), c.who, f.target)
@@ -1727,4 +1731,23 @@ func TestARunThatWarnsWhileSucceedingKeepsWhatItSaid(t *testing.T) {
 			t.Errorf("a run that warned reads as failed: %q", kept.Failure)
 		}
 	})
+}
+
+// admin returns somebody who administers this deployment and has granted
+// themselves roles on this fixture's product, which is how an administrator
+// reaches findings since ACC-64.
+func (f *fixture) admin(t *testing.T, roles ...access.Role) access.Subject {
+	t.Helper()
+	return access.NewPerson(1, "admin", true, map[int64][]access.Role{f.productID: roles})
+}
+
+// holdingIn returns somebody holding roles on several products, for the reads
+// that cross one.
+func (f *fixture) holdingIn(t *testing.T, products []int64, roles ...access.Role) access.Subject {
+	t.Helper()
+	grants := map[int64][]access.Role{}
+	for _, id := range products {
+		grants[id] = roles
+	}
+	return access.NewPerson(1, "someone", false, grants)
 }

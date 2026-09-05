@@ -443,7 +443,11 @@ func TestWhatAgreeingWouldDoCountsWhatCrossesTheLineAndNotWhatIsAlreadyBelow(t *
 		}
 
 		f.recorded(t, 1, "someone")
-		who := access.NewPerson(1, "someone", true, nil)
+		// Granted on both products rather than an administrator: since ACC-64
+		// administering is not reading, and what this measures is a count
+		// across the products somebody actually holds.
+		who := f.holdingIn(t, []int64{f.productID, f.productOf(t, strict)},
+			access.PrivateTriage)
 		claim, err := f.store.Assess(ctx, who, f.issue(t, "CVE-2026-BOTH"),
 			"low", "Not worth an afternoon.")
 		if err != nil {

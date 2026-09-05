@@ -311,10 +311,12 @@ func (w *Watch) quietBuilds(ctx context.Context) ([]Holds, error) {
 		return nil, fmt.Errorf("read how long counts as quiet: %w", err)
 	}
 
-	// Asked as somebody who can see everything, because that is what this is:
-	// the tool reporting on itself rather than answering a person. What it
-	// produces is then told only to administrators.
-	everything := access.NewPerson(0, "the watch", true, nil)
+	// Asked as the deployment rather than as anybody in it, because that is
+	// what this is: the tool reporting on itself rather than answering a
+	// person. What it produces is then told only to administrators — who,
+	// since ACC-64, do not themselves read every product, which is exactly
+	// why this could no longer be an administrator's subject.
+	everything := access.Everything("the watch")
 	rows, err := ingest.NewStore(w.db).Scanning(ctx, everything, finding.Scope{}, after)
 	if err != nil {
 		return nil, err

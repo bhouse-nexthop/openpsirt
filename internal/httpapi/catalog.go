@@ -617,6 +617,34 @@ func administrating(ctx context.Context) error {
 	return nil
 }
 
+// mintingCredentials is administrating, for the two acts that create a
+// credential outliving whoever asked.
+//
+// **A credential may not mint another** (ACC-33, ACC-34, ACC-65). That already
+// held for a personal token issuing a token, and it was got around by what an
+// administrator's token could make instead: recording a person — an
+// administrator, even — and creating a pipeline key. Both outlive the token
+// and neither is bounded by it, so the narrow credential could always ask for
+// a wide one.
+//
+// Only these two. The rest of administration is reversible by another
+// administrator and leaves the record every change here leaves; creating a
+// credential is the one that hands out a new way in.
+func mintingCredentials(ctx context.Context) error {
+	if err := administrating(ctx); err != nil {
+		return err
+	}
+	subject, err := requester(ctx)
+	if err != nil {
+		return err
+	}
+	if subject.Delegated() {
+		return huma.Error403Forbidden(
+			"a credential cannot create another — sign in to record a person or create a key")
+	}
+	return nil
+}
+
 // storeFor gives the handlers a catalog, or says plainly that this process
 // has none.
 func storeFor(d Declaring) (*catalog.Store, error) {

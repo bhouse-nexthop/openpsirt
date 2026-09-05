@@ -219,12 +219,14 @@ func registerAdministration(api huma.API, a Administering) {
 		OperationID: "record-person", Method: http.MethodPost, Path: "/v1/people",
 		Summary: "Create a user and grant roles",
 		Description: "Records somebody so that they may sign in, and optionally what they hold. " +
-			"Recording the same person again confirms them and adds any roles named.",
+			"Recording the same person again confirms them and adds any roles named.\n\n" +
+			"**Requires a session.** A personal token cannot record a person, because the " +
+			"account it would create outlives the token and is not bounded by it.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusCreated,
 	}, deploymentWide, ""), func(ctx context.Context, in *struct {
 		Body RecordBody
 	}) (*declaredOutput[PersonBody], error) {
-		store, names, err := administerable(ctx, a)
+		store, names, err := mintable(ctx, a)
 		if err != nil {
 			return nil, err
 		}
@@ -424,12 +426,14 @@ func registerAdministration(api huma.API, a Administering) {
 		Summary: "Create an API key",
 		Description: "Creates a credential a build may send scans with, and returns its secret. " +
 			"The secret is shown once and stored hashed: a credential store that can hand back " +
-			"what it holds gives up every pipeline's key with a copy of the database.",
+			"what it holds gives up every pipeline's key with a copy of the database.\n\n" +
+			"**Requires a session.** A credential cannot create another, and a key created by " +
+			"one would outlive it.",
 		Tags: []string{"Administration"}, DefaultStatus: http.StatusCreated,
 	}, deploymentWide, ""), func(ctx context.Context, in *struct {
 		Body KeyBody
 	}) (*declaredOutput[KeyBody], error) {
-		store, names, err := administerable(ctx, a)
+		store, names, err := mintable(ctx, a)
 		if err != nil {
 			return nil, err
 		}
@@ -504,6 +508,15 @@ const timeFormat = "2006-01-02T15:04:05Z"
 // Managing who may do what is the one thing that must never be reachable by a
 // role granted on a product: somebody who may triage a product must not be
 // able to grant themselves more of it.
+// mintable is administerable for the two acts that create a credential: a
+// credential cannot create another (ACC-65).
+func mintable(ctx context.Context, a Administering) (*access.Store, *catalog.Store, error) {
+	if err := mintingCredentials(ctx); err != nil {
+		return nil, nil, err
+	}
+	return administerable(ctx, a)
+}
+
 func administerable(ctx context.Context, a Administering) (*access.Store, *catalog.Store, error) {
 	if err := administrating(ctx); err != nil {
 		return nil, nil, err

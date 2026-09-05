@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/database"
 	"github.com/bhouse-nexthop/openpsirt/internal/dbtest"
 	"github.com/bhouse-nexthop/openpsirt/internal/httpapi"
@@ -27,6 +28,9 @@ type declaring struct {
 	handler http.Handler
 	access  *access.Store
 	admin   string
+	// db is the same database the handler reads, for the grants an
+	// administrator now has to make rather than hold by being one (ACC-64).
+	db *database.DB
 }
 
 func (d *declaring) post(t *testing.T, path, body string) (int, map[string]any) {
@@ -124,7 +128,7 @@ func catalogOn(t *testing.T, on engines, fn func(t *testing.T, d *declaring)) {
 			DB: db, Queue: queue.New(db, queue.DefaultOptions()),
 			Access: access.NewResolver(rights, access.Trust{Header: testHeader, From: sources}),
 		})
-		fn(t, &declaring{handler: handler, access: rights, admin: "admin"})
+		fn(t, &declaring{handler: handler, access: rights, admin: "admin", db: db})
 	})
 }
 
@@ -257,8 +261,12 @@ func TestADeclaredTargetCanBeUploadedAgainst(t *testing.T) {
 		d.post(t, "/v1/products/sonic/streams", `{"name": "master", "kind": "branch"}`)
 		d.post(t, "/v1/products/sonic/variants", `{"name": "broadcom"}`)
 
-		// The administrator sends it by hand, which is triage work rather than
-		// a pipeline's job — and an administrator holds every role there is.
+		// Sent by hand rather than by a pipeline, which is triage work — so
+		// the administrator who declared the product grants themselves triage
+		// on it first. That is the whole of what changed with ACC-64:
+		// declaring a product is administration and filing a build against it
+		// is not, so the second one is granted rather than assumed.
+		d.grants(t, d.admin, "sonic", access.PublicTriage)
 		req := upload(t, "/v1/products/sonic/streams/master/variants/broadcom/scans",
 			inventory(nowish(), "libc6"))
 		req.Header.Set(testHeader, d.admin)
@@ -269,6 +277,24 @@ func TestADeclaredTargetCanBeUploadedAgainst(t *testing.T) {
 			t.Errorf("an upload against a freshly declared target returned %d: %s", rec.Code, rec.Body)
 		}
 	})
+}
+
+// grants gives somebody a role on a product, for the acts an administrator
+// does not hold by being one (ACC-64).
+func (d *declaring) grants(t *testing.T, identity, product string, role access.Role) {
+	t.Helper()
+	ctx := t.Context()
+	person, err := d.access.ByIdentity(ctx, identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	named, err := catalog.NewStore(d.db.DB).ProductByName(ctx, product)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.access.GrantRole(ctx, person.ID, named.ID, role); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // floorOf reads back what the catalog says a product triages from.

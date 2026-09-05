@@ -120,6 +120,12 @@ type Subject struct {
 	grants map[int64][]Role
 	// scope is what a pipeline's key allows. Absent for a person.
 	scope *Scope
+	// unnarrowed is the deployment itself rather than anybody in it: the
+	// background passes that report on the tool, which answer nobody and are
+	// never reachable from a request. It is what an administrator used to be
+	// relied on for, and separating the two is what let an administrator stop
+	// holding every role (ACC-64).
+	unnarrowed bool
 	// delegated says this subject arrived on a credential its owner minted
 	// rather than by signing in. What it may reach is already bounded by the
 	// owner, but it may not mint another: a credential able to issue
@@ -153,17 +159,38 @@ func NewPipeline(id int64, name string, scope Scope) Subject {
 	return Subject{Kind: Pipeline, ID: id, Identity: name, scope: &scope}
 }
 
+// Everything is the deployment looking at itself, for the passes that report
+// on the tool rather than answering a person.
+//
+// **Not reachable from a request.** Nothing resolves a credential to this — it
+// is constructed by the background passes that need it, which is what keeps it
+// from being an escalation. An administrator's subject used to stand here, and
+// it stopped meaning "sees everything" when it stopped meaning "holds every
+// role" (ACC-64); the two were always different questions and only one of them
+// was ever about a person.
+//
+// It holds no role, so it triages, approves and decides nothing. What it may
+// do is read, which is all these passes ask for.
+func Everything(what string) Subject {
+	return Subject{Kind: Person, Identity: what, unnarrowed: true}
+}
+
 // Holds reports whether this subject holds a role on a product.
 //
-// An admin holds every role everywhere. That is what being an admin is, and
-// checking it in one place rather than at every call site is what stops one
-// forgotten check from being an escalation.
+// **An administrator does not hold every role** (ACC-64). Administration is
+// people, roles, credentials, settings and the catalog; reading and triaging
+// are granted on a product like anybody else's, and an administrator who wants
+// them grants them to themselves — visibly, in the same record everyone else's
+// grants live in.
+//
+// It read the other way, and nothing said so: `privileges.md` says holding
+// every role does not amount to admin and never claimed the reverse. What it
+// cost was separation of duties, since one account proposed and approved its
+// own work, and it made a read-only auditor impossible to express — nobody
+// could see everything without also being able to change everything.
 func (s Subject) Holds(role Role, productID int64) bool {
 	if s.Kind != Person {
 		return false
-	}
-	if s.Admin {
-		return true
 	}
 	for _, held := range s.grants[productID] {
 		if held == role {
@@ -219,7 +246,10 @@ func (s Subject) Sees(productID int64) bool {
 	if s.Kind != Person {
 		return false
 	}
-	if s.Admin {
+	// An administrator administers the catalog, so they know what is in it
+	// (ACC-64). What is open against it is a different question, answered by
+	// Products.
+	if s.Admin || s.unnarrowed {
 		return true
 	}
 	// A role that grants reading, not merely any role. A capability is
@@ -239,13 +269,11 @@ func (s Subject) Sees(productID int64) bool {
 // anywhere is somebody this deployment already trusts to argue about
 // severities; somebody who triages nowhere is not.
 //
-// An administrator holds everything everywhere, as they do in Holds.
+// An administrator holds nothing here they were not granted, as in Holds
+// (ACC-64).
 func (s Subject) HoldsAnywhere(roles ...Role) bool {
 	if s.Kind != Person {
 		return false
-	}
-	if s.Admin {
-		return true
 	}
 	for _, held := range s.grants {
 		for _, role := range held {
@@ -259,13 +287,18 @@ func (s Subject) HoldsAnywhere(roles ...Role) bool {
 	return false
 }
 
-// Products returns the products this subject may know about. An admin sees
-// everything, which is reported as nothing listed rather than as a list.
+// Products returns the products whose findings this subject may read.
+//
+// **Not every product, for an administrator** (ACC-64). Administering the
+// catalog is knowing a product exists, which is what Sees answers; this is
+// what narrows findings, counts, aggregates and exports, and an administrator
+// reads those only where they hold a role. The "all" flag is kept because the
+// queries are written around it, and nothing sets it now.
 func (s Subject) Products() (ids []int64, all bool) {
 	if s.Kind != Person {
 		return nil, false
 	}
-	if s.Admin {
+	if s.unnarrowed {
 		return nil, true
 	}
 	for id := range s.grants {
@@ -274,6 +307,26 @@ func (s Subject) Products() (ids []int64, all bool) {
 		}
 	}
 	return ids, false
+}
+
+// Knows returns the products this subject may know exist.
+//
+// Distinct from Products, and the two were one thing until an administrator
+// stopped holding every role (ACC-64). **Knowing a product exists is
+// administering it; reading its findings is not**, so an administrator is
+// every product here and only what they were granted there. For everybody else
+// the two answer alike, because a product somebody holds nothing on is
+// invisible rather than merely unreadable.
+//
+// What it narrows is the catalog. What Products narrows is findings, counts,
+// aggregates and exports — so an administrator holding no role sees the
+// products they administer with nothing open against them, which is the honest
+// answer rather than a hidden one.
+func (s Subject) Knows() (ids []int64, all bool) {
+	if s.Kind == Person && s.Admin {
+		return nil, true
+	}
+	return s.Products()
 }
 
 // MaySend reports whether a pipeline's key authorizes an upload against this

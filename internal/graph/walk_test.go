@@ -15,8 +15,13 @@ import (
 // subtree with a shared library in it counted once, and a document in a loop.
 
 // everyone reads everything, which is what these walks are narrowed by.
-func everyone() access.Subject {
-	return access.Subject{Kind: access.Person, Admin: true, Identity: "tester"}
+// everyone is somebody granted reading on the product a fixture builds, for
+// the walks whose subject is incidental. An administrator used to stand here,
+// which stopped working when administering stopped meaning reading (ACC-64) —
+// and an administrator was never what these tests meant anyway.
+func everyone(f *fixture) access.Subject {
+	return access.NewPerson(1, "tester", false,
+		map[int64][]access.Role{*f.scope.ProductID: {access.PrivateRead}})
 }
 
 // chain spells a way down as words, root first.
@@ -50,7 +55,7 @@ func TestTheShortestWayDownIsTheOneShown(t *testing.T) {
 			ids[name] = id
 		}
 
-		chains, err := f.store.Chains(t.Context(), everyone(), f.targetID,
+		chains, err := f.store.Chains(t.Context(), everyone(f), f.targetID,
 			[]int64{ids["sonic"], ids["curl"], ids["openssl"], ids["zlib"], ids["orphan"]})
 		if err != nil {
 			t.Fatal(err)
@@ -113,7 +118,7 @@ func TestWhatIsBeneathACountsEachComponentOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		top, kids, err := f.store.Roots(t.Context(), everyone(), f.targetID)
+		top, kids, err := f.store.Roots(t.Context(), everyone(f), f.targetID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -137,7 +142,7 @@ func TestWhatIsBeneathACountsEachComponentOnce(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, total, err := findings.Groups(t.Context(), everyone(), f.scope, 50, 0,
+		_, total, err := findings.Groups(t.Context(), everyone(f), f.scope, 50, 0,
 			finding.Filter{Beneath: &aID})
 		if err != nil {
 			t.Fatal(err)
@@ -149,7 +154,7 @@ func TestWhatIsBeneathACountsEachComponentOnce(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, total, err = findings.Groups(t.Context(), everyone(), f.scope, 50, 0,
+		_, total, err = findings.Groups(t.Context(), everyone(f), f.scope, 50, 0,
 			finding.Filter{Beneath: &bID})
 		if err != nil {
 			t.Fatal(err)
@@ -178,14 +183,14 @@ func TestADocumentInALoopIsWalkedOnceAndStops(t *testing.T) {
 		aID, _ := f.store.ComponentAt(t.Context(), f.targetID, "a")
 		bID, _ := f.store.ComponentAt(t.Context(), f.targetID, "b")
 
-		chains, err := f.store.Chains(t.Context(), everyone(), f.targetID, []int64{aID, bID})
+		chains, err := f.store.Chains(t.Context(), everyone(f), f.targetID, []int64{aID, bID})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if got := chain(chains[bID]); got != "sonic > a > b" {
 			t.Errorf("b is reached by %q, wanted the way that does not loop", got)
 		}
-		root, kids, err := f.store.Roots(t.Context(), everyone(), f.targetID)
+		root, kids, err := f.store.Roots(t.Context(), everyone(f), f.targetID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -240,7 +245,7 @@ func TestContainersAreOrderedByWhatIsInsideThem(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, kids, err := f.store.Roots(t.Context(), everyone(), f.targetID)
+		_, kids, err := f.store.Roots(t.Context(), everyone(f), f.targetID)
 		if err != nil {
 			t.Fatal(err)
 		}

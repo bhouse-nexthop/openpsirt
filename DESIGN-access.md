@@ -2,7 +2,7 @@
 
 Who is asking, and what they may reach.
 
-Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-44 to ACC-61, SEC-03,
+Satisfies ACC-01 to ACC-08, ACC-10 to ACC-42, ACC-44 to ACC-65, SEC-03,
 SEC-07 to SEC-09, SEC-20, UIX-32's server half, and the half of ACC-43 that has
 a trigger today. What is not built is named at the foot.
 
@@ -165,6 +165,42 @@ is asked.
 Triage implies reading at the same visibility. Somebody who may decide about a
 finding can necessarily see it, and a deployment forced to grant both would
 eventually grant one and wonder why nothing worked.
+
+**An administrator is not every role** (ACC-64). Administration is people,
+roles, credentials, settings and the catalog. Reading what is open against a
+product and triaging it are granted per product like anybody else's, and an
+administrator who wants them grants them to themselves — which is the point,
+because the grant then sits in the same record as everybody else's rather than
+being implied by a flag nothing displays.
+
+It read the other way and nothing said so. What it cost was separation of
+duties: one account proposed a decision and approved it, re-rated severities
+and read every embargo, so the second person a dismissal asks for was optional
+for whoever held admin. It also made a read-only auditor impossible to express
+— nobody could see everything without also being able to change everything,
+which is backwards for the role that exists to check the others.
+
+**Knowing a product exists is administration; what is open against it is not.**
+An administrator holding no role sees the products they administer with nothing
+open against them. That is the honest answer rather than a hidden one, and it
+is what a first sign-in looks like: a bootstrap administrator declares
+products, then grants themselves the reading they want.
+
+Two things had been leaning on "an administrator sees everything" and needed
+somewhere else to stand. The background passes that report on the tool — what
+has gone quiet, what is approaching a date — ask as **the deployment itself**,
+which is a subject nothing resolves a credential to and which holds no role, so
+it reads and decides nothing. And the demo's administrator now grants itself
+roles as part of seeding, which is the same thing an operator does.
+
+**Creating a credential asks for a session** (ACC-65). A credential may not
+mint another; that already held for a personal token issuing a token, and was
+got around by what an administrator's token could make instead — a person, an
+administrator even, and a pipeline key, both outliving the token and neither
+bounded by it. Recording a person and creating a key are the two acts refused
+to a delegated subject. The rest of administration is not, because it is
+reversible by another administrator and leaves the same record; creating a
+credential is the one that hands out a new way in.
 
 **A capability grants no visibility.** What a reporter or an approver reaches
 is bounded by what they may read — otherwise handing somebody the ability to

@@ -3,7 +3,10 @@ package httpapi_test
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 )
 
 // TestGrantingARoleDoesNotAskWhetherItWorks holds the line that a grant is
@@ -104,6 +107,56 @@ func TestGrantingARoleDoesNotAskWhetherItWorks(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("the role recorded with her is not read back: %s", listed.Body.String())
+		}
+	})
+}
+
+func TestATokenCannotMintACredentialThatOutlivesIt(t *testing.T) {
+	// ACC-65. "A credential cannot mint another" held for a token issuing a
+	// token, and was got around by what an administrator's token could make
+	// instead: a person — an administrator, even — and a pipeline key. Both
+	// outlive the token and neither is bounded by it, so the narrow credential
+	// could always ask for a wide one.
+	twoReach(t, func(t *testing.T, r *reach) {
+		// A personal token belonging to somebody who administers this
+		// deployment, which is the credential the escalation used.
+		person, err := r.rights.ByIdentity(t.Context(), "admin")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, secret, err := r.rights.NewToken(t.Context(), person.ID, "theirs", nil, time.Hour, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, act := range []struct {
+			what string
+			path string
+			body string
+		}{
+			{"record a person", "/v1/people",
+				`{"identity":"made-by-token","display_name":"Made","provider":"proxy",` +
+					`"username":"made-by-token","admin":true}`},
+			{"create a key", "/v1/keys",
+				`{"name":"made-by-token","product":"mine"}`},
+		} {
+			req := httptest.NewRequest(http.MethodPost, act.path, strings.NewReader(act.body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+secret)
+			got := httptest.NewRecorder()
+			r.handler.ServeHTTP(got, req)
+			if got.Code != http.StatusForbidden {
+				t.Errorf("a token could %s: %d %s", act.what, got.Code, got.Body.String())
+			}
+		}
+
+		// The same acts still work for the same person when they have signed
+		// in, so what is refused is the credential rather than the right.
+		if got := asPerson(t, r, "admin", http.MethodPost, "/v1/people",
+			`{"identity":"made-by-session","display_name":"Made","provider":"proxy",`+
+				`"username":"made-by-session"}`); got.Code != http.StatusCreated {
+			t.Errorf("an administrator signing in could not record a person: %d %s",
+				got.Code, got.Body.String())
 		}
 	})
 }
