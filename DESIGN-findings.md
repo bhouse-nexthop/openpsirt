@@ -712,6 +712,13 @@ every build under the product when either is not — counting places across all
 of them and naming one build with the count beside it, exactly as the lists
 above it do.
 
+**What that is worth, measured on two variants of one switch image**: 7,587
+rows on one and 7,610 on the other, which is 15,197 rows read one build at a
+time and no way to tell how much of it was the same work twice. Across the
+product it is 7,612 — so 7,585 of those rows were one piece of work seen
+twice, and 27 were the genuine differences between the two builds. Finding
+those 27 was not previously possible from this screen at all.
+
 **What it gives up across builds is the way down.** A dependency chain belongs
 to one build's graph, and a row covering three builds is reached three ways, so
 the column that names the two ends of the chain is empty there rather than

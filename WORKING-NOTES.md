@@ -33,6 +33,37 @@ an existing `.demo` database is missing columns and the application will not
 start against it. The same applies to a development database against the four
 engines: `make engines-down && make engines-up`.
 
+### 2026-09-05: the findings list stopped being one build's
+
+`DESIGN-findings.md` had described, for a while, the property that the same
+component at the same version in two variants is one piece of work — named
+with a build and a count beside it. Every list obeyed it except the one where
+the work is actually done. UIX-39 had fenced the findings list off with the
+five screens that are about a dependency chain, on a justification that only
+fits those five: a finding's identity and every decision about it are keyed
+without a build (REL-05).
+
+Recorded as UIX-53 and built. The store's lists take a selection rather than a
+build identifier; one build is a selection with all three levels named, so it
+is mostly a signature change. The endpoints moved to the product with the
+branch and the variant as optional query parameters, and the interface gained
+a second address for the same screen.
+
+**What it was worth, on the demo**: 7,587 rows on broadcom and 7,610 on
+mellanox — 15,197 read one build at a time — against 7,612 pieces of work
+across the product. 7,585 were the same work seen twice; 27 were the real
+differences, and nothing could find those 27 before.
+
+**Traps, for whoever hits them next.** The chain columns cannot be filled from
+the build a row names: `MIN(consumer_id)` and `MIN(target_id)` are independent
+aggregates, so they can come from different builds, and the walk would then
+look for a consumer that build does not hold and come back empty — silently.
+That is why the way down is absent across builds rather than approximated.
+`beneath` has the same shape and is refused rather than answered from a build
+identifier left at zero, which produces an empty list indistinguishable from a
+subtree with nothing open in it. Both are pinned by tests that were watched to
+fail with the guard removed.
+
 ### The later stretch on 2026-09-04, after the notes below were written
 
 Everything here is committed and pushed; `main` is at `4e16d77`. The demo was
