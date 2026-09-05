@@ -160,7 +160,15 @@ func (s *Store) reaffirm(ctx context.Context, subject access.Subject, r Reaffirm
 	// finding the moment it was made and never appeared in the review queue,
 	// which is one person's action producing a live dismissal no second person
 	// ever sees.
-	full := needsFullApproval(*previous, severityNow)
+	// Whether there is an agreement to carry at all, asked of the approvals
+	// rather than inferred from the state. A claim lapses from Proposed as
+	// well as from Approved (the code moved out from under it either way), so
+	// "it lapsed" says nothing about whether anybody ever agreed to it.
+	carryable, err := s.approvalToCarry(ctx, previous.ID, subject.ID)
+	if err != nil {
+		return nil, err
+	}
+	full := needsFullApproval(*previous, severityNow, carryable != nil)
 
 	proposal := Proposal{
 		Place: place, Outcome: previous.Outcome,
@@ -206,11 +214,18 @@ func (s *Store) reaffirm(ctx context.Context, subject access.Subject, r Reaffirm
 }
 
 // needsFullApproval reports whether a re-affirmation is really a new claim.
-func needsFullApproval(previous Decision, severityNow int) bool {
+func needsFullApproval(previous Decision, severityNow int, agreed bool) bool {
 	// Never carried where nobody agreed in the first place. A claim that was
 	// only ever proposed has nothing to carry, and treating its re-affirmation
 	// as pre-agreed would manufacture an approval out of a version bump.
-	if previous.State != Approved && previous.State != LapsedState {
+	//
+	// Asked of the agreements rather than of the state, because a lapse is not
+	// evidence of one: Lapse marks Proposed rows as well as Approved ones, so
+	// a dismissal one person proposed, nobody agreed to, and a version bump
+	// lapsed came back through here as pre-agreed — needing nobody, standing
+	// the moment it was written, and absent from the review queue, which is
+	// the whole of what the second person exists to prevent.
+	if !agreed {
 		return true
 	}
 	if severityNow > previous.SeverityAtApproval() {
@@ -231,25 +246,47 @@ func (d Decision) SeverityAtApproval() int {
 	return *d.SeverityCenti
 }
 
+// approvalToCarry returns the standing agreement a re-affirmation may carry,
+// or nil where there is none.
+//
+// Standing, and somebody else's. A withdrawn agreement is kept because who
+// agreed and to what is part of the record, but carrying it forward would
+// resurrect it against words nobody read; and an agreement from whoever is
+// re-affirming would put one person on both sides of the control (TRI-07).
+//
+// Asked twice per re-affirmation — once to decide whether a second person is
+// needed, once to write the carried agreement — and both answers have to be
+// the same one, which is why it is a function rather than two queries.
+func (s *Store) approvalToCarry(ctx context.Context, decisionID, notBy int64) (*Approval, error) {
+	var found []Approval
+	if err := s.db.NewSelect().Model(&found).
+		Where("decision_id = ?", decisionID).
+		Where("withdrawn_at IS NULL").
+		Where("approved_by <> ?", notBy).
+		Order("id DESC").Limit(1).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("read what agreed to that: %w", err)
+	}
+	if len(found) == 0 {
+		return nil, nil
+	}
+	return &found[0], nil
+}
+
 // carryApproval records that a re-affirmed claim stands on the agreement its
 // predecessor had.
 func (s *Store) carryApproval(ctx context.Context, made *Decision, previous Decision) error {
-	// Only an agreement that still stands may be carried, and only one given
-	// by somebody other than whoever is re-affirming.
-	//
-	// A withdrawn agreement is kept because who agreed and to what is part of
-	// the record — but carrying it forward would resurrect it against words
-	// nobody read. The path is concrete: propose, have it agreed to, revise
+	// The concrete path this refuses: propose, have it agreed to, revise
 	// (which withdraws the agreement), let a version bump lapse it, re-affirm.
-	var earlier []Approval
-	if err := s.db.NewSelect().Model(&earlier).
-		Where("decision_id = ?", previous.ID).
-		Where("withdrawn_at IS NULL").
-		Where("approved_by <> ?", made.ProposedBy).
-		Order("id DESC").Limit(1).Scan(ctx); err != nil || len(earlier) == 0 {
+	earlier, err := s.approvalToCarry(ctx, previous.ID, made.ProposedBy)
+	if err != nil {
+		return err
+	}
+	if earlier == nil {
 		// Nothing to carry. Not a fault: a decision may have lapsed before
-		// anybody agreed to it, and the claim simply waits like any other.
-		return nil //nolint:nilerr // an absent approval is an answer, not a failure
+		// anybody agreed to it, and the claim then waits like any other —
+		// which is what needsFullApproval already decided when it asked this
+		// same question before the claim was written.
+		return nil
 	}
 	if made.RevisionID == nil {
 		return fmt.Errorf("a re-affirmed decision has no reasoning to stand on")
@@ -258,7 +295,7 @@ func (s *Store) carryApproval(ctx context.Context, made *Decision, previous Deci
 	now := s.now().Truncate(time.Microsecond)
 	carried := &Approval{
 		DecisionID: made.ID, RevisionID: *made.RevisionID,
-		ApprovedBy: earlier[0].ApprovedBy, ApprovedAt: now,
+		ApprovedBy: earlier.ApprovedBy, ApprovedAt: now,
 	}
 	if _, err := s.db.NewInsert().Model(carried).Exec(ctx); err != nil {
 		return fmt.Errorf("carry an approval forward: %w", err)

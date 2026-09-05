@@ -101,6 +101,61 @@ func TestNothingIsCarriedFromAClaimNobodyAgreedTo(t *testing.T) {
 	})
 }
 
+func TestALapsedClaimNobodyAgreedToIsNotPreAgreed(t *testing.T) {
+	// A claim lapses from proposed as well as from approved — the code moved
+	// out from under it either way — so "it lapsed" says nothing about whether
+	// anybody ever agreed to it. Reading the state as evidence of agreement
+	// let one person dismiss a finding alone: propose it, wait for a version
+	// bump to lapse it, re-affirm. The re-affirmation needed nobody, stood the
+	// moment it was written, and appeared in no review queue.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		neverAgreed := f.judged(t, f.at(), 700)
+		// What Lapse does to it when the versions move, without standing up a
+		// scan to move them.
+		if _, err := f.db.DB.NewUpdate().Model((*triage.Decision)(nil)).
+			Set("state = ?", triage.LapsedState).
+			Where("id = ?", neverAgreed.ID).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+
+		moved := f.at()
+		moved.ComponentUpstream = "1.2.4"
+		again, err := f.store.Reaffirm(ctx, f.triager, triage.Reaffirmation{
+			PreviousID: neverAgreed.ID, Place: moved,
+			Reasoning: "Still true at the new version.", By: f.proposer,
+		}, 700)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if again.State == triage.Approved {
+			t.Error("a lapsed claim nobody agreed to came back approved")
+		}
+		if !again.NeedsApproval {
+			t.Error("the re-affirmation needs nobody, so one person dismissed this alone")
+		}
+		// The two consequences that matter, asked of the code that acts on
+		// them rather than of the row: it must not suppress the finding, and
+		// it must be in the queue where somebody sees it.
+		if standing, _ := f.store.Applying(ctx, moved); standing != nil {
+			t.Error("a claim waiting for a second person is already suppressing the finding")
+		}
+		waiting, _, err := f.store.Queue(ctx, f.reviewer, false, 50, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, row := range waiting {
+			if row.Decision.ID == again.ID {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("the re-affirmation is in no review queue, so nobody is asked about it")
+		}
+	})
+}
+
 func TestRepetitionAloneChangesNothing(t *testing.T) {
 	// Deliberately left out. A count of re-affirmations would fire on nothing
 	// having changed, which every other rule here refuses to do.

@@ -849,6 +849,33 @@ func TestReachSortsBuildsByTheVersionTheDecisionIsKeyedOn(t *testing.T) {
 	})
 }
 
+func TestAnOutcomeIsOfferedOnlyWhereItsEvidenceCanBeSent(t *testing.T) {
+	// already-fixed carries the packager's version (TRI-51), which the claim
+	// is refused without. The finding-level route offered the outcome in its
+	// enum and had nowhere in the body to put that version, so every request
+	// choosing it was refused — an outcome listed and unreachable, which reads
+	// as the tool being broken rather than as the request being wrong.
+	eachReach(t, func(t *testing.T, r *reach) {
+		r.scannedWithEvidence(t)
+		const path = "/v1/products/mine/streams/master/variants/broadcom" +
+			"/findings/CVE-2026-9999/components/libnl-3-200/decision"
+
+		got := asPerson(t, r, "triager", http.MethodPost, path,
+			`{"outcome":"already-fixed","fixed_version":"3.7.0-r4",`+
+				`"reasoning":"Alpine backported it in r4, which is what we ship."}`)
+		if got.Code != http.StatusCreated {
+			t.Fatalf("recording an already-fixed claim answered %d: %s", got.Code, got.Body.String())
+		}
+
+		// And the evidence is still required: the outcome without it is a
+		// claim nobody can check.
+		if got := asPerson(t, r, "triager", http.MethodPost, path,
+			`{"outcome":"already-fixed","reasoning":"Trust me."}`); got.Code < 400 {
+			t.Errorf("an already-fixed claim with no version answered %d", got.Code)
+		}
+	})
+}
+
 func TestReachingAnotherBuildCoversOnlyWhatIsLeftThere(t *testing.T) {
 	// A build at the same versions is already reached by lookup, so a second
 	// claim about its places is refused — and the guided review, which posts

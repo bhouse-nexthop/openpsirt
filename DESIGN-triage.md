@@ -943,15 +943,29 @@ reason and no second approver. Requiring full approval on every bump produces
 rubber-stamping, which costs the control its meaning everywhere rather than
 only here.
 
-Two things send it back for full approval, and both fire on something having
-actually changed:
+Two things send it back for full approval:
 
-- **A different justification** is a different claim, which nobody has
-  reviewed. Letting it inherit an approval granted for other reasons is the
-  same failure as an approval surviving a rewrite.
+- **Nobody agreed to the previous claim.** There is nothing to carry, so the
+  re-affirmation is an ordinary claim and waits like one. Asked of the
+  agreements on the row and never of its state: a claim lapses from proposed as
+  well as from approved — the code moved out from under it either way — so
+  reading "lapsed" as evidence of agreement let one person propose a dismissal,
+  wait for a version bump, re-affirm it, and have it stand needing nobody and
+  appearing in no queue (TRI-20).
 - **A severity that has risen since** means the original judgment was made
   about a smaller thing. What was agreed to was that this did not matter much;
   that is not an agreement about what it has become.
+
+The same question is asked twice — once to decide whether a second person is
+needed, once to write the carried agreement — and both times through one
+function, because two spellings of it would eventually disagree and the
+disagreement is exactly the state above: a claim recorded as needing nobody
+with no agreement behind it.
+
+A changed justification is not a trigger, because it cannot happen: a
+re-affirmation copies the justification off the claim it re-makes, and the
+request carries no field for one. Changing the reason is proposing a new
+claim.
 
 How bad it was judged to be is kept with the decision rather than read from the
 issue later. An issue's severity is rewritten in place as reports revise it, so

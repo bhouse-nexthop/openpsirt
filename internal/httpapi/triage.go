@@ -494,7 +494,12 @@ type FindingDecisionBody struct {
 	Justification string `json:"justification,omitempty" enum:"component_not_present,vulnerable_code_not_present,vulnerable_code_not_in_execute_path,vulnerable_code_cannot_be_controlled_by_adversary,inline_mitigations_already_exist" doc:"Why it does not apply. Required when it does not"`
 	Mitigation    string `json:"mitigation,omitempty" doc:"What actually stops it — the rule, the setting, the service that is not exposed. Required when the reason is that mitigations already exist, and refused with any other"`
 	DeferredUntil string `json:"deferred_until,omitempty" doc:"Required when it is deferred. A date, as 2026-03-31"`
-	Reasoning     string `json:"reasoning" minLength:"1" doc:"Why this holds"`
+	// FixedVersion is what makes the already-fixed claim checkable against
+	// whoever packages the component (TRI-51). Offered here because the
+	// outcome is offered here: an enum listing an outcome whose evidence the
+	// body cannot carry refuses every request that picks it.
+	FixedVersion string `json:"fixed_version,omitempty" doc:"The package version whoever packages this states the fix arrived in. Required when the outcome is already-fixed, and refused with any other"`
+	Reasoning    string `json:"reasoning" minLength:"1" doc:"Why this holds"`
 	// Places is the deliberate narrowing. Absent means every place, which is
 	// the default TRI-29 asks for.
 	Places []string `json:"places,omitempty" doc:"Which places this covers, as the finding names them. Omit for all of them"`
@@ -656,6 +661,7 @@ func registerFindingDecision(api huma.API, in Ingest) {
 				Outcome:       triage.Outcome(input.Body.Outcome),
 				Justification: triage.Justification(input.Body.Justification),
 				Mitigation:    input.Body.Mitigation,
+				FixedVersion:  input.Body.FixedVersion,
 				Reasoning:     input.Body.Reasoning,
 				By:            subject.ID,
 				SeverityCenti: place.SeverityCenti,
