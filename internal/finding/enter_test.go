@@ -22,10 +22,14 @@ func TestAFlawInWhatWeShipIsRecordedAndSurvivesTheNextScan(t *testing.T) {
 		}
 
 		who := f.planner(t, access.PrivateTriage)
-		row, identifier, err := f.store.Enter(t.Context(), who, finding.Entering{
-			TargetID: f.target, Component: swss.Name, Severity: "high",
+		rows, identifier, err := f.store.Enter(t.Context(), who, finding.Entering{
+			TargetIDs: []int64{f.target}, Component: swss.Name, Severity: "high",
 			Summary: "The management socket accepts a request nobody authenticated.",
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		row := rows[0]
 		if err != nil {
 			t.Fatalf("recording a flaw: %v", err)
 		}
@@ -65,7 +69,7 @@ func TestAFlawInWhatWeShipIsRecordedAndSurvivesTheNextScan(t *testing.T) {
 
 		// The second one this year counts on from the first.
 		_, next, err := f.store.Enter(t.Context(), who, finding.Entering{
-			TargetID: f.target, Severity: "medium",
+			TargetIDs: []int64{f.target}, Severity: "medium",
 			Summary: "The recovery console does not clear the previous session.",
 		})
 		if err != nil {
@@ -84,7 +88,7 @@ func TestRecordingAnUndisclosedFlawNeedsThePrivateRight(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		f.shipped(t, twoConsumers())
 		entering := finding.Entering{
-			TargetID: f.target, Severity: "high", Summary: "Something we have not announced.",
+			TargetIDs: []int64{f.target}, Severity: "high", Summary: "Something we have not announced.",
 		}
 
 		if _, _, err := f.store.Enter(t.Context(), f.planner(t, access.PublicTriage),
@@ -124,17 +128,17 @@ func TestARecordedFlawSaysWhatItIsAndWhereItIs(t *testing.T) {
 		// which is why it is a sentinel rather than a sentence, and why the
 		// caller is told to fix it rather than that something went wrong here.
 		if _, _, err := f.store.Enter(t.Context(), who, finding.Entering{
-			TargetID: f.target, Severity: "high", Summary: "   ",
+			TargetIDs: []int64{f.target}, Severity: "high", Summary: "   ",
 		}); !errors.Is(err, finding.ErrNothingSaid) {
 			t.Errorf("a finding with nothing said about it was recorded: %v", err)
 		}
 		if _, _, err := f.store.Enter(t.Context(), who, finding.Entering{
-			TargetID: f.target, Severity: "urgent", Summary: "Something.",
+			TargetIDs: []int64{f.target}, Severity: "urgent", Summary: "Something.",
 		}); err == nil {
 			t.Error("a severity that is not one was accepted")
 		}
 		_, _, err := f.store.Enter(t.Context(), who, finding.Entering{
-			TargetID: f.target, Component: "not-in-this-build", Severity: "high",
+			TargetIDs: []int64{f.target}, Component: "not-in-this-build", Severity: "high",
 			Summary: "Something.",
 		})
 		if !errors.Is(err, finding.ErrNoSuchComponent) {
@@ -143,10 +147,14 @@ func TestARecordedFlawSaysWhatItIsAndWhereItIs(t *testing.T) {
 
 		// Naming nothing puts it on the build itself, which is the honest
 		// answer where the flaw is in how the pieces fit together.
-		row, _, err := f.store.Enter(t.Context(), who, finding.Entering{
-			TargetID: f.target, Severity: "high",
+		rows, _, err := f.store.Enter(t.Context(), who, finding.Entering{
+			TargetIDs: []int64{f.target}, Severity: "high",
 			Summary: "The pieces are wired together wrongly.",
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		row := rows[0]
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -183,7 +191,7 @@ func TestRecordingAgainstANameTheBuildHoldsTwiceIsRefusedRatherThanGuessed(t *te
 		const said = "The parser accepts a message it should refuse."
 
 		_, _, err := f.store.Enter(t.Context(), who, finding.Entering{
-			TargetID: f.target, Component: libnl.Name, Severity: "high", Summary: said,
+			TargetIDs: []int64{f.target}, Component: libnl.Name, Severity: "high", Summary: said,
 		})
 		var several *graph.Ambiguous
 		if !errors.As(err, &several) {
@@ -197,10 +205,14 @@ func TestRecordingAgainstANameTheBuildHoldsTwiceIsRefusedRatherThanGuessed(t *te
 
 		// Naming the version settles it, and it settles it on the one named
 		// rather than on whichever came first.
-		row, _, err := f.store.Enter(t.Context(), who, finding.Entering{
-			TargetID: f.target, Component: libnl.Name, Version: libnlNew.Version,
+		rows, _, err := f.store.Enter(t.Context(), who, finding.Entering{
+			TargetIDs: []int64{f.target}, Component: libnl.Name, Version: libnlNew.Version,
 			Severity: "high", Summary: said,
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		row := rows[0]
 		if err != nil {
 			t.Fatalf("naming the version: %v", err)
 		}
@@ -212,6 +224,93 @@ func TestRecordingAgainstANameTheBuildHoldsTwiceIsRefusedRatherThanGuessed(t *te
 		}
 		if version != libnlNew.Version {
 			t.Errorf("recorded against %s, want the version that was named", version)
+		}
+	})
+}
+
+func TestOneFlawIsRecordedAgainstEveryBuildThatShipsIt(t *testing.T) {
+	// The same code goes out on several lines and as several variants at once,
+	// so a flaw in it is one issue in several builds. One identifier, one row
+	// per build — which is the shape a scanner's findings already take, so
+	// everything downstream treats it the same way.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		f.shipped(t, through(libnl))
+		other := f.anotherVariant(t, "mellanox")
+		f.shippedTo(t, other, through(libnl))
+
+		rows, identifier, err := f.store.Enter(ctx, f.planner(t, access.PrivateTriage),
+			finding.Entering{
+				TargetIDs: []int64{f.target, other},
+				Component: libnl.Name, Severity: "high",
+				Summary: "The parser accepts a message it should refuse.",
+			})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 2 {
+			t.Fatalf("recorded %d findings, want one per build", len(rows))
+		}
+		// One issue, however many builds ship it.
+		if rows[0].VulnerabilityID != rows[1].VulnerabilityID {
+			t.Error("the two builds got two issues rather than one")
+		}
+		if identifier == "" {
+			t.Error("nothing was minted to file it under")
+		}
+		// And it reads back as one piece of work across the product, which is
+		// what the findings list groups by.
+		groups, total, err := f.store.Groups(ctx, f.holding(t, access.PrivateRead),
+			f.wholeProduct(), 50, 0, finding.Filter{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var found bool
+		for _, group := range groups {
+			if group.Vulnerability == identifier {
+				found = true
+				if group.Places != 2 {
+					t.Errorf("it reads as %d places, want one in each build", group.Places)
+				}
+				if group.Builds != 2 {
+					t.Errorf("it says %d builds hold it, want 2", group.Builds)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("what was recorded is not in the product's list of %d", total)
+		}
+	})
+}
+
+func TestAFlawIsNotRecordedAgainstBuildsThatDoNotHoldIt(t *testing.T) {
+	// A name one build holds and another does not is a question about which
+	// builds are affected. Refused, naming the build, rather than recorded
+	// against some of them and silently not the rest.
+	each(t, func(t *testing.T, f *fixture) {
+		ctx := t.Context()
+		f.shipped(t, through(libnl))
+		other := f.anotherVariant(t, "mellanox")
+		// The second build ships something else entirely.
+		f.shippedTo(t, other, through(teamd))
+
+		if _, _, err := f.store.Enter(ctx, f.planner(t, access.PrivateTriage),
+			finding.Entering{
+				TargetIDs: []int64{f.target, other},
+				Component: libnl.Name, Severity: "high",
+				Summary: "The parser accepts a message it should refuse.",
+			}); err == nil {
+			t.Error("it was recorded against a build that does not hold the component")
+		}
+	})
+}
+
+func TestRecordingNeedsAtLeastOneBuild(t *testing.T) {
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, through(libnl))
+		if _, _, err := f.store.Enter(t.Context(), f.planner(t, access.PrivateTriage),
+			finding.Entering{Severity: "high", Summary: "Something is wrong."}); err == nil {
+			t.Error("a flaw was recorded against no build at all")
 		}
 	})
 }

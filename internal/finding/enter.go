@@ -22,9 +22,17 @@ import (
 // usually before anybody outside knows about it — which is why it starts
 // undisclosed and why the whole disclosure apparatus hangs off it.
 type Entering struct {
-	// TargetID is the build it is in. A flaw is in something we shipped, and
-	// which release is the first question anybody asks.
-	TargetID int64
+	// TargetIDs are the builds it is in. A flaw is in something we shipped,
+	// and which releases is the first question anybody asks — usually more
+	// than one, because the same code ships on several lines and as several
+	// variants at once.
+	//
+	// **One issue, one finding per build.** That is the shape a scanner's
+	// findings already take, so a flaw somebody recorded lists, ranks, comes
+	// due, carries decisions and appears in a comparison exactly as one that
+	// was reported does — rather than in a scheme of its own that everything
+	// downstream would need to know about.
+	TargetIDs []int64
 	// Component names what in the build carries it, as the build calls it.
 	// Empty is the build itself, which is the honest answer where the flaw is
 	// in how the pieces are put together rather than in one of them.
@@ -109,10 +117,26 @@ var ErrNothingScanned = errors.New(
 // **It opens with no run**, and everything that asks when a finding opened
 // reads the row rather than the run. A scan will not close it either: a run is
 // the authority on what it found, and it found none of this.
-func (s *Store) Enter(ctx context.Context, subject access.Subject, in Entering) (*Finding, string, error) {
-	productID, err := productOf(ctx, s.db, in.TargetID)
+func (s *Store) Enter(ctx context.Context, subject access.Subject, in Entering) ([]Finding, string, error) {
+	if len(in.TargetIDs) == 0 {
+		return nil, "", ErrNoBuild
+	}
+	// One product, because an identifier is minted per product and a flaw
+	// recorded across two would have to be two records. Read from the builds
+	// rather than taken from the caller, and disagreement is refused rather
+	// than resolved by taking the first.
+	productID, err := productOf(ctx, s.db, in.TargetIDs[0])
 	if err != nil {
 		return nil, "", err
+	}
+	for _, target := range in.TargetIDs[1:] {
+		other, err := productOf(ctx, s.db, target)
+		if err != nil {
+			return nil, "", err
+		}
+		if other != productID {
+			return nil, "", ErrSeveralProducts
+		}
 	}
 
 	// Recording a flaw in our own product is triage work on a finding nobody
@@ -163,9 +187,22 @@ func (s *Store) Enter(ctx context.Context, subject access.Subject, in Entering) 
 		return nil, "", fmt.Errorf("%q is not a severity", in.Severity)
 	}
 
-	componentID, componentName, err := s.carrying(ctx, in.TargetID, in)
-	if err != nil {
-		return nil, "", err
+	// Resolved in every build, before anything is written. A name one build
+	// holds and another does not is a question about which builds are affected
+	// — so it is refused, naming the build, rather than recorded against some
+	// of them and silently not the rest.
+	type at struct {
+		target    int64
+		component int64
+		name      string
+	}
+	places := make([]at, 0, len(in.TargetIDs))
+	for _, target := range in.TargetIDs {
+		componentID, componentName, err := s.carrying(ctx, target, in)
+		if err != nil {
+			return nil, "", err
+		}
+		places = append(places, at{target: target, component: componentID, name: componentName})
 	}
 
 	product, err := productNameOf(ctx, s.db, productID)
@@ -174,7 +211,7 @@ func (s *Store) Enter(ctx context.Context, subject access.Subject, in Entering) 
 	}
 
 	now := s.now().UTC().Truncate(time.Microsecond)
-	var row *Finding
+	var rows []Finding
 	var identifier string
 	err = database.InTransaction(ctx, s.db, func(ctx context.Context, tx bun.Tx) error {
 		// Minted inside the transaction. The number is one past the highest
@@ -215,30 +252,38 @@ func (s *Store) Enter(ctx context.Context, subject access.Subject, in Entering) 
 			return err
 		}
 
-		row = &Finding{
-			TargetID: in.TargetID, Kind: Entered, Visibility: visibility,
-			VulnerabilityID: vulnerabilityID,
-			ComponentID:     componentID,
-			PlaceIdentity:   PlaceIdentity(componentName, ""),
-			LastChangedAt:   now,
-			OpenedAt:        now,
+		// One row per build, all pointing at the one issue. Every one of them
+		// gets the same embargo, rank and deadline: they are the same flaw,
+		// and a deadline that differed per build would be the tool deciding
+		// that one release matters more.
+		rows = make([]Finding, 0, len(places))
+		for _, place := range places {
+			row := Finding{
+				TargetID: place.target, Kind: Entered, Visibility: visibility,
+				VulnerabilityID: vulnerabilityID,
+				ComponentID:     place.component,
+				PlaceIdentity:   PlaceIdentity(place.name, ""),
+				LastChangedAt:   now,
+				OpenedAt:        now,
+			}
+			// An embargo gets an end. A public finding gets none — it is
+			// already disclosed, and a date on it would be a deadline for
+			// something that has already happened (ACC-46).
+			if visibility == access.Private {
+				at := now.Add(embargo)
+				row.DiscloseAt = &at
+			}
+			// Ranked and clocked exactly as a scanned finding is, from the
+			// same signals. A finding that sorted or expired differently
+			// because a person typed it would be a second policy nobody chose.
+			ranked := Ranked{Shipped: true}
+			if row.Urgency = int64(ranked.Rank()); floor.Admits(false, severity) {
+				due := now.Add(windows.For(false, severity))
+				row.DueAt = &due
+			}
+			rows = append(rows, row)
 		}
-		// An embargo gets an end. A public finding gets none — it is already
-		// disclosed, and a date on it would be a deadline for something that
-		// has already happened (ACC-46).
-		if visibility == access.Private {
-			at := now.Add(embargo)
-			row.DiscloseAt = &at
-		}
-		// Ranked and clocked exactly as a scanned finding is, from the same
-		// signals. A finding that sorted or expired differently because a
-		// person typed it would be a second policy nobody chose.
-		ranked := Ranked{Shipped: true}
-		if row.Urgency = int64(ranked.Rank()); floor.Admits(false, severity) {
-			due := now.Add(windows.For(false, severity))
-			row.DueAt = &due
-		}
-		if _, err := tx.NewInsert().Model(row).Exec(ctx); err != nil {
+		if _, err := tx.NewInsert().Model(&rows).Exec(ctx); err != nil {
 			return fmt.Errorf("record the finding: %w", err)
 		}
 		return nil
@@ -246,8 +291,18 @@ func (s *Store) Enter(ctx context.Context, subject access.Subject, in Entering) 
 	if err != nil {
 		return nil, "", err
 	}
-	return row, identifier, nil
+	return rows, identifier, nil
 }
+
+// ErrNoBuild and ErrSeveralProducts are the two ways the set of builds can be
+// wrong, and they are told apart because the answers differ: one is "say where
+// this is" and the other is "that is two records, not one".
+var (
+	ErrNoBuild         = errors.New("say which builds ship it")
+	ErrSeveralProducts = errors.New(
+		"those builds are of different products, and an identifier is minted per product — " +
+			"record it once for each")
+)
 
 // mayRecord reports whether a subject may record a finding of this visibility
 // on this product.

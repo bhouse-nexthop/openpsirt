@@ -65,10 +65,10 @@ func TestAnAdvisoryIsGeneratedForAFlawWeRecordedAndRefusedForOneWeDidNot(t *test
 	// the same for both would mean something different in each case.
 	twoReach(t, func(t *testing.T, r *reach) {
 		r.scannedWithEvidence(t)
-		const findings = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		const findings = "/v1/products/mine/findings"
 
 		made := asPerson(t, r, "private-triage", http.MethodPost, findings,
-			`{"summary":"The management socket answers before anyone authenticated.",`+
+			`{"builds":[{"stream":"master","variant":"broadcom"}],"summary":"The management socket answers before anyone authenticated.",`+
 				`"severity":"critical"}`)
 		if made.Code != http.StatusCreated {
 			t.Fatalf("recording answered %d: %s", made.Code, made.Body.String())
@@ -170,8 +170,9 @@ func TestAnAdvisoryAboutAnUndisclosedFlawIsNotGeneratedForSomebodyWhoMayNotSeeIt
 	twoReach(t, func(t *testing.T, r *reach) {
 		r.scannedWithEvidence(t)
 		made := asPerson(t, r, "private-triage", http.MethodPost,
-			"/v1/products/mine/streams/master/variants/broadcom/findings",
-			`{"summary":"The recovery console does not clear the previous session.",`+
+			"/v1/products/mine/findings",
+			`{"builds":[{"stream":"master","variant":"broadcom"}],`+
+				`"summary":"The recovery console does not clear the previous session.",`+
 				`"severity":"high"}`)
 		if made.Code != http.StatusCreated {
 			t.Fatalf("recording answered %d: %s", made.Code, made.Body.String())

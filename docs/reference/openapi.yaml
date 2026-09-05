@@ -1312,6 +1312,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        builds:
+          description: How many builds it was recorded against. One issue, one finding per build
+          format: int64
+          type: integer
         component:
           description: What in the build carries it
           type: string
@@ -1331,6 +1335,7 @@ components:
         - identifier
         - component
         - visibility
+        - builds
       type: object
     ErrorDetail:
       additionalProperties: false
@@ -2117,6 +2122,21 @@ components:
         - category
         - name
         - namespace
+      type: object
+    Item:
+      additionalProperties: false
+      properties:
+        stream:
+          description: A branch or a tag
+          minLength: 1
+          type: string
+        variant:
+          description: How that line is built
+          minLength: 1
+          type: string
+      required:
+        - stream
+        - variant
       type: object
     JudgedBody:
       additionalProperties: false
@@ -3435,6 +3455,14 @@ components:
           format: uri
           readOnly: true
           type: string
+        builds:
+          description: Every build that ships it. One issue, one finding per build — which is the shape a scanner's findings already take
+          items:
+            $ref: "#/components/schemas/Item"
+          minItems: 1
+          type:
+            - array
+            - "null"
         component:
           description: What carries it. Omit for the build itself
           type: string
@@ -3472,6 +3500,7 @@ components:
             - array
             - "null"
       required:
+        - builds
         - summary
       type: object
     RecordBody:
@@ -6690,6 +6719,54 @@ paths:
       x-openpsirt-requires:
         scope: any
         note: Answers only what you may see.
+    post:
+      description: |-
+        Records a vulnerability in your own product — one no scanner reported, usually because nobody outside knows about it yet.
+
+        **It starts undisclosed.** That is the case this exists for, and defaulting the other way would make the dangerous mistake the quiet one. Recording an undisclosed finding needs the private triage role on the product; send `disclosed` for one that is already public, which needs the ordinary one.
+
+        **It is filed under an identifier this deployment mints** — the product's name, the year and a number, which is the shape a vendor advisory takes. When a CVE is assigned later it becomes another name for the same issue and nothing about the finding, the decisions or the approvals moves.
+
+        `component` names what in the build carries it, as the build calls it. Leave it out for the build itself, which is the honest answer where the flaw is in how the pieces fit together rather than in one of them. A name the build holds at more than one version is refused with the choices rather than resolved to one of them; send `version`, and `ecosystem` where two share a version.
+
+        From here it behaves like any other finding: triaged, assigned, decided, on the same clock and in the same reports. No scan will close it — a run is the authority on what it found, and it found none of this.
+
+        **Requires:** public-triage or private-triage on the product. private-triage where the finding is undisclosed.
+      operationId: record-finding
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Record-findingRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnteredBody"
+          description: Created
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Record a flaw in what this product ships
+      tags:
+        - Findings
+      x-openpsirt-requires:
+        scope: product
+        any_of:
+          - public-triage
+          - private-triage
+        note: private-triage where the finding is undisclosed.
   /v1/products/{product}/findings/components:
     get:
       description: |-
@@ -7747,65 +7824,6 @@ paths:
       x-openpsirt-requires:
         scope: any
         note: Answers only what you may see.
-  /v1/products/{product}/streams/{stream}/variants/{variant}/findings:
-    post:
-      description: |-
-        Records a vulnerability in your own product — one no scanner reported, usually because nobody outside knows about it yet.
-
-        **It starts undisclosed.** That is the case this exists for, and defaulting the other way would make the dangerous mistake the quiet one. Recording an undisclosed finding needs the private triage role on the product; send `disclosed` for one that is already public, which needs the ordinary one.
-
-        **It is filed under an identifier this deployment mints** — the product's name, the year and a number, which is the shape a vendor advisory takes. When a CVE is assigned later it becomes another name for the same issue and nothing about the finding, the decisions or the approvals moves.
-
-        `component` names what in the build carries it, as the build calls it. Leave it out for the build itself, which is the honest answer where the flaw is in how the pieces fit together rather than in one of them. A name the build holds at more than one version is refused with the choices rather than resolved to one of them; send `version`, and `ecosystem` where two share a version.
-
-        From here it behaves like any other finding: triaged, assigned, decided, on the same clock and in the same reports. No scan will close it — a run is the authority on what it found, and it found none of this.
-
-        **Requires:** public-triage or private-triage on the product. private-triage where the finding is undisclosed.
-      operationId: record-finding
-      parameters:
-        - in: path
-          name: product
-          required: true
-          schema:
-            type: string
-        - in: path
-          name: stream
-          required: true
-          schema:
-            type: string
-        - in: path
-          name: variant
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Record-findingRequest"
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EnteredBody"
-          description: Created
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Record a flaw in what this build ships
-      tags:
-        - Findings
-      x-openpsirt-requires:
-        scope: product
-        any_of:
-          - public-triage
-          - private-triage
-        note: private-triage where the finding is undisclosed.
   /v1/products/{product}/streams/{stream}/variants/{variant}/findings/{vulnerability}/components/{component}:
     get:
       description: |-

@@ -124,7 +124,7 @@ func (f *fixture) shipped(t *testing.T, target int64) {
 func (f *fixture) recorded(t *testing.T, target int64) string {
 	t.Helper()
 	_, identifier, err := f.finds.Enter(t.Context(), f.who, finding.Entering{
-		TargetID: target, Component: carrier.Name, Severity: "high",
+		TargetIDs: []int64{target}, Component: carrier.Name, Severity: "high",
 		Summary: "The management socket answers before anyone authenticated.",
 	})
 	if err != nil {

@@ -120,6 +120,16 @@ So the one scheme an image may use is `attachment:`, and the submission check
 still tells an author to attach the file when they point somewhere else. There
 is now something to attach it to.
 
+## Our prose is rendered; a third party's is not
+
+A description somebody wrote here is our own text, so it is written through the
+same editor and the same submission policy as a justification, and rendered the
+same way (TRI-52). What a scan file supplied is not.
+
+The two live in the same column, so which it is decides — and rendering the
+column would render a third party's markup at the people who hold the most
+access in this deployment, which is the whole of what the rule below prevents.
+
 ## What a scan file said is shown, never rendered
 
 Once a renderer exists, pointing it at a component description is the obvious

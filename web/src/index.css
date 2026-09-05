@@ -1377,3 +1377,25 @@ a { color: inherit; }
   overflow-x: auto;
   max-height: 60vh;
 }
+
+/* A set chosen by ticking. Not a multiple-select box: those are hard to use
+   with a mouse and impossible to read the state of at a glance, and what
+   somebody needs here is to see which builds they are about to file against. */
+.ticks {
+  list-style: none;
+  margin: 4px 0 6px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+.ticks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink);
+  cursor: pointer;
+}

@@ -19,10 +19,14 @@ func TestAnEmbargoGetsAnEndAndIsSurfacedBeforeItArrives(t *testing.T) {
 		f.shipped(t, twoConsumers())
 		who := f.planner(t, access.PrivateTriage)
 
-		row, _, err := f.store.Enter(t.Context(), who, finding.Entering{
-			TargetID: f.target, Severity: "high",
+		rows, _, err := f.store.Enter(t.Context(), who, finding.Entering{
+			TargetIDs: []int64{f.target}, Severity: "high",
 			Summary: "The management socket answers before anyone authenticated.",
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		row := rows[0]
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -63,11 +67,15 @@ func TestAnEmbargoGetsAnEndAndIsSurfacedBeforeItArrives(t *testing.T) {
 
 		// A disclosed finding carries no date: it is already public, and a
 		// date on it would be a deadline for something that has happened.
-		disclosed, _, err := f.store.Enter(t.Context(), f.planner(t, access.PrivateTriage),
+		discloseds, _, err := f.store.Enter(t.Context(), f.planner(t, access.PrivateTriage),
 			finding.Entering{
-				TargetID: f.target, Severity: "high", Disclosed: true,
+				TargetIDs: []int64{f.target}, Severity: "high", Disclosed: true,
 				Summary: "Already announced.",
 			})
+		if err != nil {
+			t.Fatal(err)
+		}
+		disclosed := discloseds[0]
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -86,7 +94,7 @@ func TestWhatIsApproachingDisclosureIsItselfUndisclosed(t *testing.T) {
 		f.shipped(t, twoConsumers())
 		if _, _, err := f.store.Enter(t.Context(), f.planner(t, access.PrivateTriage),
 			finding.Entering{
-				TargetID: f.target, Severity: "critical",
+				TargetIDs: []int64{f.target}, Severity: "critical",
 				Summary: "Something nobody outside knows about.",
 			}); err != nil {
 			t.Fatal(err)
@@ -117,10 +125,14 @@ func TestWhatIsApproachingDisclosureIsItselfUndisclosed(t *testing.T) {
 // embargoed records an undisclosed flaw and returns the issue it was filed as.
 func (f *fixture) embargoed(t *testing.T, who access.Subject) int64 {
 	t.Helper()
-	row, _, err := f.store.Enter(t.Context(), who, finding.Entering{
-		TargetID: f.target, Severity: "high",
+	rows, _, err := f.store.Enter(t.Context(), who, finding.Entering{
+		TargetIDs: []int64{f.target}, Severity: "high",
 		Summary: "Not announced anywhere yet.",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := rows[0]
 	if err != nil {
 		t.Fatal(err)
 	}

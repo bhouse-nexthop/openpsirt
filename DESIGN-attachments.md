@@ -125,7 +125,8 @@ reasoning are written in one transaction, so a file attached while composing
 one is bound to the issue alone until the text referencing it is saved. That is
 the same unattached state the reaper already deals with (ATT-11).
 
-**A file may hang off the issue itself rather than off text.** Evidence for a
+**A file may hang off the issue itself rather than off text** (ATT-15).
+Evidence for a
 flaw somebody recorded — a test case that proves it — is pointed at by the
 issue the moment it arrives, so it counts as attached at once. Waiting for text
 that will never be written would mean the sweep took it a day later, and a

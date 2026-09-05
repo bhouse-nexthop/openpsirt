@@ -999,7 +999,21 @@ export interface paths {
          */
         get: operations["list-findings"];
         put?: never;
-        post?: never;
+        /**
+         * Record a flaw in what this product ships
+         * @description Records a vulnerability in your own product — one no scanner reported, usually because nobody outside knows about it yet.
+         *
+         *     **It starts undisclosed.** That is the case this exists for, and defaulting the other way would make the dangerous mistake the quiet one. Recording an undisclosed finding needs the private triage role on the product; send `disclosed` for one that is already public, which needs the ordinary one.
+         *
+         *     **It is filed under an identifier this deployment mints** — the product's name, the year and a number, which is the shape a vendor advisory takes. When a CVE is assigned later it becomes another name for the same issue and nothing about the finding, the decisions or the approvals moves.
+         *
+         *     `component` names what in the build carries it, as the build calls it. Leave it out for the build itself, which is the honest answer where the flaw is in how the pieces fit together rather than in one of them. A name the build holds at more than one version is refused with the choices rather than resolved to one of them; send `version`, and `ecosystem` where two share a version.
+         *
+         *     From here it behaves like any other finding: triaged, assigned, decided, on the same clock and in the same reports. No scan will close it — a run is the authority on what it found, and it found none of this.
+         *
+         *     **Requires:** public-triage or private-triage on the product. private-triage where the finding is undisclosed.
+         */
+        post: operations["record-finding"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1410,36 +1424,6 @@ export interface paths {
         get: operations["list-issues-at-component"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Record a flaw in what this build ships
-         * @description Records a vulnerability in your own product — one no scanner reported, usually because nobody outside knows about it yet.
-         *
-         *     **It starts undisclosed.** That is the case this exists for, and defaulting the other way would make the dangerous mistake the quiet one. Recording an undisclosed finding needs the private triage role on the product; send `disclosed` for one that is already public, which needs the ordinary one.
-         *
-         *     **It is filed under an identifier this deployment mints** — the product's name, the year and a number, which is the shape a vendor advisory takes. When a CVE is assigned later it becomes another name for the same issue and nothing about the finding, the decisions or the approvals moves.
-         *
-         *     `component` names what in the build carries it, as the build calls it. Leave it out for the build itself, which is the honest answer where the flaw is in how the pieces fit together rather than in one of them. A name the build holds at more than one version is refused with the choices rather than resolved to one of them; send `version`, and `ecosystem` where two share a version.
-         *
-         *     From here it behaves like any other finding: triaged, assigned, decided, on the same clock and in the same reports. No scan will close it — a run is the authority on what it found, and it found none of this.
-         *
-         *     **Requires:** public-triage or private-triage on the product. private-triage where the finding is undisclosed.
-         */
-        post: operations["record-finding"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3070,6 +3054,11 @@ export interface components {
              * @example https://example.com/schemas/EnteredBody.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description How many builds it was recorded against. One issue, one finding per build
+             */
+            builds: number;
             /** @description What in the build carries it */
             component: string;
             /** @description When it has to be answered by */
@@ -3542,6 +3531,12 @@ export interface components {
             category: string;
             name: string;
             namespace: string;
+        };
+        Item: {
+            /** @description A branch or a tag */
+            stream: string;
+            /** @description How that line is built */
+            variant: string;
         };
         JudgedBody: {
             approvals: components["schemas"]["AgreedBody"][] | null;
@@ -4241,6 +4236,8 @@ export interface components {
              * @example https://example.com/schemas/Record-findingRequest.json
              */
             readonly $schema?: string;
+            /** @description Every build that ships it. One issue, one finding per build — which is the shape a scanner's findings already take */
+            builds: components["schemas"]["Item"][] | null;
             /** @description What carries it. Omit for the build itself */
             component?: string;
             /** @description Whether this is already public. Undisclosed by default */
@@ -6459,6 +6456,41 @@ export interface operations {
             };
         };
     };
+    "record-finding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Record-findingRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnteredBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "list-finding-components": {
         parameters: {
             query?: {
@@ -7115,43 +7147,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["List-issues-at-componentResponse"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
-    "record-finding": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                product: string;
-                stream: string;
-                variant: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Record-findingRequest"];
-            };
-        };
-        responses: {
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnteredBody"];
                 };
             };
             /** @description Error */

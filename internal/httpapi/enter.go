@@ -39,13 +39,14 @@ type EnteredBody struct {
 	Component  string `json:"component" doc:"What in the build carries it"`
 	Visibility string `json:"visibility" enum:"public,private" doc:"Whether it has been disclosed"`
 	DueAt      string `json:"due_at,omitempty" doc:"When it has to be answered by"`
+	Builds     int    `json:"builds" doc:"How many builds it was recorded against. One issue, one finding per build"`
 }
 
 func registerEntry(api huma.API, in Ingest) {
 	huma.Register(api, requiring(huma.Operation{
 		OperationID: "record-finding", Method: http.MethodPost,
-		Path:    "/v1/products/{product}/streams/{stream}/variants/{variant}/findings",
-		Summary: "Record a flaw in what this build ships",
+		Path:    "/v1/products/{product}/findings",
+		Summary: "Record a flaw in what this product ships",
 		Description: "Records a vulnerability in your own product — one no scanner reported, " +
 			"usually because nobody outside knows about it yet.\n\n" +
 			"**It starts undisclosed.** That is the case this exists for, and defaulting the " +
@@ -67,9 +68,15 @@ func registerEntry(api huma.API, in Ingest) {
 		Tags: []string{"Findings"}, DefaultStatus: http.StatusCreated,
 	}, perProduct, "private-triage where the finding is undisclosed.", triageRights()...), func(ctx context.Context, input *struct {
 		Product string `path:"product"`
-		Stream  string `path:"stream"`
-		Variant string `path:"variant"`
 		Body    struct {
+			// Which builds ship it, rather than one in the path. The same code
+			// goes out on several lines and as several variants at once, and
+			// the identifier is minted per product — so the product is the
+			// level this is recorded at and the builds are what it names.
+			Builds []struct {
+				Stream  string `json:"stream" minLength:"1" doc:"A branch or a tag"`
+				Variant string `json:"variant" minLength:"1" doc:"How that line is built"`
+			} `json:"builds" minItems:"1" doc:"Every build that ships it. One issue, one finding per build — which is the shape a scanner's findings already take"`
 			Summary  string `json:"summary" minLength:"1" doc:"What the flaw is, in your own words"`
 			Severity string `json:"severity,omitempty" enum:"critical,high,medium,low,negligible,none" doc:"How bad it is. May be left out during early triage, before anybody has worked that out — an unrated finding is carried and listed, and what it does not get is a deadline. Worked out from the vector where one is given"`
 			// The vector rather than a score. The number is derived from it
@@ -93,17 +100,21 @@ func registerEntry(api huma.API, in Ingest) {
 			return nil, huma.Error500InternalServerError("this process cannot record findings")
 		}
 		names := catalog.NewStore(in.DB.DB)
-		named, err := names.LocateVisible(ctx, subject, input.Product, input.Stream, input.Variant)
-		if err != nil {
-			return nil, noSuchProduct()
-		}
-		target, err := names.ExistingTarget(ctx, named.StreamID, named.VariantID)
-		if err != nil {
-			return nil, nothingScannedThere()
+		targets := make([]int64, 0, len(input.Body.Builds))
+		for _, build := range input.Body.Builds {
+			at, err := names.LocateVisible(ctx, subject, input.Product, build.Stream, build.Variant)
+			if err != nil {
+				return nil, huma.Error404NotFound(err.Error())
+			}
+			target, err := names.ExistingTarget(ctx, at.StreamID, at.VariantID)
+			if err != nil {
+				return nil, nothingScannedThere()
+			}
+			targets = append(targets, target.ID)
 		}
 
-		row, identifier, err := finding.NewStore(in.DB.DB).Enter(ctx, subject, finding.Entering{
-			TargetID: target.ID, Component: input.Body.Component,
+		rows, identifier, err := finding.NewStore(in.DB.DB).Enter(ctx, subject, finding.Entering{
+			TargetIDs: targets, Component: input.Body.Component,
 			Version: input.Body.Version, Ecosystem: input.Body.Ecosystem,
 			Summary: input.Body.Summary, Severity: input.Body.Severity,
 			Vector: input.Body.Vector, Weaknesses: input.Body.Weaknesses,
@@ -126,11 +137,13 @@ func registerEntry(api huma.API, in Ingest) {
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			case errors.Is(err, finding.ErrNothingScanned):
 				return nil, huma.Error404NotFound(err.Error())
+			case errors.Is(err, finding.ErrNoBuild), errors.Is(err, finding.ErrSeveralProducts):
+				return nil, huma.Error422UnprocessableEntity(err.Error())
 			}
 			return nil, refusedFinding(in, err)
 		}
 
-		component, err := finding.NewStore(in.DB.DB).ComponentName(ctx, row.ComponentID)
+		component, err := finding.NewStore(in.DB.DB).ComponentName(ctx, rows[0].ComponentID)
 		if err != nil {
 			return nil, wentWrong(in.Logger, "what carries it could not be read", err)
 		}
@@ -140,10 +153,11 @@ func registerEntry(api huma.API, in Ingest) {
 		}{Status: http.StatusCreated}
 		out.Body = EnteredBody{
 			Identifier: identifier, Component: component,
-			Visibility: string(row.Visibility),
+			Visibility: string(rows[0].Visibility), Builds: len(rows),
 		}
-		if row.DueAt != nil {
-			out.Body.DueAt = stamp(*row.DueAt)
+		// Every row got the same one, because they are the same flaw.
+		if rows[0].DueAt != nil {
+			out.Body.DueAt = stamp(*rows[0].DueAt)
 		}
 		return out, nil
 	})

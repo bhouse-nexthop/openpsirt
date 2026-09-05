@@ -36,8 +36,12 @@ export function Record() {
   const queries = useQueryClient();
 
   const [product, setProduct] = useState(scope.product ?? "");
-  const [stream, setStream] = useState(scope.stream ?? "");
-  const [variant, setVariant] = useState(scope.variant ?? "");
+  // Which lines and which ways they are built. Both are sets: the same code
+  // goes out on several lines and as several variants at once, and a flaw in
+  // it is one issue in every build that ships it. The builds are the product
+  // of the two, and the ones that do not exist are simply not offered.
+  const [streams, setStreams] = useState<string[]>(scope.stream ? [scope.stream] : []);
+  const [variants, setVariants] = useState<string[]>(scope.variant ? [scope.variant] : []);
   const [summary, setSummary] = useState("");
   const [severity, setSeverity] = useState("");
   const [component, setComponent] = useState("");
@@ -62,7 +66,7 @@ export function Record() {
   // ones, and may still record one that is already public.
   const mayHide = !!may?.may_hide;
   const mayRecord = mayHide || !!may?.may_triage;
-  const whole = product !== "" && stream !== "" && variant !== "";
+  const whole = product !== "" && streams.length > 0 && variants.length > 0;
 
   // Defaulting to undisclosed unless the person cannot record one, which is
   // the case this exists for. Defaulting the other way makes the dangerous
@@ -73,34 +77,37 @@ export function Record() {
     queryKey: ["products"],
     queryFn: async () => unwrap(await api.GET("/v1/products", {})),
   });
-  const streams = useQuery({
+  const lines = useQuery({
     queryKey: ["streams", product],
     enabled: product !== "",
     queryFn: async () =>
       unwrap(await api.GET("/v1/products/{product}/streams", { params: { path: { product } } })),
   });
-  const variants = useQuery({
-    queryKey: ["variants", product, stream],
-    enabled: product !== "" && stream !== "",
+  // What the product is built as, rather than what one line was. A variant
+  // belongs to the product (MDL-01), so with several lines chosen this is the
+  // set to pick from — a per-line list would be an arbitrary one of them.
+  const builtAs = useQuery({
+    queryKey: ["variants", product],
+    enabled: product !== "",
     queryFn: async () =>
-      unwrap(
-        await api.GET("/v1/products/{product}/streams/{stream}/variants", {
-          params: { path: { product, stream } },
-        }),
-      ),
+      unwrap(await api.GET("/v1/products/{product}/variants", { params: { path: { product } } })),
   });
 
   // What the build holds, to offer back as they type. A name typed from memory
   // is a name the server refuses, and a build holds thousands of components,
   // so the list is searched rather than loaded.
   const holding = useQuery({
-    queryKey: ["components", product, stream, variant, component],
+    queryKey: ["components", product, streams[0], variants[0], component],
     enabled: whole && component.trim().length >= 2,
+    // Offered from the first build chosen. The name has to exist in every one
+    // of them — the server refuses otherwise, naming the build that does not
+    // hold it — and offering the union would suggest names that will be
+    // refused.
     queryFn: async () =>
       unwrap(
         await api.GET("/v1/products/{product}/streams/{stream}/variants/{variant}/components", {
           params: {
-            path: { product, stream, variant },
+            path: { product, stream: streams[0] ?? "", variant: variants[0] ?? "" },
             query: { q: component.trim(), limit: 20 },
           },
         }),
@@ -110,9 +117,10 @@ export function Record() {
   const record = useMutation({
     mutationFn: async () => {
       const made = unwrap(
-        await api.POST("/v1/products/{product}/streams/{stream}/variants/{variant}/findings", {
-          params: { path: { product, stream, variant } },
+        await api.POST("/v1/products/{product}/findings", {
+          params: { path: { product } },
           body: {
+            builds: streams.flatMap((s) => variants.map((v) => ({ stream: s, variant: v }))),
             summary: summary.trim(),
             // Left out rather than sent empty. "Not worked out yet" is the
             // absence of the field, and an empty string is a value the
@@ -159,9 +167,11 @@ export function Record() {
       // Onto the finding. From here it behaves like any other one, and the
       // next thing somebody does with a flaw they have just recorded is work
       // on it.
+      // Onto the first build it landed in. They are the same finding, and the
+      // screen says how many builds hold it.
       navigate(
-        `/products/${encodeURIComponent(product)}/streams/${encodeURIComponent(stream)}` +
-          `/variants/${encodeURIComponent(variant)}/findings/` +
+        `/products/${encodeURIComponent(product)}/streams/${encodeURIComponent(streams[0] ?? "")}` +
+          `/variants/${encodeURIComponent(variants[0] ?? "")}/findings/` +
           `${encodeURIComponent(made.identifier)}/components/` +
           `${encodeURIComponent(made.component)}` +
           (version ? `?version=${encodeURIComponent(version)}` : ""),
@@ -205,8 +215,8 @@ export function Record() {
               value={product}
               onChange={(event) => {
                 setProduct(event.target.value);
-                setStream("");
-                setVariant("");
+                setStreams([]);
+                setVariants([]);
                 setComponent("");
               }}
             >
@@ -219,43 +229,36 @@ export function Record() {
             </select>
           </div>
           <div className="field">
-            <label htmlFor="rec-stream">Branch or tag</label>
-            <select
-              id="rec-stream"
-              value={stream}
+            <span className="l">Branches and tags</span>
+            <Picked
+              options={(lines.data?.items ?? []).map((each) => ({
+                value: each.name ?? "",
+                label: each.kind === "tag" ? `${each.name} (tag)` : (each.name ?? ""),
+              }))}
+              chosen={streams}
               disabled={product === ""}
-              onChange={(event) => {
-                setStream(event.target.value);
-                setVariant("");
+              empty={product === "" ? "Pick a product first" : "Nothing is declared here yet"}
+              onChange={(next) => {
+                setStreams(next);
                 setComponent("");
               }}
-            >
-              <option value="">{product === "" ? "Pick a product first" : "Pick one"}</option>
-              {(streams.data?.items ?? []).map((each) => (
-                <option key={each.name} value={each.name ?? ""}>
-                  {each.name} {each.kind === "tag" ? "(tag)" : ""}
-                </option>
-              ))}
-            </select>
+            />
           </div>
           <div className="field">
-            <label htmlFor="rec-variant">Built as</label>
-            <select
-              id="rec-variant"
-              value={variant}
-              disabled={stream === ""}
-              onChange={(event) => {
-                setVariant(event.target.value);
+            <span className="l">Built as</span>
+            <Picked
+              options={(builtAs.data?.items ?? []).map((each) => ({
+                value: each.name ?? "",
+                label: each.name ?? "",
+              }))}
+              chosen={variants}
+              disabled={product === ""}
+              empty={product === "" ? "Pick a product first" : "Nothing is declared here yet"}
+              onChange={(next) => {
+                setVariants(next);
                 setComponent("");
               }}
-            >
-              <option value="">{stream === "" ? "Pick a branch first" : "Pick one"}</option>
-              {(variants.data?.items ?? []).map((each) => (
-                <option key={each.name} value={each.name ?? ""}>
-                  {each.name}
-                </option>
-              ))}
-            </select>
+            />
           </div>
         </div>
       </div>
@@ -286,7 +289,7 @@ export function Record() {
           <Editor
             value={summary}
             onChange={setSummary}
-            draftKey={`record:${product}:${stream}:${variant}`}
+            draftKey={`record:${product}`}
             rows={6}
             label="What the flaw is"
             placeholder="The management socket answers a request before anyone has authenticated."
@@ -482,9 +485,76 @@ export function Record() {
           >
             {record.isPending ? "Recording…" : disclosed ? "Record" : "Record, undisclosed"}
           </button>
-          {!whole && <span className="hint">Pick a product, a branch and a variant first.</span>}
+          {whole ? (
+            <span className="hint">
+              Against {streams.length * variants.length}{" "}
+              {streams.length * variants.length === 1 ? "build" : "builds"} — one issue, one
+              finding in each. A build that does not hold the component is refused rather than
+              skipped, so deselect it if research says it is not affected.
+            </span>
+          ) : (
+            <span className="hint">
+              Pick a product, then at least one line and at least one variant.
+            </span>
+          )}
         </div>
       </div>
+    </>
+  );
+}
+
+
+// A set of things, chosen by ticking. Not a multiple-select box: those are
+// famously hard to use with a mouse and impossible to see the state of at a
+// glance, and what somebody needs here is to read back which builds they are
+// about to file against.
+function Picked({
+  options,
+  chosen,
+  disabled,
+  empty,
+  onChange,
+}: {
+  options: { value: string; label: string }[];
+  chosen: string[];
+  disabled?: boolean;
+  empty: string;
+  onChange: (next: string[]) => void;
+}) {
+  if (disabled || options.length === 0) {
+    return <span className="hint">{empty}</span>;
+  }
+  return (
+    <>
+      <ul className="ticks">
+        {options.map((option) => (
+          <li key={option.value}>
+            <label>
+              <input
+                type="checkbox"
+                checked={chosen.includes(option.value)}
+                onChange={() =>
+                  onChange(
+                    chosen.includes(option.value)
+                      ? chosen.filter((each) => each !== option.value)
+                      : [...chosen, option.value],
+                  )
+                }
+              />{" "}
+              {option.label}
+            </label>
+          </li>
+        ))}
+      </ul>
+      {options.length > 1 && (
+        <button
+          type="button"
+          className="btn quiet"
+          onClick={() => onChange(chosen.length === options.length ? [] : options.map((o) => o.value))}
+        >
+          {chosen.length === options.length ? "None" : "All of them"}
+        </button>
+      )}
     </>
   );
 }

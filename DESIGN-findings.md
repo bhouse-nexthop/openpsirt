@@ -2,7 +2,7 @@
 
 What a scan run found, and where.
 
-Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, MDL-22 to MDL-26,
+Satisfies MDL-05, MDL-06, MDL-14, MDL-15, MDL-19, MDL-20, MDL-22 to MDL-30,
 ING-02, ING-21,
 ING-29, ING-30, ING-39, ING-40, STA-03, STA-04, STA-05, STA-08, STA-17,
 RNK-01 to RNK-07, MDL-09, STA-01, STA-02, STA-06, STA-07, STA-09, STA-10,
@@ -166,6 +166,70 @@ a build with no contents to record against are four different answers. The
 third is the one worth naming: a minimum length passes whitespace, so it
 arrives from a request rather than only from inside this process, and it used
 to be answered as something having gone wrong at our end.
+
+## One recorded flaw, in every build that ships it
+
+Satisfies MDL-27 to MDL-30.
+
+The same code goes out on several lines and as several variants at once, so a
+flaw in it is not a fact about one build. It is filed under **one identifier
+this deployment mints** — the product's name, the year and a number, which is
+the shape a vendor advisory already takes — and it opens **one finding per
+build**.
+
+That is the shape a scanner's findings already have. So a flaw somebody
+recorded lists, ranks, comes due, carries decisions, groups across variants and
+appears in a comparison exactly as a reported one does, rather than in a scheme
+of its own that everything downstream would have to know about.
+
+**Every build is resolved before anything is written.** A component name one
+build holds and another does not is a question about which builds are affected,
+so it is refused and names the build — rather than recorded against some of
+them and silently not the rest, which is the version of this that looks like it
+worked.
+
+**One product.** The identifier is minted per product, so a flaw in two
+products is two records. Builds of different products are refused rather than
+resolved by taking the first.
+
+**Every row gets the same embargo, rank and deadline.** They are the same flaw;
+a deadline that differed per build would be the tool deciding that one release
+matters more than another.
+
+**A severity may be left unstated** (MDL-28). Somebody recording what they have
+just found has not decided it is mild, and making them choose a word to get the
+record written is how a guess ends up stored as a judgment. It is not given
+*no* deadline: the windows already answer for a severity they do not recognize,
+which is what every unrated finding from a scanner gets, and a finding that is
+never late is one that is forgotten.
+
+### The score is a vector, and the number comes from it
+
+What is stored is the CVSS base vector and a score **derived from it** (MDL-29).
+A score is never taken alongside a vector: two values a caller states separately
+can disagree, and afterwards nothing says which was meant — the number is what
+sorts and the vector is what somebody can argue with.
+
+**Base metrics only.** Temporal and environmental scores describe a moment and a
+deployment, and the deployment reading a finding is not the one it is about.
+
+**Version 3.0 and 3.1, and anything else is refused by name.** They share a base
+formula; version 4 does not and version 2 is a different scheme. A vector scored
+with the wrong formula produces a number nothing downstream can tell apart from
+a real one, which is worse than a refusal.
+
+**Rounding is the scheme's own, in integer arithmetic.** Doing it in floating
+point gets a different answer for some inputs, because a value that should be
+exactly 8.6 is not representable and a naive ceiling returns 8.7.
+
+**An unstated vector is not a score of zero.** Zero says "harmless", which is a
+judgment nobody made during early triage.
+
+**Weaknesses are recorded as given, against no catalogue** (MDL-30). Trimmed,
+upper-cased and de-duplicated, and otherwise whatever somebody meant. What they
+are for is making a set of findings comparable to things outside this
+deployment, and a list that refused an identifier it had not heard of would
+refuse next year's — arriving as a failure to record a flaw.
 
 ## How a finding was reached, and why it decides what to do about it
 

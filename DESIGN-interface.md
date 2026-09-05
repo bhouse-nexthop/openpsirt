@@ -2,7 +2,7 @@
 
 The web interface, how it is built, and how it reaches the server.
 
-Satisfies UIX-01 to UIX-27, UIX-30 to UIX-53, SCP-05, API-17, ACC-56 to
+Satisfies UIX-01 to UIX-27, UIX-30 to UIX-54, SCP-05, API-17, ACC-56 to
 ACC-59, the half of ING-41 that is shown rather than collected, and the
 interface half of TRI-45 to TRI-47. UIX-28 is in `DESIGN-text.md` with the rest
 of the rendering, and UIX-29 was withdrawn. What is not built is named at the
@@ -1205,15 +1205,22 @@ why.
 
 ## Recording a flaw
 
+Satisfies UIX-54, and shows what TRI-52 decides about the prose in it.
+
 A screen of its own, reached from the rail rather than from the findings list.
 What is being recorded is precisely what is **not** in that list, so opening it
 from there asks somebody to start where the answer is absent — and it needs
 more asked of it than a control beside a table has room for.
 
-It asks for the product, the branch and the variant rather than taking them
-from the scope, because a flaw is recorded against what one build ships and
-filing it against a build nobody named is a record that says the wrong thing
-quietly. The scope prefills it and does not constrain it.
+It asks for the product and then for **sets** of lines and variants, because
+the same code goes out on several lines and as several variants at once and a
+flaw in it is one issue in every build that ships it. The builds are the
+product of the two. The scope prefills it and does not constrain it.
+
+They are ticked rather than chosen from a multiple-select box: those are hard
+to use with a mouse and impossible to read the state of at a glance, and what
+somebody needs here is to see which builds they are about to file against —
+which the screen also says as a count.
 
 **The component is searched against what that build actually holds.** A name
 typed from memory is a name the server refuses, and a name the build holds at

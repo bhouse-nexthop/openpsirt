@@ -19,14 +19,15 @@ func TestAFlawInOurOwnProductIsRecordedAndReadBackLikeAnyOther(t *testing.T) {
 	// that nobody outside has been told about it.
 	twoReach(t, func(t *testing.T, r *reach) {
 		r.scannedWithEvidence(t)
-		const at = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		const at = "/v1/products/mine/findings"
 		// Recording belongs to a build; the list it appears in takes the build
 		// as a selection (UIX-53).
 		const listing = "/v1/products/mine/findings?stream=master&variant=broadcom"
 
 		// A reader cannot, and neither can somebody who may only argue about
 		// known issues in shipped components.
-		body := `{"summary":"The management socket answers before anyone authenticated.",` +
+		body := `{"builds":[{"stream":"master","variant":"broadcom"}],` +
+			`"summary":"The management socket answers before anyone authenticated.",` +
 			`"severity":"critical"}`
 		for _, who := range []string{"reader", "triager"} {
 			if got := asPerson(t, r, who, http.MethodPost, at, body); got.Code < 400 {
@@ -98,9 +99,9 @@ func TestWhatIsApproachingDisclosureIsAnsweredOnlyToWhoMaySeeIt(t *testing.T) {
 	// much as a row.
 	twoReach(t, func(t *testing.T, r *reach) {
 		r.scannedWithEvidence(t)
-		const at = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		const at = "/v1/products/mine/findings"
 		got := asPerson(t, r, "private-triage", http.MethodPost, at,
-			`{"summary":"Not announced anywhere.","severity":"critical"}`)
+			`{"builds":[{"stream":"master","variant":"broadcom"}],"summary":"Not announced anywhere.","severity":"critical"}`)
 		if got.Code != http.StatusCreated {
 			t.Fatalf("recording answered %d: %s", got.Code, got.Body.String())
 		}
@@ -145,9 +146,9 @@ func TestMovingADisclosureDateIsRecordedAndGatedTheSameWayADeferralIs(t *testing
 	// this stayed hidden.
 	twoReach(t, func(t *testing.T, r *reach) {
 		r.scannedWithEvidence(t)
-		const findings = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		const findings = "/v1/products/mine/findings"
 		got := asPerson(t, r, "private-triage", http.MethodPost, findings,
-			`{"summary":"Not announced anywhere.","severity":"high"}`)
+			`{"builds":[{"stream":"master","variant":"broadcom"}],"summary":"Not announced anywhere.","severity":"high"}`)
 		if got.Code != http.StatusCreated {
 			t.Fatalf("recording answered %d: %s", got.Code, got.Body.String())
 		}
@@ -268,11 +269,11 @@ func TestANameTheBuildHoldsTwiceIsRefusedWithTheChoicesToPickFrom(t *testing.T) 
 	twoReach(t, func(t *testing.T, r *reach) {
 		r.scannedWithEvidence(t)
 		r.shipsTwice(t)
-		const at = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		const at = "/v1/products/mine/findings"
 		const said = `"summary":"The parser accepts a message it should refuse.","severity":"high"`
 
 		got := asPerson(t, r, "private-triage", http.MethodPost, at,
-			`{`+said+`,"component":"libnl-3-200"}`)
+			`{"builds":[{"stream":"master","variant":"broadcom"}],`+said+`,"component":"libnl-3-200"}`)
 		if got.Code != http.StatusConflict {
 			t.Fatalf("an ambiguous name answered %d: %s", got.Code, got.Body.String())
 		}
@@ -301,7 +302,7 @@ func TestANameTheBuildHoldsTwiceIsRefusedWithTheChoicesToPickFrom(t *testing.T) 
 
 		// Named, it is recorded against that one.
 		made := asPerson(t, r, "private-triage", http.MethodPost, at,
-			`{`+said+`,"component":"libnl-3-200","version":"3.9.0"}`)
+			`{"builds":[{"stream":"master","variant":"broadcom"}],`+said+`,"component":"libnl-3-200","version":"3.9.0"}`)
 		if made.Code != http.StatusCreated {
 			t.Fatalf("naming the version answered %d: %s", made.Code, made.Body.String())
 		}
@@ -315,7 +316,7 @@ func TestASummaryOfNothingButSpacesIsTheCallersToFix(t *testing.T) {
 	twoReach(t, func(t *testing.T, r *reach) {
 		r.scannedWithEvidence(t)
 		got := asPerson(t, r, "private-triage", http.MethodPost,
-			"/v1/products/mine/streams/master/variants/broadcom/findings",
+			"/v1/products/mine/findings",
 			`{"summary":"   ","severity":"high"}`)
 		if got.Code != http.StatusUnprocessableEntity {
 			t.Errorf("a summary of spaces answered %d, want it named as the caller's to fix: %s",
@@ -331,9 +332,9 @@ func TestAVectorThisCannotScoreIsTheCallersToFix(t *testing.T) {
 	// says so about every other refusal it makes.
 	twoReach(t, func(t *testing.T, r *reach) {
 		r.scannedWithEvidence(t)
-		const at = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		const at = "/v1/products/mine/findings"
 		got := asPerson(t, r, "private-triage", http.MethodPost, at,
-			`{"summary":"Something is wrong.",`+
+			`{"builds":[{"stream":"master","variant":"broadcom"}],"summary":"Something is wrong.",`+
 				`"vector":"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"}`)
 		if got.Code != http.StatusUnprocessableEntity {
 			t.Errorf("a version this cannot score answered %d, want it named as the caller's"+
@@ -347,9 +348,9 @@ func TestAFlawMayBeRecordedBeforeAnybodyHasRatedIt(t *testing.T) {
 	// is how a guess ends up stored as a judgment.
 	twoReach(t, func(t *testing.T, r *reach) {
 		r.scannedWithEvidence(t)
-		const at = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		const at = "/v1/products/mine/findings"
 		got := asPerson(t, r, "private-triage", http.MethodPost, at,
-			`{"summary":"Found during early triage; how bad it is comes later."}`)
+			`{"builds":[{"stream":"master","variant":"broadcom"}],"summary":"Found during early triage; how bad it is comes later."}`)
 		if got.Code != http.StatusCreated {
 			t.Fatalf("an unrated flaw answered %d: %s", got.Code, got.Body.String())
 		}
@@ -361,9 +362,9 @@ func TestAVectorSettlesTheSeverityRatherThanBeingAskedTwice(t *testing.T) {
 	// again invites a word that disagrees with the vector beside it.
 	twoReach(t, func(t *testing.T, r *reach) {
 		r.scannedWithEvidence(t)
-		const at = "/v1/products/mine/streams/master/variants/broadcom/findings"
+		const at = "/v1/products/mine/findings"
 		made := asPerson(t, r, "private-triage", http.MethodPost, at,
-			`{"summary":"The management socket answers before anyone authenticated.",`+
+			`{"builds":[{"stream":"master","variant":"broadcom"}],"summary":"The management socket answers before anyone authenticated.",`+
 				`"vector":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",`+
 				`"weaknesses":["CWE-306","cwe-306","  "]}`)
 		if made.Code != http.StatusCreated {
