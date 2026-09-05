@@ -857,8 +857,11 @@ validation after you have sent it.</p>
 publish needs none of them.</p>
 <h2 id="who-may-sign-in">Who may sign in<a class="headerlink" href="#who-may-sign-in" title="Permanent link">&para;</a></h2>
 <p>The process refuses to start until somebody can administer it, and naming
-somebody grants a role — it does not let anybody in without signing in. At
-least one of the sign-in methods below has to be configured.</p>
+somebody grants a role — it does not let anybody in without signing in.</p>
+<p>Configure at least one of the sign-in methods below, or nobody can reach it.
+<strong>The Helm chart refuses to render an install with none; the binary does not
+check</strong>, because a deployment being brought up in pieces is an ordinary state
+for a process and not for an install.</p>
 <table>
 <thead>
 <tr>
