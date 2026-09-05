@@ -54,6 +54,68 @@ const (
 // ErrAlreadyAssessed is returned where a claim already stands about an issue.
 var ErrAlreadyAssessed = errors.New("this issue is already assessed")
 
+// ErrUnknownIssue is returned where an issue is not one this subject may be
+// told about, and is answered exactly as a name nobody has ever used.
+var ErrUnknownIssue = errors.New("no issue is known by that name")
+
+// ErrNoSuchAssessment is returned where a claim is missing or is about an
+// issue this subject may not be told about. One error for both, because
+// telling them apart is what turns a claim identifier into a directory.
+var ErrNoSuchAssessment = errors.New("no assessment is recorded there")
+
+// mayBeToldOf reports whether this subject may be told an issue exists.
+//
+// An assessment is a claim about an issue rather than about a place (TRI-40),
+// which is why making one asks for triage on some product rather than on a
+// particular one (ACC-62). Both of those read "an issue is public knowledge" —
+// which holds for a CVE and does not hold for an identifier this deployment
+// minted for a flaw nobody has announced (MDL-24, MDL-27). Naming one and
+// being handed the severity recorded against it is a disclosure, and it does
+// not stop being one because the route taken to it was a rating.
+//
+// So an issue somebody may read a finding of, in any product, is one they may
+// argue about. An issue that reaches nothing here is nobody's secret — a CVE
+// interned by a scan that no longer matches anything, or one rated before it
+// arrives — and refusing that would take away the half of TRI-40 that reaches
+// products an issue has not met yet. A flaw recorded here always sits at a
+// build, so it is never in that second case.
+//
+// Read through the finding rather than the issue because visibility lives on
+// the finding: the same issue is undisclosed in one product and announced in
+// another, and what the reader may be told follows the place.
+func mayBeToldOf(ctx context.Context, db bun.IDB, subject access.Subject,
+	vulnerabilityID int64) (bool, error) {
+
+	if subject.Kind != access.Person {
+		return false, nil
+	}
+	products, all := subject.Products()
+	if all {
+		return true, nil
+	}
+	// Closed findings count. An issue whose findings have all been fixed is
+	// still one the reader has seen, and dropping it here would quietly retire
+	// their ability to argue about it.
+	readable, err := onlyReadable(db.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN target AS tg ON tg.id = f.target_id").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		Where("f.vulnerability_id = ?", vulnerabilityID),
+		subject, products, all).Count(ctx)
+	if err != nil {
+		return false, fmt.Errorf("read where this issue sits: %w", err)
+	}
+	if readable > 0 {
+		return true, nil
+	}
+	anywhere, err := db.NewSelect().Model((*Finding)(nil)).
+		Where("vulnerability_id = ?", vulnerabilityID).Count(ctx)
+	if err != nil {
+		return false, fmt.Errorf("read whether this issue reaches anything: %w", err)
+	}
+	return anywhere == 0, nil
+}
+
 // Assess records what somebody thinks of an issue.
 //
 // Rating something **worse** than published takes effect at once: nobody needs
@@ -91,10 +153,20 @@ func (s *Store) Assess(ctx context.Context, subject access.Subject, vulnerabilit
 
 	var recorded *Assessment
 	err := database.InTransaction(ctx, s.db, func(ctx context.Context, tx bun.Tx) error {
+		// Inside the transaction, because a retry re-runs this closure against
+		// a database that has moved and an authorization answered against the
+		// old one describes a world that is gone (DAT-31).
+		told, err := mayBeToldOf(ctx, tx, subject, vulnerabilityID)
+		if err != nil {
+			return err
+		}
+		if !told {
+			return ErrUnknownIssue
+		}
 		var issue struct {
 			Published string `bun:"severity"`
 		}
-		err := tx.NewSelect().
+		err = tx.NewSelect().
 			TableExpr("vulnerability AS v").
 			ColumnExpr("COALESCE(v.severity, '') AS severity").
 			Where("v.id = ?", vulnerabilityID).
@@ -168,7 +240,16 @@ func (s *Store) Agree(ctx context.Context, subject access.Subject, id int64) (*A
 	err := database.InTransaction(ctx, s.db, func(ctx context.Context, tx bun.Tx) error {
 		claim := new(Assessment)
 		if err := tx.NewSelect().Model(claim).Where("id = ?", id).Scan(ctx); err != nil {
-			return fmt.Errorf("read the claim: %w", err)
+			// A claim nobody may be told about and a claim that was never
+			// recorded answer alike, so an identifier cannot be walked.
+			return ErrNoSuchAssessment
+		}
+		told, err := mayBeToldOf(ctx, tx, subject, claim.VulnerabilityID)
+		if err != nil {
+			return err
+		}
+		if !told {
+			return ErrNoSuchAssessment
 		}
 		if claim.State != AssessmentProposed {
 			return fmt.Errorf("this claim is %s rather than waiting", claim.State)
@@ -208,7 +289,14 @@ func (s *Store) Withdraw(ctx context.Context, subject access.Subject, id int64) 
 	return database.InTransaction(ctx, s.db, func(ctx context.Context, tx bun.Tx) error {
 		claim := new(Assessment)
 		if err := tx.NewSelect().Model(claim).Where("id = ?", id).Scan(ctx); err != nil {
-			return fmt.Errorf("read the claim: %w", err)
+			return ErrNoSuchAssessment
+		}
+		told, err := mayBeToldOf(ctx, tx, subject, claim.VulnerabilityID)
+		if err != nil {
+			return err
+		}
+		if !told {
+			return ErrNoSuchAssessment
 		}
 		if claim.State == AssessmentWithdrawn {
 			return nil
@@ -400,9 +488,11 @@ func redue(ctx context.Context, tx bun.Tx, vulnerabilityID int64) error {
 
 // Assessments lists what has been said about issues, newest first.
 //
-// Readable by anybody who may read findings: a claim about an issue is not a
-// claim about a product, and there is nothing in it that a product's findings
-// would not already tell somebody.
+// Narrowed to the issues the reader may be told about, which is the same rule
+// the counts beside each row already followed. A claim carries the severity
+// recorded against the issue and the argument somebody wrote about it, so a
+// row about an undisclosed flaw is that flaw's disclosure — reached by a route
+// that reads as a list of opinions rather than as a finding.
 func (s *Store) Assessments(ctx context.Context, subject access.Subject, state string,
 	limit int) ([]Assessment, map[int64]string, error) {
 
@@ -417,6 +507,23 @@ func (s *Store) Assessments(ctx context.Context, subject access.Subject, state s
 		Limit(limit)
 	if state != "" {
 		q = q.Where("state = ?", state)
+	}
+	products, all := subject.Products()
+	if !all {
+		// The row-by-row form of mayBeToldOf: a claim is shown where its issue
+		// reaches something the reader may read, or reaches nothing at all.
+		readable := onlyReadable(s.db.NewSelect().
+			ColumnExpr("1").
+			TableExpr("finding AS f").
+			Join("JOIN target AS tg ON tg.id = f.target_id").
+			Join("JOIN stream AS st ON st.id = tg.stream_id").
+			Where("f.vulnerability_id = asm.vulnerability_id"),
+			subject, products, all)
+		anywhere := s.db.NewSelect().
+			ColumnExpr("1").
+			TableExpr("finding AS reach").
+			Where("reach.vulnerability_id = asm.vulnerability_id")
+		q = q.Where("(EXISTS (?) OR NOT EXISTS (?))", readable, anywhere)
 	}
 	var claims []Assessment
 	if err := q.Scan(ctx, &claims); err != nil {
@@ -487,7 +594,17 @@ func (s *Store) WhatAgreeingWouldDo(ctx context.Context, subject access.Subject,
 	claim := new(Assessment)
 	if err := s.db.NewSelect().Model(claim).Where("id = ?", assessmentID).
 		Scan(ctx); err != nil {
-		return Consequence{}, fmt.Errorf("read the claim: %w", err)
+		return Consequence{}, ErrNoSuchAssessment
+	}
+	// Enforced here as well as on the list that reaches it, because this is
+	// the layer that answers (ACC-04) and a caller that arrived another way
+	// would otherwise be told the shape of an issue it may not be told about.
+	told, err := mayBeToldOf(ctx, s.db, subject, claim.VulnerabilityID)
+	if err != nil {
+		return Consequence{}, err
+	}
+	if !told {
+		return Consequence{}, ErrNoSuchAssessment
 	}
 
 	products, all := subject.Products()
@@ -516,7 +633,11 @@ func (s *Store) WhatAgreeingWouldDo(ctx context.Context, subject access.Subject,
 		Where("f.vulnerability_id = ?", claim.VulnerabilityID).
 		Where("f.closed_at IS NULL").
 		GroupExpr("st.product_id, f.urgency_exploited, " + EffectiveSeverityExpr)
-	q = onlyVisible(q, subject, products, all)
+	// Both halves. The visibility half alone admits every disclosed finding in
+	// the deployment, so an approver holding one product was told how many
+	// findings this issue has in products they hold nothing on — and how many
+	// products those are, which is a count of what somebody else ships.
+	q = onlyReadable(q, subject, products, all)
 	if err := q.Scan(ctx, &rows); err != nil {
 		return Consequence{}, fmt.Errorf("read what this issue is open against: %w", err)
 	}

@@ -37,9 +37,11 @@ export interface paths {
         };
         /**
          * List what we have said about issues
-         * @description Every claim, or those in one state. The ones waiting are milder ratings somebody has proposed and nobody has agreed to yet, which are the ones not yet affecting anything.
+         * @description Every claim about an issue you may be told about, or those in one state. The ones waiting are milder ratings somebody has proposed and nobody has agreed to yet, which are the ones not yet affecting anything.
          *
-         *     **Requires:** any recognized credential. Every claim, whoever asks: a rating is about an issue, not a product (TRI-40), so there is nothing here to narrow by.
+         *     A claim carries the severity recorded against its issue, so claims about findings you cannot read are absent rather than refused.
+         *
+         *     **Requires:** any recognized credential. Narrowed to issues you may read a finding of somewhere. A rating is about an issue rather than a product, but an issue this deployment minted for a flaw nobody has announced is not public knowledge.
          */
         get: operations["list-assessments"];
         put?: never;

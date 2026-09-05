@@ -45,6 +45,10 @@ func noSuchIssue() error {
 	return huma.Error404NotFound("no issue is known by that name")
 }
 
+func noSuchAssessment() error {
+	return huma.Error404NotFound("no assessment is recorded there")
+}
+
 func nothingScannedThere() error {
 	return huma.Error404NotFound("nothing has been scanned there")
 }

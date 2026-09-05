@@ -156,6 +156,17 @@ every product at once — so an account granted reading on one product is not
 somebody to trust with it. Enforced in the store, and the API document says the
 scope is a role on any product rather than pretending it is per-product.
 
+**The role anywhere is not the whole of it: the issue has to be one the person
+may be told about** (TRI-53). "Anywhere" answers which right is asked for, not
+which issues it may be exercised on, and on its own it reads "an issue is public
+knowledge" — true of a CVE and false of an identifier this deployment minted for
+a flaw nobody has announced. So each of these acts also asks whether the subject
+may read a finding of that issue somewhere, at its visibility, and an issue that
+sits at no build here is exempt because it discloses nothing. A refusal is
+spelled as an unused name, and an unreadable claim is left out of the list
+rather than refused, so neither the issue nor the claim identifier can be
+walked. `DESIGN-triage.md` carries the shape.
+
 ## What somebody is told asks for reading it
 
 A notification names the issue, the component and the build, and it is stored as

@@ -67,7 +67,25 @@ person can be acted as directly:
 
 ## Fix now
 
-- [ ] **X1 · Assessments leak undisclosed recorded flaws.** *Leak, demonstrated.* **S**
+- [x] **X1 · Assessments leak undisclosed recorded flaws.** *Leak, demonstrated.* **S**
+
+  **Done.** Recorded as TRI-53. Recording, agreeing to, taking back and listing
+  a claim now all ask whether the subject may read a finding of that issue
+  somewhere; an issue sitting at no build here is exempt, which is what keeps
+  the forward-looking half of TRI-40. A refusal is spelled as an unused name
+  and an unreadable claim is absent from the list, so neither the issue name
+  nor the claim identifier can be walked.
+
+  **A second leak was found beside it and fixed in the same change**: the
+  counts on a waiting claim used `onlyVisible`, whose own comment warns that
+  the visibility half alone "admits every disclosed finding in the deployment,
+  including in products the asker holds nothing on". So an approver holding one
+  product was told how many findings the issue had elsewhere and how many
+  products those were. Now `onlyReadable`, and pinned — the test read 2
+  products before the fix and 1 after.
+
+  All four controls were verified by breaking them and watching the named test
+  fail.
 
   Evidence, all reproduced:
 

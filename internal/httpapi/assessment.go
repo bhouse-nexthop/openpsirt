@@ -78,6 +78,12 @@ func registerAssessment(api huma.API, in Ingest) {
 		claim, err := finding.NewStore(in.DB.DB).Assess(ctx, subject, issue,
 			input.Body.Severity, input.Body.Reasoning)
 		if err != nil {
+			// Exactly what an unused name answers. An issue somebody may not
+			// be told about is not one they get to learn the severity of by
+			// rating it.
+			if errors.Is(err, finding.ErrUnknownIssue) {
+				return nil, noSuchIssue()
+			}
 			if errors.Is(err, finding.ErrAlreadyAssessed) {
 				return nil, huma.Error409Conflict(
 					"something is already claimed about this issue — withdraw that before " +
@@ -105,6 +111,9 @@ func registerAssessment(api huma.API, in Ingest) {
 		}
 		claim, err := finding.NewStore(in.DB.DB).Agree(ctx, subject, input.ID)
 		if err != nil {
+			if errors.Is(err, finding.ErrNoSuchAssessment) {
+				return nil, noSuchAssessment()
+			}
 			if errors.Is(err, access.ErrDenied) {
 				return nil, huma.Error403Forbidden("not authorized")
 			}
@@ -129,6 +138,9 @@ func registerAssessment(api huma.API, in Ingest) {
 			return nil, err
 		}
 		if err := finding.NewStore(in.DB.DB).Withdraw(ctx, subject, input.ID); err != nil {
+			if errors.Is(err, finding.ErrNoSuchAssessment) {
+				return nil, noSuchAssessment()
+			}
 			if errors.Is(err, access.ErrDenied) {
 				return nil, huma.Error403Forbidden("not authorized")
 			}
@@ -141,12 +153,15 @@ func registerAssessment(api huma.API, in Ingest) {
 		OperationID: "list-assessments", Method: http.MethodGet,
 		Path:    "/v1/assessments",
 		Summary: "List what we have said about issues",
-		Description: "Every claim, or those in one state. The ones waiting are milder " +
-			"ratings somebody has proposed and nobody has agreed to yet, which are the " +
-			"ones not yet affecting anything.",
+		Description: "Every claim about an issue you may be told about, or those in one " +
+			"state. The ones waiting are milder ratings somebody has proposed and nobody " +
+			"has agreed to yet, which are the ones not yet affecting anything.\n\n" +
+			"A claim carries the severity recorded against its issue, so claims about " +
+			"findings you cannot read are absent rather than refused.",
 		Tags: []string{"Triage"},
-	}, anySubject, "Every claim, whoever asks: a rating is about an issue, not a product "+
-		"(TRI-40), so there is nothing here to narrow by."), func(ctx context.Context, input *struct {
+	}, anySubject, "Narrowed to issues you may read a finding of somewhere. A rating is about "+
+		"an issue rather than a product, but an issue this deployment minted for a flaw "+
+		"nobody has announced is not public knowledge."), func(ctx context.Context, input *struct {
 		State string `query:"state" enum:"proposed,live,withdrawn" doc:"Limit to one state"`
 		Limit int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 	}) (*listOutput[AssessmentBody], error) {
@@ -169,6 +184,12 @@ func registerAssessment(api huma.API, in Ingest) {
 			// every historical claim would buy nothing.
 			if claim.State == finding.AssessmentProposed && claim.NeedsApproval {
 				would, err := store.WhatAgreeingWouldDo(ctx, subject, claim.ID)
+				// A claim that stopped being readable between the list and
+				// this loop leaves its counts off rather than failing the
+				// whole page.
+				if errors.Is(err, finding.ErrNoSuchAssessment) {
+					continue
+				}
 				if err != nil {
 					return nil, wentWrong(in.Logger, "what agreeing would do could not be worked out", err)
 				}

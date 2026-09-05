@@ -121,7 +121,7 @@ Any credential this deployment recognizes. The answer is narrowed to what you ma
 
 | | Endpoint | Roles | |
 |---|---|---|---|
-| GET | `/v1/assessments` | — | Every claim, whoever asks: a rating is about an issue, not a product (TRI-40), so there is nothing here to narrow by. |
+| GET | `/v1/assessments` | — | Narrowed to issues you may read a finding of somewhere. A rating is about an issue rather than a product, but an issue this deployment minted for a flaw nobody has announced is not public knowledge. |
 | GET | `/v1/assignments` | — | Answers only what you may see. |
 | GET | `/v1/attachments/{token}` | — | Answers only what you may see. |
 | GET | `/v1/audit` | — | Answers only what you may see. |

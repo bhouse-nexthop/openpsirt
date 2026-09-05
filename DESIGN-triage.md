@@ -580,16 +580,35 @@ has not reached yet, and it does not stop being true because somebody rebuilt.
 Keyed to a place it would have to be repeated at each one and would lapse on a
 version change that had nothing to do with it.
 
-**Making one asks for triage anywhere, and reading them is not narrowed at
-all** (ACC-62). Because the claim is about an issue there is no product to hold
-a role on, so the right is asked for on some product rather than on this one —
-and the list of claims answers every person the same way. That much is a gap
-rather than a decision: a rating names an issue, and an issue somebody recorded
-by hand under an identifier this deployment minted is one nobody has announced.
-It is small — the identifier, a severity word and a reason, with no product, no
-build and no component beside it — and it is written down rather than narrowed,
-because narrowing it means deciding what a claim about an issue is scoped to,
-which is the question TRI-40 answered the other way.
+**Making one asks for triage anywhere** (ACC-62). Because the claim is about an
+issue there is no product to hold a role on, so the right is asked for on some
+product rather than on this one.
+
+**And every act on a claim asks that the issue is one the person may be told
+about** (TRI-53). Asking for a role anywhere, and answering the list the same
+way for everybody, both read "an issue is public knowledge" — true of a CVE and
+false of an identifier this deployment minted for a flaw nobody has announced.
+The claim carries the severity recorded against the issue and the argument
+somebody wrote about it, so a row about an embargoed flaw is that flaw's
+disclosure, reached by a route that reads as a list of opinions rather than as
+a finding.
+
+So recording, agreeing to, taking back and listing all ask the same question:
+may this person read a finding of this issue, in any product, at its
+visibility? A refusal answers exactly as a name nobody has ever used, and a
+claim that fails it is absent from the list rather than refused — the two
+together are what stop a claim identifier from being walked.
+
+**An issue that sits at no build here is exempt.** It is nobody's secret, and
+refusing it would take away the half of TRI-40 that reaches products an issue
+has not met yet — an opinion recorded before the issue arrives. A flaw recorded
+here always names at least one build, so it is never in that case.
+
+**The counts beside a waiting claim stop at the products the reader holds.**
+Narrowing on visibility alone admits every disclosed finding in the deployment,
+so an approver holding one product was told how many findings the issue has
+elsewhere and how many products those were — a count of what somebody else
+ships. Both halves are asked as one call, so a query cannot carry half of it.
 
 **Rating something worse takes effect at once; rating it milder waits for a
 second person.** Nobody needs protecting from being told something is worse than

@@ -464,3 +464,169 @@ func TestWhatAgreeingWouldDoCountsWhatCrossesTheLineAndNotWhatIsAlreadyBelow(t *
 		}
 	})
 }
+
+func TestAnUndisclosedFlawCannotBeRatedByName(t *testing.T) {
+	// The leak this closed. TRI-40 and ACC-62 both read "an issue is public
+	// knowledge", which holds for a CVE and does not hold for an identifier
+	// this deployment minted for a flaw nobody has announced. Anybody who
+	// triaged anywhere could name one and be handed the severity recorded
+	// against it, and the claim they made then carried that severity to
+	// everybody.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		hidden := f.embargoed(t, f.planner(t, access.PrivateTriage))
+
+		// Triage on this very product, and no reading of undisclosed work.
+		f.recorded(t, 1, "someone")
+		public := f.holding(t, access.PublicTriage)
+		_, err := f.store.Assess(t.Context(), public, hidden, "low", "Probe.")
+		if !errors.Is(err, finding.ErrUnknownIssue) {
+			t.Errorf("rating an undisclosed flaw gave %v, want the answer an unused name gives", err)
+		}
+
+		// And nothing was written, so the severity did not reach the order.
+		if got := f.liveAssessments(t, hidden); got != 0 {
+			t.Errorf("%d claims stand about an undisclosed flaw, want 0", got)
+		}
+	})
+}
+
+func TestAClaimAboutAnUndisclosedFlawIsNotListed(t *testing.T) {
+	// The read half, which is how the severity reached every credential once
+	// one claim existed. The counts beside each row were already narrowed;
+	// the row itself was not.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		keeper := f.planner(t, access.PrivateTriage)
+		hidden := f.embargoed(t, keeper)
+		if _, err := f.store.Assess(t.Context(), keeper, hidden, "critical",
+			"Worse than it looks."); err != nil {
+			t.Fatal(err)
+		}
+
+		f.recorded(t, keeper.ID+1, "onlooker")
+		reader := f.holding(t, access.PublicRead)
+		reader.ID = keeper.ID + 1
+		claims, _, err := f.store.Assessments(t.Context(), reader, "", 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, claim := range claims {
+			if claim.VulnerabilityID == hidden {
+				t.Errorf("somebody who may not read the flaw was shown what we say about it: %+v", claim)
+			}
+		}
+
+		// Whoever may read it still sees it, or the narrowing has hidden the
+		// claim from the person who made it.
+		mine, _, err := f.store.Assessments(t.Context(), keeper, "", 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var found bool
+		for _, claim := range mine {
+			if claim.VulnerabilityID == hidden {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("the claim is hidden from somebody who may read the flaw it is about")
+		}
+	})
+}
+
+func TestAgreeingAndWithdrawingAnswerAsThoughTheClaimWereAbsent(t *testing.T) {
+	// A claim identifier is a small number, so "this one is not yours" and
+	// "there is no such claim" answering differently is a way to count the
+	// undisclosed flaws somebody has an opinion about.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		keeper := f.planner(t, access.PrivateTriage)
+		hidden := f.embargoed(t, keeper)
+		claim, err := f.store.Assess(t.Context(), keeper, hidden, "low",
+			"Not reachable in how we ship it.")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		f.recorded(t, keeper.ID+1, "outsider")
+		outsider := f.holding(t, access.PublicTriage)
+		outsider.ID = keeper.ID + 1
+
+		_, err = f.store.Agree(t.Context(), outsider, claim.ID)
+		if !errors.Is(err, finding.ErrNoSuchAssessment) {
+			t.Errorf("agreeing to a claim about an undisclosed flaw gave %v", err)
+		}
+		if err := f.store.Withdraw(t.Context(), outsider, claim.ID); !errors.Is(err, finding.ErrNoSuchAssessment) {
+			t.Errorf("withdrawing a claim about an undisclosed flaw gave %v", err)
+		}
+		// The same answer a claim nobody ever recorded gives.
+		if _, err := f.store.Agree(t.Context(), outsider, claim.ID+9999); !errors.Is(err, finding.ErrNoSuchAssessment) {
+			t.Errorf("agreeing to a claim that does not exist gave %v", err)
+		}
+
+		// It really is still waiting, so the refusal was a refusal rather than
+		// the claim having gone.
+		if got := f.assessment(t, claim.ID); got.State != finding.AssessmentProposed {
+			t.Errorf("the claim is %s, want it untouched and waiting", got.State)
+		}
+	})
+}
+
+func TestRatingAnIssueThatReachesNothingIsStillAllowed(t *testing.T) {
+	// The forward-looking half of TRI-40: an opinion reaches products the
+	// issue has not met yet. An issue that sits at no build here is nobody's
+	// secret, so narrowing must not take this away.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		unreached := f.interned(t, "CVE-2026-NOWHERE")
+
+		f.recorded(t, 1, "someone")
+		who := f.holding(t, access.PublicTriage)
+		if _, err := f.store.Assess(t.Context(), who, unreached, "critical",
+			"Rated before it arrives here."); err != nil {
+			t.Fatalf("rating an issue that reaches nothing was refused: %v", err)
+		}
+	})
+}
+
+func TestWhatAgreeingWouldDoStopsAtTheProductsTheReaderHolds(t *testing.T) {
+	// Both halves of the narrowing. The visibility half alone admits every
+	// disclosed finding in the deployment, so an approver holding one product
+	// was told how many findings an issue has in products they hold nothing
+	// on — and how many products those are, which is a count of what somebody
+	// else ships.
+	each(t, func(t *testing.T, f *fixture) {
+		f.shipped(t, twoConsumers())
+		elsewhere := f.inAnotherProduct(t, "other-product")
+		f.shippedTo(t, elsewhere, twoConsumers())
+
+		bad := found("CVE-2026-BOTH", swss)
+		bad.Issue.Severity = "critical"
+		if _, err := f.store.Apply(t.Context(), f.target, f.run(t),
+			[]finding.Reported{bad}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.store.Apply(t.Context(), elsewhere, f.runOn(t, elsewhere),
+			[]finding.Reported{bad}); err != nil {
+			t.Fatal(err)
+		}
+
+		f.recorded(t, 1, "someone")
+		who := f.holding(t, access.PublicTriage)
+		claim, err := f.store.Assess(t.Context(), who, f.issue(t, "CVE-2026-BOTH"),
+			"low", "Compiled out of our build.")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		would, err := f.store.WhatAgreeingWouldDo(t.Context(), who, claim.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if would.Products != 1 {
+			t.Errorf("an approver holding one product was told this issue sits in %d, want 1",
+				would.Products)
+		}
+	})
+}
