@@ -200,6 +200,51 @@ components:
         - vulnerability
         - places
       type: object
+    AttachmentBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/AttachmentBody.json
+          format: uri
+          readOnly: true
+          type: string
+        content_type:
+          description: What it is served as, which is decided here and is not what the uploader called it
+          type: string
+        filename:
+          description: What it was called when it arrived
+          type: string
+        inline:
+          description: Whether it is displayed in the page rather than downloaded. Only a small allowlist of raster image types is
+          type: boolean
+        redacted:
+          description: The file was removed on purpose. The record of it remains
+          type: boolean
+        redacted_reason:
+          description: Why it was removed
+          type: string
+        reference:
+          description: What to paste into a justification or a comment
+          type: string
+        size:
+          description: Bytes
+          format: int64
+          type: integer
+        token:
+          description: Refer to this in text as attachment:<token>. It is the only identifier for a file, and never an address
+          type: string
+        uploaded_at:
+          type: string
+      required:
+        - token
+        - reference
+        - filename
+        - content_type
+        - size
+        - uploaded_at
+      type: object
     BindingBody:
       additionalProperties: false
       properties:
@@ -2195,6 +2240,25 @@ components:
         - items
         - total
       type: object
+    List-attachmentsResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/List-attachmentsResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/AttachmentBody"
+          type:
+            - array
+            - "null"
+      required:
+        - items
+      type: object
     List-auditResponse:
       additionalProperties: false
       properties:
@@ -3346,6 +3410,24 @@ components:
       required:
         - identity
       type: object
+    Redact-attachmentRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Redact-attachmentRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        reason:
+          description: Why the file is being removed. Recorded and shown wherever the text referred to it
+          maxLength: 1000
+          minLength: 1
+          type: string
+      required:
+        - reason
+      type: object
     ReferenceBody:
       additionalProperties: false
       properties:
@@ -4488,6 +4570,74 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: List how much each person is dealing with
+      tags:
+        - Findings
+      x-openpsirt-requires:
+        scope: any
+        note: Answers only what you may see.
+  /v1/attachments/{token}:
+    delete:
+      description: |-
+        Takes the bytes back out and leaves the record. The reference in the text stays and says the file was removed, which is the difference between a redaction and a hole in the record.
+
+        Administrators only, and a reason is required. It is the answer to somebody having attached a credential, so it is deliberate and it is recorded.
+
+        **Requires:** administrator
+      operationId: redact-attachment
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Redact-attachmentRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove an attached file
+      tags:
+        - Administration
+      x-openpsirt-requires:
+        scope: deployment
+    get:
+      description: |-
+        Authorized against the issue the file hangs off — whoever may read the text may read what it refers to — and only then served.
+
+        **Two shapes, and a caller has to follow both.** An image displayed in the page is sent from here; everything else answers 303 with a short-lived address at the store. Either way the content type and the disposition are the ones decided at upload, never the ones the file arrived with.
+
+        A file an administrator removed answers 410: the record and the reference remain, and the bytes are gone on purpose.
+
+        **Requires:** any recognized credential. Answers only what you may see.
+      operationId: fetch-attachment
+      parameters:
+        - description: "The identifier text refers to, without the attachment: prefix"
+          in: path
+          name: token
+          required: true
+          schema:
+            description: "The identifier text refers to, without the attachment: prefix"
+            type: string
+      responses:
+        "200":
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Fetch an attached file
       tags:
         - Findings
       x-openpsirt-requires:
@@ -6386,6 +6536,105 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Generate a CSAF advisory for an issue
+      tags:
+        - Findings
+      x-openpsirt-requires:
+        scope: any
+        note: Answers only what you may see.
+  /v1/products/{product}/issues/{vulnerability}/attachments:
+    get:
+      description: |-
+        What text about this issue refers to. An upload nothing refers to yet is not listed, because it is not attached to anything — it becomes visible here when the justification or comment naming it is saved.
+
+        A file an administrator removed is still listed, saying so, because the text that pointed at it still does.
+
+        **Requires:** any recognized credential. Answers only what you may see.
+      operationId: list-attachments
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: vulnerability
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/List-attachmentsResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List files attached to an issue
+      tags:
+        - Findings
+      x-openpsirt-requires:
+        scope: any
+        note: Answers only what you may see.
+    post:
+      description: |-
+        Stores one file against an issue and returns the reference to put in text. Refer to it as `attachment:<token>` — as a link for anything downloaded, or as a markdown image for the raster types displayed in the page. An address of the store never appears in text.
+
+        The content type is decided here from the bytes and is never the one that was uploaded. Everything outside a small allowlist of raster images is served as an attachment download whatever it is.
+
+        Refused when the file is larger than this deployment accepts, or when it has no room left; both limits are settings. A deployment that has configured no store holds no attachments and says so.
+
+        An upload nothing refers to is removed after a day, so a file attached and then abandoned does not accumulate.
+
+        **Requires:** any recognized credential. Answers only what you may see.
+      operationId: upload-attachment
+      parameters:
+        - in: path
+          name: product
+          required: true
+          schema:
+            type: string
+        - description: The issue, under any identifier it goes by
+          in: path
+          name: vulnerability
+          required: true
+          schema:
+            description: The issue, under any identifier it goes by
+            type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            encoding:
+              file:
+                contentType: application/octet-stream
+            schema:
+              properties:
+                file:
+                  contentEncoding: binary
+                  contentMediaType: application/octet-stream
+                  format: binary
+                  type: string
+              required:
+                - file
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttachmentBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Attach a file to an issue
       tags:
         - Findings
       x-openpsirt-requires:
