@@ -299,7 +299,26 @@ person can be acted as directly:
   Change: rename the modifier (`was-fixed`), and add a lint that rejects
   component class names that are Tailwind utilities, so this stops recurring.
 
-- [ ] **X7 · A newly-critical or newly-exploited vulnerability on a shipped release alerts nobody.** *Decided, documented, not built.* **S**
+- [x] **X7 · A newly-critical or newly-exploited vulnerability on a shipped release alerts nobody.** *Decided, documented, not built.* **S**
+
+  **Done.** A seventh `notify.Kind`, `critical-on-release`, derived by the
+  watch in the NTF-09 condition shape: it clears when the finding closes or
+  somebody answers it, and nobody dismisses it. Tags only — a critical on a
+  branch is ordinary work in progress, and sending both would make the alert
+  as frequent as the findings list.
+
+  **Who hears it needed its own decision (NTF-19).** `DESIGN-notifications.md`
+  said operational alerts go to administrators, which holds while they are
+  about the tool — a quiet build names no finding. This one names an issue, a
+  component and a build. Since ACC-64 landed earlier today, sending it to
+  administrators alone would be a disclosure to people who may not read it
+  *and* silence for the people who can act. It goes to whoever may read it and
+  triage it; a reader is not interrupted, because an alert exists to interrupt
+  somebody who can act and it is on their findings list either way.
+
+  The design document said this ran; it now says what runs. Both controls
+  verified by breaking them — including the branch alert appearing when the
+  tag-only rule is removed.
 
   NTF-11 is decided; `DESIGN-notifications.md` (around line 82) describes it
   as behavior ("operational alerts are their own category: they go to

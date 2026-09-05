@@ -63,6 +63,19 @@ const (
 	// behind somebody who is not here is the problem, and this is the prompt
 	// that makes an administrator realize they have gone (ACC-45).
 	HoldingAbsent Kind = "holding-absent"
+	// CriticalOnRelease is a critical or actively-exploited issue open against
+	// something already shipped, with nothing decided about it.
+	//
+	// The one alert whose stated purpose is a sentence: "this release has a
+	// critical, we need to cut a new one" (NTF-11). A condition rather than an
+	// event, because what matters is that it is *still* true — it clears when
+	// the finding closes or somebody answers it, and neither of those is a
+	// thing to be dismissed.
+	//
+	// Tags only. A branch carrying a critical is ordinary work in progress;
+	// the same issue against something customers are running is the case this
+	// exists for, and telling them apart is the whole of the signal.
+	CriticalOnRelease Kind = "critical-on-release"
 	// DisclosureDue is an embargo whose date has arrived with nothing decided.
 	//
 	// A condition rather than an event, and the distinction carries weight

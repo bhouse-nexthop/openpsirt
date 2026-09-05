@@ -12,6 +12,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/bhouse-nexthop/openpsirt/internal/access"
+	"github.com/bhouse-nexthop/openpsirt/internal/catalog"
 	"github.com/bhouse-nexthop/openpsirt/internal/finding"
 	"github.com/bhouse-nexthop/openpsirt/internal/ingest"
 	"github.com/bhouse-nexthop/openpsirt/internal/setting"
@@ -143,7 +144,166 @@ func (w *Watch) Once(ctx context.Context) (opened, cleared int, err error) {
 		opened += o
 		cleared += c
 	}
+
+	// A critical against something already shipped (NTF-11). Like the embargo
+	// list and unlike the two above it, this is per person rather than the
+	// same list to everybody: it names an issue at a build, which is finding
+	// content, so who hears it follows who may read it.
+	shipped, err := w.criticalOnReleases(ctx)
+	if err != nil {
+		return opened, cleared, err
+	}
+	for person, holding := range shipped {
+		o, c, err := NewStore(w.db).Reconcile(ctx, person, CriticalOnRelease, holding)
+		if err != nil {
+			return opened, cleared,
+				fmt.Errorf("tell %d what is critical on a release: %w", person, err)
+		}
+		opened += o
+		cleared += c
+	}
 	return opened, cleared, nil
+}
+
+// criticalOnReleases is every critical or actively-exploited issue open and
+// undecided against a tag, against the people who should hear about it.
+//
+// **Tags only.** A critical on a branch is ordinary work in progress; the same
+// issue against something customers are running is the case NTF-11 exists for,
+// and the difference between them is the whole signal. Sending both would make
+// the alert as common as the findings list and therefore ignorable.
+//
+// **Undecided only**, and derived rather than remembered, so it leaves the
+// list when the finding closes or when somebody answers it — neither of which
+// is a thing to be dismissed. That is the NTF-09 shape: nobody clears this,
+// the world does.
+//
+// **Whoever may read it and may act on it** (NTF-19). Every other operational
+// alert goes to administrators because it is about the tool rather than about
+// a finding; this one names an issue, a component and a build, which is
+// finding content. Since an administrator no longer reads a product by
+// administering it (ACC-64), sending it to administrators alone would be both
+// a disclosure to people who may not read it and silence for the people who
+// can act.
+func (w *Watch) criticalOnReleases(ctx context.Context) (map[int64][]Holds, error) {
+	standing, args := finding.OffTheClock("st.product_id", time.Now().UTC())
+
+	var rows []struct {
+		Product       string `bun:"product"`
+		Stream        string `bun:"stream"`
+		Variant       string `bun:"variant"`
+		Component     string `bun:"component"`
+		Vulnerability string `bun:"vulnerability"`
+		ProductID     int64  `bun:"product_id"`
+		Visibility    string `bun:"visibility"`
+		Exploited     bool   `bun:"exploited"`
+	}
+	err := w.db.NewSelect().
+		TableExpr("finding AS f").
+		Join("JOIN target AS tg ON tg.id = f.target_id").
+		Join("JOIN stream AS st ON st.id = tg.stream_id").
+		Join("JOIN variant AS va ON va.id = tg.variant_id").
+		Join("JOIN product AS p ON p.id = st.product_id").
+		Join("JOIN component AS c ON c.id = f.component_id").
+		Join("JOIN vulnerability AS v ON v.id = f.vulnerability_id").
+		// The consumer, because whether a decision still covers a place is
+		// keyed on both upstream versions and one of them is the consumer's.
+		Join("LEFT JOIN component AS uc ON uc.id = f.consumer_id").
+		ColumnExpr("p.name AS product").
+		ColumnExpr("st.name AS stream").
+		ColumnExpr("va.name AS variant").
+		ColumnExpr("c.name AS component").
+		ColumnExpr("v.identifier AS vulnerability").
+		ColumnExpr("st.product_id AS product_id").
+		ColumnExpr("MIN(f.visibility) AS visibility").
+		ColumnExpr("MAX(CASE WHEN f.urgency_exploited THEN 1 ELSE 0 END) = 1 AS exploited").
+		Where("st.kind = ?", catalog.Tag).
+		Where("f.closed_at IS NULL").
+		Where("f.suppressed_by IS NULL").
+		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.WhereOr("f.urgency_exploited = ?", true).
+				WhereOr(finding.BandExpr+" = ?", "critical")
+		}).
+		Where("NOT "+standing, args...).
+		GroupExpr("p.name, st.name, va.name, c.name, v.identifier, st.product_id").
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("read what is critical on a release: %w", err)
+	}
+
+	// Who may read each product, at each visibility, and who may act there.
+	// Read once rather than per row: a release with a thousand criticals would
+	// otherwise ask the same question a thousand times.
+	people, held, err := access.NewStore(w.db).People(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read who may hear about this: %w", err)
+	}
+	type reach struct{ public, private bool }
+	acts := map[int64]map[int64]reach{}
+	for _, person := range people {
+		per := map[int64]reach{}
+		for _, grant := range held[person.ID] {
+			if !grant.Active {
+				continue
+			}
+			at := per[grant.ProductID]
+			switch grant.Role {
+			case access.PublicTriage:
+				at.public = true
+			case access.PrivateTriage:
+				at.public, at.private = true, true
+			}
+			per[grant.ProductID] = at
+		}
+		acts[person.ID] = per
+	}
+
+	// Everybody currently being told one of these is handed a list, empty
+	// included. Reconcile makes one person's open set exactly what it is
+	// given, so somebody who is never handed a list is never reconciled, and
+	// their alert would stand after the thing it was about had been answered.
+	out := map[int64][]Holds{}
+	told, err := w.beingTold(ctx, CriticalOnRelease)
+	if err != nil {
+		return nil, err
+	}
+	for _, person := range told {
+		out[person] = nil
+	}
+	for personID := range acts {
+		if _, already := out[personID]; !already {
+			out[personID] = nil
+		}
+	}
+
+	for _, row := range rows {
+		private := row.Visibility == string(access.Private)
+		where := row.Product + " " + row.Stream + " " + row.Variant
+		why := "is rated critical"
+		if row.Exploited {
+			why = "is being exploited"
+		}
+		holds := Holds{
+			About: identify("critical-on-release " + where + " " + row.Vulnerability + " " + row.Component),
+			Body: fmt.Sprintf("%s %s and is open against %s, which has been released. Nothing has been decided about it.",
+				row.Vulnerability, why, where),
+			Link: fmt.Sprintf("/products/%s/streams/%s/variants/%s/findings/%s/components/%s",
+				url.PathEscape(row.Product), url.PathEscape(row.Stream), url.PathEscape(row.Variant),
+				url.PathEscape(row.Vulnerability), url.PathEscape(row.Component)),
+			Private: private,
+		}
+		for personID, per := range acts {
+			at := per[row.ProductID]
+			if private && !at.private {
+				continue
+			}
+			if !private && !at.public {
+				continue
+			}
+			out[personID] = append(out[personID], holds)
+		}
+	}
+	return out, nil
 }
 
 // pastDisclosure is every embargo whose date has arrived with nothing decided,

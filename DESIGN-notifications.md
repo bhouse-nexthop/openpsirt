@@ -2,7 +2,7 @@
 
 What somebody is told, and through what.
 
-Satisfies NTF-01 to NTF-18. Mail is built, behind the one interface a chat
+Satisfies NTF-01 to NTF-19. Mail is built, behind the one interface a chat
 adapter will use; what is missing is named at the foot rather than left to be
 discovered.
 
@@ -81,9 +81,24 @@ receipts and in the trend; that a build happened is not news.
 
 **A newly-critical vulnerability in a shipped release is an operational alert**
 rather than a line on a dashboard (NTF-11), and operational alerts are their
-own category: they go to administrators and are outside the opt-in digest
-(NTF-07), because a category somebody has to opt in to is one that is silent on
-the deployment that most needs it.
+own category, outside the opt-in digest (NTF-07) — because a category somebody
+has to opt in to is one that is silent on the deployment that most needs it.
+
+It is a **condition**, so it clears when the finding closes or when somebody
+answers it, and nobody dismisses it. **Tags only**: a critical on a branch is
+ordinary work in progress, and sending both would make the alert as frequent as
+the findings list and therefore ignorable. What separates them is the whole
+signal.
+
+**It goes to whoever may read it and may triage it** rather than to
+administrators (NTF-19). The other operational alerts are about the tool — a
+build nothing has been filed against names no finding — so administrators are
+the right audience for those. This one names an issue, a component and a build.
+Since an administrator does not read a product by administering it (ACC-64),
+sending it to administrators alone would disclose to people who may not read it
+and stay silent for the people who can act. Reading is not enough on its own
+either: an alert interrupts, and interrupting somebody who cannot act is noise
+they will learn to ignore — it is on their findings list in any case.
 
 **The proposer's own view lists their dismissals still awaiting review**
 (NTF-06). Silence covers both "approved" and "nobody has looked", and those are

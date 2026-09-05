@@ -16,6 +16,8 @@ export function label(kind?: string): string {
       return "rejected";
     case "build-quiet":
       return "not being scanned";
+    case "critical-on-release":
+      return "critical on a release";
     default:
       return kind ?? "";
   }

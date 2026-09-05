@@ -3,6 +3,7 @@ package notify_test
 import (
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -272,6 +273,167 @@ func embargoed(t *testing.T, db *database.DB, targetID int64, identifier string,
 		VulnerabilityID: ids[identifier], ComponentID: componentID,
 		PlaceIdentity: "place-of-" + identifier, LastChangedAt: now, OpenedAt: now,
 		DiscloseAt: &at, AssignedTo: &owner, AssignedAt: &now,
+	}
+	if _, err := db.DB.NewInsert().Model(row).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestACriticalOnAReleaseTellsWhoeverMayActOnIt(t *testing.T) {
+	// NTF-11, which was decided and described as behavior and never built.
+	// The stated purpose is a sentence somebody says out loud: "this release
+	// has a critical, we need to cut a new one."
+	//
+	// A tag, not a branch: a critical on a branch is ordinary work in
+	// progress, and sending both would make the alert as common as the
+	// findings list. And to whoever may read it and act on it rather than to
+	// administrators, because this one names an issue at a build — which is
+	// finding content, and an administrator no longer reads a product by
+	// administering it (ACC-64).
+	dbtest.Each(t, func(t *testing.T, db *database.DB) {
+		ctx := t.Context()
+		quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+		if err := schema.Up(ctx, db, quiet); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		dbtest.Reset(t, db)
+
+		rights := access.NewStore(db.DB)
+		cat := catalog.NewStore(db.DB)
+		product, err := cat.DeclareProduct(ctx, "sonic", "SONiC")
+		if err != nil {
+			t.Fatal(err)
+		}
+		branch, err := cat.DeclareStream(ctx, product.ID, "master", catalog.Branch, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tag, err := cat.DeclareStream(ctx, product.ID, "v1.0", catalog.Tag, &branch.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		variant, err := cat.DeclareVariant(ctx, product.ID, "broadcom", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		released, err := cat.TargetFor(ctx, tag.ID, variant.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		inProgress, err := cat.TargetFor(ctx, branch.ID, variant.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Somebody who triages this product, an administrator holding nothing,
+		// and somebody who only reads.
+		triager := recordPerson(t, rights, "triager@example.com", false, product.ID, access.PublicTriage)
+		admin := recordPerson(t, rights, "admin@example.com", true, 0, "")
+		reader := recordPerson(t, rights, "reader@example.com", false, product.ID, access.PublicRead)
+
+		critical(t, db, released.ID, "CVE-2026-SHIPPED", "critical")
+		critical(t, db, inProgress.ID, "CVE-2026-BRANCH", "critical")
+
+		watch := notify.NewWatch(db.DB, quiet)
+		if _, _, err := watch.Once(ctx); err != nil {
+			t.Fatal(err)
+		}
+
+		named := func(who int64) []string {
+			t.Helper()
+			rows, _, err := notify.NewStore(db.DB).Waiting(ctx,
+				access.NewPerson(who, "", false, nil), 50, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var about []string
+			for _, row := range rows {
+				if row.Kind == notify.CriticalOnRelease {
+					about = append(about, row.Body)
+				}
+			}
+			return about
+		}
+
+		told := named(triager)
+		if len(told) != 1 {
+			t.Fatalf("a triager was told %d things about a release, want 1: %v", len(told), told)
+		}
+		if !strings.Contains(told[0], "CVE-2026-SHIPPED") {
+			t.Errorf("the alert does not name the issue: %q", told[0])
+		}
+		if strings.Contains(told[0], "CVE-2026-BRANCH") {
+			t.Errorf("a critical on a branch was reported as being on a release: %q", told[0])
+		}
+
+		// A reader is not interrupted. They may read it, so this discloses
+		// nothing to them — but an alert exists to interrupt somebody who can
+		// act, and reading is not acting. It is on their findings list either
+		// way.
+		if got := named(reader); len(got) != 0 {
+			t.Errorf("somebody who can only read was interrupted: %v", got)
+		}
+		// An administrator holding nothing on the product is not told, because
+		// they may not read the finding it names.
+		if got := named(admin); len(got) != 0 {
+			t.Errorf("an administrator holding nothing was told about a finding: %v", got)
+		}
+
+		// Answering it clears the alert, with nobody dismissing anything.
+		if _, err := db.DB.NewUpdate().Model((*finding.Finding)(nil)).
+			Set("closed_at = ?", time.Now().UTC()).
+			Where("target_id = ?", released.ID).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := watch.Once(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if got := named(triager); len(got) != 0 {
+			t.Errorf("the alert stands after the finding closed: %v", got)
+		}
+	})
+}
+
+// recordPerson records somebody, optionally granting one role on a product.
+func recordPerson(t *testing.T, rights *access.Store, identity string, admin bool,
+	productID int64, role access.Role) int64 {
+	t.Helper()
+	person, err := rights.Ensure(t.Context(), identity, "", admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if role != "" {
+		if err := rights.GrantRole(t.Context(), person.ID, productID, role); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return person.ID
+}
+
+// critical writes an open finding of this severity against a build.
+func critical(t *testing.T, db *database.DB, targetID int64, identifier, severity string) {
+	t.Helper()
+	ctx := t.Context()
+	ids, err := finding.NewVulnerabilities(db.DB).Intern(ctx,
+		[]finding.Named{{Identifier: identifier, Severity: severity}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	interned, err := graph.NewComponents(db.DB).Intern(ctx, []graph.Described{
+		{Purl: "pkg:generic/libnl@3.7.0", Name: "libnl", Version: "3.7.0"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var componentID int64
+	for _, id := range interned {
+		componentID = id
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	row := &finding.Finding{
+		TargetID: targetID, Kind: finding.Vulnerable, Visibility: access.Public,
+		VulnerabilityID: ids[identifier], ComponentID: componentID,
+		PlaceIdentity: "place-of-" + identifier, LastChangedAt: now, OpenedAt: now,
 	}
 	if _, err := db.DB.NewInsert().Model(row).Exec(ctx); err != nil {
 		t.Fatal(err)
