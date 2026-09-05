@@ -36,6 +36,14 @@ engines: `make engines-down && make engines-up`.
 
 ### What is left
 
+**A review action list is open.** `REVIEW-ACTIONS.md` holds what the
+functionality and usability review of 2026-09-05 found, as a ticked list in
+three groups: defects to fix now (one demonstrated leak in assessments, two
+enumeration oracles, a CVE search that returns nothing, pickers that keep
+triagers from assigning work), the ten changes that most change what the
+tool is, and the rest. It is temporary in the same sense as this document,
+and nothing may reference it. Work it from the top.
+
 **Phase 2, deferred rather than blocked**: the adapters that would send an
 advisory somewhere (REM-17, REM-22), and the VEX profile of the document, which
 needs the mapping from a decision to the releases it covers rather than any new
