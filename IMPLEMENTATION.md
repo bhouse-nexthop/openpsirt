@@ -358,7 +358,6 @@ thing rather than a gap somebody rediscovers by auditing.
 
 | Decision | Waits for | Why not now |
 |---|---|---|
-| ACC-45 | Somebody being told | Assignment exists now, and so does releasing what an absent person holds. What is missing is the prompt — noticing that somebody has not signed in for a while *and* holds work — which is a notification rather than a screen |
 | ACC-43, second half | Deactivating an account | The half with a trigger today is built: withdrawing somebody's last role on a product hands back what they were dealing with there. The other half needs a way to deactivate somebody, which does not exist — an account is recorded or it is not |
 | ACC-44 | Nothing — it is a statement | That we cannot detect somebody has left is recorded so nobody assumes a cleanup happens that never does |
 | TRI-04, TRI-19 | Export and reporting | Each belongs to a stage of its own. TRI-09 was the third of these and is built: a queue entry says what it is about |

@@ -75,6 +75,35 @@ the deployment that most needs it.
 not the same thing to the person waiting — which is what the queue's own
 "mine, pending" tab answers.
 
+## Somebody away, still holding work
+
+An administrator is told when somebody has not signed in for a configured
+period and is still holding assigned work (ACC-45). A condition like the
+others: it becomes true on its own and clears on its own when they sign in,
+without anybody dismissing it.
+
+**Both halves, and the second is what makes it worth saying.** An account
+nobody has used in a month is harmless if it holds nothing. Work stuck behind
+somebody who is not here is the problem, and this is the prompt that makes an
+administrator realize they have gone.
+
+**It asks rather than acts.** Long leave and having left look identical from
+here, and nothing detects somebody leaving (ACC-44) — so it opens something an
+administrator reads, and handing the work back stays a deliberate act by a
+person. Withdrawing somebody's last role on a product does hand back what they
+held there (ACC-43), and that is somebody deciding.
+
+**Never having signed in counts as absent, measured from when they were
+added.** Somebody granted a role and given work who has not arrived is exactly
+the case worth raising — but compared against the moment alone, an
+administrator adding a colleague and assigning them something raises an alert
+about them in the same breath. It is the same shape as a build declared and
+never scanned, which is measured from its declaration for the same reason.
+
+**Counted in pieces of work rather than in findings**, like every other figure
+about what somebody holds: "6 items" meaning 288 findings would make an
+ordinary absence look like a catastrophe.
+
 ## What is not built, and what it will be
 
 **A chat adapter**, behind the same interface mail uses (NTF-01). Not built.

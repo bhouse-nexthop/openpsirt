@@ -108,6 +108,22 @@ func (w *Watch) Once(ctx context.Context) (opened, cleared int, err error) {
 		cleared += c
 	}
 
+	// Somebody away and still holding work (ACC-45). The same list to every
+	// administrator, for the same reason the quiet builds are: whichever of
+	// them looks first should not be the only one who ever sees it.
+	away, err := w.holdingAbsent(ctx)
+	if err != nil {
+		return opened, cleared, err
+	}
+	for _, admin := range admins {
+		o, c, err := NewStore(w.db).Reconcile(ctx, admin, HoldingAbsent, away)
+		if err != nil {
+			return opened, cleared, fmt.Errorf("tell %d who is away: %w", admin, err)
+		}
+		opened += o
+		cleared += c
+	}
+
 	// An embargo whose date has arrived is not a fact about the tool's health,
 	// so it is not the same list to the same people: administrators hear about
 	// all of them, and whoever holds one hears about theirs. Reconcile makes
@@ -382,4 +398,108 @@ func (w *Watch) beingTold(ctx context.Context, kind Kind) ([]int64, error) {
 		return nil, fmt.Errorf("read who is being told about %s: %w", kind, err)
 	}
 	return people, nil
+}
+
+// holdingAbsent is everybody who has not signed in for a while and is still
+// holding work (ACC-45).
+//
+// **Both halves, and the second is what makes it worth saying.** An account
+// nobody has used in a month is harmless if it holds nothing; work stuck behind
+// somebody who is not here is the problem, and this is the prompt that makes an
+// administrator realize they have gone.
+//
+// **It asks rather than acts.** Long leave and having left look identical from
+// here, and nothing detects somebody leaving (ACC-44) — so this opens a
+// condition an administrator reads and clears by doing something, rather than
+// handing the work back on its own. Withdrawing a role does hand work back
+// (ACC-43), and that is a deliberate act by a person.
+func (w *Watch) holdingAbsent(ctx context.Context) ([]Holds, error) {
+	after, err := setting.NewStore(w.db).Duration(ctx,
+		setting.AbsentAfter, setting.DefaultAbsentAfter)
+	if err != nil {
+		return nil, fmt.Errorf("read how long counts as absent: %w", err)
+	}
+	if after <= 0 {
+		return nil, nil
+	}
+	since := time.Now().UTC().Add(-after)
+
+	var rows []struct {
+		ID         int64      `bun:"id"`
+		Identity   string     `bun:"identity"`
+		Name       string     `bun:"name"`
+		LastSeenAt *time.Time `bun:"last_seen_at"`
+		CreatedAt  time.Time  `bun:"created_at"`
+		Holding    int        `bun:"holding"`
+	}
+	// The open findings each person holds, counted as pieces of work rather
+	// than as rows: one issue in one component is one thing to deal with
+	// however many places it sits at, and "6 items" meaning 288 findings is a
+	// number that makes somebody's absence look like a catastrophe.
+	held := w.db.NewSelect().
+		Distinct().
+		TableExpr("finding AS f").
+		ColumnExpr("f.assigned_to AS person_id").
+		ColumnExpr("f.vulnerability_id AS vulnerability_id").
+		ColumnExpr("f.component_id AS component_id").
+		Where("f.assigned_to IS NOT NULL").
+		Where("f.closed_at IS NULL")
+
+	if err := w.db.NewSelect().
+		TableExpr("person AS p").
+		Join("JOIN (?) AS work ON work.person_id = p.id", held).
+		ColumnExpr("p.id AS id").
+		ColumnExpr("p.identity AS identity").
+		ColumnExpr("COALESCE(p.display_name, '') AS name").
+		ColumnExpr("p.last_seen_at AS last_seen_at").
+		ColumnExpr("p.created_at AS created_at").
+		ColumnExpr("COUNT(*) AS holding").
+		// Never signed in counts too — somebody granted a role and given work
+		// who has not arrived is exactly the case worth raising — but it is
+		// measured from when they were **added**, not from the beginning of
+		// time. Compared against the moment alone, an administrator adding a
+		// colleague and assigning them something raises an alert about them in
+		// the same breath.
+		//
+		// The same shape as a build declared and never scanned, which is
+		// measured from its declaration for exactly this reason.
+		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.WhereOr("p.last_seen_at IS NOT NULL AND p.last_seen_at < ?", since).
+				WhereOr("p.last_seen_at IS NULL AND p.created_at < ?", since)
+		}).
+		GroupExpr("p.id, p.identity, p.display_name, p.last_seen_at, p.created_at").
+		OrderExpr("holding DESC, p.identity").
+		Scan(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("read who is away and still holding work: %w", err)
+	}
+
+	holding := make([]Holds, 0, len(rows))
+	for _, row := range rows {
+		who := row.Name
+		if who == "" {
+			who = row.Identity
+		}
+		items := "items"
+		if row.Holding == 1 {
+			items = "item"
+		}
+		days := int(time.Since(row.CreatedAt).Hours() / 24)
+		body := fmt.Sprintf("%s was added %d days ago, has never signed in, and has %d %s "+
+			"assigned.", who, days, row.Holding, items)
+		if row.LastSeenAt != nil {
+			days = int(time.Since(*row.LastSeenAt).Hours() / 24)
+			body = fmt.Sprintf("%s has not signed in for %d days and has %d %s assigned.",
+				who, days, row.Holding, items)
+		}
+		holding = append(holding, Holds{
+			// Keyed on the person rather than on the sentence, so the number
+			// of items changing does not close one condition and open another
+			// — an administrator would see the same person arrive in the list
+			// every time somebody assigned them anything.
+			About: identify("person:" + row.Identity),
+			Body:  body,
+			Link:  "/work?holder=" + url.QueryEscape(row.Identity),
+		})
+	}
+	return holding, nil
 }

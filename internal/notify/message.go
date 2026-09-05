@@ -27,6 +27,7 @@ var called = map[Kind]string{
 	Assigned:      "Work assigned to you",
 	SentBack:      "A claim of yours was sent back",
 	BuildQuiet:    "A build has stopped being scanned",
+	HoldingAbsent: "Somebody away is holding work",
 	DisclosureDue: "An embargo has reached its date",
 }
 

@@ -54,6 +54,11 @@ const (
 	// BuildQuiet is a build nothing has been filed against for longer than
 	// this deployment allows. A condition: it clears when a scan arrives.
 	BuildQuiet Kind = "build-quiet"
+	// HoldingAbsent is somebody who has not signed in for a while and is still
+	// holding work. An idle account holding nothing is harmless; work stuck
+	// behind somebody who is not here is the problem, and this is the prompt
+	// that makes an administrator realize they have gone (ACC-45).
+	HoldingAbsent Kind = "holding-absent"
 	// DisclosureDue is an embargo whose date has arrived with nothing decided.
 	//
 	// A condition rather than an event, and the distinction carries weight

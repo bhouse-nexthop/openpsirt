@@ -52,6 +52,7 @@ var settable = []struct {
 	{setting.UpstreamCurrency, "Whether to ask public package indexes what the newest version of a component is. Off unless turned on: it is the only thing here that reaches the network, and a deployment that cannot reach out loses this answer and nothing else"},
 	{setting.AttachmentMaxSize, "The largest single file this deployment accepts, in bytes. A whole number, not a length of time"},
 	{setting.AttachmentQuota, "How much this deployment will hold in attachments in total, in bytes. Storage somebody else fills on our behalf needs a ceiling, and this is it"},
+	{setting.AbsentAfter, "How long somebody may go without signing in before work they are holding is raised with administrators. It only ever asks: long leave and having left look the same from here"},
 }
 
 // aSwitch is the settings that are on or off. The fourth kind.
@@ -336,6 +337,8 @@ func shipped(name string) string {
 		return strconv.Itoa(setting.DefaultAttachmentMaxSize)
 	case setting.AttachmentQuota:
 		return strconv.Itoa(setting.DefaultAttachmentQuota)
+	case setting.AbsentAfter:
+		return setting.DefaultAbsentAfter.String()
 	case setting.TriageFloor:
 		// Nothing hidden until somebody decides to hide it.
 		return "everything"

@@ -116,7 +116,22 @@ const (
 	// judgment about a deployment rather than a constant.
 	AttachmentMaxSize = "attachment.max-size"
 	AttachmentQuota   = "attachment.quota"
+	// AbsentAfter is how long somebody may go without signing in before work
+	// they are holding is worth an administrator's attention (ACC-45).
+	//
+	// A judgment about a team rather than a constant: two weeks is a holiday
+	// in one place and a resignation in another. It only ever asks — long
+	// leave and having left look identical from here, and nothing detects
+	// somebody leaving (ACC-44).
+	AbsentAfter = "people.absent-after"
 )
+
+// DefaultAbsentAfter is how long counts as absent where nobody has said.
+//
+// Two weeks: long enough that an ordinary holiday does not raise it, short
+// enough that work stuck behind somebody who has gone is noticed in the month
+// it happens rather than the quarter.
+const DefaultAbsentAfter = 14 * 24 * time.Hour
 
 // DefaultAttachmentMaxSize is what one file may be where nobody has said.
 //
