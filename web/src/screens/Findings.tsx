@@ -360,13 +360,6 @@ export function Findings() {
             ))}
           </span>
         </span>
-        <Link
-          to={`/products/${product}/streams/${stream}/variants/${variant}/components`}
-          className="linkish"
-          style={{ marginLeft: "auto" }}
-        >
-          Dependencies →
-        </Link>
       </div>
 
       {more && (

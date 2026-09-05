@@ -90,10 +90,7 @@ export function Unassigned() {
           {scope.product
             ? [scope.product, scope.stream, scope.variant].filter(Boolean).join(" · ")
             : "across every product you can see"}{" "}
-          · {(rows.data?.total ?? 0).toLocaleString()} in total{" "}
-          <Link to="/work" className="linkish">
-            Assignments →
-          </Link>
+          · {(rows.data?.total ?? 0).toLocaleString()} in total
         </p>
       </div>
 
