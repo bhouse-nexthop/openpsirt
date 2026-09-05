@@ -120,6 +120,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/attachments/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch an attached file
+         * @description Authorized against the issue the file hangs off — whoever may read the text may read what it refers to — and only then served.
+         *
+         *     **Two shapes, and a caller has to follow both.** An image displayed in the page is sent from here; everything else answers 303 with a short-lived address at the store. Either way the content type and the disposition are the ones decided at upload, never the ones the file arrived with.
+         *
+         *     A file an administrator removed answers 410: the record and the reference remain, and the bytes are gone on purpose.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
+         */
+        get: operations["fetch-attachment"];
+        put?: never;
+        post?: never;
+        /**
+         * Remove an attached file
+         * @description Takes the bytes back out and leaves the record. The reference in the text stays and says the file was removed, which is the difference between a redaction and a hole in the record.
+         *
+         *     Administrators only, and a reason is required. It is the answer to somebody having attached a credential, so it is deliberate and it is recorded.
+         *
+         *     **Requires:** administrator
+         */
+        delete: operations["redact-attachment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/audit": {
         parameters: {
             query?: never;
@@ -970,6 +1004,42 @@ export interface paths {
         get: operations["get-advisory"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/products/{product}/issues/{vulnerability}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List files attached to an issue
+         * @description What text about this issue refers to. An upload nothing refers to yet is not listed, because it is not attached to anything — it becomes visible here when the justification or comment naming it is saved.
+         *
+         *     A file an administrator removed is still listed, saying so, because the text that pointed at it still does.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
+         */
+        get: operations["list-attachments"];
+        put?: never;
+        /**
+         * Attach a file to an issue
+         * @description Stores one file against an issue and returns the reference to put in text. Refer to it as `attachment:<token>` — as a link for anything downloaded, or as a markdown image for the raster types displayed in the page. An address of the store never appears in text.
+         *
+         *     The content type is decided here from the bytes and is never the one that was uploaded. Everything outside a small allowlist of raster images is served as an attachment download whatever it is.
+         *
+         *     Refused when the file is larger than this deployment accepts, or when it has no room left; both limits are settings. A deployment that has configured no store holds no attachments and says so.
+         *
+         *     An upload nothing refers to is removed after a day, so a file attached and then abandoned does not accumulate.
+         *
+         *     **Requires:** any recognized credential. Answers only what you may see.
+         */
+        post: operations["upload-attachment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2236,6 +2306,34 @@ export interface components {
             severity?: string;
             vulnerability: string;
         };
+        AttachmentBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AttachmentBody.json
+             */
+            readonly $schema?: string;
+            /** @description What it is served as, which is decided here and is not what the uploader called it */
+            content_type: string;
+            /** @description What it was called when it arrived */
+            filename: string;
+            /** @description Whether it is displayed in the page rather than downloaded. Only a small allowlist of raster image types is */
+            inline?: boolean;
+            /** @description The file was removed on purpose. The record of it remains */
+            redacted?: boolean;
+            /** @description Why it was removed */
+            redacted_reason?: string;
+            /** @description What to paste into a justification or a comment */
+            reference: string;
+            /**
+             * Format: int64
+             * @description Bytes
+             */
+            size: number;
+            /** @description Refer to this in text as attachment:<token>. It is the only identifier for a file, and never an address */
+            token: string;
+            uploaded_at: string;
+        };
         BindingBody: {
             /**
              * Format: uri
@@ -3353,6 +3451,15 @@ export interface components {
             /** Format: int64 */
             total: number;
         };
+        "List-attachmentsResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/List-attachmentsResponse.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["AttachmentBody"][] | null;
+        };
         "List-auditResponse": {
             /**
              * Format: uri
@@ -3973,6 +4080,16 @@ export interface components {
             provider?: string;
             /** @description What that provider calls them. Defaults to the identity */
             username?: string;
+        };
+        "Redact-attachmentRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Redact-attachmentRequest.json
+             */
+            readonly $schema?: string;
+            /** @description Why the file is being removed. Recorded and shown wherever the text referred to it */
+            reason: string;
         };
         ReferenceBody: {
             /**
@@ -4686,6 +4803,69 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ListBodyHoldingBody"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "fetch-attachment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The identifier text refers to, without the attachment: prefix */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "redact-attachment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Redact-attachmentRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {
@@ -6005,6 +6185,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Document"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+                vulnerability: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-attachmentsResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "upload-attachment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: string;
+                /** @description The issue, under any identifier it goes by */
+                vulnerability: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentBody"];
                 };
             };
             /** @description Error */
