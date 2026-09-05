@@ -461,7 +461,7 @@ person can be acted as directly:
   - The gate checks that decisions have documents, never that documents are
     true; a person has to.
 
-- [ ] **X10 · Small defects found on the way.** **S each**
+- [~] **X10 · Small defects found on the way.** **S each** — *seven of fourteen done; the rest are listed at the end of this item.*
 
   - `make demo-status` prints "open 404 page not found" per build: the
     target (Makefile around line 747) curls
@@ -520,6 +520,55 @@ person can be acted as directly:
   - The openpsirt container's inventory list shows twelve identical
     "Completed · — · —" rows with an empty Serial column; "7587" on the sonic
     row lacks a separator.
+
+  **Done (7):**
+
+  - `make demo-status` now asks the product-scoped findings path UIX-53 moved
+    to, and prints real counts instead of "open 404 page not found".
+  - Approving an already-approved extension answers **409**, through a
+    sentinel beside the self-approval one. It was a 500, which reads as a
+    defect in the tool and sends somebody to the logs to learn that nothing
+    broke.
+  - The queue card's builds line said "N **other** builds" and counted its
+    own. The server field is documented as "every build the claim currently
+    covers", so the card was the lie: it now reads "N builds covered".
+  - Triage mode's bar reads `1`–`5`, since `already-fixed` exists.
+  - The confirmation names the outcome. A deferral is not a dismissal — one
+    says "later" and the other says "no" — and calling both a dismissal told
+    somebody they had done something they had not. `Recorded` carries the
+    outcome for it.
+  - **Home's severity tile disagreed with the rest of the tool about a
+    thousand findings.** The interface folded `unknown` into *low*; the
+    server folds it into *medium* everywhere it ranks, filters, clocks or
+    sets a floor. So Home said 1,415 low where the list agreed on 38. One
+    folding function now, matching the server's.
+  - `make demo` sets a publisher, so the CSAF path is demonstrable rather
+    than answering 409 out of the box.
+
+  **Still open (7)** — each needs more than an edit, and is left rather than
+  rushed:
+
+  - The kernel row's "way down" is empty at build scope. `finding.Ends`
+    answers `"", ""` for a depth-0 chain, which is the honest answer for what
+    it is given; the question is why the group's chain is empty when its
+    places have real consumers. That is a read-path investigation, not a
+    wording fix. The queue card's "two ends" complaint is the same root.
+  - Readiness requires `st.parent_id = branch` and the demo's tags have no
+    parent, so Home reads "nothing has been released from this branch". Needs
+    a way to correct "Cut from" after the fact — there is no PUT — as well as
+    the query.
+  - `Releases` selects from open findings, so a scanned build with zero open
+    is absent and reads as unscanned. Wants driving from `target` with a
+    finished run and left-joining the counts.
+  - Mentioning somebody who cannot read the finding is accepted and silently
+    dropped. ACC-59 says refused while composing; only the candidate list
+    enforces it. Either refuse the write or return the dropped mentions.
+  - Capability-only grants (`approver`-only, `reporting`-only) resolve to
+    `reach: []` and are accepted silently.
+  - REL-07's "what this line would inherit" is on the new line's Inventories
+    screen, where nobody making a branch looks.
+  - The openpsirt container's inventory list: twelve identical rows, an empty
+    Serial column, and a missing thousands separator.
 
 ---
 

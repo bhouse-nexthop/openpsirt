@@ -426,6 +426,10 @@ func registerExtensions(api huma.API, in Ingest) {
 		case errors.Is(err, finding.ErrSamePerson):
 			return nil, huma.Error409Conflict(
 				"the person who asked to move a date may not be the one who agrees to it")
+		case errors.Is(err, finding.ErrAlreadyAgreed):
+			// The same shape as the self-approval case beside it: somebody
+			// else got there first, which is a conflict rather than a fault.
+			return nil, huma.Error409Conflict(err.Error())
 		case err != nil:
 			return nil, refusedFinding(in, err)
 		}

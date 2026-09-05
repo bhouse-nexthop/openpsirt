@@ -580,6 +580,8 @@ demo-up: demo-down
 	  -e OPENPSIRT_TRUSTED_HEADER="X-User" \
 	  -e OPENPSIRT_TRUSTED_SOURCES="$(DEMO_SUBNET)" \
 	  -e OPENPSIRT_ATTACHMENT_DIR="/data/attachments" \
+	  -e OPENPSIRT_PUBLISHER_NAME="OpenPSIRT Demo" \
+	  -e OPENPSIRT_PUBLISHER_NAMESPACE="https://demo.openpsirt.invalid" \
 	  $(DEMO_IMAGE) >/dev/null
 	@# Files go on the container's disk rather than in an object store. That is
 	@# the development backend and the demo says so on startup — one process
@@ -755,16 +757,16 @@ demo-seed:
 demo-status:
 	@builds=""; for entry in $(DEMO_BUILDS); do \
 	  IFS=',' read -r file product display stream variant <<< "$$entry"; \
-	  builds="$$builds $$product/streams/$$stream/variants/$$variant"; \
+	  builds="$$builds $$product:$$stream:$$variant"; \
 	done; \
-	for build in $$builds \
-	    openpsirt/streams/main/variants/binary \
-	    openpsirt/streams/main/variants/container; do \
+	for triple in $$builds openpsirt:main:binary openpsirt:main:container; do \
+	  IFS=':' read -r product stream variant <<< "$$triple"; \
+	  build="$$product/streams/$$stream/variants/$$variant"; \
 	  printf "  %-46s scan " "$$build"; curl -sS --noproxy '*' \
 	    "$(DEMO_URL)/v1/products/$$build/scans" \
 	    | sed -e 's/.*"state":"\([a-z]*\)".*/\1/' -e 's/^{.*/no scans yet/' | tr -d '\n'; \
 	  printf " · open "; curl -sS --noproxy '*' \
-	    "$(DEMO_URL)/v1/products/$$build/findings?limit=1" \
+	    "$(DEMO_URL)/v1/products/$$product/findings?stream=$$stream&variant=$$variant&limit=1" \
 	    | sed -e 's/.*"total":\([0-9]*\).*/\1 findings/' -e 's/^{.*/unreadable/'; \
 	done
 	@echo "  open $(DEMO_URL) — you arrive as proxy:$(DEMO_USER), no sign-in"

@@ -9,7 +9,7 @@ import { Failed } from "../ui/Failed";
 import { Severity, Exploited } from "../ui/Severity";
 import { Markdown } from "../ui/Markdown";
 import { Editor, forget } from "../ui/Editor";
-import { Decide, type Recorded } from "../ui/Decide";
+import { Decide, said, type Recorded } from "../ui/Decide";
 import { UNPLACED, type Sitting } from "../ui/Covering";
 
 // One finding: what the issue is, how bad, what upstream has done, where it
@@ -202,7 +202,8 @@ export function Finding() {
             ; {recorded.matching} matching {recorded.matching === 1 ? "build is" : "builds are"}{" "}
             reached by lookup.{" "}
             {recorded.needsApproval
-              ? "The dismissal takes effect once a second person approves it. It is now in the review queue."
+              ? `The ${said(recorded.outcome)} takes effect once a second person approves it. ` +
+                `It is now in the review queue.`
               : "In force now."}
             {recorded.applied
               .filter((a) => !a.ok)

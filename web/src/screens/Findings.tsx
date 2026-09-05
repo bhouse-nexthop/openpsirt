@@ -8,7 +8,7 @@ import { Empty } from "../ui/Empty";
 import { Failed } from "../ui/Failed";
 import { Exploited, Severity } from "../ui/Severity";
 import { Icon } from "../ui/Icons";
-import { Decide, type Recorded } from "../ui/Decide";
+import { Decide, said, type Recorded } from "../ui/Decide";
 
 const PAGE = 50;
 
@@ -664,7 +664,7 @@ export function Findings() {
           </span>
           <span className="keys">
             <kbd>j</kbd>
-            <kbd>k</kbd> move <kbd>↵</kbd> open <kbd>1</kbd>–<kbd>4</kbd> outcome <kbd>r</kbd> or{" "}
+            <kbd>k</kbd> move <kbd>↵</kbd> open <kbd>1</kbd>–<kbd>5</kbd> outcome <kbd>r</kbd> or{" "}
             <kbd>ctrl</kbd>+<kbd>↵</kbd> submit and advance <kbd>esc</kbd> close
           </span>
           <span className="hint" style={{ marginLeft: "auto" }}>
@@ -698,7 +698,7 @@ export function Findings() {
             )}
             .{" "}
             {recorded.needsApproval
-              ? "The dismissal takes effect once a second person approves it."
+              ? `The ${said(recorded.outcome)} takes effect once a second person approves it.`
               : "In force now."}
             {recorded.applied
               .filter((a) => !a.ok)

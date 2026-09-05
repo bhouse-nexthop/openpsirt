@@ -150,6 +150,15 @@ func (e Extension) InForce() bool { return !e.NeedsApproval || e.ApprovedAt != n
 // ErrNotEmbargoed says there is no embargo here to move.
 var ErrNotEmbargoed = errors.New("nothing undisclosed here has a date to move")
 
+// ErrAlreadyAgreed says somebody has already agreed to this extension.
+//
+// A sentinel rather than a bare error, because a second approver arriving is
+// an ordinary race — two people were sent the same queue entry — and it is a
+// conflict rather than something going wrong. Left as a plain error it reached
+// the caller as a 500, which reads as a defect in the tool and sends somebody
+// to the logs to find out that nothing was broken.
+var ErrAlreadyAgreed = errors.New("that extension has already been agreed to")
+
 // ErrBackwards says an extension would bring a date forward.
 var ErrBackwards = errors.New("an extension moves a date later, not earlier")
 
@@ -274,7 +283,7 @@ func (s *Store) AgreeToExtension(ctx context.Context, subject access.Subject, id
 			return ErrSamePerson
 		}
 		if asked.ApprovedAt != nil {
-			return fmt.Errorf("that extension has already been agreed to")
+			return ErrAlreadyAgreed
 		}
 
 		if _, err := tx.NewUpdate().Model((*Extension)(nil)).

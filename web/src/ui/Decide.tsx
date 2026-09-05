@@ -24,6 +24,25 @@ export type At = {
   version: string;
 };
 
+// What to call an outcome in a sentence about what happens next.
+//
+// A deferral and a dismissal both wait for a second person and are not the
+// same act: one says "later" and the other says "no", and calling both a
+// dismissal in the confirmation told somebody they had done a thing they had
+// not.
+export function said(outcome: string): string {
+  switch (outcome) {
+    case "deferred":
+      return "deferral";
+    case "affected":
+      return "claim";
+    case "already-fixed":
+      return "claim that it is already fixed";
+    default:
+      return "dismissal";
+  }
+}
+
 export type Recorded = {
   claimId: number;
   recorded: number;
@@ -32,6 +51,10 @@ export type Recorded = {
   needsApproval: boolean;
   applied: { build: string; ok: boolean; said?: string }[];
   matching: number;
+  // What was decided, so a confirmation can name it. Without this every
+  // outcome that waits for a second person was called a dismissal, and a
+  // deferral is not one — it says "later", not "no".
+  outcome: string;
 };
 
 const OUTCOMES = [
@@ -266,6 +289,7 @@ export function Decide({
         needsApproval: here.needs_approval,
         applied: results,
         matching: matching.length,
+        outcome,
       };
     },
     onSuccess: (recorded) => {

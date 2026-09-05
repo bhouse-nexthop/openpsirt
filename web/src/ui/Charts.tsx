@@ -27,6 +27,39 @@ export type Point = {
   by_severity?: Record<string, number>;
 };
 
+// The four bands, folded the way the server folds them.
+//
+// The server ranks, filters and clocks on four bands and reports the trend in
+// the six words a feed uses. Something has to fold, and it was being done
+// twice with two different answers: here, "unknown" was counted as low, and
+// everywhere the server looks at it — the severity filter, the triage floor,
+// the order, the deadline — it is a medium. So Home said 1,415 low where the
+// list agreed on 38, and a thousand findings were one thing on one screen and
+// another thing on the next.
+//
+// Folded here to match, because a rating with no word is treated as a medium
+// rather than dismissed as a low, and the screen has no business disagreeing
+// with what the deadline is set from.
+function folded(by: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const [word, count] of Object.entries(by)) {
+    switch (word) {
+      case "critical":
+      case "high":
+        out[word] = (out[word] ?? 0) + count;
+        break;
+      case "low":
+      case "negligible":
+      case "none":
+        out.low = (out.low ?? 0) + count;
+        break;
+      default:
+        out.medium = (out.medium ?? 0) + count;
+    }
+  }
+  return out;
+}
+
 const BANDS = [
   { key: "critical", color: "var(--sev-critical)" },
   { key: "high", color: "var(--sev-high)" },
@@ -182,13 +215,13 @@ function paceLabel(points: Point[]): string {
 // worse, and one line cannot show that.
 export function Mix({ points }: { points: Point[] }) {
   const data = points.map((p) => {
-    const by = p.by_severity ?? {};
+    const by = folded(p.by_severity ?? {});
     return {
       at: day(p.at),
       critical: by.critical ?? 0,
       high: by.high ?? 0,
       medium: by.medium ?? 0,
-      low: (by.low ?? 0) + (by.negligible ?? 0) + (by.unknown ?? 0),
+      low: by.low ?? 0,
     };
   });
   if (data.length === 0) return null;
@@ -218,14 +251,11 @@ export function Mix({ points }: { points: Point[] }) {
 // What is open right now. A ring on its own says what somebody already knows,
 // so the numbers are beside it rather than inside it.
 export function Ring({ point }: { point?: Point }) {
-  const by = point?.by_severity ?? {};
+  const by = folded(point?.by_severity ?? {});
   const slices = BANDS.map((band) => ({
     name: band.key,
     color: band.color,
-    value:
-      band.key === "low"
-        ? (by.low ?? 0) + (by.negligible ?? 0) + (by.unknown ?? 0)
-        : (by[band.key] ?? 0),
+    value: by[band.key] ?? 0,
   })).filter((slice) => slice.value > 0);
 
   if (slices.length === 0) {
@@ -278,7 +308,7 @@ export type Release = Body<"ReleaseBody">;
 // requests.
 export function Across({ releases }: { releases: Release[] }) {
   const data = releases.map((r) => {
-    const by = r.by_severity ?? {};
+    const by = folded(r.by_severity ?? {});
     return {
       at: [r.stream, r.variant].filter(Boolean).join(" · "),
       critical: by.critical ?? 0,

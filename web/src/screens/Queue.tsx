@@ -558,7 +558,11 @@ function Card({
           </span>
           {claim.builds.length > 0 && (
             <span className="r ask">
-              <b>{claim.builds.length}</b> other {claim.builds.length === 1 ? "build" : "builds"}:{" "}
+              {/* Every build it covers, this one included — which is what the
+                  server sends and what the number means. It said "other" and
+                  counted its own, so a claim covering one build read as
+                  reaching a second one somewhere. */}
+              <b>{claim.builds.length}</b> {claim.builds.length === 1 ? "build" : "builds"} covered:{" "}
               {claim.builds.join(", ")}
             </span>
           )}
