@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	stdhtml "html"
+	"regexp"
 	"strings"
 
 	"github.com/yuin/goldmark/ast"
@@ -309,4 +310,62 @@ func mintedToken(token string) bool {
 		}
 	}
 	return true
+}
+
+// mention is a name written after an @, as the editor writes one.
+//
+// Deliberately narrow: letters, digits and the handful of punctuation an
+// identity uses, and it must follow something that is not a word character so
+// that an email address in the middle of a sentence is not read as a mention
+// of whatever follows the @.
+var mention = regexp.MustCompile(`(^|[^\w@.-])@([A-Za-z0-9][A-Za-z0-9._@-]{0,190})`)
+
+// Mentions lists the identities a piece of text names, without repeats.
+//
+// Read from the parsed document like References, so that a name inside a
+// fenced block or an inline code span — where it is being shown rather than
+// written — is not one. Somebody pasting a log line that happens to contain an
+// @ has not called for anybody.
+//
+// **What comes back is what was typed, not who it is.** Whether a name is
+// somebody, and whether the reader may know that, is a question for the data
+// layer; this only says what the text says.
+func Mentions(source string) []string {
+	if strings.TrimSpace(source) == "" {
+		return nil
+	}
+	document := parser.Parser().Parse(text.NewReader([]byte(source)))
+	var found []string
+	seen := map[string]bool{}
+	_ = ast.Walk(document, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		// Only prose. A code span and a fenced block are both showing text
+		// rather than saying it, and the walk does not descend into either
+		// for the same reason References does not.
+		if _, code := node.(*ast.CodeSpan); code {
+			return ast.WalkSkipChildren, nil
+		}
+		if _, fenced := node.(*ast.FencedCodeBlock); fenced {
+			return ast.WalkSkipChildren, nil
+		}
+		if _, block := node.(*ast.CodeBlock); block {
+			return ast.WalkSkipChildren, nil
+		}
+		words, ok := node.(*ast.Text)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		for _, match := range mention.FindAllStringSubmatch(string(words.Value([]byte(source))), -1) {
+			name := strings.TrimRight(match[2], ".-_")
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			found = append(found, name)
+		}
+		return ast.WalkContinue, nil
+	})
+	return found
 }

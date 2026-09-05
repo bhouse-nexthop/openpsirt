@@ -177,3 +177,58 @@ describe("files attached here", () => {
     expect(html).not.toContain("/v1/attachments/");
   });
 });
+
+describe("identifiers people paste", () => {
+  it("links a CVE to the record that defines it", () => {
+    // UIX-24. The record rather than the enrichment most people mean by
+    // "look up a CVE": they are different documents from different
+    // organizations, and linking the summary as the source hides that they
+    // disagree.
+    const html = render("Fixed by the maintainer, see CVE-2026-31431.");
+    expect(html).toContain('href="https://www.cve.org/CVERecord?id=CVE-2026-31431"');
+    expect(html).toContain(">CVE-2026-31431</a>");
+    expect(html).toContain('rel="noreferrer noopener nofollow"');
+  });
+
+  it("links a GitHub advisory identifier", () => {
+    const html = render("See GHSA-cfh5-3ghh-wfjx for the write-up.");
+    expect(html).toContain("https://github.com/advisories/GHSA-cfh5-3ghh-wfjx");
+  });
+
+  it("leaves alone anything that only looks like one", () => {
+    // A link that lands on a record for the wrong thing costs more than no
+    // link, because it is followed before it is disbelieved.
+    for (const source of ["CVE-26-1", "CVE-2026-1", "NOTACVE-2026-31431", "GHSA-zzzz-zzzz-zzzz"]) {
+      expect(render(source)).not.toContain("cve.org");
+      expect(render(source)).not.toContain("github.com/advisories");
+    }
+  });
+
+  it("does not link one inside code, or inside a link somebody wrote", () => {
+    expect(render("Write `CVE-2026-31431` like that")).not.toContain("cve.org");
+    expect(render("```\nCVE-2026-31431\n```\n")).not.toContain("cve.org");
+    // A link inside a link is not something a browser renders sensibly.
+    const nested = render("[CVE-2026-31431](https://example.org/x)");
+    expect(nested).toContain("https://example.org/x");
+    expect(nested).not.toContain("cve.org");
+  });
+
+  it("keeps the rest of the sentence around it", () => {
+    const html = render("Before CVE-2026-31431 after.");
+    expect(html).toContain("Before ");
+    expect(html).toContain(" after.");
+  });
+
+  it("still lets nothing dangerous through", () => {
+    // The autolinking runs after the sanitizer, so this checks that it did not
+    // put back what the sanitizer had taken out. Asserted on the live markup
+    // rather than on the string: escaped text is the correct outcome here and
+    // contains the same words, which is what tagsIn exists to tell apart.
+    const html = render("<img src=x onerror=alert(1)> CVE-2026-31431");
+    for (const tag of tagsIn(html)) {
+      expect(tag).not.toMatch(/onerror/i);
+      expect(tag).not.toMatch(/^<img/i);
+    }
+    expect(html).toContain("cve.org");
+  });
+});

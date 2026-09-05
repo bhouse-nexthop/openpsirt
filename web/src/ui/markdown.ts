@@ -67,6 +67,28 @@ const ALLOWED_TAGS = [
 
 const ALLOWED_ATTR = ["href", "title", "class", "src", "alt"];
 
+// The identifiers this tool's whole subject is (UIX-24). People paste them
+// constantly, and a tool about vulnerabilities that leaves them as plain words
+// makes the most repeated action there is into a copy and a paste.
+//
+// The patterns are the strict ones, not "anything starting with CVE": a link
+// that lands on a record for the wrong thing costs more than no link, because
+// it is followed before it is disbelieved.
+const IDENTIFIERS: { pattern: RegExp; where: (id: string) => string }[] = [
+  {
+    pattern: /\bCVE-[0-9]{4}-[0-9]{4,}\b/g,
+    // The record that defines the identifier, rather than the enrichment most
+    // people mean when they say "look up a CVE". They are different documents
+    // from different organizations, and linking the summary as though it were
+    // the source is how a disagreement between them goes unnoticed.
+    where: (id) => `https://www.cve.org/CVERecord?id=${encodeURIComponent(id)}`,
+  },
+  {
+    pattern: /\bGHSA-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}\b/g,
+    where: (id) => `https://github.com/advisories/${encodeURIComponent(id)}`,
+  },
+];
+
 // A file held here, as the text refers to it: an opaque identifier and never
 // an address (ATT-05). The identifier is what this deployment mints — 32
 // hexadecimal characters — and anything else shaped differently is a broken
@@ -145,6 +167,59 @@ function resolve(node: Element) {
   }
 }
 
+// Turns bare identifiers in prose into links (UIX-24).
+//
+// **Text nodes only, and never inside a link or a code block.** An identifier
+// inside somebody's own link would produce a link inside a link, which no
+// browser renders as anything sensible; inside a code span it is being shown
+// rather than referred to.
+//
+// Run over the sanitized document rather than over the markdown, so what is
+// linked is text that survived, and the elements this creates are made here
+// rather than parsed from a string — there is no markup round trip for
+// anything to be smuggled through.
+function autolink(root: Element | DocumentFragment) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const found: Text[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const parent = (node as Text).parentElement;
+    if (!parent || parent.closest("a, code, pre")) continue;
+    found.push(node as Text);
+  }
+
+  for (const node of found) {
+    const text = node.nodeValue ?? "";
+    const hits: { at: number; end: number; id: string; href: string }[] = [];
+    for (const { pattern, where } of IDENTIFIERS) {
+      pattern.lastIndex = 0;
+      for (let m = pattern.exec(text); m; m = pattern.exec(text)) {
+        hits.push({ at: m.index, end: m.index + m[0].length, id: m[0], href: where(m[0]) });
+      }
+    }
+    if (hits.length === 0) continue;
+    hits.sort((a, b) => a.at - b.at);
+
+    const pieces = document.createDocumentFragment();
+    let cursor = 0;
+    for (const hit of hits) {
+      // Two patterns cannot both claim the same run of text, but a sort does
+      // not prove that — so anything starting inside what was already taken
+      // is skipped rather than producing overlapping elements.
+      if (hit.at < cursor) continue;
+      if (hit.at > cursor) pieces.append(text.slice(cursor, hit.at));
+      const link = document.createElement("a");
+      link.setAttribute("href", hit.href);
+      link.setAttribute("rel", "noreferrer noopener nofollow");
+      link.setAttribute("target", "_blank");
+      link.textContent = hit.id;
+      pieces.append(link);
+      cursor = hit.end;
+    }
+    if (cursor < text.length) pieces.append(text.slice(cursor));
+    node.replaceWith(pieces);
+  }
+}
+
 let hooked = false;
 function hook() {
   if (hooked) return;
@@ -164,7 +239,7 @@ function hook() {
 // markup had been kept when the text arrived.
 export function render(source: string): string {
   hook();
-  return DOMPurify.sanitize(md.render(source), {
+  const clean = DOMPurify.sanitize(md.render(source), {
     ALLOWED_TAGS,
     ALLOWED_ATTR,
     // rel and target are set by the hook above rather than accepted from the
@@ -172,5 +247,14 @@ export function render(source: string): string {
     ADD_ATTR: ["rel", "target", "loading", "referrerpolicy"],
     ALLOW_DATA_ATTR: false,
     ALLOW_ARIA_ATTR: false,
+    // Returned as nodes rather than as a string, so that the identifiers below
+    // are linked by building elements instead of by editing markup. A regular
+    // expression rewriting HTML is the shape that eventually matches inside a
+    // tag it was not thinking about.
+    RETURN_DOM_FRAGMENT: true,
   });
+  autolink(clean);
+  const holder = document.createElement("div");
+  holder.append(clean);
+  return holder.innerHTML;
 }

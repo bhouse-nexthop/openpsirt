@@ -509,6 +509,11 @@ func (s *Store) Names(ctx context.Context, ids []int64) (map[int64]string, error
 
 // Mentionable is somebody who could be named in text about a product.
 type Mentionable struct {
+	// ID is who they are, for telling them. It is not offered to a caller —
+	// the editor needs the name to write and nothing else — and it is here so
+	// that whoever may be *offered* and whoever may be *told* come from one
+	// query rather than two that could come to disagree.
+	ID       int64  `bun:"id"`
 	Identity string `bun:"identity"`
 	Name     string `bun:"name"`
 }
@@ -552,6 +557,7 @@ func (s *Store) WhoCanRead(ctx context.Context, productID int64, visibility Visi
 	var found []Mentionable
 	err := s.db.NewSelect().
 		TableExpr("person AS p").
+		ColumnExpr("p.id AS id").
 		ColumnExpr("p.identity AS identity").
 		ColumnExpr("COALESCE(NULLIF(p.display_name, ''), p.identity) AS name").
 		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {

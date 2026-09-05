@@ -47,10 +47,10 @@ func TestOnlyTheAuthorMayChangeTheirOwnWords(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := f.store.Reword(ctx, f.reviewer, said.ID, "Words I did not write."); err == nil {
+		if _, err := f.store.Reword(ctx, f.reviewer, said.ID, "Words I did not write."); err == nil {
 			t.Error("somebody rewrote another person's comment")
 		}
-		if err := f.store.Reword(ctx, f.triager, said.ID, "Second thought."); err != nil {
+		if _, err := f.store.Reword(ctx, f.triager, said.ID, "Second thought."); err != nil {
 			t.Fatal(err)
 		}
 
@@ -130,8 +130,8 @@ func TestARewriteRefusedForOneReasonRatherThanTwo(t *testing.T) {
 		// Somebody who may read the product but not argue about it. Two
 		// requests: one naming a comment that exists, one naming a number that
 		// never has.
-		here := f.store.Reword(ctx, f.onlooker, said.ID, "Not my words.")
-		nowhere := f.store.Reword(ctx, f.onlooker, said.ID+9_999, "Not my words.")
+		_, here := f.store.Reword(ctx, f.onlooker, said.ID, "Not my words.")
+		_, nowhere := f.store.Reword(ctx, f.onlooker, said.ID+9_999, "Not my words.")
 		if here == nil || nowhere == nil {
 			t.Fatalf("a reader rewrote a comment: existing=%v absent=%v", here, nowhere)
 		}
@@ -144,7 +144,7 @@ func TestARewriteRefusedForOneReasonRatherThanTwo(t *testing.T) {
 		}
 
 		// And the author is still refused nothing.
-		if err := f.store.Reword(ctx, f.triager, said.ID, "Second thought."); err != nil {
+		if _, err := f.store.Reword(ctx, f.triager, said.ID, "Second thought."); err != nil {
 			t.Errorf("the author could not change their own comment: %v", err)
 		}
 	})

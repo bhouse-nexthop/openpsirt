@@ -48,6 +48,10 @@ type Kind string
 const (
 	// Assigned is work arriving, which is what a triager most wants to notice.
 	Assigned Kind = "assigned"
+	// Mentioned is somebody named in a note. It is an explicit human action
+	// directed at one person — somebody asked a question and is waiting on an
+	// answer — which is exactly the category that goes at once (NTF-12).
+	Mentioned Kind = "mentioned"
 	// SentBack is a dismissal an approver asked more of. It goes straight back
 	// into the proposer's queue, so silence would leave it sitting (NTF-05).
 	SentBack Kind = "sent-back"

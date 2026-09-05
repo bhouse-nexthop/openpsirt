@@ -300,6 +300,7 @@ func registerTriage(api huma.API, in Ingest) {
 		if _, err := store.Revise(ctx, subject, input.ID, input.Body.Reasoning); err != nil {
 			return nil, refusedDecision(err)
 		}
+		tellMentioned(ctx, in, subject, store, input.ID, input.Body.Reasoning)
 		return &struct{}{}, nil
 	})
 
@@ -383,6 +384,7 @@ func registerTriage(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, refusedDecision(err)
 		}
+		tellMentioned(ctx, in, subject, store, input.ID, input.Body.Body)
 		out := &struct {
 			Body struct {
 				ID int64 `json:"id"`

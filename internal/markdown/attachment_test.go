@@ -82,3 +82,35 @@ func TestOnlyAMintedIdentifierCounts(t *testing.T) {
 		}
 	}
 }
+
+func TestMentionsAreReadFromProseAndNotFromCode(t *testing.T) {
+	// NTF-12 tells whoever was named, so what counts as naming somebody has to
+	// be narrow: a log line pasted into a justification has not called for
+	// anybody, and being told you were mentioned when you were not is how
+	// people learn to ignore the thing.
+	for _, c := range []struct {
+		what   string
+		source string
+		want   []string
+	}{
+		{"a plain mention", "Asking @ana about this.", []string{"ana"}},
+		{"two, once each", "@ana and @ben and @ana again", []string{"ana", "ben"}},
+		{"one at the start", "@ana asked.", []string{"ana"}},
+		{"inside a code span", "Write it as `@ana` to call somebody", nil},
+		{"inside a fenced block", "```\nfrom @ana to @ben\n```\n", nil},
+		{"an email address", "Mail ops@example.com about it", nil},
+		{"trailing punctuation is not part of the name", "Thanks @ana.", []string{"ana"}},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			got := markdown.Mentions(c.source)
+			if len(got) != len(c.want) {
+				t.Fatalf("read %v, want %v", got, c.want)
+			}
+			for i := range got {
+				if got[i] != c.want[i] {
+					t.Errorf("read %v, want %v", got, c.want)
+				}
+			}
+		})
+	}
+}

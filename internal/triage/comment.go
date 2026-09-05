@@ -77,7 +77,11 @@ func (s *Store) Say(ctx context.Context, subject access.Subject, decisionID int6
 // one request at a time, including on findings nobody has disclosed. A comment
 // that is not there and one on a decision this person may not reach answer
 // identically.
-func (s *Store) Reword(ctx context.Context, subject access.Subject, commentID int64, body string) error {
+// It answers with the decision the comment hangs off, because whoever edited
+// it may have named somebody the first version did not, and telling them needs
+// to know what the text is about.
+func (s *Store) Reword(ctx context.Context, subject access.Subject, commentID int64,
+	body string) (int64, error) {
 	comment := new(Comment)
 	if err := s.db.NewSelect().Model(comment).
 		Where("id = ?", commentID).Scan(ctx); err != nil {
@@ -85,19 +89,19 @@ func (s *Store) Reword(ctx context.Context, subject access.Subject, commentID in
 		// is the difference a caller counts: "change comment 10000: not
 		// authorized" against "not authorized" separates the two answers this
 		// is written to make identical.
-		return ErrNotTheirs
+		return 0, ErrNotTheirs
 	}
 	if _, err := s.reaching(ctx, subject, comment.DecisionID, readable); err != nil {
-		return err
+		return 0, err
 	}
 	if comment.WrittenBy != subject.ID {
-		return fmt.Errorf("only the person who wrote a comment may change it")
+		return 0, fmt.Errorf("only the person who wrote a comment may change it")
 	}
 	if strings.TrimSpace(body) == "" {
-		return fmt.Errorf("a comment has to say something")
+		return 0, fmt.Errorf("a comment has to say something")
 	}
 	if err := markdown.Check(body); err != nil {
-		return err
+		return 0, err
 	}
 
 	edited := s.now().Truncate(time.Microsecond)
@@ -105,12 +109,12 @@ func (s *Store) Reword(ctx context.Context, subject access.Subject, commentID in
 		Set("body = ?", body).
 		Set("edited_at = ?", edited).
 		Where("id = ?", commentID).Exec(ctx); err != nil {
-		return fmt.Errorf("change a comment: %w", err)
+		return 0, fmt.Errorf("change a comment: %w", err)
 	}
 	// An edit can add a reference the first version did not have. It can also
 	// take one away, and that does not un-attach the file: the revision that
 	// referred to it is still on record.
-	return noting(ctx, s.db, body, edited)
+	return comment.DecisionID, noting(ctx, s.db, body, edited)
 }
 
 // Discussion returns what has been said about a decision, oldest first.

@@ -57,7 +57,22 @@ not the same.
 | An embargo whose date arrived | condition | Built. Reaching the date discloses nothing (ACC-47), so this is a question still waiting for an answer rather than a thing that happened — and it clears when the date is moved or the finding is disclosed, because both of those are somebody answering it |
 
 **A mention notifies the person mentioned, immediately** (NTF-12), and is the
-row above that is not built: nothing resolves `@name` to a person yet.
+row above is built: a name written after an `@` is resolved when the text is
+saved, and whoever it names is told at once (NTF-12).
+
+**Only somebody who could already read it**, from the same query the editor's
+autocomplete uses — so a mention cannot tell somebody that a finding exists
+when they may not see it. On an undisclosed finding the notification itself
+would be the disclosure.
+
+**A name nobody holds and a name held by somebody who may not read this are
+not told apart.** Both simply reach nobody. A refusal naming which it was would
+answer, one comment at a time, whether a given person can see undisclosed work.
+
+**Never the author**, who is not asking themselves a question, and never a
+failure of the write: the words are on record by the time anybody is told, and
+losing a comment because a notification could not be stored would be
+sacrificing the wrong half.
 
 **A new build notifies nobody** (NTF-04). A build arriving is the ordinary
 state of a tool that is scanned nightly, and a message per night per build is

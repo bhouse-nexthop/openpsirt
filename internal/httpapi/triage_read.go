@@ -301,9 +301,11 @@ func registerTriageReading(api huma.API, in Ingest) {
 		if err != nil {
 			return nil, err
 		}
-		if err := store.Reword(ctx, subject, input.ID, input.Body.Body); err != nil {
+		decisionID, err := store.Reword(ctx, subject, input.ID, input.Body.Body)
+		if err != nil {
 			return nil, refusedDecision(err)
 		}
+		tellMentioned(ctx, in, subject, store, decisionID, input.Body.Body)
 		return &struct{}{}, nil
 	})
 }

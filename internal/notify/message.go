@@ -28,6 +28,7 @@ var called = map[Kind]string{
 	SentBack:      "A claim of yours was sent back",
 	BuildQuiet:    "A build has stopped being scanned",
 	HoldingAbsent: "Somebody away is holding work",
+	Mentioned:     "You were named in a note",
 	DisclosureDue: "An embargo has reached its date",
 }
 

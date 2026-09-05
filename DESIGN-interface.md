@@ -1214,15 +1214,38 @@ Beside "The record" rather than inside it. The record is what was judged and
 who agreed; these are the shape of the judging, and a screen that mixed them
 would be answering two questions at once.
 
+## Identifiers link themselves
+
+A `CVE-` or `GHSA-` identifier in rendered text becomes a link to the record
+that defines it (UIX-24). People paste these constantly in a tool whose whole
+subject is them, and leaving them as words puts a copy and a paste in the most
+repeated action there is.
+
+**The record, not the enrichment.** A CVE has two documents from two
+organizations and they disagree often enough that linking the summary as though
+it were the source would hide it.
+
+**The strict pattern, not anything beginning with CVE.** A link landing on a
+record for the wrong thing costs more than no link, because it is followed
+before it is disbelieved.
+
+**Never inside a link somebody wrote, or inside code.** A link within a link is
+not something a browser renders sensibly, and an identifier in a code span is
+being shown rather than referred to.
+
+It runs over the sanitized document rather than over the markdown, and builds
+elements rather than editing markup — a regular expression rewriting HTML is
+the shape that eventually matches inside a tag it was not thinking about.
+
+**What remains of UIX-24 is the internal half**: a reference to a finding held
+here linking to it. An identifier alone does not name a finding — a finding is
+an issue at a place in a build — so what is missing is not the link but the
+route: there is no address that means "this issue, wherever we have it".
+
 ## Not built yet
 
 Named so that what is missing is a plan rather than something rediscovered by
 clicking.
-
-**A mention links nobody.** The editor offers the right candidates and writes
-`@name` into the text, but the renderer treats it as ordinary words. UIX-24
-wants a mention and a finding reference to become links, and that is resolution
-the server has to do, because it needs to know what the reader may see.
 
 **The carry-forward preview.** What a decision will cover when a build moves is
 a hint sentence rather than the panel the mockup draws.
