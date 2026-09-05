@@ -218,14 +218,25 @@ answered across everything: once somebody has picked a product, a page counting
 the others is answering a question nobody asked.
 
 **A screen that needs a whole build cannot be given half a scope** (UIX-39).
-Six of them exist for one build and no other — the findings list, a finding,
-deciding a place, the dependency tree, deciding several together, and scans —
-because there is no dependency graph across branches and a finding is a row in
-one build's scan. On those screens the levels that would go to "all" are
-disabled and say why. The alternative was to accept the partial scope and
-navigate somewhere it makes sense, which turns a filter into a jump nobody
-asked for: a control that declines is less surprising than one that relocates
-you.
+Five of them exist for one build and no other — a finding, deciding a place,
+the dependency tree, deciding several together, and scans — because there is
+no dependency graph across branches and each of those is about a way down.
+On those screens the levels that would go to "all" are disabled and say why.
+The alternative was to accept the partial scope and navigate somewhere it
+makes sense, which turns a filter into a jump nobody asked for: a control that
+declines is less surprising than one that relocates you.
+
+**The findings list is not one of them** (UIX-53). It was, on the same
+justification, and the justification did not hold for it: what the list is of
+is an issue at a component, and neither that nor any decision about it is
+keyed on a build (REL-05). With a product picked and the branch or the variant
+left at "all", the list answers for every build in scope — a row is one issue
+at one component still, its places counted across every build the group is in,
+naming one of those builds and saying how many hold it. The one thing it
+cannot draw there is the way down, because a chain belongs to one build's
+graph, so those columns are absent rather than filled from whichever build the
+row happened to name. **This is not built.** Today the list refuses a partial
+scope with the other five.
 
 **A narrow screen keeps every entry behind a menu.** The tab bar carries the
 three places somebody reviews and responds from (UIX-17), and a menu control
