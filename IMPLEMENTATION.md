@@ -190,16 +190,21 @@ deadlines and what a new line would inherit.
   `DESIGN-remediation.md` says what it deliberately does not do
 - Reports: dismissals, coverage, metrics — **release comparison is built**
 - **Trends on calendar time are built**, and so is **release readiness** — a
-  branch beside the last release cut from it. Release over release as a trend
-  axis is not
+  branch beside the last release cut from it, which needs the tag to say which
+  branch it was cut from and can now be told that after the fact (MDL-33).
+  **Release over release as a trend axis is built** (RPT-09), and
+  `DESIGN-reporting.md` says which half of it is not
 - **The in-app notification area is built**, with both lifetimes and two of
   its producers, and **mail now carries what leaves it**: the categories worth
   interrupting somebody for go at once, and a daily digest — off until a person
   asks for it — carries what nothing else told them. A message about a finding
   nobody has announced says only that there is something. Each person chooses
   their own; an operator sets `MAIL_FROM` and `MAIL_SERVER` or nothing leaves
-  at all. Chat adapters and operational alerts are not built;
-  `DESIGN-notifications.md` says what is told and what is not
+  at all. **Operational alerts are built** — a build nothing has been filed
+  against, somebody away and still holding work, an embargo past its date, and
+  a critical or exploited issue open against something already released
+  (NTF-11). **Chat adapters are not.** `DESIGN-notifications.md` says what is
+  told and what is not
 
 **Proves it works:** a release comparison matches a known pair of releases; a
 declared fix that did not land shows as a missed target.
@@ -364,7 +369,7 @@ thing rather than a gap somebody rediscovers by auditing.
 | ING-24 to ING-27, SCP-11 | Analyzer findings | Intended scope, not built. The finding model carries a kind from the start so a second kind needs no rewrite, which is the part that had to be got right early |
 | The internal half of UIX-24 | A route that means "this issue, wherever we have it" | Identifiers link out to the records that define them. A reference to a finding held here cannot link yet because an identifier alone does not name one — a finding is an issue at a place in a build — so what is missing is the address rather than the link |
 | The server-side renderer (`internal/markdown.Render`) | Nothing, now — a decision to take | Stage 6 landed and did not wire it: mail carries the markdown as its text part (NTF-14), which reads fine unrendered, so the HTML part it was being kept for was never built. It is still kept rather than deleted, because it carries the sanitizer and a corpus of cross-site-scripting payloads and a security control rebuilt from memory comes back weaker — but "waiting for Stage 6" is no longer true, and the honest state is that it has no consumer and its tests are what exercise it |
-| RPT-01, and what the `reporting` role is for | A discussion, not a stage | The role gates nothing: every report endpoint asks for a credential and narrows by what the caller may see. The likely shape is a minimal statistics role — counts and trends without reading the findings behind them — which cuts across a capability granting no visibility, since an aggregate over work somebody may not read is still an answer about it. `DECISIONS.md` §7 holds it; adding a check to the report endpoints before that discussion would settle it by accident |
+| RPT-01, and what the `reporting` role is for | A discussion, not a stage | The role gates nothing: every report endpoint asks for a credential and narrows by what the caller may see. The likely shape is a minimal statistics role — counts and trends without reading the findings behind them — which cuts across a capability granting no visibility, since an aggregate over work somebody may not read is still an answer about it. `DECISIONS.md` §7 holds it; adding a check to the report endpoints before that discussion would settle it by accident. **ACC-64 moved the ground under it**: an administrator no longer reads by administering, so a read-only auditor is now something that can be granted, and the question of what `reporting` adds on top of that is a different one from what it was |
 | Clearing what somebody was told when their role goes | A decision about the record | Reading a notification is narrowed by person and nothing else, so a withdrawn private-triage leaves a list naming undisclosed findings. ACC-43 hands their work back on the same trigger. Whether revocation clears those rows or merely stops serving them is the open part; `DESIGN-notifications.md` states the gap |
 | MDL-10 | Nothing — it is a limitation | The same version built with different feature flags can use its dependencies differently. Recorded so nobody assumes the graph says more than it does |
 

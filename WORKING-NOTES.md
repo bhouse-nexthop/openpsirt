@@ -8,7 +8,7 @@ here.
 
 ## Where to pick up
 
-*Rewritten 2026-09-05, for somebody arriving with no memory of the session that
+*Rewritten 2026-09-06, for somebody arriving with no memory of the session that
 produced it. The four sections that follow are current — the state, what to do
 first, what is left, and what just landed with the traps it left behind.
 Everything from "2026-09-05: the findings list stopped being one build's"
@@ -17,13 +17,14 @@ something cites it.*
 
 ### The state, in one paragraph
 
-**Phase 1 and Phase 2 are built, apart from one piece deliberately left.**
-Attachments landed on 2026-09-05 — the last large Phase 2 item — and so did
-every Phase 1 leftover the plan was still carrying. What remains of Phase 2 is
-**the adapters that would send an advisory somewhere (REM-17, REM-22) and the
-VEX profile of the document**, and those are deferred on the owner's
-instruction rather than blocked: the document is generated and handed over, and
-where it goes next differs completely by product.
+**Phase 1 and Phase 2 are built, apart from one piece deliberately left**, and
+**the review's "fix now" group is worked through**. Attachments landed on
+2026-09-05 — the last large Phase 2 item — and so did every Phase 1 leftover
+the plan was still carrying. What remains of Phase 2 is **the adapters that
+would send an advisory somewhere (REM-17, REM-22) and the VEX profile of the
+document**, deferred on the owner's instruction rather than blocked: the
+document is generated and handed over, and where it goes next differs
+completely by product.
 
 ### Do this first on a fresh checkout
 
@@ -36,13 +37,15 @@ engines: `make engines-down && make engines-up`.
 
 ### What is left
 
-**A review action list is open.** `REVIEW-ACTIONS.md` holds what the
-functionality and usability review of 2026-09-05 found, as a ticked list in
-three groups: defects to fix now (one demonstrated leak in assessments, two
-enumeration oracles, a CVE search that returns nothing, pickers that keep
-triagers from assigning work), the ten changes that most change what the
-tool is, and the rest. It is temporary in the same sense as this document,
-and nothing may reference it. Work it from the top.
+**Twenty-eight review items, in two groups.** `REVIEW-ACTIONS.md` holds them
+and says what each is, with the evidence behind it. The **"fix now" group is
+done — all eleven** — and each ticked item records what was decided and how it
+was verified. What is open is *the ten that change what the tool is* (disclosure
+in the interface, fix bundles, export and a paged audit screen, an outbound
+webhook, supplier VEX, deadlines on rows, readers seeing the record, a
+disposition register, release notes a coordinator can use, grouping an issue
+across sibling components) and *then* — eighteen smaller ones. It is temporary
+in the same sense as this document, and nothing may reference it.
 
 **Phase 2, deferred rather than blocked**: the adapters that would send an
 advisory somewhere (REM-17, REM-22), and the VEX profile of the document, which
@@ -53,6 +56,13 @@ asked for these to wait.
 **A screen for one endpoint.** `PUT /v1/products/{product}/issues/{id}/builds`
 sets which builds a recorded flaw affects (MDL-31) and nothing in the interface
 offers it. The finding screen is where it belongs.
+
+**Nine lint warnings, one shape.** `react-hooks/set-state-in-effect` reports
+nine components that reset local state from an effect when a prop changes or a
+panel opens. The fix is to remount with a key, which changes how they are
+mounted rather than what they do, so each needs driving in a browser. The rule
+reports rather than refuses, deliberately: the count is the honest measure of
+the work, and switching it off would hide these nine and let a tenth join them.
 
 **Before release, mandatory**: collapse the migrations into one and start
 keeping schema and API compatibility (DAT-29).
@@ -67,16 +77,79 @@ where it lives now — this note is a copy and the design document is not.*
 
 **Two questions waiting on the owner**, both in `DECISIONS.md` §7: what the
 `reporting` role is for, and whether revoking a role clears the notifications
-naming undisclosed findings or merely stops serving them.
+naming undisclosed findings or merely stops serving them. **ACC-64 moved the
+ground under the first**: an administrator no longer reads by administering, so
+a read-only auditor is now something that can be granted, and what `reporting`
+adds on top of that is a different question from what it was.
 
-**Not verified in a browser**: the mention notifications and the identifier
-autolinking. Everything else built on 2026-09-05 was driven through the demo.
+**One unexplained thing, and the row is honest about it either way.** On the
+demo, `golang.org/x/net` under `sonic-mgmt-common-codegen` has no walkable
+route up to the build root, though the consumer has edges upward, the depth
+bound of 64 is nowhere near reached, and the root exists. The row now names the
+consumer instead of claiming nothing pulls it in, which is true whichever the
+cause — but *why* the climb finds no root there was not chased to the bottom.
+It may be a disconnected fragment in that inventory.
+
+**Not driven in a browser.** Everything the review's group changed was checked
+against the running demo *through the API* — the leaks with the review's own
+requests, the search, the admin model, the mention report, the streams list,
+the release list. What was **not** opened in a browser is the rendering of the
+screens that changed: "Take this" on the finding and the unassigned bar, the
+decision form opening with nothing chosen, the way down drawn as one hop where
+the route up is unknown, "sees nothing" on People, the dropped-mention line
+under the comment box, and the inventory list's numbers. The type check, the
+lint, the unit tests and the endpoints behind each of them pass; what nobody
+has looked at is the pixels.
 
 **One standing caution**: the composed image inventory is correct, but
 `DESIGN-packaging.md` should be re-read before touching it — the composition
 rules are subtle and the tool has tests that were written by breaking it.
 
-### What was built on 2026-09-05
+### What was built on 2026-09-05 to 06, working the review
+
+Eleven items, each with its decisions recorded and its design documents
+updated. This is the index rather than the reasoning.
+
+| | |
+|---|---|
+| **Three demonstrated leaks** | TRI-53: a claim about an issue reaches only somebody who may be told it exists, and its counts stop at the products they hold. The issue-name oracle closed by one resolver every finding-shaped route goes through, and minted numbers drawn rather than counted (MDL-32). An identity nobody holds answers as one whose work you cannot see, checked by walking every route carrying an identity |
+| **Administrator stopped being every role** | ACC-64. Administration is people, roles, credentials, settings and the catalog; reading and triaging are granted. ACC-65: a credential may not create a person or a key. Two questions had to be separated first — knowing a product exists against reading it, and the background passes' subject against an administrator's |
+| **Triage the interface would not let you do** | UIX-56: the pickers ask who may read it rather than who exists, and taking work is one click. UIX-55: nothing is chosen for you on a decision form. UIX-57: one search box, matching component names and issue names alike, at whatever scope is chosen |
+| **The alert that was decided and never computed** | NTF-11, as a condition on tags only, to whoever may read and triage it rather than to administrators (NTF-19) |
+| **Documents that described things that do not run** | Five, and the gap itself recorded in `AGENTS.md`: the gate cannot check that a document is true |
+| **Fourteen small defects** | Including one that was three spellings of severity in one product, and one — the streams list never resolving a tag's parent — that was a reporting bug the review had read as a data one |
+| **The interface checked the way the Go half is** | Prettier, ESLint with the hook rules, Stylelint, and two class-name checks derived from Tailwind's own compiler rather than from a list |
+
+### Traps from that stretch, worth an hour each to somebody
+
+**A test can pass because it never reached the thing it names.** Two routes in
+the probe that walks every finding-shaped route were passing on a validation
+error and a router 404: the assignment body field is `person` and the closing
+route is `/resolve`. Found only by breaking the fix and noticing which rows
+*failed* to fail. **Every table-driven probe is worth running against the broken
+version to see the whole table light up.**
+
+**A subject documented one way and implemented another.** `access.Everything`
+says "what it may do is read"; `Products` and `Sees` answered that way and
+`Reads` had never been told, so a pass that narrowed its own query correctly
+was refused by any check asking one product at a time. Introduced and found in
+the same day, by borrowing the subject for something else.
+
+**A column can be empty for everybody.** "Cut from" was blank on every
+deployment because the streams list never resolved the parent — read as a demo
+set up carelessly until the demo was rebuilt with a tag that definitely had
+one.
+
+**"Filling in what was left out" is not "changing it".** Re-declaring a tag
+with its branch was refused as a contradiction when nothing had been said to
+contradict, which left release readiness reporting that nothing had ever
+shipped, with no way to correct it.
+
+**Removing one `if` broke 38 tests, and two were real.** Most were using an
+administrator as a shortcut for "can see everything". The two that were not had
+been leaning on that flag for something it should never have meant.
+
+### What was built on 2026-09-05, before the review
 
 A long stretch. Each has its decisions recorded and its design document
 updated; this is the index rather than the reasoning.
@@ -88,7 +161,7 @@ updated; this is the index rather than the reasoning.
 | **The Phase 1 leftovers** | Remediation metrics (RPT-03), repeat deferrals (TRI-19), release notes as markdown (RPT-06), the release-over-release axis (RPT-09), the absent-person prompt (ACC-45), mentions that notify (NTF-12), identifier autolinking (UIX-24), and carrying triage onto a new line (REL-07) — plus a **Reports** screen for the three that had nowhere to live |
 | **Recording a flaw, rebuilt** | UIX-54 and MDL-27 to MDL-31: its own screen off the rail, sets of lines and variants rather than one build, an optional severity, a CVSS vector scored on the server, weaknesses recorded as given, a markdown description, evidence files, and a way to correct which builds it affects |
 
-### Traps from that stretch, worth an hour each to somebody
+### Traps from that earlier stretch
 
 **A `str.replace` on an anchor that has moved is a silent no-op.** Two design
 sections reported as written that day had never been written, and half of one
